@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { GeistSans } from 'geist/font/sans';
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider"
+import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from "@vercel/analytics/next"
 
 
 export const metadata: Metadata = {
@@ -27,6 +29,8 @@ export default function RootLayout({
         >
         {children}
         </ThemeProvider>
+        <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
