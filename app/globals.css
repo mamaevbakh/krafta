@@ -120,3 +120,23 @@
     @apply bg-background text-foreground;
   }
 }
+::selection {
+  background: oklch(0% 0 0); /* pick anything you want */
+  color: oklch(1 0 0);
+}
+
+::-moz-selection {
+  background: oklch(0% 0 0);
+  color: oklch(1 0 0);
+}
+
+/* Dark mode text selection */
+.dark ::selection {
+  background: oklch(1 0 0);/* darker highlight */
+  color: oklch(0% 0 0);
+}
+
+.dark ::-moz-selection {
+  background: oklch(1 0 0);
+  color: oklch(0% 0 0);
+}

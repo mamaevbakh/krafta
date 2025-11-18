@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { NavigationMenu } from "@/components/ui/navigation-menu";
 import { DashboardNavLink } from "@/components/dashboard/dashboard-nav-link";
 import Link from "next/link";
+import { CatalogSwitcher } from "./catalog-switcher";
 
 // Dashboard navigation links
 const DASHBOARD_LINKS = [
@@ -20,10 +21,11 @@ export function DashboardNavbar() {
     <div className="flex flex-col">
       {/* Logo block */}
       <header className="px-6 py-3 h-16">
-        <nav className="h-full flex items-center">
+        <nav className="h-full flex items-center space-x-4">
             <h1 className="h-full flex items-center text-2xl font-semibold">
                 Krafta
             </h1>
+            <CatalogSwitcher></CatalogSwitcher>
         </nav>
       </header>
 
