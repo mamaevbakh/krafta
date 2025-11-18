@@ -39,26 +39,64 @@ export type Database = {
   }
   public: {
     Tables: {
+      catalog_categories: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          position: number
+          slug: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          position?: number
+          slug: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          position?: number
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_categories_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalogs: {
         Row: {
           created_at: string
           id: string
           name: string
-          org_id: string | null
+          org_id: string
           slug: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
-          org_id?: string | null
+          org_id: string
           slug: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
-          org_id?: string | null
+          org_id?: string
           slug?: string
         }
         Relationships: [
@@ -67,6 +105,69 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      items: {
+        Row: {
+          catalog_id: string
+          category_id: string
+          created_at: string
+          description: string | null
+          id: string
+          image_alt: string | null
+          image_path: string | null
+          is_active: boolean
+          metadata: Json | null
+          name: string
+          position: number
+          price_cents: number
+          slug: string
+        }
+        Insert: {
+          catalog_id: string
+          category_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_alt?: string | null
+          image_path?: string | null
+          is_active?: boolean
+          metadata?: Json | null
+          name: string
+          position?: number
+          price_cents?: number
+          slug: string
+        }
+        Update: {
+          catalog_id?: string
+          category_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_alt?: string | null
+          image_path?: string | null
+          is_active?: boolean
+          metadata?: Json | null
+          name?: string
+          position?: number
+          price_cents?: number
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "items_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_categories"
             referencedColumns: ["id"]
           },
         ]
