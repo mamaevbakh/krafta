@@ -44,6 +44,38 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          org_id: string | null
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          org_id?: string | null
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          org_id?: string | null
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalogs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
           slug: string
         }
         Insert: {

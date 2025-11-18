@@ -21,7 +21,7 @@ export function DashboardNavLink({
 
   return (
     <div
-      className="relative"
+      className="relative overflow-hidden"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -29,7 +29,7 @@ export function DashboardNavLink({
       {hovered && (
         <motion.div
           layoutId="nav-pill"
-          className="absolute inset-y-1 inset-x-0 my-1 rounded-[4px] bg-accent/80"
+          className="absolute inset-y-1 inset-x-0 my-1 bg-accent/80 rounded-xs"
           transition={{
             type: "spring",
             stiffness: 380,
@@ -56,7 +56,7 @@ export function DashboardNavLink({
       {isActive && (
   <motion.div
     layoutId="dashboard-active-underline"
-    className="pointer-events-none absolute bottom-0 left-0 right-0 h-[2px] bg-white"
+    className="pointer-events-none absolute bottom-0 left-0 right-0 h-0.5 bg-foreground"
     transition={{
       type: "spring",
       stiffness: 300,

@@ -18,51 +18,44 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
-type Catalog = {
+export type CatalogOption = {
   id: string;
   name: string;
   slug: string;
 };
 
-export function CatalogSwitcher() {
-  const [open, setOpen] = React.useState(false);
-  const [catalogs, setCatalogs] = React.useState<Catalog[]>([]);
-  const [selectedSlug, setSelectedSlug] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+type CatalogSwitcherProps = {
+  orgSlug: string;
+  currentCatalogSlug: string;
+  catalogs: CatalogOption[];
+};
 
-  const supabase = React.useMemo(() => createClient(), []);
+export function CatalogSwitcher({
+  orgSlug,
+  currentCatalogSlug,
+  catalogs,
+}: CatalogSwitcherProps) {
+  const [open, setOpen] = React.useState(false);
+  const [selectedSlug, setSelectedSlug] = React.useState(currentCatalogSlug);
+  const router = useRouter();
 
   React.useEffect(() => {
-  async function loadCatalogs() {
-    setLoading(true);
-    setError(null);
+    setSelectedSlug(currentCatalogSlug);
+  }, [currentCatalogSlug]);
 
-    const { data, error } = await supabase
-      .from("catalogs")
-      .select("id, name, slug")
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      setError(error.message);
-      setCatalogs([]);
-    } else {
-      setCatalogs(data ?? []);
-      if (data && data.length > 0) {
-        // only set default once, if not already chosen
-        setSelectedSlug((current) => current ?? data[0].slug);
-      }
-    }
-
-    setLoading(false);
-  }
-
-  loadCatalogs();
-}, [supabase]);
-
-  const selectedCatalog = catalogs.find((c) => c.slug === selectedSlug);
+  const hasCatalogs = catalogs.length > 0;
+  const selectedCatalog = React.useMemo(
+    () => catalogs.find((c) => c.slug === selectedSlug),
+    [catalogs, selectedSlug],
+  );
+  const buttonLabel = React.useMemo(() => {
+    if (!hasCatalogs) return "No catalogs";
+    if (selectedCatalog) return selectedCatalog.name;
+    if (selectedSlug) return selectedSlug;
+    return "Select catalog";
+  }, [hasCatalogs, selectedCatalog, selectedSlug]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -72,12 +65,9 @@ export function CatalogSwitcher() {
           role="combobox"
           aria-expanded={open}
           className="w-[220px] justify-between"
+          disabled={!hasCatalogs}
         >
-          {loading
-            ? "Loading catalogs..."
-            : selectedCatalog
-              ? selectedCatalog.name
-              : "Select catalog"}
+          {buttonLabel}
           <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -85,23 +75,18 @@ export function CatalogSwitcher() {
         <Command>
           <CommandInput placeholder="Search catalog..." className="h-9" />
           <CommandList>
-            {error && (
-              <CommandEmpty>Error loading catalogs</CommandEmpty>
-            )}
-            {!error && !loading && catalogs.length === 0 && (
-              <CommandEmpty>No catalogs found.</CommandEmpty>
-            )}
+            {!hasCatalogs && <CommandEmpty>No catalogs found.</CommandEmpty>}
             <CommandGroup>
               {catalogs.map((catalog) => (
                 <CommandItem
                   key={catalog.id}
                   value={catalog.slug}
                   onSelect={(currentValue) => {
-                    setSelectedSlug(
-                      currentValue === selectedSlug ? null : currentValue,
-                    );
+                    setSelectedSlug(currentValue);
                     setOpen(false);
-                    // later: navigate or lift this selection up via props/context
+                    if (currentValue !== selectedSlug) {
+                      router.push(`/dashboard/${orgSlug}/${currentValue}`);
+                    }
                   }}
                 >
                   {catalog.name}

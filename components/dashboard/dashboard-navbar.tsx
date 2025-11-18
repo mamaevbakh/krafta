@@ -1,50 +1,77 @@
 "use client";
 
+import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { NavigationMenu } from "@/components/ui/navigation-menu";
 import { DashboardNavLink } from "@/components/dashboard/dashboard-nav-link";
 import Link from "next/link";
 import { CatalogSwitcher } from "./catalog-switcher";
+import type { CatalogSummary } from "@/lib/dashboard/catalogs";
+import { LayoutGroup } from "framer-motion";
 
-// Dashboard navigation links
 const DASHBOARD_LINKS = [
-  { href: "/dashboard", label: "Overview" },
-  { href: "/dashboard/categories", label: "Categories" },
-  { href: "/dashboard/items", label: "Items" },
-  { href: "/dashboard/settings", label: "Settings" },
-];
+  { segment: "", label: "Overview" },
+  { segment: "categories", label: "Categories" },
+  { segment: "items", label: "Items" },
+  { segment: "settings", label: "Settings" },
+] as const;
 
-export function DashboardNavbar() {
+export function DashboardNavbar({
+  orgSlug,
+  catalogSlug,
+  catalogs,
+}: {
+  orgSlug: string;
+  catalogSlug: string;
+  catalogs: CatalogSummary[];
+}) {
   const pathname = usePathname();
+  const basePath = useMemo(
+    () => `/dashboard/${orgSlug}/${catalogSlug}`,
+    [orgSlug, catalogSlug],
+  );
 
   return (
     <div className="flex flex-col">
       {/* Logo block */}
       <header className="px-6 py-3 h-16">
         <nav className="h-full flex items-center space-x-4">
-            <h1 className="h-full flex items-center text-2xl font-semibold">
+            <h1 className="h-full flex items-center text-2xl font-semibold text-shadow-sm">
                 Krafta
             </h1>
-            <CatalogSwitcher></CatalogSwitcher>
+            <CatalogSwitcher
+              orgSlug={orgSlug}
+              currentCatalogSlug={catalogSlug}
+              catalogs={catalogs}
+            />
         </nav>
       </header>
 
       {/* Navigation block */}
-      <nav className="relative px-4 mt-[-10px]">
+      <nav className="relative px-4 -mt-2.5">
   {/* Fake bottom border */}
-  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-neutral-800" />
+  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-border" />
 
-  <NavigationMenu>
-    {DASHBOARD_LINKS.map((link) => (
+  <LayoutGroup id="dashboard-nav">
+    <NavigationMenu>
+    {DASHBOARD_LINKS.map(({ segment, label }) => {
+      const href = segment ? `${basePath}/${segment}` : basePath;
+      const isActive = segment
+        ? pathname.startsWith(href)
+        : pathname === href;
+
+      return (
       <DashboardNavLink
-        key={link.href}
+        key={href}
         asChild
-        isActive={pathname === link.href}
+        isActive={isActive}
       >
-        <Link href={link.href}>{link.label}</Link>
+        <Link href={href}>{label}</Link>
       </DashboardNavLink>
-    ))}
-  </NavigationMenu>
+      );
+    })}
+    </NavigationMenu>
+  </LayoutGroup>
 </nav>
     </div>
   );

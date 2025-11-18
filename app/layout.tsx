@@ -21,6 +21,8 @@ export default function RootLayout({
       <body
         className={`${GeistSans.variable} font-sans antialiased`}
       >
+        <SpeedInsights />
+        <Analytics />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -29,8 +31,6 @@ export default function RootLayout({
         >
         {children}
         </ThemeProvider>
-        <SpeedInsights />
-        <Analytics />
       </body>
     </html>
   );
