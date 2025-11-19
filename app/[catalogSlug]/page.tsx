@@ -1,23 +1,23 @@
-// app/[catalogSlug]/page.tsx
-import { Suspense } from "react";
+import { Suspense, type JSX } from "react";
 import { notFound } from "next/navigation";
-import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/supabase/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CatalogItemCard } from "@/components/catalogs/catalog-item-card";
+import { CatalogHeader } from "@/components/catalogs/catalog-header";
 
-type Catalog = Tables<"catalogs">;
+
 type CatalogCategory = Tables<"catalog_categories">;
 type Item = Tables<"items">;
-
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 type CatalogPageParams = {
   catalogSlug: string;
 };
-
+type Catalog = Tables<"catalogs">;
 type CategoryWithItems = CatalogCategory & { items: Item[] };
 
-async function getCatalogBySlug(slug: string) {
-  const supabase = await createClient(); // keep await if your helper is async
+async function getCatalogBySlug(supabase: SupabaseClient, slug: string) {
+
 
   const { data, error } = await supabase
     .from("catalogs")
@@ -29,39 +29,42 @@ async function getCatalogBySlug(slug: string) {
     return null;
   }
 
-  return data as Catalog;
+  return data;
 }
 
-async function getCatalogStructure(catalogId: string): Promise<CategoryWithItems[]> {
-  const supabase = await createClient();
+async function getCatalogStructure(
+  supabase: SupabaseClient,
+  catalogId: string
+): Promise<CategoryWithItems[]> {
+  // Fire both queries in parallel:
+  const [categoriesResult, itemsResult] = await Promise.all([
+    supabase
+      .from("catalog_categories")
+      .select("*")
+      .eq("catalog_id", catalogId)
+      .eq("is_active", true)
+      .order("position", { ascending: true }),
 
-  // Categories
-  const { data: categories, error: categoriesError } = await supabase
-    .from("catalog_categories")
-    .select("*")
-    .eq("catalog_id", catalogId)
-    .eq("is_active", true)
-    .order("position", { ascending: true });
+    supabase
+      .from("items")
+      .select("*")
+      .eq("catalog_id", catalogId)
+      .eq("is_active", true)
+      .order("position", { ascending: true }),
+  ]);
 
+  const { data: categories, error: categoriesError } = categoriesResult;
   if (categoriesError || !categories) {
     console.error("Error loading categories", categoriesError);
     return [];
   }
 
-  // Items
-  const { data: items, error: itemsError } = await supabase
-    .from("items")
-    .select("*")
-    .eq("catalog_id", catalogId)
-    .eq("is_active", true)
-    .order("position", { ascending: true });
-
+  const { data: items, error: itemsError } = itemsResult;
   if (itemsError || !items) {
     console.error("Error loading items", itemsError);
     return categories.map((c) => ({ ...c, items: [] }));
   }
 
-  // Group items by category
   const categoriesWithItems: CategoryWithItems[] = categories.map((category) => ({
     ...category,
     items: items.filter((item) => item.category_id === category.id),
@@ -69,6 +72,7 @@ async function getCatalogStructure(catalogId: string): Promise<CategoryWithItems
 
   return categoriesWithItems;
 }
+
 
 export default function CatalogPage({
   params,
@@ -81,6 +85,17 @@ export default function CatalogPage({
     </Suspense>
   );
 }
+function getCatalogLogoUrl(catalog: Catalog) {
+  if (!catalog.logo_path) return null;
+
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!baseUrl) return null;
+
+  return `${baseUrl}/storage/v1/object/public/krafta/${catalog.logo_path}`;
+}
+
+
+
 function getItemImageUrl(item: Item) {
   if (!item.image_path) return null;
 
@@ -95,34 +110,38 @@ async function CatalogPageContent({
   params,
 }: {
   params: Promise<CatalogPageParams>;
-}) {
+}): Promise<JSX.Element> {
   const { catalogSlug } = await params;
+ 
 
-  const catalog = await getCatalogBySlug(catalogSlug);
+  // 1) Create Supabase client once
+  const supabase = await createClient();
+
+  // 2) Use it in helpers
+  const catalog = await getCatalogBySlug(supabase, catalogSlug);
   if (!catalog) {
     notFound();
   }
 
-  const categoriesWithItems = await getCatalogStructure(catalog.id);
+  const categoriesWithItems = await getCatalogStructure(supabase, catalog.id);
+
+  // ... render
+
+ const logoUrl = getCatalogLogoUrl(catalog);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-4 py-8 text-foreground">
       {/* Catalog header */}
-      <header className="space-y-1">
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          Catalog
-        </p>
-        <h1 className="text-2xl font-semibold">
-          {catalog.name}{" "}
-          <span className="text-sm font-normal text-muted-foreground">
-            ({catalog.slug})
-          </span>
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Simple public view of your catalog. Later we&apos;ll plug in themes,
-          templates, and section builders on top of this data.
-        </p>
-      </header>
+      
+      <CatalogHeader
+  catalogName={catalog.name}
+  description="Browse this catalog and send your order via Telegram, phone, or in-store. Soon you’ll see themes, templates, and more."
+  // later you can build tags dynamically from DB
+  tags={["Vintage shop", "Public catalog"]}
+    logoUrl={logoUrl}
+  />
+
+
 
       {/* Categories & items */}
       <section className="space-y-8">
@@ -144,48 +163,16 @@ async function CatalogPageContent({
               <div className="space-y-2">
                 {category.items.map((item) => {
   const imageUrl = getItemImageUrl(item);
-
   return (
-    <div
+    <CatalogItemCard
       key={item.id}
-      className="flex gap-3 rounded-xs border px-3 py-3"
-    >
-      {/* Image on the left (mobile) */}
-      {imageUrl && (
-        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xs bg-muted">
-          <Image
-            src={imageUrl}
-            alt={item.image_alt ?? item.name}
-            fill
-            className="object-cover"
-          />
-        </div>
-      )}
-
-      {/* Text + price */}
-      <div className="flex flex-1 items-start gap-3">
-        {/* Name + description */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="line-clamp-2 text-sm font-medium">
-            {item.name}
-          </span>
-          {item.description && (
-            <span className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-              {item.description}
-            </span>
-          )}
-        </div>
-
-        {/* Price – stays tight, doesn’t break layout */}
-        <div className="ml-1 flex shrink-0 flex-col items-end">
-          <span className="text-sm font-semibold leading-none whitespace-nowrap">
-            $ {(item.price_cents / 100).toFixed(2)}
-          </span>
-        </div>
-      </div>
-    </div>
+      item={item}
+      imageUrl={imageUrl}
+    />
   );
+  
 })}
+
 
               </div>
             )}

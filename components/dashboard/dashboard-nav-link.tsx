@@ -56,7 +56,7 @@ export function DashboardNavLink({
       {isActive && (
         <motion.div
           layoutId="dashboard-active-underline"
-          className="pointer-events-none absolute bottom-0 left-0 right-0 h-0.5 bg-white"
+          className="pointer-events-none absolute bottom-0 left-0 right-0 h-0.5 bg-secondary-foreground"
           transition={{
             type: "spring",
             stiffness: 300,

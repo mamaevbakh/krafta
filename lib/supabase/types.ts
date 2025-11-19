@@ -80,21 +80,27 @@ export type Database = {
       catalogs: {
         Row: {
           created_at: string
+          description: string | null
           id: string
+          logo_path: string | null
           name: string
           org_id: string
           slug: string
         }
         Insert: {
           created_at?: string
+          description?: string | null
           id?: string
+          logo_path?: string | null
           name: string
           org_id: string
           slug: string
         }
         Update: {
           created_at?: string
+          description?: string | null
           id?: string
+          logo_path?: string | null
           name?: string
           org_id?: string
           slug?: string

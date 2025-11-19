@@ -25,7 +25,7 @@ export default function Home() {
             asChild
             variant={"outline"}>
           <Link
-            href="/vintage-shop-demo"
+            href="/vintage-shop"
           >
             View Demo
           </Link>
