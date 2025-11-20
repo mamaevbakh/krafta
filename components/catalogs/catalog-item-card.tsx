@@ -39,8 +39,8 @@ export function CatalogItemCard({ item, imageUrl }: CatalogItemCardProps) {
         </div>
 
         <div className="ml-1 flex shrink-0 flex-col items-end">
-          <span className="text-sm font-semibold leading-none whitespace-nowrap">
-            $ {(item.price_cents / 100).toFixed(2)}
+            <span className="text-sm font-semibold leading-none whitespace-nowrap">
+              $ {(item.price_cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
 

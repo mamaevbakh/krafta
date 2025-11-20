@@ -3,22 +3,24 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/supabase/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CatalogItemCard } from "@/components/catalogs/catalog-item-card";
+
 import { CatalogHeader } from "@/components/catalogs/catalog-header";
+
+import { CatalogItemCard } from "@/components/catalogs/catalog-item-card";
+import { MinimalCard } from "@/components/catalogs/minimal-card";
+import { BigPhotoCard } from "@/components/catalogs/big-photo-card";
+import { PhotoRowCard } from "@/components/catalogs/photo-row-card";
+
 
 
 type CatalogCategory = Tables<"catalog_categories">;
 type Item = Tables<"items">;
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
-type CatalogPageParams = {
-  catalogSlug: string;
-};
+type CatalogPageParams = { catalogSlug: string; };
 type Catalog = Tables<"catalogs">;
 type CategoryWithItems = CatalogCategory & { items: Item[] };
 
 async function getCatalogBySlug(supabase: SupabaseClient, slug: string) {
-
-
   const { data, error } = await supabase
     .from("catalogs")
     .select("*") // full row type matches Tables<"catalogs">
@@ -134,15 +136,11 @@ async function CatalogPageContent({
       {/* Catalog header */}
       
       <CatalogHeader
-  catalogName={catalog.name}
-  description="Browse this catalog and send your order via Telegram, phone, or in-store. Soon you’ll see themes, templates, and more."
-  // later you can build tags dynamically from DB
-  tags={["Vintage shop", "Public catalog"]}
-    logoUrl={logoUrl}
+      catalogName={catalog.name}
+      description={catalog.description}
+      tags={catalog.tags}
+      logoUrl={logoUrl}
   />
-
-
-
       {/* Categories & items */}
       <section className="space-y-8">
         {categoriesWithItems.length === 0 && (
@@ -160,16 +158,16 @@ async function CatalogPageContent({
                 No items in this category yet.
               </p>
             ) : (
-              <div className="space-y-2">
+              <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
                 {category.items.map((item) => {
-  const imageUrl = getItemImageUrl(item);
-  return (
-    <CatalogItemCard
-      key={item.id}
-      item={item}
-      imageUrl={imageUrl}
-    />
-  );
+           const imageUrl = getItemImageUrl(item);
+            return (
+              <BigPhotoCard
+                key={item.id}
+                item={item}
+                imageUrl={imageUrl}
+              />
+            );
   
 })}
 
@@ -194,7 +192,7 @@ function CatalogPageFallback() {
 
       <section className="space-y-6">
         {/* Fake categories */}
-        {[1, 2].map((cat) => (
+        {[1, 2, 3, 4, 5].map((cat) => (
           <div key={cat} className="space-y-3">
             <Skeleton className="h-5 w-32" />
             <div className="space-y-2">

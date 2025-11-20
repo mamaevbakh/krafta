@@ -3,9 +3,9 @@ import type { JSX } from "react";
 
 type CatalogHeaderProps = {
   catalogName: string;
-  description?: string;
+  description?: string | null;
   logoUrl?: string | null;
-  tags?: string[]; // e.g. ["Vintage shop", "Clothes", "Tashkent"]
+  tags?: string[] | null;
 };
 
 export function CatalogHeader({

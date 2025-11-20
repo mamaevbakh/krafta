@@ -86,6 +86,7 @@ export type Database = {
           name: string
           org_id: string
           slug: string
+          tags: string[] | null
         }
         Insert: {
           created_at?: string
@@ -95,6 +96,7 @@ export type Database = {
           name: string
           org_id: string
           slug: string
+          tags?: string[] | null
         }
         Update: {
           created_at?: string
@@ -104,6 +106,7 @@ export type Database = {
           name?: string
           org_id?: string
           slug?: string
+          tags?: string[] | null
         }
         Relationships: [
           {
