@@ -6,9 +6,6 @@ import type { Catalog, CategoryWithItems, Item } from "@/lib/catalogs/types";
 // Headers
 import { CatalogHeader } from "@/components/catalogs/headers/header-basic";
 
-// Navbars
-import { CategoryNavTabs } from "@/components/catalogs/navbars/category-nav-tabs";
-
 // Item cards
 import { MinimalCard } from "@/components/catalogs/cards/card-minimal";
 import { BigPhotoCard } from "@/components/catalogs/cards/card-photo-big";
@@ -20,6 +17,8 @@ import { SectionBasic } from "@/components/catalogs/sections/section-basic";
 import { SectionSeparated } from "@/components/catalogs/sections/section-separated";
 import { SectionPillTabs } from "@/components/catalogs/sections/section-pill-tabs";
 
+// Category nav
+import { CategoryNavTabs } from "@/components/catalogs/navbars/category-nav-tabs";
 
 
 export type HeaderProps = {
@@ -33,6 +32,7 @@ export type CategoryNavProps = {
   categories: CategoryWithItems[];
   activeCategoryId?: string | null;
   baseHref: string;
+  activeCategorySlug?: string | null;
 };
 
 export type SectionProps = {
@@ -56,12 +56,11 @@ const headerRegistry: Record<
 };
 
 const categoryNavRegistry: Record<
-  NonNullable<CatalogLayoutSettings["categoryNavVariant"]>,
+  CatalogLayoutSettings["categoryNavVariant"],
   React.ComponentType<CategoryNavProps> | null
 > = {
-  none: null,
-  tabs: CategoryNavTabs,
-  sidebar: null,
+  "nav-none": null,
+  "nav-tabs": CategoryNavTabs,
 };
 
 // SECTION VARIANTS
@@ -86,11 +85,10 @@ const itemCardRegistry: Record<
 };
 
 export function resolveCatalogLayout(layout: CatalogLayoutSettings) {
-const categoryNavVariant = layout.categoryNavVariant ?? "none";
   return {
     Header: headerRegistry[layout.headerVariant],
     Section: sectionRegistry[layout.sectionVariant],
     ItemCard: itemCardRegistry[layout.itemCardVariant],
-    CategoryNav: categoryNavRegistry[categoryNavVariant],
+    CategoryNav: categoryNavRegistry[layout.categoryNavVariant],
   };
 }

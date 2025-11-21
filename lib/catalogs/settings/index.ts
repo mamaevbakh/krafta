@@ -2,6 +2,7 @@ import type { Tables } from "@/lib/supabase/types";
 import {
   type CatalogLayoutSettings,
   defaultLayoutSettings,
+  normalizeLayoutSettings,
 } from "./layout";
 
 export type Catalog = Tables<"catalogs">;
@@ -15,9 +16,9 @@ export function normalizeCatalogSettings(catalog: Catalog): CatalogSettings {
   const rawLayout = (catalog as any).settings_layout ?? {};
 
   return {
-    layout: {
+    layout: normalizeLayoutSettings({
       ...defaultLayoutSettings,
-      ...rawLayout,
-    },
+      ...(rawLayout as Record<string, unknown>),
+    }),
   };
 }
