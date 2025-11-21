@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
+import { cn } from "@/lib/utils";
 
 export function CategoryNavTabs({
   categories,
@@ -21,6 +22,7 @@ export function CategoryNavTabs({
     const resolvedFromId =
       categories.find((category) => category.id === activeCategoryId)?.slug ??
       null;
+
     const hasActiveSlug = activeCategorySlug
       ? categories.some(
           (category) =>
@@ -36,6 +38,28 @@ export function CategoryNavTabs({
     initialActiveSlug,
   );
 
+  // track if bar is actually stuck at top
+  const [isStuck, setIsStuck] = useState(false);
+
+  useEffect(() => {
+    const sentinel = document.getElementById("catalog-category-nav-sentinel");
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // when sentinel leaves viewport → nav is now sticky
+        setIsStuck(!entry.isIntersecting);
+      },
+      {
+        threshold: 1,
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
+
+  // Scroll into view on first load if we have activeCategorySlug from URL
   useEffect(() => {
     if (!activeCategorySlug) return;
 
@@ -82,40 +106,59 @@ export function CategoryNavTabs({
   }
 
   return (
-    <nav className="flex gap-2 overflow-x-auto pb-1">
-      <button
-        type="button"
-        onClick={() => handleCategoryClick(null)}
-        className={[
-          "whitespace-nowrap rounded-full border px-3 py-1 text-sm transition",
-          currentSlug === null
-            ? "border-foreground bg-foreground text-background"
-            : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
-        ].join(" ")}
+    <>
+      {/* Sentinel used only to detect when the nav becomes sticky */}
+      <div
+        id="catalog-category-nav-sentinel"
+        aria-hidden="true"
+        className="h-0"
+      />
+
+      {/* Sticky container */}
+      <div
+        className={cn(
+          "sticky top-0 z-30 -mx-4 px-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur",
+          isStuck
+            ? "border-b border-border"
+            : "border-b border-transparent",
+        )}
       >
-        All
-      </button>
-
-      {categories.map((category) => {
-        const slug = category.slug ?? String(category.id);
-        const isActive = slug === currentSlug;
-
-        return (
+        <nav className="flex gap-2 overflow-x-auto pb-2 pt-2">
           <button
-            key={category.id}
             type="button"
-            onClick={() => handleCategoryClick(slug)}
-            className={[
+            onClick={() => handleCategoryClick(null)}
+            className={cn(
               "whitespace-nowrap rounded-full border px-3 py-1 text-sm transition",
-              isActive
+              currentSlug === null
                 ? "border-foreground bg-foreground text-background"
                 : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
-            ].join(" ")}
+            )}
           >
-            {category.name}
+            All
           </button>
-        );
-      })}
-    </nav>
+
+          {categories.map((category) => {
+            const slug = category.slug ?? String(category.id);
+            const isActive = slug === currentSlug;
+
+            return (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => handleCategoryClick(slug)}
+                className={cn(
+                  "whitespace-nowrap rounded-full border px-3 py-1 text-sm transition",
+                  isActive
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
+                )}
+              >
+                {category.name}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    </>
   );
 }
