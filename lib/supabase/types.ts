@@ -85,6 +85,12 @@ export type Database = {
           logo_path: string | null
           name: string
           org_id: string
+          pricing_config: Json | null
+          settings_behavior: Json
+          settings_branding: Json
+          settings_currency: Json
+          settings_i18n: Json
+          settings_layout: Json
           slug: string
           tags: string[] | null
         }
@@ -95,6 +101,12 @@ export type Database = {
           logo_path?: string | null
           name: string
           org_id: string
+          pricing_config?: Json | null
+          settings_behavior?: Json
+          settings_branding?: Json
+          settings_currency?: Json
+          settings_i18n?: Json
+          settings_layout?: Json
           slug: string
           tags?: string[] | null
         }
@@ -105,6 +117,12 @@ export type Database = {
           logo_path?: string | null
           name?: string
           org_id?: string
+          pricing_config?: Json | null
+          settings_behavior?: Json
+          settings_branding?: Json
+          settings_currency?: Json
+          settings_i18n?: Json
+          settings_layout?: Json
           slug?: string
           tags?: string[] | null
         }
