@@ -69,8 +69,16 @@ export function CategoryNavTabs({
       );
 
       if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
+    const y =
+      el.getBoundingClientRect().top +
+      window.scrollY -
+      60; // <--- OFFSET IN PX
+
+    window.scrollTo({
+      top: y,
+      behavior: "smooth",
+    });
+  }
     });
 
     return () => window.cancelAnimationFrame(handle);
@@ -95,8 +103,16 @@ export function CategoryNavTabs({
     );
 
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    const y =
+      el.getBoundingClientRect().top +
+      window.scrollY -
+      60; // <--- OFFSET IN PX
+
+    window.scrollTo({
+      top: y,
+      behavior: "smooth",
+    });
+  }
   }
 
   function handleCategoryClick(categorySlug: string | null) {
@@ -117,18 +133,18 @@ export function CategoryNavTabs({
       {/* Sticky container */}
       <div
         className={cn(
-          "sticky top-0 z-30 -mx-4 px-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur",
+          "sticky top-0 z-30 -mx-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur",
           isStuck
             ? "border-b border-border"
             : "border-b border-transparent",
         )}
       >
-        <nav className="flex gap-2 overflow-x-auto pb-2 pt-2">
+        <nav className="flex gap-2 overflow-x-auto pb-2 pt-2 px-4">
           <button
             type="button"
             onClick={() => handleCategoryClick(null)}
             className={cn(
-              "whitespace-nowrap rounded-full border px-3 py-1 text-sm transition",
+              "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
               currentSlug === null
                 ? "border-foreground bg-foreground text-background"
                 : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
@@ -147,7 +163,7 @@ export function CategoryNavTabs({
                 type="button"
                 onClick={() => handleCategoryClick(slug)}
                 className={cn(
-                  "whitespace-nowrap rounded-full border px-3 py-1 text-sm transition",
+                  "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
                   isActive
                     ? "border-foreground bg-foreground text-background"
                     : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",

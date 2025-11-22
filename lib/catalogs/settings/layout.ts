@@ -19,6 +19,7 @@ export type CatalogLayoutSettings = {
   sectionVariant: SectionVariant;
   itemCardVariant: ItemCardVariant;
   categoryNavVariant: CategoryNavVariant;
+  itemImageRatio?: string | null;
 };
 
 export const defaultLayoutSettings: CatalogLayoutSettings = {
@@ -26,6 +27,7 @@ export const defaultLayoutSettings: CatalogLayoutSettings = {
   sectionVariant: "section-pill-tabs",
   itemCardVariant: "card-big-photo",
   categoryNavVariant: "nav-tabs",
+  itemImageRatio: "4:3",
 };
 
 function normalizeCategoryNavVariant(
@@ -48,6 +50,7 @@ export function normalizeLayoutSettings(
 ): CatalogLayoutSettings {
   const raw = layoutRaw as Partial<CatalogLayoutSettings> & {
     categoryNavVariant?: string | null;
+    itemImageRatio?: string | null;
   };
 
   return {
@@ -58,5 +61,6 @@ export function normalizeLayoutSettings(
     itemCardVariant:
       raw.itemCardVariant ?? defaultLayoutSettings.itemCardVariant,
     categoryNavVariant: normalizeCategoryNavVariant(raw.categoryNavVariant),
+    itemImageRatio: raw.itemImageRatio ?? defaultLayoutSettings.itemImageRatio,
   };
 }

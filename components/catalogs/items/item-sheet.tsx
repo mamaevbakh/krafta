@@ -17,8 +17,22 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerDescription,
-  DrawerClose,
 } from "@/components/ui/drawer";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
+import Image from "next/image";
+
+// ---- helpers --------------------------------------------------------------
+
+function getItemImageUrl(item: Item): string | null {
+  if (!item.image_path) return null;
+
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!baseUrl) return null;
+
+  return `${baseUrl}/storage/v1/object/public/krafta/${item.image_path}`;
+}
+
+// ---- context --------------------------------------------------------------
 
 type ItemSheetContextValue = {
   openItem: (itemSlug: string, categorySlug?: string | null) => void;
@@ -27,12 +41,15 @@ type ItemSheetContextValue = {
 
 const ItemSheetContext = createContext<ItemSheetContextValue | null>(null);
 
+// ---- provider -------------------------------------------------------------
+
 type ItemSheetProviderProps = {
   categoriesWithItems: CategoryWithItems[];
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref: string;
   children: ReactNode;
+  itemImageAspectRatio?: number;
 };
 
 export function ItemSheetProvider({
@@ -41,6 +58,7 @@ export function ItemSheetProvider({
   activeItemSlug = null,
   baseHref,
   children,
+  itemImageAspectRatio = 4 / 3,   // ✅ default here
 }: ItemSheetProviderProps) {
   const normalizedBase = useMemo(
     () => baseHref.replace(/\/+$/, "") || "/",
@@ -113,7 +131,6 @@ export function ItemSheetProvider({
       setCurrentCategorySlug(derivedCategory);
       setOpen(true);
     }
-    // if no valid item – leave closed
   }, [activeCategorySlug, activeItemSlug, itemLookup, itemToCategorySlug]);
 
   // --- popstate sync (back / forward buttons) -----------------------------
@@ -144,7 +161,6 @@ export function ItemSheetProvider({
         setCurrentCategorySlug(derivedCategory);
         setOpen(true);
       } else {
-        // no item in URL ⇒ just category (or all)
         setOpen(false);
         setCurrentItemSlug(null);
         setCurrentCategorySlug(validCategorySlug);
@@ -163,6 +179,8 @@ export function ItemSheetProvider({
   const currentCategory = currentCategorySlug
     ? categoryBySlug[currentCategorySlug] ?? null
     : null;
+
+  const imageUrl = currentItem ? getItemImageUrl(currentItem) : null;
 
   // --- helpers -------------------------------------------------------------
 
@@ -221,10 +239,23 @@ export function ItemSheetProvider({
           }
         }}
       >
-        {/* We rely on Drawer’s internal portal – no document.body usage */}
-        <DrawerContent className="max-h-[85vh] rounded-t-2xl border-t bg-background px-4 pb-6 pt-4 sm:rounded-2xl sm:px-6 sm:pb-6">
+        <DrawerContent className="bg-background px-0 pb-4 pt-2 sm:px-0">
           {currentItem && (
-            <>
+            <div className="mx-auto mt-3 flex h-[80vh] max-w-sm flex-col gap-4 overflow-y-auto px-4 sm:px-6">
+              {imageUrl && (
+                <AspectRatio
+                  ratio={itemImageAspectRatio} // ✅ always defined here
+                  className="w-full overflow-hidden rounded-lg bg-muted"
+                >
+                  <Image
+                    src={imageUrl}
+                    alt={currentItem.name ?? ""}
+                    fill
+                    className="h-full w-full object-cover dark:brightness-[0.9]"
+                  />
+                </AspectRatio>
+              )}
+
               <DrawerHeader className="flex flex-row items-start justify-between gap-3 px-0">
                 <div className="space-y-1">
                   {currentCategory ? (
@@ -232,21 +263,21 @@ export function ItemSheetProvider({
                       {currentCategory.name}
                     </p>
                   ) : null}
+
                   <DrawerTitle className="text-lg">
                     {currentItem.name}
                   </DrawerTitle>
+
                   {currentItem.description && (
                     <DrawerDescription className="text-sm text-muted-foreground">
                       {currentItem.description}
                     </DrawerDescription>
                   )}
                 </div>
-
-               
               </DrawerHeader>
 
-              {/* Later: price, photo, actions, etc. */}
-            </>
+              {/* later: price, options, etc. */}
+            </div>
           )}
         </DrawerContent>
       </Drawer>
@@ -254,7 +285,8 @@ export function ItemSheetProvider({
   );
 }
 
-// Trigger wrapper for item cards
+// ---- trigger --------------------------------------------------------------
+
 export function ItemSheetTrigger({
   itemSlug,
   categorySlug,

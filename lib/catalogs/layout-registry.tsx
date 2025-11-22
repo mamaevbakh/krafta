@@ -26,6 +26,7 @@ export type HeaderProps = {
   description: string | null;
   catalog: Catalog;
   logoUrl: string | null;
+  tags: string[] | null;
 };
 
 export type CategoryNavProps = {
@@ -43,6 +44,7 @@ export type SectionProps = {
 export type ItemCardProps = {
   item: Item;
   imageUrl: string | null;
+  imageAspectRatio?: number;
 };
 
 // HEADER VARIANTS

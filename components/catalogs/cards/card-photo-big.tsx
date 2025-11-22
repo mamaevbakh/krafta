@@ -1,46 +1,44 @@
 import Image from "next/image";
-import type { Tables } from "@/lib/supabase/types";
+import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 
-type Item = Tables<"items">;
 
-export function BigPhotoCard({
-  item,
-  imageUrl,
-}: {
-  item: Item;
-  imageUrl: string | null;
-}) {
+export function BigPhotoCard({ item, imageUrl, imageAspectRatio }: ItemCardProps) {
+  const ratio = imageAspectRatio ?? 4 / 5; // fallback if missing
+
   return (
-    <div className="space-y-2 rounded-xs border p-3">
-      {/* Full-width image */}
+      <article className="overflow-hidden rounded-xs border bg-card text-card-foreground shadow-2xs ">
+        <div className="space-y-2 rounded-xs ">
       {imageUrl && (
-        
+        <AspectRatio
+          ratio={ratio}
+          className="bg-muted"
+        >
           <Image
             src={imageUrl}
-            alt={item.image_alt ?? item.name}
-            width={600}
-            height={792}
-            
-            className="object-cover relative w-full overflow-hidden rounded-xs bg-muted"
+            alt={item.name ?? ""}
+            fill
+            className="h-full w-full object-cover dark:brightness-[0.9]"
           />
-        
+        </AspectRatio>
       )}
 
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
-          <span className="text-sm font-medium">{item.name}</span>
+      <div className="space-y-1 px-3 py-2">
+        <h3 className="truncate text-sm font-medium">{item.name}</h3>
 
-          {item.description && (
-            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-              {item.description}
-            </p>
-          )}
-        </div>
-
+        {item.description && (
+          <p className="line-clamp-2 text-xs text-muted-foreground">
+            {item.description}
+          </p>
+        )}
         <span className="shrink-0 whitespace-nowrap text-sm font-semibold">
           ${(item.price_cents / 100).toFixed(2)}
         </span>
+        </div>
+
+        
       </div>
-    </div>
+    </article>
   );
 }
+

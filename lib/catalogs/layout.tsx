@@ -29,23 +29,33 @@ type Props = {
   baseHref?: string;
 };
 
+function parseAspectRatio(ratio: string | null | undefined): number | null {
+  if (!ratio) return null;
+
+  // "4:5" → [4, 5]
+  const [w, h] = ratio.split(":").map(Number);
+  if (!w || !h) return null;
+
+  return w / h;
+}
 export function CatalogLayout({
   catalog,
   categoriesWithItems,
   activeCategorySlug = null,
   activeItemSlug = null,
-  baseHref, // we’ll default it below so we can refer to catalog
+  baseHref,
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
-  // 1) Resolve all layout pieces (header / section / card / category nav)
   const { layout } = normalizeCatalogSettings(catalog);
   const { Header, Section, ItemCard, CategoryNav } = resolveCatalogLayout(
     layout,
   );
 
-  // 2) Logo URL (storage helper)
   const logoUrl = getCatalogLogoUrl(catalog);
+
+  const imageAspectRatio =
+    parseAspectRatio(layout.itemImageRatio) ?? 4 / 5;
 
   // 3) Figure out which category (if any) is active from the slug
   const normalizedActiveSlug =
@@ -66,6 +76,7 @@ export function CatalogLayout({
       activeCategorySlug={activeCategorySlugResolved}
       activeItemSlug={activeItemSlug}
       baseHref={hrefBase}
+      itemImageAspectRatio={imageAspectRatio}
     >
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
         {/* Header */}
@@ -74,6 +85,7 @@ export function CatalogLayout({
           catalog={catalog}
           logoUrl={logoUrl}
           description={catalog.description}
+          tags={catalog.tags}
         />
 
         {/* Optional Category Navigation (tabs / pills / whatever the variant resolves to) */}
@@ -115,6 +127,7 @@ export function CatalogLayout({
                           categorySlug={categorySlug}
                         >
                           <ItemCard
+                            imageAspectRatio={imageAspectRatio}
                             item={item}
                             imageUrl={getItemImageUrl(item)}
                           />
