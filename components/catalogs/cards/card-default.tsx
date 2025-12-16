@@ -1,14 +1,7 @@
 import Image from "next/image";
-import type { Database } from "@/lib/supabase/types";
+import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
 
-type Item = Database["public"]["Tables"]["items"]["Row"];
-
-type CatalogItemCardProps = {
-  item: Item;
-  imageUrl: string | null;
-};
-
-export function CatalogItemCard({ item, imageUrl }: CatalogItemCardProps) {
+export function CatalogItemCard({ item, imageUrl }: ItemCardProps) {
   return (
     <div className="flex gap-3 rounded-xs border px-3 py-3">
       {/* Optional image */}

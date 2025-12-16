@@ -1,8 +1,6 @@
-import type { Tables } from "@/lib/supabase/types";
+import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
 
-type Item = Tables<"items">;
-
-export function MinimalCard({ item }: { item: Item }) {
+export function MinimalCard({ item }: ItemCardProps) {
   return (
     <div className="flex flex-col rounded-xs border px-3 py-3">
       <span className="text-sm font-medium">{item.name}</span>

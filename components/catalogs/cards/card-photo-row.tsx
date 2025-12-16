@@ -1,15 +1,7 @@
 import Image from "next/image";
-import type { Tables } from "@/lib/supabase/types";
+import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
 
-type Item = Tables<"items">;
-
-export function PhotoRowCard({
-  item,
-  imageUrl,
-}: {
-  item: Item;
-  imageUrl: string | null;
-}) {
+export function PhotoRowCard({ item, imageUrl }: ItemCardProps) {
   return (
     <div className="flex gap-3 rounded-xs border px-3 py-3">
       {/* Big image */}

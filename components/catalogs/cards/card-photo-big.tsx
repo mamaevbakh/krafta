@@ -1,9 +1,13 @@
 import Image from "next/image";
-import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
 
 
-export function BigPhotoCard({ item, imageUrl, imageAspectRatio }: ItemCardProps) {
+export function BigPhotoCard({
+  item,
+  imageUrl,
+  imageAspectRatio,
+}: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5; // fallback if missing
 
   return (
@@ -41,4 +45,3 @@ export function BigPhotoCard({ item, imageUrl, imageAspectRatio }: ItemCardProps
     </article>
   );
 }
-

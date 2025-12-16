@@ -1,4 +1,5 @@
 // lib/catalogs/settings/layout.ts
+
 export type HeaderVariant = "header-basic" | "header-center" | "header-hero";
 
 export type CategoryNavVariant = "nav-tabs" | "nav-none";
@@ -14,12 +15,26 @@ export type ItemCardVariant =
   | "card-photo-row"
   | "card-default";
 
+export type ItemCardSettings = {
+  columns: number; // 1, 2, 3 (future: "auto")
+  aspectRatio: number; // numeric ratio
+};
+
 export type CatalogLayoutSettings = {
   headerVariant: HeaderVariant;
   sectionVariant: SectionVariant;
   itemCardVariant: ItemCardVariant;
   categoryNavVariant: CategoryNavVariant;
-  itemImageRatio?: string | null;
+  itemCard: ItemCardSettings;
+};
+
+// ----------------
+// DEFAULTS
+// ----------------
+
+export const defaultItemCardSettings: ItemCardSettings = {
+  columns: 2,
+  aspectRatio: 4 / 3,
 };
 
 export const defaultLayoutSettings: CatalogLayoutSettings = {
@@ -27,30 +42,71 @@ export const defaultLayoutSettings: CatalogLayoutSettings = {
   sectionVariant: "section-pill-tabs",
   itemCardVariant: "card-big-photo",
   categoryNavVariant: "nav-tabs",
-  itemImageRatio: "4:3",
+  itemCard: defaultItemCardSettings,
 };
 
+// ----------------
+// HELPERS
+// ----------------
+
 function normalizeCategoryNavVariant(
-  rawVariant: string | null | undefined,
+  rawVariant: unknown,
 ): CategoryNavVariant {
-  switch (rawVariant) {
-    case "nav-none":
-    case "none":
-      return "nav-none";
-    case "nav-tabs":
-    case "tabs":
-      return "nav-tabs";
-    default:
-      return "nav-tabs";
-  }
+  if (rawVariant === "nav-none" || rawVariant === "none") return "nav-none";
+  return "nav-tabs";
 }
+
+// normalize "aspectRatio" from: 
+// - number (1.3333)
+// - string "4:3"
+// - string "1.3333"
+function normalizeAspectRatio(raw: unknown, fallback: number): number {
+  if (typeof raw === "number" && raw > 0) return raw;
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return fallback;
+
+    // "4:3"
+    if (trimmed.includes(":")) {
+      const [w, h] = trimmed.split(":").map(Number);
+      if (w > 0 && h > 0) return w / h;
+    }
+
+    // "1.333"
+    const numeric = Number(trimmed);
+    if (numeric > 0) return numeric;
+  }
+
+  return fallback;
+}
+
+function normalizeColumns(raw: unknown, fallback: number): number {
+  const num = Number(raw);
+  if (Number.isFinite(num) && num >= 1 && num <= 4) return num;
+  return fallback;
+}
+
+// ----------------
+// MAIN NORMALIZER
+// ----------------
 
 export function normalizeLayoutSettings(
   layoutRaw: Partial<CatalogLayoutSettings> | Record<string, unknown> = {},
 ): CatalogLayoutSettings {
   const raw = layoutRaw as Partial<CatalogLayoutSettings> & {
-    categoryNavVariant?: string | null;
-    itemImageRatio?: string | null;
+    itemCard?: Record<string, unknown>;
+  };
+
+  const normalizedItemCard: ItemCardSettings = {
+    columns: normalizeColumns(
+      raw.itemCard?.columns,
+      defaultItemCardSettings.columns,
+    ),
+    aspectRatio: normalizeAspectRatio(
+      raw.itemCard?.aspectRatio,
+      defaultItemCardSettings.aspectRatio,
+    ),
   };
 
   return {
@@ -61,6 +117,6 @@ export function normalizeLayoutSettings(
     itemCardVariant:
       raw.itemCardVariant ?? defaultLayoutSettings.itemCardVariant,
     categoryNavVariant: normalizeCategoryNavVariant(raw.categoryNavVariant),
-    itemImageRatio: raw.itemImageRatio ?? defaultLayoutSettings.itemImageRatio,
+    itemCard: normalizedItemCard,
   };
 }

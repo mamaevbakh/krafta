@@ -49,7 +49,7 @@ type ItemSheetProviderProps = {
   activeItemSlug?: string | null;
   baseHref: string;
   children: ReactNode;
-  itemImageAspectRatio?: number;
+  itemAspectRatio?: number;
 };
 
 export function ItemSheetProvider({
@@ -58,7 +58,7 @@ export function ItemSheetProvider({
   activeItemSlug = null,
   baseHref,
   children,
-  itemImageAspectRatio = 4 / 3,   // ✅ default here
+  itemAspectRatio
 }: ItemSheetProviderProps) {
   const normalizedBase = useMemo(
     () => baseHref.replace(/\/+$/, "") || "/",
@@ -244,7 +244,7 @@ export function ItemSheetProvider({
             <div className="mx-auto mt-3 flex h-[80vh] max-w-sm flex-col gap-4 overflow-y-auto px-4 sm:px-6">
               {imageUrl && (
                 <AspectRatio
-                  ratio={itemImageAspectRatio} // ✅ always defined here
+                  ratio={itemAspectRatio ?? 4 / 3}// ✅ always defined here
                   className="w-full overflow-hidden rounded-lg bg-muted"
                 >
                   <Image

@@ -12,32 +12,26 @@ import {
 type Props = {
   catalog: Catalog;
   categoriesWithItems: CategoryWithItems[];
-  /**
-   * Optional slug for the "focused" / active category.
-   * Comes from the URL: /[catalogSlug]/[categorySlug]
-   */
   activeCategorySlug?: string | null;
-  /**
-   * Optional slug for the active item within a category.
-   * Comes from the URL: /[catalogSlug]/[categorySlug]/[itemSlug]
-   */
   activeItemSlug?: string | null;
-  /**
-   * Optional base href for links in category nav.
-   * Defaults to `/${catalog.slug}` → e.g. `/my-catalog`
-   */
   baseHref?: string;
 };
 
-function parseAspectRatio(ratio: string | null | undefined): number | null {
-  if (!ratio) return null;
-
-  // "4:5" → [4, 5]
-  const [w, h] = ratio.split(":").map(Number);
-  if (!w || !h) return null;
-
-  return w / h;
+// map “columns” → Tailwind grid classes (md+)
+function getItemGridColsClass(columns: number): string {
+  switch (columns) {
+    case 1:
+      return "grid-cols-1";
+    case 3:
+      return "grid-cols-3";
+    case 4:
+      return "grid-cols-4";
+    case 2:
+    default:
+      return "grid-cols-2";
+  }
 }
+
 export function CatalogLayout({
   catalog,
   categoriesWithItems,
@@ -48,16 +42,16 @@ export function CatalogLayout({
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
   const { layout } = normalizeCatalogSettings(catalog);
-  const { Header, Section, ItemCard, CategoryNav } = resolveCatalogLayout(
-    layout,
-  );
+  const { Header, Section, ItemCard, CategoryNav } =
+    resolveCatalogLayout(layout);
 
   const logoUrl = getCatalogLogoUrl(catalog);
 
-  const imageAspectRatio =
-    parseAspectRatio(layout.itemImageRatio) ?? 4 / 5;
+  // ✅ from normalized layout.itemCard
+  const itemCardColumns = layout.itemCard.columns;
+  const itemImageAspectRatio = layout.itemCard.aspectRatio;
+  const itemGridColsClass = getItemGridColsClass(itemCardColumns);
 
-  // 3) Figure out which category (if any) is active from the slug
   const normalizedActiveSlug =
     activeCategorySlug && activeCategorySlug.length > 0
       ? activeCategorySlug
@@ -76,10 +70,10 @@ export function CatalogLayout({
       activeCategorySlug={activeCategorySlugResolved}
       activeItemSlug={activeItemSlug}
       baseHref={hrefBase}
-      itemImageAspectRatio={imageAspectRatio}
+      // 👇 this prop name is important
+      itemAspectRatio={itemImageAspectRatio}
     >
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
-        {/* Header */}
         <Header
           catalogName={catalog.name}
           catalog={catalog}
@@ -88,7 +82,6 @@ export function CatalogLayout({
           tags={catalog.tags}
         />
 
-        {/* Optional Category Navigation (tabs / pills / whatever the variant resolves to) */}
         {CategoryNav && (
           <CategoryNav
             categories={categoriesWithItems}
@@ -98,7 +91,6 @@ export function CatalogLayout({
           />
         )}
 
-        {/* Categories & items */}
         <section className="space-y-8">
           {categoriesWithItems.length === 0 && (
             <p className="text-sm text-muted-foreground">
@@ -116,7 +108,7 @@ export function CatalogLayout({
                     No items in this category yet.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className={`grid gap-2 ${itemGridColsClass}`}>
                     {category.items.map((item) => {
                       const itemSlug = item.slug ?? String(item.id);
 
@@ -127,7 +119,7 @@ export function CatalogLayout({
                           categorySlug={categorySlug}
                         >
                           <ItemCard
-                            imageAspectRatio={imageAspectRatio}
+                            imageAspectRatio={itemImageAspectRatio}
                             item={item}
                             imageUrl={getItemImageUrl(item)}
                           />

@@ -45,6 +45,7 @@ export type ItemCardProps = {
   item: Item;
   imageUrl: string | null;
   imageAspectRatio?: number;
+  columns?: number;
 };
 
 // HEADER VARIANTS

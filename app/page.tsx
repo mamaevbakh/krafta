@@ -14,15 +14,6 @@ export default function Home() {
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
           <Button
             asChild
-            variant={"default"}>
-          <Link
-            href="/dashboard"
-          >
-            Visit Dashboard
-          </Link>
-          </Button>
-          <Button
-            asChild
             variant={"outline"}>
           <Link
             href="/vintage-shop"
