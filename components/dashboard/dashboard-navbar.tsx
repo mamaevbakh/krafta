@@ -13,6 +13,7 @@ const DASHBOARD_LINKS = [
   { segment: "", label: "Overview" },
   { segment: "categories", label: "Categories" },
   { segment: "items", label: "Items" },
+  { segment: "builder", label: "Builder" },
   { segment: "settings", label: "Settings" },
 ] as const;
 

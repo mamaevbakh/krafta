@@ -2,12 +2,16 @@
 
 import type { Catalog, CategoryWithItems } from "@/lib/catalogs/types";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
+import {
+  normalizeLayoutSettings,
+  type CatalogLayoutSettings,
+} from "@/lib/catalogs/settings/layout";
 import { resolveCatalogLayout } from "@/lib/catalogs/layout-registry";
 import { getCatalogLogoUrl, getItemImageUrl } from "@/lib/catalogs/media";
 import {
   ItemSheetProvider,
   ItemSheetTrigger,
-} from "@/components/catalogs/items/item-sheet";
+} from "@/components/catalogs/items/item-detail-controller";
 
 type Props = {
   catalog: Catalog;
@@ -15,6 +19,7 @@ type Props = {
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref?: string;
+  layoutOverride?: Partial<CatalogLayoutSettings>;
 };
 
 // map “columns” → Tailwind grid classes (md+)
@@ -38,18 +43,29 @@ export function CatalogLayout({
   activeCategorySlug = null,
   activeItemSlug = null,
   baseHref,
+  layoutOverride,
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
   const { layout } = normalizeCatalogSettings(catalog);
+  const resolvedLayout = layoutOverride
+    ? normalizeLayoutSettings({
+        ...layout,
+        ...layoutOverride,
+        itemCard: {
+          ...layout.itemCard,
+          ...(layoutOverride.itemCard ?? {}),
+        },
+      })
+    : layout;
   const { Header, Section, ItemCard, CategoryNav } =
-    resolveCatalogLayout(layout);
+    resolveCatalogLayout(resolvedLayout);
 
   const logoUrl = getCatalogLogoUrl(catalog);
 
   // ✅ from normalized layout.itemCard
-  const itemCardColumns = layout.itemCard.columns;
-  const itemImageAspectRatio = layout.itemCard.aspectRatio;
+  const itemCardColumns = resolvedLayout.itemCard.columns;
+  const itemImageAspectRatio = resolvedLayout.itemCard.aspectRatio;
   const itemGridColsClass = getItemGridColsClass(itemCardColumns);
 
   const normalizedActiveSlug =
@@ -72,6 +88,7 @@ export function CatalogLayout({
       baseHref={hrefBase}
       // 👇 this prop name is important
       itemAspectRatio={itemImageAspectRatio}
+      itemDetailVariant={resolvedLayout.itemDetailVariant}
     >
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
         <Header

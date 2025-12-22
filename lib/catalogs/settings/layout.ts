@@ -13,7 +13,12 @@ export type ItemCardVariant =
   | "card-big-photo"
   | "card-minimal"
   | "card-photo-row"
-  | "card-default";
+  | "card-default"
+  | "card-glass-blur";
+
+export type ItemDetailVariant =
+  | "item-sheet"
+  | "item-fullscreen";
 
 export type ItemCardSettings = {
   columns: number; // 1, 2, 3 (future: "auto")
@@ -25,6 +30,7 @@ export type CatalogLayoutSettings = {
   sectionVariant: SectionVariant;
   itemCardVariant: ItemCardVariant;
   categoryNavVariant: CategoryNavVariant;
+  itemDetailVariant: ItemDetailVariant;
   itemCard: ItemCardSettings;
 };
 
@@ -42,6 +48,7 @@ export const defaultLayoutSettings: CatalogLayoutSettings = {
   sectionVariant: "section-pill-tabs",
   itemCardVariant: "card-big-photo",
   categoryNavVariant: "nav-tabs",
+  itemDetailVariant: "item-sheet",
   itemCard: defaultItemCardSettings,
 };
 
@@ -54,6 +61,13 @@ function normalizeCategoryNavVariant(
 ): CategoryNavVariant {
   if (rawVariant === "nav-none" || rawVariant === "none") return "nav-none";
   return "nav-tabs";
+}
+
+function normalizeItemDetailVariant(
+  rawVariant: unknown,
+): ItemDetailVariant {
+  if (rawVariant === "item-fullscreen") return "item-fullscreen";
+  return "item-sheet";
 }
 
 // normalize "aspectRatio" from: 
@@ -117,6 +131,7 @@ export function normalizeLayoutSettings(
     itemCardVariant:
       raw.itemCardVariant ?? defaultLayoutSettings.itemCardVariant,
     categoryNavVariant: normalizeCategoryNavVariant(raw.categoryNavVariant),
+    itemDetailVariant: normalizeItemDetailVariant(raw.itemDetailVariant),
     itemCard: normalizedItemCard,
   };
 }

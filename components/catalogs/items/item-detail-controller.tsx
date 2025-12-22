@@ -1,4 +1,4 @@
-// components/catalogs/items/item-sheet.tsx
+// components/catalogs/items/item-detail-controller.tsx
 "use client";
 
 import {
@@ -11,15 +11,14 @@ import {
 } from "react";
 
 import type { CategoryWithItems, Item } from "@/lib/catalogs/types";
+import type { ItemDetailVariant } from "@/lib/catalogs/settings/layout";
 import {
   Drawer,
   DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
 } from "@/components/ui/drawer";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
-import Image from "next/image";
+import { cn } from "@/lib/utils";
+import { ItemDetailSheet } from "@/components/catalogs/items/item-detail-sheet-view";
+import { ItemDetailFullscreen } from "@/components/catalogs/items/item-detail-fullscreen-view";
 
 // ---- helpers --------------------------------------------------------------
 
@@ -50,6 +49,7 @@ type ItemSheetProviderProps = {
   baseHref: string;
   children: ReactNode;
   itemAspectRatio?: number;
+  itemDetailVariant?: ItemDetailVariant;
 };
 
 export function ItemSheetProvider({
@@ -58,8 +58,17 @@ export function ItemSheetProvider({
   activeItemSlug = null,
   baseHref,
   children,
-  itemAspectRatio
+  itemAspectRatio,
+  itemDetailVariant = "item-sheet",
 }: ItemSheetProviderProps) {
+  const ItemDetailComponent =
+    itemDetailVariant === "item-fullscreen"
+      ? ItemDetailFullscreen
+      : ItemDetailSheet;
+  const itemDetailDrawerClassName =
+    itemDetailVariant === "item-fullscreen"
+      ? "h-[100dvh] p-0"
+      : undefined;
   const normalizedBase = useMemo(
     () => baseHref.replace(/\/+$/, "") || "/",
     [baseHref],
@@ -203,29 +212,68 @@ export function ItemSheetProvider({
       activeCategorySlug ??
       null;
 
+    const path = buildPath(derivedCategorySlug, normalizedItemSlug);
+    const pathWithPreview = appendPreviewSearch(path);
+
     setCurrentItemSlug(normalizedItemSlug);
     setCurrentCategorySlug(derivedCategorySlug ?? null);
     setOpen(true);
 
-    const path = buildPath(derivedCategorySlug, normalizedItemSlug);
-    window.history.pushState(null, "", path);
+    window.history.pushState(null, "", pathWithPreview);
   }
 
   function closeItem() {
     const fallbackCategorySlug =
       currentCategorySlug ?? activeCategorySlug ?? null;
 
+    const path = buildPath(fallbackCategorySlug, null);
+    const pathWithPreview = appendPreviewSearch(path);
+
     setOpen(false);
     setCurrentItemSlug(null);
 
-    const path = buildPath(fallbackCategorySlug, null);
-    window.history.replaceState(null, "", path);
+    window.history.replaceState(null, "", pathWithPreview);
   }
 
   const ctxValue: ItemSheetContextValue = {
     openItem,
     closeItem,
   };
+
+  if (itemDetailVariant === "item-fullscreen") {
+    useEffect(() => {
+      if (!open) return;
+      const previousBodyOverflow = document.body.style.overflow;
+      const previousHtmlOverflow =
+        document.documentElement.style.overflow;
+
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+
+      return () => {
+        document.body.style.overflow = previousBodyOverflow;
+        document.documentElement.style.overflow =
+          previousHtmlOverflow;
+      };
+    }, [open]);
+
+    return (
+      <ItemSheetContext.Provider value={ctxValue}>
+        {children}
+        {open && currentItem && (
+          <div className="fixed inset-0 z-50 bg-black">
+            <ItemDetailComponent
+              item={currentItem}
+              category={currentCategory}
+              imageUrl={imageUrl}
+              itemAspectRatio={itemAspectRatio}
+              onClose={closeItem}
+            />
+          </div>
+        )}
+      </ItemSheetContext.Provider>
+    );
+  }
 
   return (
     <ItemSheetContext.Provider value={ctxValue}>
@@ -239,50 +287,36 @@ export function ItemSheetProvider({
           }
         }}
       >
-        <DrawerContent className="bg-background px-0 pb-4 pt-2 sm:px-0">
-          {currentItem && (
-            <div className="mx-auto mt-3 flex h-[80vh] max-w-sm flex-col gap-4 overflow-y-auto px-4 sm:px-6">
-              {imageUrl && (
-                <AspectRatio
-                  ratio={itemAspectRatio ?? 4 / 3}// ✅ always defined here
-                  className="w-full overflow-hidden rounded-lg bg-muted"
-                >
-                  <Image
-                    src={imageUrl}
-                    alt={currentItem.name ?? ""}
-                    fill
-                    className="h-full w-full object-cover dark:brightness-[0.9]"
-                  />
-                </AspectRatio>
-              )}
-
-              <DrawerHeader className="flex flex-row items-start justify-between gap-3 px-0">
-                <div className="space-y-1">
-                  {currentCategory ? (
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      {currentCategory.name}
-                    </p>
-                  ) : null}
-
-                  <DrawerTitle className="text-lg">
-                    {currentItem.name}
-                  </DrawerTitle>
-
-                  {currentItem.description && (
-                    <DrawerDescription className="text-sm text-muted-foreground">
-                      {currentItem.description}
-                    </DrawerDescription>
-                  )}
-                </div>
-              </DrawerHeader>
-
-              {/* later: price, options, etc. */}
-            </div>
-          )}
-        </DrawerContent>
+      <DrawerContent
+        className={cn(
+          "bg-background px-0 pb-4 pt-2 sm:px-0",
+          itemDetailDrawerClassName,
+        )}
+      >
+        {currentItem && (
+          <ItemDetailComponent
+            item={currentItem}
+            category={currentCategory}
+            imageUrl={imageUrl}
+            itemAspectRatio={itemAspectRatio}
+          />
+        )}
+      </DrawerContent>
       </Drawer>
     </ItemSheetContext.Provider>
   );
+}
+
+function appendPreviewSearch(path: string): string {
+  if (typeof window === "undefined") return path;
+
+  const search = window.location.search;
+  if (!search) return path;
+
+  const params = new URLSearchParams(search);
+  if (!params.has("preview")) return path;
+
+  return `${path}${search}`;
 }
 
 // ---- trigger --------------------------------------------------------------

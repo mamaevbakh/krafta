@@ -5,12 +5,17 @@ import type { Catalog, CategoryWithItems, Item } from "@/lib/catalogs/types";
 
 // Headers
 import { CatalogHeader } from "@/components/catalogs/headers/header-basic";
+import { CatalogHeaderCenter } from "@/components/catalogs/headers/header-center";
+import { CatalogHeaderHero } from "@/components/catalogs/headers/header-hero";
 
 // Item cards
 import { MinimalCard } from "@/components/catalogs/cards/card-minimal";
 import { BigPhotoCard } from "@/components/catalogs/cards/card-photo-big";
 import { CatalogItemCard } from "@/components/catalogs/cards/card-default";
 import { PhotoRowCard } from "@/components/catalogs/cards/card-photo-row";
+import { GlassBlurCard } from "@/components/catalogs/cards/card-glass-blur";
+import { ItemDetailSheet } from "@/components/catalogs/items/item-detail-sheet-view";
+import { ItemDetailFullscreen } from "@/components/catalogs/items/item-detail-fullscreen-view";
 
 // Sections
 import { SectionBasic } from "@/components/catalogs/sections/section-basic";
@@ -48,14 +53,31 @@ export type ItemCardProps = {
   columns?: number;
 };
 
+export type ItemDetailProps = {
+  item: Item;
+  category: CategoryWithItems | null;
+  imageUrl: string | null;
+  itemAspectRatio?: number;
+  backHref?: string;
+  onClose?: () => void;
+};
+
+export type ItemDetailRegistryEntry = {
+  Component: React.ComponentType<ItemDetailProps>;
+  drawerClassName?: string;
+};
+
+export type ItemDetailComponent =
+  React.ComponentType<ItemDetailProps>;
+
 // HEADER VARIANTS
 const headerRegistry: Record<
   CatalogLayoutSettings["headerVariant"],
   React.ComponentType<HeaderProps>
 > = {
   "header-basic": CatalogHeader,
-  "header-center": CatalogHeader,
-  "header-hero": CatalogHeader,
+  "header-center": CatalogHeaderCenter,
+  "header-hero": CatalogHeaderHero,
 };
 
 const categoryNavRegistry: Record<
@@ -85,13 +107,47 @@ const itemCardRegistry: Record<
   "card-minimal": MinimalCard,
   "card-photo-row": PhotoRowCard,
   "card-default": CatalogItemCard,
+  "card-glass-blur": GlassBlurCard,
 };
 
+const itemDetailRegistry: Record<
+  CatalogLayoutSettings["itemDetailVariant"],
+  ItemDetailRegistryEntry
+> = {
+  "item-sheet": {
+    Component: ItemDetailSheet,
+  },
+  "item-fullscreen": {
+    Component: ItemDetailFullscreen,
+    drawerClassName: "h-[100dvh] p-0",
+  },
+};
+
+export const headerVariants = Object.keys(
+  headerRegistry,
+) as CatalogLayoutSettings["headerVariant"][];
+export const categoryNavVariants = Object.keys(
+  categoryNavRegistry,
+) as CatalogLayoutSettings["categoryNavVariant"][];
+export const sectionVariants = Object.keys(
+  sectionRegistry,
+) as CatalogLayoutSettings["sectionVariant"][];
+export const itemCardVariants = Object.keys(
+  itemCardRegistry,
+) as CatalogLayoutSettings["itemCardVariant"][];
+export const itemDetailVariants = Object.keys(
+  itemDetailRegistry,
+) as CatalogLayoutSettings["itemDetailVariant"][];
+
 export function resolveCatalogLayout(layout: CatalogLayoutSettings) {
+  const detailEntry = itemDetailRegistry[layout.itemDetailVariant];
+
   return {
     Header: headerRegistry[layout.headerVariant],
     Section: sectionRegistry[layout.sectionVariant],
     ItemCard: itemCardRegistry[layout.itemCardVariant],
     CategoryNav: categoryNavRegistry[layout.categoryNavVariant],
+    ItemDetail: detailEntry.Component,
+    itemDetailDrawerClassName: detailEntry.drawerClassName,
   };
 }
