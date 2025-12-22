@@ -1,54 +1,86 @@
 // lib/catalogs/data.ts
-import { createClient } from "@/lib/supabase/server";
+import { cacheTag } from "next/cache";
 import type { Catalog, CategoryWithItems, Item, CatalogCategory } from "./types";
 
-type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables.");
+}
+
+const supabaseHeaders = {
+  apikey: supabaseAnonKey,
+  Authorization: `Bearer ${supabaseAnonKey}`,
+};
 
 export async function getCatalogBySlug(
   slug: string
 ): Promise<Catalog | null> {
-  const supabase = await createClient();
+  "use cache";
+  cacheTag(`catalog:${slug}`, "catalogs");
 
-  const { data, error } = await supabase
-    .from("catalogs")
-    .select("*")
-    .eq("slug", slug)
-    .single();
+  const url = `${supabaseUrl}/rest/v1/catalogs?slug=eq.${encodeURIComponent(
+    slug,
+  )}&select=*`;
+  const response = await fetch(url, {
+    headers: supabaseHeaders,
+    cache: "force-cache",
+  });
 
-  if (error || !data) return null;
-  return data;
+  if (!response.ok) return null;
+  const data = (await response.json()) as Catalog[];
+  const catalog = data[0] ?? null;
+  if (catalog?.id) {
+    cacheTag(`catalog:${catalog.id}`);
+  }
+  return catalog;
 }
 
 export async function getCatalogStructure(
   catalogId: string
 ): Promise<CategoryWithItems[]> {
-  const supabase = await createClient();
+  "use cache";
+  cacheTag(`catalog:${catalogId}`, `catalog-structure:${catalogId}`);
 
-  const [categoriesResult, itemsResult] = await Promise.all([
-    supabase
-      .from("catalog_categories")
-      .select("*")
-      .eq("catalog_id", catalogId)
-      .eq("is_active", true)
-      .order("position", { ascending: true }),
-    supabase
-      .from("items")
-      .select("*")
-      .eq("catalog_id", catalogId)
-      .eq("is_active", true)
-      .order("position", { ascending: true }),
+  const categoriesUrl = `${supabaseUrl}/rest/v1/catalog_categories?catalog_id=eq.${encodeURIComponent(
+    catalogId,
+  )}&is_active=eq.true&select=*&order=position.asc`;
+  const itemsUrl = `${supabaseUrl}/rest/v1/items?catalog_id=eq.${encodeURIComponent(
+    catalogId,
+  )}&is_active=eq.true&select=*&order=position.asc`;
+
+  const [categoriesResponse, itemsResponse] = await Promise.all([
+    fetch(categoriesUrl, {
+      headers: supabaseHeaders,
+      cache: "force-cache",
+    }),
+    fetch(itemsUrl, {
+      headers: supabaseHeaders,
+      cache: "force-cache",
+    }),
   ]);
 
-  const { data: categories, error: categoriesError } = categoriesResult;
-  if (categoriesError || !categories) return [];
+  if (!categoriesResponse.ok) return [];
+  const categories = (await categoriesResponse.json()) as CatalogCategory[];
 
-  const { data: items, error: itemsError } = itemsResult;
-  if (itemsError || !items) {
-    return categories.map((c) => ({ ...c, items: [] }));
+  if (!itemsResponse.ok) {
+    return categories.map((category) => ({
+      ...category,
+      items: [],
+    }));
+  }
+  const items = (await itemsResponse.json()) as Item[];
+
+  const itemsByCategory = new Map<string, Item[]>();
+  for (const item of items) {
+    const list = itemsByCategory.get(item.category_id) ?? [];
+    list.push(item);
+    itemsByCategory.set(item.category_id, list);
   }
 
   return categories.map((category) => ({
     ...category,
-    items: items.filter((item) => item.category_id === category.id),
+    items: itemsByCategory.get(category.id) ?? [],
   }));
 }

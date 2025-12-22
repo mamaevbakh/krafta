@@ -261,7 +261,7 @@ export function ItemSheetProvider({
       <ItemSheetContext.Provider value={ctxValue}>
         {children}
         {open && currentItem && (
-          <div className="fixed inset-0 z-50 bg-black">
+          <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:p-6">
             <ItemDetailComponent
               item={currentItem}
               category={currentCategory}

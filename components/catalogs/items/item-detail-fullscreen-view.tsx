@@ -53,7 +53,7 @@ export function ItemDetailFullscreen({
   };
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col overflow-y-auto bg-background text-foreground">
+    <div className="mx-auto flex h-dvh w-full max-w-[480px] flex-col overflow-y-auto bg-background text-foreground md:h-[85dvh] md:rounded-sm md:shadow-xl">
       <div className="relative">
         {imageUrl && (
           <AspectRatio ratio={ratio} className="bg-muted">
@@ -66,9 +66,9 @@ export function ItemDetailFullscreen({
           </AspectRatio>
         )}
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
 
-        <div className="fixed inset-x-5 top-5 z-10 flex items-center justify-between text-white/80">
+        <div className="fixed inset-x-5 top-5 z-10 flex items-center justify-between text-white/80 md:absolute">
           <Button
             type="button"
             variant="ghost"
@@ -129,7 +129,7 @@ export function ItemDetailFullscreen({
 
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 w-full border-t border-border/60 bg-background/95 backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-10 w-full border-t border-border/60 bg-background/95 backdrop-blur md:sticky">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-5 py-4">
           {onClose ? (
             <Button

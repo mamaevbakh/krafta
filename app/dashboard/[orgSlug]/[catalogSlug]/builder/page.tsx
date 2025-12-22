@@ -100,6 +100,7 @@ export default async function CatalogBuilderPage({
 
       {layout ? (
         <CatalogBuilderPanel
+          catalogId={catalog.id}
           catalogSlug={catalogSlug}
           initialLayout={layout}
           headerOptions={headerOptions}

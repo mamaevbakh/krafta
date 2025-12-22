@@ -58,7 +58,7 @@ export function CatalogPreviewFrame({
       params.set("detail", layoutOverrides.itemDetailVariant);
     }
 
-    return `/${catalogSlug}?${params.toString()}`;
+    return `/preview/${catalogSlug}?${params.toString()}`;
   }, [catalogSlug, layoutOverrides]);
 
   return (

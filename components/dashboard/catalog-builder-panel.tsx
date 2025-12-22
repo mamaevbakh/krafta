@@ -6,6 +6,8 @@ import { ArrowUpRight } from "lucide-react";
 import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
 type OptionConfig<T extends string> = {
   label: string;
@@ -13,6 +15,7 @@ type OptionConfig<T extends string> = {
 };
 
 type BuilderPanelProps = {
+  catalogId: string;
   catalogSlug: string;
   initialLayout: CatalogLayoutSettings;
   headerOptions: OptionConfig<CatalogLayoutSettings["headerVariant"]>[];
@@ -23,6 +26,7 @@ type BuilderPanelProps = {
 };
 
 export function CatalogBuilderPanel({
+  catalogId,
   catalogSlug,
   initialLayout,
   headerOptions,
@@ -46,6 +50,7 @@ export function CatalogBuilderPanel({
   const [itemDetailVariant, setItemDetailVariant] = useState(
     initialLayout.itemDetailVariant,
   );
+  const [isSaving, setIsSaving] = useState(false);
 
   const layoutOverrides = useMemo(
     () => ({
@@ -72,7 +77,7 @@ export function CatalogBuilderPanel({
     params.set("nav", categoryNavVariant);
     params.set("detail", itemDetailVariant);
 
-    return `/${catalogSlug}?${params.toString()}`;
+    return `/preview/${catalogSlug}?${params.toString()}`;
   }, [
     catalogSlug,
     headerVariant,
@@ -81,6 +86,43 @@ export function CatalogBuilderPanel({
     categoryNavVariant,
     itemDetailVariant,
   ]);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+
+    const supabase = createClient();
+    const settingsLayout: CatalogLayoutSettings = {
+      ...initialLayout,
+      headerVariant,
+      sectionVariant,
+      itemCardVariant,
+      categoryNavVariant,
+      itemDetailVariant,
+    };
+
+    const { data, error } = await supabase
+      .from("catalogs")
+      .update({ settings_layout: settingsLayout })
+      .eq("id", catalogId)
+      .select("id");
+
+    if (error) {
+      toast.error("Failed to save layout", {
+        description: error.message,
+      });
+    } else {
+      if (!data || data.length === 0) {
+        toast.error("Save did not update any rows", {
+          description: "Check catalog permissions or id.",
+        });
+      } else {
+        toast.success("Layout saved");
+      }
+    }
+
+    setIsSaving(false);
+  };
 
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-[380px_1fr]">
@@ -135,6 +177,13 @@ export function CatalogBuilderPanel({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
             <Button
               asChild
               variant="outline"
