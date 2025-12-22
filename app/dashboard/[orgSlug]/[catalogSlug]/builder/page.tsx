@@ -58,9 +58,17 @@ export default async function CatalogBuilderPage({
 }: BuilderPageProps) {
   const { catalogSlug } = await params;
   const catalog = await getCatalogBySlug(catalogSlug);
-  const layout = catalog
-    ? normalizeCatalogSettings(catalog).layout
-    : null;
+  if (!catalog) {
+    return (
+      <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
+        <div className="mt-8 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
+          Catalog not found for builder preview.
+        </div>
+      </div>
+    );
+  }
+
+  const layout = normalizeCatalogSettings(catalog).layout;
 
   const headerOptions = headerVariants.map((variant) => ({
     value: variant,
@@ -98,22 +106,16 @@ export default async function CatalogBuilderPage({
         </p>
       </header>
 
-      {layout ? (
-        <CatalogBuilderPanel
-          catalogId={catalog.id}
-          catalogSlug={catalogSlug}
-          initialLayout={layout}
-          headerOptions={headerOptions}
-          sectionOptions={sectionOptions}
-          itemCardOptions={itemCardOptions}
-          itemDetailOptions={itemDetailOptions}
-          navOptions={navOptions}
-        />
-      ) : (
-        <div className="mt-8 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-          Catalog not found for builder preview.
-        </div>
-      )}
+      <CatalogBuilderPanel
+        catalogId={catalog.id}
+        catalogSlug={catalogSlug}
+        initialLayout={layout}
+        headerOptions={headerOptions}
+        sectionOptions={sectionOptions}
+        itemCardOptions={itemCardOptions}
+        itemDetailOptions={itemDetailOptions}
+        navOptions={navOptions}
+      />
     </div>
   );
 }
