@@ -1,11 +1,13 @@
 import Image from "next/image";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
+import { formatPriceCents } from "@/lib/catalogs/pricing";
 
 export function GlassBlurCard({
   item,
   imageUrl,
   imageAspectRatio,
+  currencySettings,
 }: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5;
 
@@ -42,7 +44,7 @@ export function GlassBlurCard({
 
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs backdrop-blur-md">
-              ${(item.price_cents / 100).toFixed(2)}
+              {formatPriceCents(item.price_cents, currencySettings)}
             </span>
             <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs backdrop-blur-md">
               Ready soon

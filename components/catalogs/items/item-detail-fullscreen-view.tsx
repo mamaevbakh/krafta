@@ -7,6 +7,7 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { ItemDetailProps } from "@/lib/catalogs/layout-registry";
+import { formatPriceCents } from "@/lib/catalogs/pricing";
 
 export function ItemDetailFullscreen({
   item,
@@ -15,6 +16,7 @@ export function ItemDetailFullscreen({
   itemAspectRatio,
   backHref,
   onClose,
+  currencySettings,
 }: ItemDetailProps) {
   const ratio = itemAspectRatio ?? 4 / 5;
   const handleShare = async () => {
@@ -119,7 +121,7 @@ export function ItemDetailFullscreen({
       <div className="flex-1 px-5 pb-28 pt-4">
         <div className="mt-2 space-y-3">
           <p className="text-3xl font-semibold text-foreground">
-            ${(item.price_cents / 100).toFixed(2)}
+            {formatPriceCents(item.price_cents, currencySettings)}
           </p>
           <p className="text-sm text-muted-foreground">
             {item.description ??

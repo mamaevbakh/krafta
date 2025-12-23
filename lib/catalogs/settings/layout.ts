@@ -2,7 +2,11 @@
 
 export type HeaderVariant = "header-basic" | "header-center" | "header-hero";
 
-export type CategoryNavVariant = "nav-tabs" | "nav-none";
+export type CategoryNavVariant =
+  | "nav-tabs"
+  | "nav-tabs-motion"
+  | "nav-tabs-dashboard"
+  | "nav-none";
 
 export type SectionVariant =
   | "section-basic"
@@ -59,6 +63,8 @@ export const defaultLayoutSettings: CatalogLayoutSettings = {
 function normalizeCategoryNavVariant(
   rawVariant: unknown,
 ): CategoryNavVariant {
+  if (rawVariant === "nav-tabs-motion") return "nav-tabs-motion";
+  if (rawVariant === "nav-tabs-dashboard") return "nav-tabs-dashboard";
   if (rawVariant === "nav-none" || rawVariant === "none") return "nav-none";
   return "nav-tabs";
 }

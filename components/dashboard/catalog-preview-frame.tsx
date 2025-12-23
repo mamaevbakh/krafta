@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 type PreviewPreset = {
   id: string;
@@ -20,9 +21,11 @@ const PREVIEW_PRESETS: PreviewPreset[] = [
 export function CatalogPreviewFrame({
   catalogSlug,
   layoutOverrides,
+  currencyOverrides,
 }: {
   catalogSlug: string;
   layoutOverrides?: Partial<CatalogLayoutSettings>;
+  currencyOverrides?: CurrencySettings;
 }) {
   const [presetId, setPresetId] = useState<string>("desktop");
   const preset = useMemo(
@@ -57,9 +60,23 @@ export function CatalogPreviewFrame({
     if (layoutOverrides?.itemDetailVariant) {
       params.set("detail", layoutOverrides.itemDetailVariant);
     }
+    if (layoutOverrides?.itemCard?.columns) {
+      params.set("cols", String(layoutOverrides.itemCard.columns));
+    }
+    if (layoutOverrides?.itemCard?.aspectRatio) {
+      params.set("ratio", String(layoutOverrides.itemCard.aspectRatio));
+    }
+    if (currencyOverrides) {
+      params.set("cur", currencyOverrides.defaultCurrency);
+      params.set("curLabel", currencyOverrides.label);
+      params.set("curThousand", currencyOverrides.thousandSeparator);
+      params.set("curDecimal", currencyOverrides.decimalSeparator);
+      params.set("curDecimals", currencyOverrides.showDecimals ? "1" : "0");
+      params.set("curPos", currencyOverrides.labelPosition);
+    }
 
     return `/preview/${catalogSlug}?${params.toString()}`;
-  }, [catalogSlug, layoutOverrides]);
+  }, [catalogSlug, layoutOverrides, currencyOverrides]);
 
   return (
     <div className="mt-6 space-y-4">

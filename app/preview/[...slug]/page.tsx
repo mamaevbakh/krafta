@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getCatalogBySlug, getCatalogStructure } from "@/lib/catalogs/data";
 import { CatalogLayout } from "@/lib/catalogs/layout";
 import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import {
   categoryNavVariants,
   headerVariants,
@@ -57,6 +58,9 @@ async function PreviewCatalogContent({
   const layoutOverride = getPreviewLayoutOverride(
     resolvedSearchParams,
   );
+  const currencyOverride = getPreviewCurrencyOverride(
+    resolvedSearchParams,
+  );
 
   return (
     <CatalogLayout
@@ -66,6 +70,7 @@ async function PreviewCatalogContent({
       activeItemSlug={activeItemSlug}
       baseHref={`/preview/${catalog.slug}`}
       layoutOverride={layoutOverride}
+      currencyOverride={currencyOverride}
     />
   );
 }
@@ -94,6 +99,14 @@ function getPreviewLayoutOverride(
   const detail =
     typeof searchParams.detail === "string"
       ? searchParams.detail
+      : undefined;
+  const columns =
+    typeof searchParams.cols === "string"
+      ? Number(searchParams.cols)
+      : undefined;
+  const ratio =
+    typeof searchParams.ratio === "string"
+      ? Number(searchParams.ratio)
       : undefined;
 
   const override: Partial<CatalogLayoutSettings> = {};
@@ -148,5 +161,83 @@ function getPreviewLayoutOverride(
       detail as CatalogLayoutSettings["itemDetailVariant"];
   }
 
+  if (Number.isFinite(columns) || Number.isFinite(ratio)) {
+    override.itemCard = {};
+  }
+
+  if (
+    Number.isFinite(columns) &&
+    columns !== undefined &&
+    columns >= 1 &&
+    columns <= 4
+  ) {
+    override.itemCard = {
+      ...override.itemCard,
+      columns,
+    };
+  }
+
+  if (Number.isFinite(ratio) && ratio !== undefined && ratio > 0) {
+    override.itemCard = {
+      ...override.itemCard,
+      aspectRatio: ratio,
+    };
+  }
+
   return Object.keys(override).length > 0 ? override : undefined;
+}
+
+function getPreviewCurrencyOverride(
+  searchParams: Record<string, string | string[] | undefined>,
+): CurrencySettings | undefined {
+  if (searchParams.preview !== "1") return undefined;
+
+  const hasOverride = [
+    "cur",
+    "curLabel",
+    "curThousand",
+    "curDecimal",
+    "curDecimals",
+    "curPos",
+  ].some((key) => typeof searchParams[key] === "string");
+
+  if (!hasOverride) return undefined;
+
+  const defaultCurrency =
+    typeof searchParams.cur === "string" ? searchParams.cur : undefined;
+  const label =
+    typeof searchParams.curLabel === "string"
+      ? searchParams.curLabel
+      : undefined;
+  const thousandSeparator =
+    searchParams.curThousand === "," ||
+    searchParams.curThousand === "." ||
+    searchParams.curThousand === " "
+      ? (searchParams.curThousand as CurrencySettings["thousandSeparator"])
+      : undefined;
+  const decimalSeparator =
+    searchParams.curDecimal === "." || searchParams.curDecimal === ","
+      ? (searchParams.curDecimal as CurrencySettings["decimalSeparator"])
+      : undefined;
+  const showDecimals =
+    searchParams.curDecimals === "1"
+      ? true
+      : searchParams.curDecimals === "0"
+        ? false
+        : undefined;
+  const labelPosition =
+    searchParams.curPos === "prefix" || searchParams.curPos === "suffix"
+      ? (searchParams.curPos as CurrencySettings["labelPosition"])
+      : undefined;
+
+  const override: CurrencySettings = {
+    defaultCurrency: defaultCurrency ?? "USD",
+    label: label ?? "$",
+    thousandSeparator: thousandSeparator ?? ",",
+    decimalSeparator: decimalSeparator ?? ".",
+    showDecimals: showDecimals ?? true,
+    labelPosition: labelPosition ?? "prefix",
+  };
+
+  return override;
 }

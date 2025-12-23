@@ -1,4 +1,4 @@
-// components/catalogs/navbars/category-nav-tabs.tsx
+// components/catalogs/navbars/category-nav-tabs-motion.tsx
 "use client";
 
 import {
@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { motion } from "framer-motion";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
 import { cn } from "@/lib/utils";
 
@@ -180,7 +181,7 @@ function useScrollActiveCategory(
   }, [lockRef, setActive, slugs]);
 }
 
-export function CategoryNavTabs({
+export function CategoryNavTabsMotion({
   categories,
   activeCategoryId = null,
   activeCategorySlug = null,
@@ -272,6 +273,8 @@ export function CategoryNavTabs({
   useCenterActiveTab(navRef, currentSlug);
   useScrollActiveCategory(slugs, setActive, lockRef);
 
+  const activeSlug = currentSlug ?? "all";
+
   return (
     <>
       <div
@@ -290,38 +293,51 @@ export function CategoryNavTabs({
           ref={navRef}
           className="flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
         >
-          <button
-            type="button"
-            data-category="all"
-            onClick={() => handleCategoryClick(null)}
-            className={cn(
-              "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
-              currentSlug === null
-                ? "border-foreground bg-foreground text-background"
-                : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
-            )}
-          >
-            All
-          </button>
-
-          {categories.map((category) => {
-            const slug = getSlug(category);
-            const isActive = slug === currentSlug;
-
+          {[
+            { id: "all", label: "All", slug: null as string | null },
+            ...categories.map((category) => ({
+              id: category.id,
+              label: category.name,
+              slug: getSlug(category),
+            })),
+          ].map((tab) => {
+            const slugValue = tab.slug ?? "all";
+            const isActive = slugValue === activeSlug;
             return (
               <button
-                key={category.id}
+                key={tab.id}
                 type="button"
-                data-category={slug}
-                onClick={() => handleCategoryClick(slug)}
+                data-category={slugValue}
+                onClick={() => handleCategoryClick(tab.slug)}
                 className={cn(
-                  "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
+                  "relative whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
                   isActive
-                    ? "border-foreground bg-foreground text-background"
+                    ? "border-transparent text-foreground"
                     : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
                 )}
               >
-                {category.name}
+                {isActive && (
+                  <motion.span
+                    layoutId="catalog-tabs-pill"
+                    className="absolute inset-0 rounded-xs bg-foreground"
+                    transition={{
+                      type: "spring",
+                      stiffness: 380,
+                      damping: 26,
+                      mass: 0.2,
+                    }}
+                  />
+                )}
+                <span
+                  className={cn(
+                    "relative z-10",
+                    isActive
+                      ? "text-background"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {tab.label}
+                </span>
               </button>
             );
           })}

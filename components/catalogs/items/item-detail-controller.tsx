@@ -12,6 +12,7 @@ import {
 
 import type { CategoryWithItems, Item } from "@/lib/catalogs/types";
 import type { ItemDetailVariant } from "@/lib/catalogs/settings/layout";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import {
   Drawer,
   DrawerContent,
@@ -50,6 +51,7 @@ type ItemSheetProviderProps = {
   children: ReactNode;
   itemAspectRatio?: number;
   itemDetailVariant?: ItemDetailVariant;
+  currencySettings?: CurrencySettings;
 };
 
 export function ItemSheetProvider({
@@ -60,6 +62,7 @@ export function ItemSheetProvider({
   children,
   itemAspectRatio,
   itemDetailVariant = "item-sheet",
+  currencySettings,
 }: ItemSheetProviderProps) {
   const ItemDetailComponent =
     itemDetailVariant === "item-fullscreen"
@@ -268,6 +271,7 @@ export function ItemSheetProvider({
               imageUrl={imageUrl}
               itemAspectRatio={itemAspectRatio}
               onClose={closeItem}
+              currencySettings={currencySettings}
             />
           </div>
         )}
@@ -299,6 +303,7 @@ export function ItemSheetProvider({
             category={currentCategory}
             imageUrl={imageUrl}
             itemAspectRatio={itemAspectRatio}
+            currencySettings={currencySettings}
           />
         )}
       </DrawerContent>

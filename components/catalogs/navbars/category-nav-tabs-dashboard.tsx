@@ -1,4 +1,4 @@
-// components/catalogs/navbars/category-nav-tabs.tsx
+// components/catalogs/navbars/category-nav-tabs-dashboard.tsx
 "use client";
 
 import {
@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { motion } from "framer-motion";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
 import { cn } from "@/lib/utils";
 
@@ -180,7 +181,7 @@ function useScrollActiveCategory(
   }, [lockRef, setActive, slugs]);
 }
 
-export function CategoryNavTabs({
+export function CategoryNavTabsDashboard({
   categories,
   activeCategoryId = null,
   activeCategorySlug = null,
@@ -272,56 +273,84 @@ export function CategoryNavTabs({
   useCenterActiveTab(navRef, currentSlug);
   useScrollActiveCategory(slugs, setActive, lockRef);
 
+  const activeSlug = currentSlug ?? "all";
+
   return (
     <>
       <div
-        id="catalog-category-nav-sentinel"
+        id="catalog-category-nav-sentinel "
         aria-hidden="true"
         className="h-px"
       />
 
       <div
         className={cn(
-          "sticky top-0 z-30 -mx-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur",
+          "sticky top-0 z-30 -mx-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur ",
           isStuck ? "border-b border-border" : "border-b border-transparent",
         )}
       >
         <nav
           ref={navRef}
-          className="flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
+          className="flex gap-2 overflow-x-auto overflow-x-hidden pb-2 pt-2 px-4"
         >
-          <button
-            type="button"
-            data-category="all"
-            onClick={() => handleCategoryClick(null)}
-            className={cn(
-              "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
-              currentSlug === null
-                ? "border-foreground bg-foreground text-background"
-                : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
-            )}
-          >
-            All
-          </button>
-
-          {categories.map((category) => {
-            const slug = getSlug(category);
-            const isActive = slug === currentSlug;
-
+          {[
+            { id: "all", label: "All", slug: null as string | null },
+            ...categories.map((category) => ({
+              id: category.id,
+              label: category.name,
+              slug: getSlug(category),
+            })),
+          ].map((tab) => {
+            const slugValue = tab.slug ?? "all";
+            const isActive = slugValue === activeSlug;
             return (
               <button
-                key={category.id}
+                key={tab.id}
                 type="button"
-                data-category={slug}
-                onClick={() => handleCategoryClick(slug)}
+                data-category={slugValue}
+                onClick={() => handleCategoryClick(tab.slug)}
                 className={cn(
-                  "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
+                  "relative whitespace-nowrap px-3 py-1 text-sm transition",
                   isActive
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {category.name}
+                <motion.span
+                  layoutId={`catalog-tabs-pill-${slugValue}`}
+                  className={cn(
+                    "absolute inset-y-1 inset-x-0 rounded",
+                    
+                    isActive ? "opacity-100" : "opacity-0",
+                  )}
+                  transition={{
+                    type: "spring",
+                    stiffness: 380,
+                    damping: 20,
+                    mass: 0.2,
+                  }}
+                />
+                <span
+                  className={cn(
+                    "relative z-10",
+                    isActive ? "text-accent-foreground" : undefined,
+                  )}
+                >
+                  {tab.label}
+                </span>
+
+                {isActive && (
+                  <motion.span
+                    layoutId="catalog-tabs-underline"
+                    className="pointer-events-none absolute -bottom-2 left-1 right-1 h-0.5 rounded bg-foreground"
+                    transition={{
+                      type: "spring",
+                      stiffness: 300,
+                      damping: 22,
+                      mass: 0.2,
+                    }}
+                  />
+                )}
               </button>
             );
           })}

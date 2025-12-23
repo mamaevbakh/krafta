@@ -6,6 +6,10 @@ import {
   normalizeLayoutSettings,
   type CatalogLayoutSettings,
 } from "@/lib/catalogs/settings/layout";
+import {
+  normalizeCurrencySettings,
+  type CurrencySettings,
+} from "@/lib/catalogs/settings/currency";
 import { resolveCatalogLayout } from "@/lib/catalogs/layout-registry";
 import { getCatalogLogoUrl, getItemImageUrl } from "@/lib/catalogs/media";
 import {
@@ -20,6 +24,7 @@ type Props = {
   activeItemSlug?: string | null;
   baseHref?: string;
   layoutOverride?: Partial<CatalogLayoutSettings>;
+  currencyOverride?: CurrencySettings;
 };
 
 // map “columns” → Tailwind grid classes (md+)
@@ -44,10 +49,11 @@ export function CatalogLayout({
   activeItemSlug = null,
   baseHref,
   layoutOverride,
+  currencyOverride,
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
-  const { layout } = normalizeCatalogSettings(catalog);
+  const { layout, currency } = normalizeCatalogSettings(catalog);
   const resolvedLayout = layoutOverride
     ? normalizeLayoutSettings({
         ...layout,
@@ -58,6 +64,12 @@ export function CatalogLayout({
         },
       })
     : layout;
+  const resolvedCurrency = currencyOverride
+    ? normalizeCurrencySettings({
+        ...currency,
+        ...currencyOverride,
+      })
+    : currency;
   const { Header, Section, ItemCard, CategoryNav } =
     resolveCatalogLayout(resolvedLayout);
 
@@ -89,6 +101,7 @@ export function CatalogLayout({
       // 👇 this prop name is important
       itemAspectRatio={itemImageAspectRatio}
       itemDetailVariant={resolvedLayout.itemDetailVariant}
+      currencySettings={resolvedCurrency}
     >
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
         <Header
@@ -139,6 +152,7 @@ export function CatalogLayout({
                             imageAspectRatio={itemImageAspectRatio}
                             item={item}
                             imageUrl={getItemImageUrl(item)}
+                            currencySettings={resolvedCurrency}
                           />
                         </ItemSheetTrigger>
                       );

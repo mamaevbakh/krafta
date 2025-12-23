@@ -38,6 +38,8 @@ const ITEM_CARD_LABELS: Record<ItemCardVariant, string> = {
 
 const NAV_LABELS: Record<CategoryNavVariant, string> = {
   "nav-tabs": "Sticky Tabs",
+  "nav-tabs-motion": "Sticky Tabs (Motion)",
+  "nav-tabs-dashboard": "Sticky Tabs (Dashboard)",
   "nav-none": "Hidden",
 };
 
@@ -68,7 +70,7 @@ export default async function CatalogBuilderPage({
     );
   }
 
-  const layout = normalizeCatalogSettings(catalog).layout;
+  const { layout, currency } = normalizeCatalogSettings(catalog);
 
   const headerOptions = headerVariants.map((variant) => ({
     value: variant,
@@ -110,6 +112,7 @@ export default async function CatalogBuilderPage({
         catalogId={catalog.id}
         catalogSlug={catalogSlug}
         initialLayout={layout}
+        initialCurrency={currency}
         headerOptions={headerOptions}
         sectionOptions={sectionOptions}
         itemCardOptions={itemCardOptions}

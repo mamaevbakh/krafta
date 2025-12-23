@@ -1,6 +1,7 @@
 // lib/catalogs/layout-registry.tsx
 import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
 import type { Catalog, CategoryWithItems, Item } from "@/lib/catalogs/types";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 
 // Headers
@@ -24,6 +25,8 @@ import { SectionPillTabs } from "@/components/catalogs/sections/section-pill-tab
 
 // Category nav
 import { CategoryNavTabs } from "@/components/catalogs/navbars/category-nav-tabs";
+import { CategoryNavTabsMotion } from "@/components/catalogs/navbars/category-nav-tabs-motion";
+import { CategoryNavTabsDashboard } from "@/components/catalogs/navbars/category-nav-tabs-dashboard";
 
 
 export type HeaderProps = {
@@ -51,6 +54,7 @@ export type ItemCardProps = {
   imageUrl: string | null;
   imageAspectRatio?: number;
   columns?: number;
+  currencySettings?: CurrencySettings;
 };
 
 export type ItemDetailProps = {
@@ -60,6 +64,7 @@ export type ItemDetailProps = {
   itemAspectRatio?: number;
   backHref?: string;
   onClose?: () => void;
+  currencySettings?: CurrencySettings;
 };
 
 export type ItemDetailRegistryEntry = {
@@ -86,6 +91,8 @@ const categoryNavRegistry: Record<
 > = {
   "nav-none": null,
   "nav-tabs": CategoryNavTabs,
+  "nav-tabs-motion": CategoryNavTabsMotion,
+  "nav-tabs-dashboard": CategoryNavTabsDashboard,
 };
 
 // SECTION VARIANTS

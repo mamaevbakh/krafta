@@ -1,12 +1,14 @@
 import Image from "next/image";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
+import { formatPriceCents } from "@/lib/catalogs/pricing";
 
 
 export function BigPhotoCard({
   item,
   imageUrl,
   imageAspectRatio,
+  currencySettings,
 }: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5; // fallback if missing
 
@@ -36,7 +38,7 @@ export function BigPhotoCard({
           </p>
         )}
         <span className="shrink-0 whitespace-nowrap text-sm font-semibold">
-          ${(item.price_cents / 100).toFixed(2)}
+          {formatPriceCents(item.price_cents, currencySettings)}
         </span>
         </div>
 
