@@ -291,7 +291,7 @@ export function CategoryNavTabsDashboard({
       >
         <nav
           ref={navRef}
-          className="flex gap-2 overflow-x-auto overflow-x-hidden pb-2 pt-2 px-4"
+          className="flex gap-2 overflow-x-hidden pb-2 pt-2 px-4"
         >
           {[
             { id: "all", label: "All", slug: null as string | null },

@@ -161,10 +161,6 @@ function getPreviewLayoutOverride(
       detail as CatalogLayoutSettings["itemDetailVariant"];
   }
 
-  if (Number.isFinite(columns) || Number.isFinite(ratio)) {
-    override.itemCard = {};
-  }
-
   if (
     Number.isFinite(columns) &&
     columns !== undefined &&
