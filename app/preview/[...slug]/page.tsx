@@ -161,22 +161,18 @@ function getPreviewLayoutOverride(
       detail as CatalogLayoutSettings["itemDetailVariant"];
   }
 
-  if (
+  const hasValidColumns =
     Number.isFinite(columns) &&
     columns !== undefined &&
     columns >= 1 &&
-    columns <= 4
-  ) {
-    override.itemCard = {
-      ...override.itemCard,
-      columns,
-    };
-  }
+    columns <= 4;
+  const hasValidRatio =
+    Number.isFinite(ratio) && ratio !== undefined && ratio > 0;
 
-  if (Number.isFinite(ratio) && ratio !== undefined && ratio > 0) {
+  if (hasValidColumns || hasValidRatio) {
     override.itemCard = {
-      ...override.itemCard,
-      aspectRatio: ratio,
+      columns: hasValidColumns ? columns : 2,
+      aspectRatio: hasValidRatio ? ratio : 4 / 3,
     };
   }
 
