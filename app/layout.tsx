@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
+import { HapticsProvider } from "@/components/krafta/haptics-provider";
 
 
 export const metadata: Metadata = {
@@ -37,6 +38,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+        <HapticsProvider />
         {children}
         </ThemeProvider>
         <Toaster position="top-center" />

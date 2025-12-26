@@ -104,6 +104,9 @@ importers:
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      tactus:
+        specifier: ^0.0.3
+        version: 0.0.3
       tailwind-merge:
         specifier: ^3.4.0
         version: 3.4.0
@@ -2902,6 +2905,9 @@ packages:
   supports-preserve-symlinks-flag@1.0.0:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
+
+  tactus@0.0.3:
+    resolution: {integrity: sha512-P7sEp/QcdNwJh8QIZoCc86rFDWRWATn7eySNdoSqjR4MR+fqlVDd8uCJqHi26OvZKdAUkjYwJ/M6+ZzZ83I6rw==}
 
   tailwind-merge@3.4.0:
     resolution: {integrity: sha512-uSaO4gnW+b3Y2aWoWfFpX62vn2sR3skfhbjsEnaBI81WD1wBLlHZe5sWf0AqjksNdYTbGBEd0UasQMT3SNV15g==}
@@ -6170,6 +6176,8 @@ snapshots:
       has-flag: 4.0.0
 
   supports-preserve-symlinks-flag@1.0.0: {}
+
+  tactus@0.0.3: {}
 
   tailwind-merge@3.4.0: {}
 

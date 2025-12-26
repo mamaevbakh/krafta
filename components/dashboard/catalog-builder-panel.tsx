@@ -8,6 +8,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { hapticError, hapticSuccess } from "@/lib/haptics-client";
 import { saveCatalogLayout } from "@/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions";
 
 type OptionConfig<T extends string> = {
@@ -248,8 +249,10 @@ export function CatalogBuilderPanel({
       toast.error("Failed to save layout", {
         description: result.error ?? "Unknown error",
       });
+      void hapticError();
     } else {
       toast.success("Layout saved");
+      void hapticSuccess();
     }
 
     setIsSaving(false);
