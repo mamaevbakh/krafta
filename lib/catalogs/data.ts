@@ -25,6 +25,9 @@ export async function getCatalogBySlug(
   )}&select=*`;
   const response = await fetch(url, {
     headers: supabaseHeaders,
+    next: {
+      tags: [`catalog:${slug}`, "catalogs"],
+    },
     cache: "force-cache",
   });
 
@@ -53,10 +56,16 @@ export async function getCatalogStructure(
   const [categoriesResponse, itemsResponse] = await Promise.all([
     fetch(categoriesUrl, {
       headers: supabaseHeaders,
+      next: {
+        tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+      },
       cache: "force-cache",
     }),
     fetch(itemsUrl, {
       headers: supabaseHeaders,
+      next: {
+        tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+      },
       cache: "force-cache",
     }),
   ]);

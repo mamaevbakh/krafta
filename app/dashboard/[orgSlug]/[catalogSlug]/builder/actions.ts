@@ -1,12 +1,13 @@
 "use server";
 
-import { revalidateCatalogById } from "@/lib/catalogs/revalidate";
+import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
 import { createClient } from "@/lib/supabase/server";
 import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 export async function saveCatalogLayout(params: {
   catalogId: string;
+  catalogSlug: string;
   settingsLayout: CatalogLayoutSettings;
   settingsCurrency: CurrencySettings;
 }) {
@@ -24,7 +25,10 @@ export async function saveCatalogLayout(params: {
     return { ok: false, error: error.message };
   }
 
-  await revalidateCatalogById(params.catalogId);
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
 
   return { ok: true };
 }

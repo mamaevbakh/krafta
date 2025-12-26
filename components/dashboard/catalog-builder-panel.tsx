@@ -239,6 +239,7 @@ export function CatalogBuilderPanel({
 
     const result = await saveCatalogLayout({
       catalogId,
+      catalogSlug,
       settingsLayout,
       settingsCurrency,
     });
