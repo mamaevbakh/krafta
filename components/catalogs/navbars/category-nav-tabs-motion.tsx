@@ -291,10 +291,10 @@ export function CategoryNavTabsMotion({
       >
         <nav
           ref={navRef}
-          className="flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
+          className="no-scrollbar flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
         >
           {[
-            { id: "all", label: "All", slug: null as string | null },
+            { id: "all", label: "Все", slug: null as string | null },
             ...categories.map((category) => ({
               id: category.id,
               label: category.name,

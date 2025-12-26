@@ -140,7 +140,7 @@ export function ItemDetailFullscreen({
               onClick={onClose}
               className="w-full border-border/60 text-foreground hover:bg-muted/40"
             >
-              Close
+              Закрыть
             </Button>
           ) : (
             <Button
@@ -148,7 +148,7 @@ export function ItemDetailFullscreen({
               variant="outline"
               className="w-full border-border/60 text-foreground hover:bg-muted/40"
             >
-              <Link href={backHref ?? "#"}>Close</Link>
+              <Link href={backHref ?? "#"}>Закрыть</Link>
             </Button>
           )}
         </div>

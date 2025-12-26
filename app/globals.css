@@ -124,6 +124,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
 ::selection {
   background: oklch(0% 0 0); /* pick anything you want */
   color: oklch(1 0 0);

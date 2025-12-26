@@ -288,7 +288,7 @@ export function CategoryNavTabs({
       >
         <nav
           ref={navRef}
-          className="flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
+          className="no-scrollbar flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
         >
           <button
             type="button"
@@ -301,7 +301,7 @@ export function CategoryNavTabs({
                 : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
             )}
           >
-            All
+            Все
           </button>
 
           {categories.map((category) => {

@@ -20,6 +20,17 @@ export default function Home() {
           >
             View Demo
           </Link>
+          
+          </Button>
+          <Button
+            asChild
+            variant={"outline"}>
+          <Link
+            href="/teplofest"
+          >
+            Teplo Fest x Krafta
+          </Link>
+          
           </Button>
         </div>
       </main>
