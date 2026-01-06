@@ -8,6 +8,7 @@ import Link from "next/link";
 import { CatalogSwitcher } from "./catalog-switcher";
 import type { CatalogSummary } from "@/lib/dashboard/catalogs";
 import { LayoutGroup } from "framer-motion";
+import { BrandWordmark } from "@/components/brand/brand-wordmark";
 
 const DASHBOARD_LINKS = [
   { segment: "", label: "Overview" },
@@ -37,8 +38,8 @@ export function DashboardNavbar({
       {/* Logo block */}
       <header className="px-6 py-3 h-16">
         <nav className="h-full flex items-center space-x-4">
-            <h1 className="h-full flex items-center text-2xl font-semibold text-shadow-sm">
-                Krafta
+            <h1 className="h-full flex items-center text-2xl text-shadow-sm">
+              <BrandWordmark className="text-2xl" />
             </h1>
             <CatalogSwitcher
               orgSlug={orgSlug}

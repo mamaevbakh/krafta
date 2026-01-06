@@ -1,36 +1,28 @@
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { BrandWordmark } from "@/components/brand/brand-wordmark";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-secondary-background font-sans ">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 dark:bg-black sm:items-start">
-        <h1 className="font-semibold text-6xl">Krafta</h1>
+    <div className="flex min-h-screen items-center justify-center bg-secondary-background font-sans">
+      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between px-16 py-32 dark:bg-black sm:items-start">
+        <h1>
+          <BrandWordmark className="text-6xl" />
+        </h1>
+
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
+          <h2 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
             Create Digital Catalogs Seamlessly
-          </h1>
+          </h2>
         </div>
+
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <Button
-            asChild
-            variant={"outline"}>
-          <Link
-            href="/vintage-shop"
-          >
-            View Demo
-          </Link>
-          
+          <Button asChild variant="outline">
+            <Link href="/vintage-shop">View Demo</Link>
           </Button>
-          <Button
-            asChild
-            variant={"outline"}>
-          <Link
-            href="/teplofest"
-          >
-            Teplo Fest x Krafta
-          </Link>
-          
+
+          <Button asChild variant="outline">
+            <Link href="/teplofest">Teplo Fest x Krafta</Link>
           </Button>
         </div>
       </main>

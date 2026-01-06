@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
 import { GeistSans } from 'geist/font/sans';
+import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
 import { HapticsProvider } from "@/components/krafta/haptics-provider";
+
+const KraftaBrandFont = localFont({
+  src: "../public/fonts/helveticaneue-bold.woff2",
+  variable: "--font-krafta-brand",
+  display: "swap",
+});
 
 
 export const metadata: Metadata = {
@@ -28,7 +35,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${GeistSans.variable} font-sans antialiased`}
+        className={`${GeistSans.variable} ${KraftaBrandFont.variable} font-sans antialiased`}
       >
         <SpeedInsights />
         <Analytics />
