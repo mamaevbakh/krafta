@@ -13,10 +13,20 @@ export async function handleWebhookEvent(
     (payload && typeof payload === "object" && "id" in payload) ? String((payload as any).id) : null;
 
   const providerPaymentId =
-    (payload && typeof payload === "object" && "payment_id" in payload) ? String((payload as any).payment_id) : null;
+    (payload && typeof payload === "object" && "payment_id" in payload)
+      ? String((payload as any).payment_id)
+      : (payload && typeof payload === "object" && "orderId" in payload)
+        ? String((payload as any).orderId)
+        : (payload && typeof payload === "object" && "order_id" in payload)
+          ? String((payload as any).order_id)
+          : null;
 
   const eventType =
-    (payload && typeof payload === "object" && "event" in payload) ? String((payload as any).event) : "unknown";
+    (payload && typeof payload === "object" && "event" in payload)
+      ? String((payload as any).event)
+      : (payload && typeof payload === "object" && "operationState" in payload)
+        ? `operationState:${String((payload as any).operationState)}`
+        : "unknown";
 
   const { data: evt, error: evtErr } = await supabase
     .schema("payments")
@@ -34,6 +44,53 @@ export async function handleWebhookEvent(
     .single();
 
   if (evtErr) throw evtErr;
+
+  // 2) Minimal provider-specific handling (MVP)
+  // NOTE: Signature verification should be added once webhook_secret_encrypted is wired.
+  if (input.providerId === "uzum" && providerPaymentId) {
+    const opStateRaw =
+      payload && typeof payload === "object" && "operationState" in payload
+        ? String((payload as any).operationState)
+        : null;
+
+    const normalizedState = opStateRaw?.toUpperCase() ?? null;
+    const attemptStatus =
+      normalizedState === "SUCCESS" ? "succeeded" :
+      normalizedState === "CANCEL" ? "failed" :
+      normalizedState === "ERROR" ? "failed" :
+      null;
+
+    if (attemptStatus) {
+      const { data: attempt, error: attErr } = await supabase
+        .schema("payments")
+        .from("payment_attempts")
+        .select("id, payment_intent_id")
+        .eq("provider_id", input.providerId)
+        .eq("provider_payment_id", providerPaymentId)
+        .order("created_at", { ascending: false })
+        .maybeSingle();
+
+      if (attErr) throw attErr;
+
+      if (attempt) {
+        const { error: updAttErr } = await supabase
+          .schema("payments")
+          .from("payment_attempts")
+          .update({ status: attemptStatus })
+          .eq("id", attempt.id);
+
+        if (updAttErr) throw updAttErr;
+
+        const { error: updIntErr } = await supabase
+          .schema("payments")
+          .from("payment_intents")
+          .update({ status: attemptStatus })
+          .eq("id", attempt.payment_intent_id);
+
+        if (updIntErr) throw updIntErr;
+      }
+    }
+  }
 
   // 2) Provider-specific mapping (later):
   // - verify signature using org_provider_account_secrets

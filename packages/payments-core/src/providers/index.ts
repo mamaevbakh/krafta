@@ -7,6 +7,7 @@ type CreateAttemptCtx = {
   supabase: SupabaseClient;
   providerId: string;
   orgProviderAccountId: string;
+  environment: "test" | "live";
   paymentIntentId: string;
   paymentAttemptId: string;
   publicToken: string;

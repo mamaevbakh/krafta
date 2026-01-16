@@ -19,8 +19,12 @@ export default function Home() {
                 </h1>
 
                 <div className="mt-8 flex flex-col gap-4 text-base font-medium sm:flex-row">
-                  <Button variant="default" size="lg">
-                    <Link href="/">Available Soon</Link>
+                  <Button variant="secondary" size="lg" asChild>
+                    <Link href="/login">Login</Link>
+                  </Button>
+
+                  <Button variant="default" size="lg" asChild>
+                    <Link href="/dashboard">Dashboard</Link>
                   </Button>
 
                   

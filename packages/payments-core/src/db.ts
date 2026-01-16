@@ -48,3 +48,35 @@ export async function listActiveProvidersForOrg(
       displayLabel: row.display_label as string | null,
     }));
 }
+
+export async function getPaymentIntentById(
+  supabase: SupabaseClient,
+  paymentIntentId: string,
+) {
+  const { data, error } = await supabase
+    .schema("payments")
+    .from("payment_intents")
+    .select("*")
+    .eq("id", paymentIntentId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("payment_intent_not_found");
+  return data;
+}
+
+export async function getOrgProviderAccountSecrets(
+  supabase: SupabaseClient,
+  orgProviderAccountId: string,
+) {
+  const { data, error } = await supabase
+    .schema("payments")
+    .from("org_provider_account_secrets")
+    .select("credentials_encrypted, webhook_secret_encrypted, rotation_version")
+    .eq("org_provider_account_id", orgProviderAccountId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("org_provider_account_secrets_not_found");
+  return data;
+}

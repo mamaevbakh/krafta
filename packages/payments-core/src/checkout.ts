@@ -140,6 +140,7 @@ export async function selectProviderCreateAttempt(
     supabase,
     providerId: input.providerId,
     orgProviderAccountId: opa.id,
+    environment,
     paymentIntentId: session.payment_intent_id,
     paymentAttemptId: attempt.id,
     payBaseUrl,

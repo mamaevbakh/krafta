@@ -1,34 +1,6 @@
 {
   "app": {
-    "[project]/apps/krafta/app/[...slug]/page": [
-      "static/media/Geist_Variable-s.p.f19e4721.woff2",
-      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
-    ],
-    "[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/builder/page": [
-      "static/media/Geist_Variable-s.p.f19e4721.woff2",
-      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
-    ],
-    "[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/categories/page": [
-      "static/media/Geist_Variable-s.p.f19e4721.woff2",
-      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
-    ],
-    "[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/items/page": [
-      "static/media/Geist_Variable-s.p.f19e4721.woff2",
-      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
-    ],
-    "[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/page": [
-      "static/media/Geist_Variable-s.p.f19e4721.woff2",
-      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
-    ],
-    "[project]/apps/krafta/app/dashboard/page": [
-      "static/media/Geist_Variable-s.p.f19e4721.woff2",
-      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
-    ],
     "[project]/apps/krafta/app/page": [
-      "static/media/Geist_Variable-s.p.f19e4721.woff2",
-      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
-    ],
-    "[project]/apps/krafta/app/preview/[...slug]/page": [
       "static/media/Geist_Variable-s.p.f19e4721.woff2",
       "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
     ]
