@@ -1,0 +1,15 @@
+{
+  "/[...slug]/page": "/[...slug]",
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/dashboard/[orgSlug]/[catalogSlug]/builder/page": "/dashboard/[orgSlug]/[catalogSlug]/builder",
+  "/dashboard/[orgSlug]/[catalogSlug]/categories/page": "/dashboard/[orgSlug]/[catalogSlug]/categories",
+  "/dashboard/[orgSlug]/[catalogSlug]/items/page": "/dashboard/[orgSlug]/[catalogSlug]/items",
+  "/dashboard/[orgSlug]/[catalogSlug]/page": "/dashboard/[orgSlug]/[catalogSlug]",
+  "/dashboard/[orgSlug]/[catalogSlug]/settings/page": "/dashboard/[orgSlug]/[catalogSlug]/settings",
+  "/dashboard/[orgSlug]/page": "/dashboard/[orgSlug]",
+  "/dashboard/page": "/dashboard",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/",
+  "/preview/[...slug]/page": "/preview/[...slug]"
+}

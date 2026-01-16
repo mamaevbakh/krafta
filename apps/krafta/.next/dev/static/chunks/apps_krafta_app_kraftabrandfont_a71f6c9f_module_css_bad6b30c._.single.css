@@ -1,0 +1,25 @@
+/* [project]/apps/krafta/app/kraftabrandfont_a71f6c9f.module.css [app-client] (css) */
+@font-face {
+  font-family: KraftaBrandFont;
+  src: url("../media/helveticaneue_bold-s.p.d0cc2082.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: KraftaBrandFont Fallback;
+  src: local(Arial);
+  ascent-override: 90.07%;
+  descent-override: 20.05%;
+  line-gap-override: 2.68%;
+  size-adjust: 108.25%;
+}
+
+.kraftabrandfont_a71f6c9f-module__unortG__className {
+  font-family: KraftaBrandFont, KraftaBrandFont Fallback;
+}
+
+.kraftabrandfont_a71f6c9f-module__unortG__variable {
+  --font-krafta-brand: "KraftaBrandFont", "KraftaBrandFont Fallback";
+}
+
+/*# sourceMappingURL=apps_krafta_app_kraftabrandfont_a71f6c9f_module_css_bad6b30c._.single.css.map*/

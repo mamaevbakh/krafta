@@ -1,0 +1,10 @@
+{
+  "/[...slug]/page": "app/[...slug]/page.js",
+  "/dashboard/[orgSlug]/[catalogSlug]/builder/page": "app/dashboard/[orgSlug]/[catalogSlug]/builder/page.js",
+  "/dashboard/[orgSlug]/[catalogSlug]/categories/page": "app/dashboard/[orgSlug]/[catalogSlug]/categories/page.js",
+  "/dashboard/[orgSlug]/[catalogSlug]/items/page": "app/dashboard/[orgSlug]/[catalogSlug]/items/page.js",
+  "/dashboard/[orgSlug]/[catalogSlug]/page": "app/dashboard/[orgSlug]/[catalogSlug]/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/page": "app/page.js",
+  "/preview/[...slug]/page": "app/preview/[...slug]/page.js"
+}

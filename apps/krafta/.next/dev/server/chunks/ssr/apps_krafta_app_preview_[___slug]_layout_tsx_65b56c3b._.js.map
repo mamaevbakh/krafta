@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/bakh/VSCode/krafta/apps/krafta/app/preview/%5B...slug%5D/layout.tsx"],"sourcesContent":["import type { ReactNode } from \"react\";\n\nexport default function PreviewCatalogLayout({\n  children,\n}: {\n  children: ReactNode;\n}) {\n  return (\n    <div className=\"min-h-screen bg-white dark:bg-secondary-background text-foreground\">\n      {children}\n    </div>\n  );\n}\n"],"names":[],"mappings":";;;;;;AAEe,SAAS,qBAAqB,EAC3C,QAAQ,EAGT;IACC,qBACE,+YAAC;QAAI,WAAU;kBACZ;;;;;;AAGP"}}]
+}

@@ -1,0 +1,1 @@
+{"version":3,"sources":["../../../../../../apps/krafta/app/dashboard/layout.tsx"],"sourcesContent":["import type { ReactNode } from \"react\";\n\nexport default function DashboardLayout({ children }: { children: ReactNode }) {\n  return <>{children}</>;\n}\n"],"names":[],"mappings":"wDAEe,SAAS,EAAgB,UAAE,CAAQ,CAA2B,EAC3E,MAAO,CAAA,EAAA,EAAA,GAAA,EAAA,EAAA,QAAA,CAAA,UAAG,GACZ"}

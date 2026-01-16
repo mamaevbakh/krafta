@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/bakh/VSCode/krafta/apps/krafta/app/%5B...slug%5D/layout.tsx"],"sourcesContent":["import type { ReactNode } from \"react\";\n\nexport default function CatalogLayout({ children }: { children: ReactNode }) {\n  return <div className=\"min-h-screen bg-white dark:bg-secondary-background text-foreground\">{children}</div>;\n}\n"],"names":[],"mappings":";;;;;;AAEe,SAAS,cAAc,EAAE,QAAQ,EAA2B;IACzE,qBAAO,+YAAC;QAAI,WAAU;kBAAsE;;;;;;AAC9F"}}]
+}

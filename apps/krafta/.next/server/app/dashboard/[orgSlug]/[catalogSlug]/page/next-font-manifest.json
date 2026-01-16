@@ -1,0 +1,11 @@
+{
+  "pages": {},
+  "app": {
+    "[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/page": [
+      "static/media/Geist_Variable-s.p.f19e4721.woff2",
+      "static/media/helveticaneue_bold-s.p.d0cc2082.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pagesUsingSizeAdjust": false
+}

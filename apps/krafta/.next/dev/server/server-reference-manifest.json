@@ -1,0 +1,115 @@
+{
+  "node": {
+    "c0c3e5afe23eb71387252db3207eed35ea3d10697d": {
+      "workers": {
+        "app/[...slug]/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/[...slug]/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_1",
+          "filename": "apps/krafta/lib/catalogs/data.ts"
+        },
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/dashboard/[orgSlug]/[catalogSlug]/builder/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/dashboard/catalogs.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_1",
+          "filename": "apps/krafta/lib/catalogs/data.ts"
+        },
+        "app/preview/[...slug]/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/preview/[...slug]/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_1",
+          "filename": "apps/krafta/lib/catalogs/data.ts"
+        }
+      },
+      "layer": {
+        "app/[...slug]/page": "rsc",
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": "rsc",
+        "app/preview/[...slug]/page": "rsc"
+      },
+      "filename": "apps/krafta/lib/catalogs/data.ts",
+      "exportedName": "$$RSC_SERVER_CACHE_1"
+    },
+    "c0fa5cab4f6f207b8c2bf0d80864298b7ce2099224": {
+      "workers": {
+        "app/[...slug]/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/[...slug]/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "apps/krafta/lib/catalogs/data.ts"
+        },
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/dashboard/[orgSlug]/[catalogSlug]/builder/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/dashboard/catalogs.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "apps/krafta/lib/catalogs/data.ts"
+        },
+        "app/preview/[...slug]/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/preview/[...slug]/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "apps/krafta/lib/catalogs/data.ts"
+        }
+      },
+      "layer": {
+        "app/[...slug]/page": "rsc",
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": "rsc",
+        "app/preview/[...slug]/page": "rsc"
+      },
+      "filename": "apps/krafta/lib/catalogs/data.ts",
+      "exportedName": "$$RSC_SERVER_CACHE_0"
+    },
+    "e0c454837db986107e2bbe9fccef1a9e6c63dc2418": {
+      "workers": {
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/dashboard/[orgSlug]/[catalogSlug]/builder/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/dashboard/catalogs.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "apps/krafta/lib/dashboard/catalogs.ts"
+        },
+        "app/dashboard/[orgSlug]/[catalogSlug]/categories/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/dashboard/[orgSlug]/[catalogSlug]/categories/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/dashboard/catalogs.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "apps/krafta/lib/dashboard/catalogs.ts"
+        },
+        "app/dashboard/[orgSlug]/[catalogSlug]/items/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/dashboard/[orgSlug]/[catalogSlug]/items/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/dashboard/catalogs.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "apps/krafta/lib/dashboard/catalogs.ts"
+        },
+        "app/dashboard/[orgSlug]/[catalogSlug]/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/dashboard/[orgSlug]/[catalogSlug]/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/dashboard/catalogs.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "apps/krafta/lib/dashboard/catalogs.ts"
+        }
+      },
+      "layer": {
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": "rsc",
+        "app/dashboard/[orgSlug]/[catalogSlug]/categories/page": "rsc",
+        "app/dashboard/[orgSlug]/[catalogSlug]/items/page": "rsc",
+        "app/dashboard/[orgSlug]/[catalogSlug]/page": "rsc"
+      },
+      "filename": "apps/krafta/lib/dashboard/catalogs.ts",
+      "exportedName": "$$RSC_SERVER_CACHE_0"
+    },
+    "4096f5f3395d12e32bb5aa82e9cc126f7d6be51b02": {
+      "workers": {
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": {
+          "moduleId": "[project]/apps/krafta/.next-internal/server/app/dashboard/[orgSlug]/[catalogSlug]/builder/page/actions.js { ACTIONS_MODULE0 => \"[project]/apps/krafta/lib/dashboard/catalogs.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/apps/krafta/lib/catalogs/data.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "saveCatalogLayout",
+          "filename": "apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions.ts"
+        }
+      },
+      "layer": {
+        "app/dashboard/[orgSlug]/[catalogSlug]/builder/page": "action-browser"
+      },
+      "filename": "apps/krafta/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions.ts",
+      "exportedName": "saveCatalogLayout"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "GvHCcK80w1eF2qDmCFoYL/e7QFamTIH6q7j4z2yBl4g="
+}
