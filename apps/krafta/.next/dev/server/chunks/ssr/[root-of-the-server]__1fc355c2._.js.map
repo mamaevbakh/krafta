@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 30, "column": 0}, "map": {"version":3,"sources":["file:///Users/bakh/VSCode/krafta/apps/krafta/app/dashboard/%5BorgSlug%5D/%5BcatalogSlug%5D/page.tsx"],"sourcesContent":["export default function DashboardOverviewPage() {\n  return (\n    <main className=\"w-full border-b\">\n      <div className=\"mx-auto max-w-[1248px] px-6 h-[120px] flex-1 justify-start items-stretch\">\n        <h1 className=\"text-[32px] font-semibold tracking-tight h-full flex items-center\">\n          Overview\n        </h1>\n      </div>\n    </main>\n  );\n}\n"],"names":[],"mappings":";;;;;;AAAe,SAAS;IACtB,qBACE,+YAAC;QAAK,WAAU;kBACd,cAAA,+YAAC;YAAI,WAAU;sBACb,cAAA,+YAAC;gBAAG,WAAU;0BAAoE;;;;;;;;;;;;;;;;AAM1F"}}]
-}
