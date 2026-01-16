@@ -19,11 +19,11 @@ export default function Home() {
                 </h1>
 
                 <div className="mt-8 flex flex-col gap-4 text-base font-medium sm:flex-row">
-                  <Button variant="secondary" size="lg" asChild>
+                  <Button variant="secondary" size="lg">
                     <Link href="/login">Login</Link>
                   </Button>
 
-                  <Button variant="default" size="lg" asChild>
+                  <Button variant="default" size="lg">
                     <Link href="/dashboard">Dashboard</Link>
                   </Button>
 
