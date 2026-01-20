@@ -16,7 +16,7 @@ export async function POST(
 
     const result = await selectProviderCreateAttempt(
       supabase,
-      { publicToken: public_token, providerId: body.providerId },
+      { publicToken: public_token, providerId: body.providerId, viewType: body.viewType },
       environment,
       payBaseUrl
     );

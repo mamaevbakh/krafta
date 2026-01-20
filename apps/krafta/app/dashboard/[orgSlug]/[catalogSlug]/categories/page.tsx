@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DataTable } from "./_components/data-table";
 import { columns } from "./_components/columns";
 import type { CatalogCategory } from "@/lib/catalogs/types";
+import { CreateCategoryDrawer } from "./_components/create-category-drawer";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
@@ -32,15 +33,23 @@ export default async function DashboardCategoriesPage({ params }: PageProps) {
   return (
     <main className="w-full">
       <div className="w-full border-b">
-        <div className="mx-auto max-w-[1248px] px-6 h-[120px] flex-1 justify-start items-stretch">
-          <h1 className="text-[32px] font-semibold tracking-tight h-full flex items-center">
-            Categories
-          </h1>
+        <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
+          <div className="space-y-1">
+            <h1 className="text-[32px] font-semibold tracking-tight">
+              Categories
+            </h1>
+          </div>
+          <CreateCategoryDrawer />
         </div>
       </div>
 
       <div className="mx-auto max-w-[1248px] px-6 py-8">
-        <DataTable columns={columns} data={categories} />
+        <DataTable
+          columns={columns}
+          data={categories}
+          enableStatusTabs
+          searchPlaceholder="Search categories..."
+        />
       </div>
     </main>
   );

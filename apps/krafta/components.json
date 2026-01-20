@@ -27,6 +27,7 @@
     },
     "@shadcnio": {
       "url": "https://shadcn.io/registry/{name}"
-    }
+    },
+    "@ai-elements": "https://registry.ai-sdk.dev/{name}.json"
   }
 }

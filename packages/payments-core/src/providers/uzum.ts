@@ -97,6 +97,7 @@ type CreateAttemptCtx = {
   paymentAttemptId: string;
   publicToken: string;
   payBaseUrl: string;
+  viewType?: "WEB_VIEW" | "IFRAME" | "REDIRECT";
 };
 
 export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<ProviderAttemptResult> {
@@ -114,13 +115,14 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
   const url = `${apiBaseUrl}/api/v1/payment/register`;
 
   const cart = getUzumCartFromMetadata(session.metadata);
+  const viewType = ctx.viewType ?? "REDIRECT";
   const body = {
     amount: intent.amount_minor,
     clientId: session.customer_id ?? session.org_id,
     currency: uzumCurrencyCode(intent.currency),
     paymentDetails: intent.description ?? "Payment",
     orderNumber: pickOrderNumber(intent.id, intent.order_id),
-    viewType: "REDIRECT",
+    viewType,
     sessionTimeoutSecs: 1800,
     successUrl,
     failureUrl,

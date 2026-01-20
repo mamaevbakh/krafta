@@ -6,6 +6,9 @@ export async function handleWebhookEvent(
   input: HandleWebhookInput,
   environment: "test" | "live",
 ): Promise<HandleWebhookResult> {
+  let checkoutPublicToken: string | undefined;
+  let paymentIntentId: string | undefined;
+
   // 1) Store raw event (always)
   const payload = safeJsonParse(input.rawBody) ?? { raw: input.rawBody };
 
@@ -73,6 +76,8 @@ export async function handleWebhookEvent(
       if (attErr) throw attErr;
 
       if (attempt) {
+        paymentIntentId = attempt.payment_intent_id;
+
         const { error: updAttErr } = await supabase
           .schema("payments")
           .from("payment_attempts")
@@ -88,6 +93,17 @@ export async function handleWebhookEvent(
           .eq("id", attempt.payment_intent_id);
 
         if (updIntErr) throw updIntErr;
+
+        const { data: session, error: sessErr } = await supabase
+          .schema("payments")
+          .from("checkout_sessions")
+          .select("public_token")
+          .eq("payment_intent_id", attempt.payment_intent_id)
+          .order("created_at", { ascending: false })
+          .maybeSingle();
+
+        if (sessErr) throw sessErr;
+        if (session?.public_token) checkoutPublicToken = session.public_token;
       }
     }
   }
@@ -103,7 +119,11 @@ export async function handleWebhookEvent(
     .update({ processed_at: new Date().toISOString() })
     .eq("id", evt.id);
 
-  return { ok: true };
+  return {
+    ok: true,
+    checkoutPublicToken,
+    paymentIntentId,
+  };
 }
 
 function safeJsonParse(s: string) {

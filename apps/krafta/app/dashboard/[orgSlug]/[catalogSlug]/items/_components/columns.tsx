@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { Button } from "@/components/ui/button"
@@ -12,9 +13,93 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { getItemImageUrl } from "@/lib/catalogs/media"
+import { formatPriceCents } from "@/lib/catalogs/pricing"
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency"
 import type { Item } from "@/lib/catalogs/types"
 
-export const columns: ColumnDef<Item>[] = [
+function formatPrice(
+  value: number | null,
+  currencySettings?: CurrencySettings
+) {
+  if (typeof value !== "number") return "N/A"
+  return formatPriceCents(value, currencySettings)
+}
+
+function formatCreatedAt(value: string) {
+  const dt = value ? new Date(value) : null
+  if (!dt || Number.isNaN(dt.valueOf())) return value
+  const now = new Date()
+  const showYear = dt.getFullYear() !== now.getFullYear()
+  return dt.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    ...(showYear ? { year: "numeric" } : {}),
+  })
+}
+
+function ItemActions({
+  item,
+  align = "end",
+  size = "icon-sm",
+}: {
+  item: Item
+  align?: "start" | "center" | "end"
+  size?: "icon" | "icon-sm" | "icon-lg"
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size={size} aria-label="Open menu">
+          <span className="sr-only">Open menu</span>
+          <span aria-hidden>⋯</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align}>
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuItem
+          disabled
+          onSelect={(e) => {
+            e.preventDefault()
+          }}
+        >
+          View
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled
+          onSelect={(e) => {
+            e.preventDefault()
+          }}
+        >
+          Edit (coming soon)
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled
+          onSelect={(e) => {
+            e.preventDefault()
+          }}
+        >
+          Delete (coming soon)
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            void navigator.clipboard?.writeText(item.id)
+          }}
+        >
+          Copy ID
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+export function createColumns(
+  currencySettings?: CurrencySettings
+): ColumnDef<Item>[] {
+  return [
   {
     id: "select",
     header: ({ table }) => (
@@ -36,60 +121,95 @@ export const columns: ColumnDef<Item>[] = [
     ),
     enableSorting: false,
     enableHiding: false,
+    meta: {
+      headerClassName: "hidden sm:table-cell w-[44px]",
+      cellClassName: "hidden sm:table-cell",
+    },
   },
-  { accessorKey: "id", header: "ID" },
-  { accessorKey: "catalog_id", header: "Catalog ID" },
-  { accessorKey: "category_id", header: "Category ID" },
-  { accessorKey: "name", header: "Name" },
-  { accessorKey: "slug", header: "Slug" },
-  { accessorKey: "position", header: "Position" },
+  {
+    accessorKey: "name",
+    header: "Item",
+    meta: {
+      cellClassName: "whitespace-normal",
+    },
+    cell: ({ row }) => {
+      const item = row.original
+      const imageUrl = getItemImageUrl(item)
+      const initials = item.name?.trim()?.slice(0, 2)?.toUpperCase() ?? "?"
+
+      return (
+        <div className="flex items-start gap-3 lg:items-center">
+          <div className="relative h-11 w-11 overflow-hidden rounded-md border bg-muted/40 lg:h-10 lg:w-10">
+            {imageUrl ? (
+              <Image
+                src={imageUrl}
+                alt={item.image_alt || item.name || "Item image"}
+                fill
+                className="object-cover"
+                sizes="40px"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-muted-foreground">
+                {initials}
+              </div>
+            )}
+          </div>
+          <div className="relative min-w-0 flex-1">
+            <div className="lg:hidden">
+              <div className="pr-10 text-sm font-medium text-foreground break-words whitespace-normal">
+                {item.name || "Untitled item"}
+              </div>
+              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Pricing</span>
+                <span className="text-xs font-medium text-foreground">
+                  {formatPrice(item.price_cents, currencySettings)}
+                </span>
+              </div>
+              <div className="absolute right-0 top-0">
+                <ItemActions item={item} />
+              </div>
+            </div>
+
+            <div className="hidden lg:block">
+              <div className="text-sm font-medium text-foreground break-words whitespace-normal">
+                {item.name || "Untitled item"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+  },
   {
     accessorKey: "price_cents",
-    header: "Price (cents)",
+    header: "Price",
+    cell: ({ getValue }) => {
+      const value = getValue<number | null>()
+      return (
+        <span className="text-sm font-medium">
+          {formatPrice(value, currencySettings)}
+        </span>
+      )
+    },
+    meta: {
+      headerClassName: "hidden sm:table-cell",
+      cellClassName: "hidden sm:table-cell",
+    },
   },
   {
     accessorKey: "is_active",
-    header: "Active",
-    cell: ({ getValue }) => {
-      const value = getValue<boolean>()
-      return value ? "true" : "false"
+    filterFn: (row, id, value) => {
+      if (value === undefined) return true
+      const isActive = row.getValue<boolean>(id)
+      return value === "active" ? isActive : !isActive
     },
-  },
-  {
-    accessorKey: "image_path",
-    header: "Image Path",
-    cell: ({ getValue }) => {
-      const value = getValue<string | null>()
-      return value ?? ""
-    },
-  },
-  {
-    accessorKey: "image_alt",
-    header: "Image Alt",
-    cell: ({ getValue }) => {
-      const value = getValue<string | null>()
-      return value ?? ""
-    },
-  },
-  {
-    accessorKey: "description",
-    header: "Description",
-    cell: ({ getValue }) => {
-      const value = getValue<string | null>()
-      return value ?? ""
-    },
-  },
-  {
-    accessorKey: "metadata",
-    header: "Metadata",
-    cell: ({ getValue }) => {
-      const value = getValue<unknown>()
-      if (!value) return ""
-      try {
-        return JSON.stringify(value)
-      } catch {
-        return String(value)
-      }
+    header: () => null,
+    cell: () => null,
+    enableHiding: false,
+    enableSorting: false,
+    meta: {
+      headerClassName: "hidden",
+      cellClassName: "hidden",
     },
   },
   {
@@ -97,64 +217,25 @@ export const columns: ColumnDef<Item>[] = [
     header: "Created",
     cell: ({ getValue }) => {
       const raw = getValue<string>()
-      const dt = raw ? new Date(raw) : null
-      if (!dt || Number.isNaN(dt.valueOf())) return raw
-      return dt.toLocaleString()
+      return formatCreatedAt(raw)
+    },
+    meta: {
+      headerClassName: "hidden md:table-cell",
+      cellClassName: "hidden md:table-cell",
     },
   },
   {
     id: "actions",
     enableHiding: false,
+    meta: {
+      headerClassName: "hidden lg:table-cell w-[56px]",
+      cellClassName: "hidden lg:table-cell",
+    },
     cell: ({ row }) => {
       const item = row.original
 
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Open menu">
-              <span className="sr-only">Open menu</span>
-              <span aria-hidden>⋯</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem
-              disabled
-              onSelect={(e) => {
-                e.preventDefault()
-              }}
-            >
-              View
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled
-              onSelect={(e) => {
-                e.preventDefault()
-              }}
-            >
-              Edit (coming soon)
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled
-              onSelect={(e) => {
-                e.preventDefault()
-              }}
-            >
-              Delete (coming soon)
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault()
-                void navigator.clipboard?.writeText(item.id)
-              }}
-            >
-              Copy ID
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
+      return <ItemActions item={item} size="icon" />
     },
   },
 ]
+}

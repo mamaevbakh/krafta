@@ -12,6 +12,7 @@ type CreateAttemptCtx = {
   paymentAttemptId: string;
   publicToken: string;
   payBaseUrl: string;
+  viewType?: "WEB_VIEW" | "IFRAME" | "REDIRECT";
 };
 
 export type ProviderAttemptResult = {

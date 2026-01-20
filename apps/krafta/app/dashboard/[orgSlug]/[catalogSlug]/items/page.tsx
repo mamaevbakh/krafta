@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Item } from "@/lib/catalogs/types";
-import { columns } from "./_components/columns";
-import { DataTable } from "./_components/data-table";
+import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { ItemsTable } from "./_components/items-table";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
@@ -14,9 +16,15 @@ export default async function DashboardItemsPage({ params }: PageProps) {
 
   const { data: catalog } = await supabase
     .from("catalogs")
-    .select("id")
+    .select("id, pricing_config, settings_currency")
     .eq("slug", catalogSlug)
     .maybeSingle();
+
+  const currencySettings = normalizeCurrencySettings(
+    (catalog?.pricing_config ??
+      catalog?.settings_currency ??
+      {}) as Record<string, unknown>,
+  );
 
   let items: Item[] = [];
   if (catalog?.id) {
@@ -34,15 +42,19 @@ export default async function DashboardItemsPage({ params }: PageProps) {
   return (
     <main className="w-full">
       <div className="w-full border-b">
-        <div className="mx-auto max-w-[1248px] px-6 h-[120px] flex-1 justify-start items-stretch">
-          <h1 className="text-[32px] font-semibold tracking-tight h-full flex items-center">
-            Items
-          </h1>
+        <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
+          <div className="space-y-1">
+            <h1 className="text-[32px] font-semibold tracking-tight">Items</h1>
+          </div>
+          <Button>
+            <Plus className="size-5" />
+            Add item
+          </Button>
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1248px] px-6 py-8">
-        <DataTable columns={columns} data={items} />
+      <div className="mx-auto max-w-[1248px] px-5 py-4">
+        <ItemsTable items={items} currencySettings={currencySettings} />
       </div>
     </main>
   );

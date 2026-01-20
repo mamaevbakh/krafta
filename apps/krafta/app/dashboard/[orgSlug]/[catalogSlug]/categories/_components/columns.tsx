@@ -14,6 +14,76 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { CatalogCategory } from "@/lib/catalogs/types"
 
+function formatCreatedAt(value: string) {
+  const dt = value ? new Date(value) : null
+  if (!dt || Number.isNaN(dt.valueOf())) return value
+  const now = new Date()
+  const showYear = dt.getFullYear() !== now.getFullYear()
+  return dt.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    ...(showYear ? { year: "numeric" } : {}),
+  })
+}
+
+function CategoryActions({
+  category,
+  align = "end",
+  size = "icon-sm",
+}: {
+  category: CatalogCategory
+  align?: "start" | "center" | "end"
+  size?: "icon" | "icon-sm" | "icon-lg"
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size={size} aria-label="Open menu">
+          <span className="sr-only">Open menu</span>
+          <span aria-hidden>⋯</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align}>
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuItem
+          disabled
+          onSelect={(e) => {
+            e.preventDefault()
+          }}
+        >
+          View
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled
+          onSelect={(e) => {
+            e.preventDefault()
+          }}
+        >
+          Edit (coming soon)
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled
+          onSelect={(e) => {
+            e.preventDefault()
+          }}
+        >
+          Delete (coming soon)
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            void navigator.clipboard?.writeText(category.id)
+          }}
+        >
+          Copy ID
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export const columns: ColumnDef<CatalogCategory>[] = [
   {
     id: "select",
@@ -36,33 +106,52 @@ export const columns: ColumnDef<CatalogCategory>[] = [
     ),
     enableSorting: false,
     enableHiding: false,
-  },
-  {
-    accessorKey: "id",
-    header: "ID",
-  },
-  {
-    accessorKey: "catalog_id",
-    header: "Catalog ID",
+    meta: {
+      headerClassName: "hidden sm:table-cell w-[44px]",
+      cellClassName: "hidden sm:table-cell",
+    },
   },
   {
     accessorKey: "name",
-    header: "Name",
-  },
-  {
-    accessorKey: "slug",
-    header: "Slug",
-  },
-  {
-    accessorKey: "position",
-    header: "Position",
+    header: "Category",
+    meta: {
+      cellClassName: "whitespace-normal",
+    },
+    cell: ({ row }) => {
+      const category = row.original
+      return (
+        <div className="relative min-w-0">
+          <div className="lg:hidden">
+            <div className="pr-10 text-sm font-medium text-foreground break-words whitespace-normal">
+              {category.name || "Untitled category"}
+            </div>
+            <div className="absolute right-0 top-0">
+              <CategoryActions category={category} />
+            </div>
+          </div>
+          <div className="hidden lg:block">
+            <div className="text-sm font-medium text-foreground break-words whitespace-normal">
+              {category.name || "Untitled category"}
+            </div>
+          </div>
+        </div>
+      )
+    },
   },
   {
     accessorKey: "is_active",
-    header: "Active",
-    cell: ({ getValue }) => {
-      const value = getValue<boolean>()
-      return value ? "true" : "false"
+    filterFn: (row, id, value) => {
+      if (value === undefined) return true
+      const isActive = row.getValue<boolean>(id)
+      return value === "active" ? isActive : !isActive
+    },
+    header: () => null,
+    cell: () => null,
+    enableHiding: false,
+    enableSorting: false,
+    meta: {
+      headerClassName: "hidden",
+      cellClassName: "hidden",
     },
   },
   {
@@ -70,64 +159,24 @@ export const columns: ColumnDef<CatalogCategory>[] = [
     header: "Created",
     cell: ({ getValue }) => {
       const raw = getValue<string>()
-      const dt = raw ? new Date(raw) : null
-      if (!dt || Number.isNaN(dt.valueOf())) return raw
-      return dt.toLocaleString()
+      return formatCreatedAt(raw)
+    },
+    meta: {
+      headerClassName: "hidden md:table-cell",
+      cellClassName: "hidden md:table-cell",
     },
   },
   {
     id: "actions",
     enableHiding: false,
+    meta: {
+      headerClassName: "hidden lg:table-cell w-[56px]",
+      cellClassName: "hidden lg:table-cell",
+    },
     cell: ({ row }) => {
       const category = row.original
 
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Open menu">
-              <span className="sr-only">Open menu</span>
-              <span aria-hidden>⋯</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem
-              disabled
-              onSelect={(e) => {
-                e.preventDefault()
-              }}
-            >
-              View
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled
-              onSelect={(e) => {
-                e.preventDefault()
-              }}
-            >
-              Edit (coming soon)
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled
-              onSelect={(e) => {
-                e.preventDefault()
-              }}
-            >
-              Delete (coming soon)
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault()
-                void navigator.clipboard?.writeText(category.id)
-              }}
-            >
-              Copy ID
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
+      return <CategoryActions category={category} size="icon" />
     },
   },
 ]

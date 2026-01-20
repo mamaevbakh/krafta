@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { handleWebhookEvent } from "@krafta/payments-core";
+import { broadcastCheckoutUpdate } from "@/lib/realtime-broadcast";
 
 export async function POST(
   req: Request,
@@ -15,11 +16,28 @@ export async function POST(
 
   const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
 
-  await handleWebhookEvent(
+  const result = await handleWebhookEvent(
     supabase,
     { providerId: provider, rawBody, headers },
     environment
   );
+
+  if (result.checkoutPublicToken) {
+    try {
+      await broadcastCheckoutUpdate(supabase, result.checkoutPublicToken, {
+        reason: "webhook_processed",
+        provider,
+        paymentIntentId: result.paymentIntentId,
+        at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn("realtime broadcast failed", {
+        provider,
+        publicToken: result.checkoutPublicToken,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }

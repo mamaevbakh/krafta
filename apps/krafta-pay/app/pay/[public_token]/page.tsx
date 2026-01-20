@@ -1,6 +1,13 @@
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { notFound } from "next/navigation";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
+import { ProviderPicker } from "./provider-picker.client";
+import { CheckoutStatusWatcher } from "./checkout-status.client";
+
+function isTerminalStatus(status?: string | null) {
+  const s = (status ?? "").toLowerCase();
+  return s === "succeeded" || s === "failed" || s === "canceled" || s === "cancelled";
+}
 
 export default async function PayPage({
   params,
@@ -16,7 +23,7 @@ export default async function PayPage({
     .schema("payments")
     .from("checkout_sessions")
     .select(
-      "id, status, org_id, public_token, payment_intent_id, payment_intents:payment_intent_id(amount_minor, currency, description)"
+      "id, status, org_id, public_token, payment_intent_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at)"
     )
     .eq("public_token", public_token)
     .maybeSingle();
@@ -25,6 +32,8 @@ export default async function PayPage({
   if (!session) notFound();
 
   const intent = (session as any).payment_intents;
+  const initialIntentStatus = (intent as any)?.status as string | undefined;
+  const isTerminal = isTerminalStatus(initialIntentStatus);
 
   const { data: accounts, error: accErr } = await supabase
     .schema("payments")
@@ -59,25 +68,45 @@ export default async function PayPage({
         ) : null}
       </div>
 
+      <div className="mt-4">
+        <CheckoutStatusWatcher
+          publicToken={public_token}
+          initial={{
+            checkoutSession: {
+              id: session.id,
+              publicToken: session.public_token,
+              status: session.status,
+              selectedProviderId: (session as any).selected_provider_id,
+              selectedAttemptId: (session as any).selected_attempt_id,
+              successUrl: (session as any).success_url,
+              cancelUrl: (session as any).cancel_url,
+              returnUrl: (session as any).return_url,
+              updatedAt: (session as any).updated_at,
+            },
+            paymentIntent: intent
+              ? {
+                  status: intent.status,
+                  amountMinor: intent.amount_minor,
+                  currency: intent.currency,
+                  description: intent.description,
+                  updatedAt: intent.updated_at,
+                }
+              : null,
+            selectedAttempt: null,
+          }}
+        />
+      </div>
+
       <div className="mt-6">
         <div className="text-sm font-medium">Payment methods</div>
 
-        <div className="mt-3 space-y-2">
-          {providers.map((p) => (
-            <form
-              key={p.id}
-              action={`/pay/${public_token}/select?provider=${encodeURIComponent(p.id)}`}
-              method="post"
-            >
-              <button
-                type="submit"
-                className="w-full rounded-md border px-4 py-3 text-left hover:bg-muted"
-              >
-                {p.name}
-              </button>
-            </form>
-          ))}
-        </div>
+        {!isTerminal ? (
+          <ProviderPicker publicToken={public_token} providers={providers} />
+        ) : (
+          <div className="mt-3 text-sm text-muted-foreground">
+            This checkout session is no longer accepting new payments.
+          </div>
+        )}
 
         {providers.length === 0 ? (
           <div className="mt-4 text-sm text-red-600">
@@ -86,7 +115,7 @@ export default async function PayPage({
         ) : null}
       </div>
 
-      <div className="mt-6 flex items-center gap-1 text-xs text-muted-foreground">
+      <div className="mt-6 flex gap-1 text-xs text-muted-foreground items-center justify-center">
         <span>Powered by</span>
         <BrandWordmark text="Krafta.Pay" className="text-xs" />
       </div>

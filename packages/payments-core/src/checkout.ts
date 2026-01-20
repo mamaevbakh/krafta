@@ -101,6 +101,29 @@ export async function selectProviderCreateAttempt(
 ): Promise<SelectProviderResult> {
   const session = await getCheckoutSessionByPublicToken(supabase, input.publicToken);
 
+  // Idempotency: if this checkout session already selected the same provider and the attempt is still usable,
+  // just return the existing checkout_url instead of creating a new provider order.
+  const selectedProviderId = (session as any).selected_provider_id as string | null | undefined;
+  const selectedAttemptId = (session as any).selected_attempt_id as string | null | undefined;
+  if (selectedProviderId === input.providerId && selectedAttemptId) {
+    const { data: existingAttempt, error: existingAttemptErr } = await supabase
+      .schema("payments")
+      .from("payment_attempts")
+      .select("id, checkout_url, status")
+      .eq("id", selectedAttemptId)
+      .maybeSingle();
+
+    if (existingAttemptErr) throw existingAttemptErr;
+
+    const status = (existingAttempt as any)?.status as string | undefined;
+    const checkoutUrl = (existingAttempt as any)?.checkout_url as string | null | undefined;
+    const reusableStatuses = new Set(["initialized", "requires_action", "processing"]);
+
+    if (existingAttempt && checkoutUrl && (!status || reusableStatuses.has(status))) {
+      return { attemptId: existingAttempt.id, redirectUrl: checkoutUrl };
+    }
+  }
+
   if (session.status !== "open") {
     throw new Error("checkout_session_not_open");
   }
@@ -145,6 +168,7 @@ export async function selectProviderCreateAttempt(
     paymentAttemptId: attempt.id,
     payBaseUrl,
     publicToken: input.publicToken,
+    viewType: input.viewType,
   });
 
   // Persist provider result on attempt and on session
@@ -159,7 +183,41 @@ export async function selectProviderCreateAttempt(
     })
     .eq("id", attempt.id);
 
-  if (updErr) throw updErr;
+  if (updErr) {
+    // If the provider returns the same provider_payment_id for repeated init calls
+    // (e.g. Uzum orderId reused for the same orderNumber), the DB unique constraint will reject
+    // writing it on a newly-created attempt. In that case, reuse the already-existing attempt.
+    const message = (updErr as any)?.message as string | undefined;
+    const code = (updErr as any)?.code as string | undefined;
+    const isUniqueViolation = code === "23505" || (message?.includes("duplicate key") ?? false);
+
+    if (isUniqueViolation && providerResult.providerPaymentId) {
+      const { data: existing, error: existingErr } = await supabase
+        .schema("payments")
+        .from("payment_attempts")
+        .select("id, checkout_url")
+        .eq("provider_id", input.providerId)
+        .eq("provider_payment_id", providerResult.providerPaymentId)
+        .order("created_at", { ascending: false })
+        .maybeSingle();
+
+      if (existingErr) throw existingErr;
+      if (existing?.checkout_url) {
+        await supabase
+          .schema("payments")
+          .from("checkout_sessions")
+          .update({
+            selected_provider_id: input.providerId,
+            selected_attempt_id: existing.id,
+          })
+          .eq("id", session.id);
+
+        return { attemptId: existing.id, redirectUrl: existing.checkout_url };
+      }
+    }
+
+    throw updErr;
+  }
 
   const { error: sessUpdErr } = await supabase
     .schema("payments")
