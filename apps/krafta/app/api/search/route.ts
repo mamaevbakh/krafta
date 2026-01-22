@@ -92,9 +92,9 @@ export async function POST(request: Request) {
     p_mode: results?.[0]?.mode ?? "none",
     p_has_embedding: !!embedding,
     p_results_count: results?.length ?? 0,
-    p_top_result_id: results?.[0]?.id ?? null,
-    p_org_id: orgId ?? null,
-    p_catalog_id: catalogId ?? null,
+    p_top_result_id: results?.[0]?.id ?? "",
+    p_org_id: orgId ?? "",
+    p_catalog_id: catalogId ?? "",
   });
 
   return NextResponse.json(results ?? []);
