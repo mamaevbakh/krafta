@@ -785,6 +785,148 @@ export type Database = {
           },
         ]
       }
+      catalog_category_translations: {
+        Row: {
+          category_id: string
+          created_at: string
+          description: string | null
+          id: string
+          locale: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          locale: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          locale?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_category_translations_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_locales: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          id: string
+          is_default: boolean
+          is_enabled: boolean
+          locale: string
+          sort_order: number
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_enabled?: boolean
+          locale: string
+          sort_order?: number
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_enabled?: boolean
+          locale?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_locales_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_search_documents: {
+        Row: {
+          catalog_id: string | null
+          created_at: string
+          description: string | null
+          embedding: unknown
+          fts: unknown
+          id: string
+          locale: string | null
+          org_id: string | null
+          source_id: string
+          source_table: string
+          subtitle: string | null
+          tags: string[] | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          catalog_id?: string | null
+          created_at?: string
+          description?: string | null
+          embedding?: unknown
+          fts?: unknown
+          id?: string
+          locale?: string | null
+          org_id?: string | null
+          source_id: string
+          source_table: string
+          subtitle?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          catalog_id?: string | null
+          created_at?: string
+          description?: string | null
+          embedding?: unknown
+          fts?: unknown
+          id?: string
+          locale?: string | null
+          org_id?: string | null
+          source_id?: string
+          source_table?: string
+          subtitle?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_search_documents_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_search_documents_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalogs: {
         Row: {
           created_at: string
@@ -844,6 +986,109 @@ export type Database = {
           },
         ]
       }
+      item_media: {
+        Row: {
+          alt: string | null
+          bucket: string
+          bytes: number | null
+          created_at: string
+          duration_ms: number | null
+          height: number | null
+          id: string
+          is_primary: boolean
+          item_id: string
+          kind: Database["public"]["Enums"]["item_media_kind"]
+          mime_type: string | null
+          position: number
+          storage_path: string
+          title: string | null
+          width: number | null
+        }
+        Insert: {
+          alt?: string | null
+          bucket?: string
+          bytes?: number | null
+          created_at?: string
+          duration_ms?: number | null
+          height?: number | null
+          id?: string
+          is_primary?: boolean
+          item_id: string
+          kind: Database["public"]["Enums"]["item_media_kind"]
+          mime_type?: string | null
+          position?: number
+          storage_path: string
+          title?: string | null
+          width?: number | null
+        }
+        Update: {
+          alt?: string | null
+          bucket?: string
+          bytes?: number | null
+          created_at?: string
+          duration_ms?: number | null
+          height?: number | null
+          id?: string
+          is_primary?: boolean
+          item_id?: string
+          kind?: Database["public"]["Enums"]["item_media_kind"]
+          mime_type?: string | null
+          position?: number
+          storage_path?: string
+          title?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_media_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      item_translations: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          image_alt: string | null
+          item_id: string
+          locale: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_alt?: string | null
+          item_id: string
+          locale: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_alt?: string | null
+          item_id?: string
+          locale?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_translations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       items: {
         Row: {
           catalog_id: string
@@ -859,6 +1104,7 @@ export type Database = {
           position: number
           price_cents: number
           slug: string
+          updated_at: string
         }
         Insert: {
           catalog_id: string
@@ -874,6 +1120,7 @@ export type Database = {
           position?: number
           price_cents?: number
           slug: string
+          updated_at?: string
         }
         Update: {
           catalog_id?: string
@@ -889,6 +1136,7 @@ export type Database = {
           position?: number
           price_cents?: number
           slug?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -941,22 +1189,79 @@ export type Database = {
       }
       organizations: {
         Row: {
+          country_iso2: string | null
           created_at: string
           id: string
           name: string
           slug: string
+          updated_at: string
         }
         Insert: {
+          country_iso2?: string | null
           created_at?: string
           id?: string
           name: string
           slug: string
+          updated_at?: string
         }
         Update: {
+          country_iso2?: string | null
           created_at?: string
           id?: string
           name?: string
           slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      search_logs: {
+        Row: {
+          catalog_id: string | null
+          created_at: string
+          has_embedding: boolean
+          id: number
+          mode: string
+          org_id: string | null
+          query: string
+          results_count: number
+          top_result_id: string | null
+        }
+        Insert: {
+          catalog_id?: string | null
+          created_at?: string
+          has_embedding: boolean
+          id?: never
+          mode: string
+          org_id?: string | null
+          query: string
+          results_count: number
+          top_result_id?: string | null
+        }
+        Update: {
+          catalog_id?: string | null
+          created_at?: string
+          has_embedding?: boolean
+          id?: never
+          mode?: string
+          org_id?: string | null
+          query?: string
+          results_count?: number
+          top_result_id?: string | null
+        }
+        Relationships: []
+      }
+      search_synonyms: {
+        Row: {
+          expansions: string[]
+          term: string
+        }
+        Insert: {
+          expansions?: string[]
+          term: string
+        }
+        Update: {
+          expansions?: string[]
+          term?: string
         }
         Relationships: []
       }
@@ -965,9 +1270,90 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      ack_embedding_job: { Args: { p_job_id: number }; Returns: undefined }
+      catalog_search: {
+        Args: {
+          p_catalog_id?: string
+          p_limit?: number
+          p_org_id?: string
+          p_query: string
+          p_query_embedding?: unknown
+        }
+        Returns: {
+          catalog_id: string
+          description: string
+          distance: number
+          id: string
+          locale: string
+          org_id: string
+          rank_fts: number
+          score: number
+          sim_desc: number
+          sim_title: number
+          subtitle: string
+          tags: string[]
+          title: string
+        }[]
+      }
+      catalog_search_auto: {
+        Args: {
+          p_catalog_id?: string
+          p_limit?: number
+          p_org_id?: string
+          p_query: string
+          p_query_embedding?: unknown
+        }
+        Returns: {
+          catalog_id: string
+          description: string
+          distance: number
+          id: string
+          locale: string
+          mode: string
+          org_id: string
+          rank_fts: number
+          score: number
+          sim_desc: number
+          sim_title: number
+          subtitle: string
+          tags: string[]
+          title: string
+        }[]
+      }
+      catalog_search_documents_embedding_input: {
+        Args: {
+          doc: Database["public"]["Tables"]["catalog_search_documents"]["Row"]
+        }
+        Returns: string
+      }
+      catalog_search_documents_fts_input: {
+        Args: {
+          doc: Database["public"]["Tables"]["catalog_search_documents"]["Row"]
+        }
+        Returns: string
+      }
+      log_search: {
+        Args: {
+          p_catalog_id: string
+          p_has_embedding: boolean
+          p_mode: string
+          p_org_id: string
+          p_query: string
+          p_results_count: number
+          p_top_result_id: string
+        }
+        Returns: undefined
+      }
+      search_expand_query: { Args: { q: string }; Returns: string }
+      search_normalize: { Args: { q: string }; Returns: string }
+      search_simple_translit: { Args: { q: string }; Returns: string }
+      set_catalog_search_doc_embedding: {
+        Args: { p_embedding_text: string; p_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
+      item_media_kind: "image" | "video"
       role: "owner" | "member" | "admin"
     }
     CompositeTypes: {
@@ -1102,6 +1488,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      item_media_kind: ["image", "video"],
       role: ["owner", "member", "admin"],
     },
   },

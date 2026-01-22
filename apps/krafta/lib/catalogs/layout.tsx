@@ -165,7 +165,12 @@ export function CatalogLayout({
           })}
         </section>
       </main>
-      <CatalogSearch />
+      <CatalogSearch
+        catalogId={catalog.id}
+        orgId={catalog.org_id ?? null}
+        categoriesWithItems={categoriesWithItems}
+        currencySettings={resolvedCurrency}
+      />
     </ItemSheetProvider>
   );
 }

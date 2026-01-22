@@ -348,7 +348,7 @@ export function ItemSheetTrigger({
   );
 }
 
-function useItemSheet() {
+export function useItemSheet() {
   const ctx = useContext(ItemSheetContext);
   if (!ctx) {
     throw new Error("ItemSheet components must be used inside ItemSheetProvider.");
