@@ -54,7 +54,7 @@ export function CategoriesPanel({
   return (
     <main className="w-full">
       <div className="w-full border-b">
-        <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
+        <div className="mx-auto flex h-30 max-w-312 items-center justify-between px-6">
           <div className="space-y-1">
             <h1 className="text-[32px] font-semibold tracking-tight">
               Categories
@@ -71,7 +71,7 @@ export function CategoriesPanel({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1248px] px-6 py-8">
+      <div className="mx-auto max-w-312 px-6 py-8">
         <DataTable
           columns={createColumns({
             onEdit: (category) => {

@@ -5,26 +5,27 @@ import type { Database } from "@/lib/supabase/types";
 
 const BUCKET_NAME = "public-assets";
 
-function sanitizeFilename(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "file";
-  const normalized = trimmed.replace(/[^a-zA-Z0-9._-]+/g, "-");
-  return normalized.length ? normalized : "file";
-}
-
 export async function POST(request: Request) {
-  const formData = await request.formData();
-  const itemId = String(formData.get("itemId") ?? "");
-  const orgId = String(formData.get("orgId") ?? "");
-  const catalogId = String(formData.get("catalogId") ?? "");
-  const slug = String(formData.get("slug") ?? "");
-  const title = String(formData.get("title") ?? "");
-  const imageAlt = String(formData.get("imageAlt") ?? "");
-  const files = formData.getAll("media").filter((entry) => entry instanceof File) as File[];
+  const body = (await request.json().catch(() => null)) as {
+    itemId?: string;
+    uploads?: Array<{
+      id: string;
+      bucket?: string;
+      storage_path: string;
+      kind: Database["public"]["Enums"]["item_media_kind"];
+      mime_type?: string | null;
+      bytes?: number | null;
+      title?: string | null;
+      alt?: string | null;
+    }>;
+  } | null;
 
-  if (!itemId || !orgId || !catalogId || files.length === 0) {
+  const itemId = body?.itemId ?? "";
+  const uploads = body?.uploads ?? [];
+
+  if (!itemId || uploads.length === 0) {
     return NextResponse.json(
-      { error: "Missing required upload data." },
+      { error: "Missing required media data." },
       { status: 400 },
     );
   }
@@ -44,6 +45,19 @@ export async function POST(request: Request) {
     auth: { persistSession: false },
   });
 
+  const { data: item, error: itemError } = await supabase
+    .from("items")
+    .select("id")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (itemError || !item) {
+    return NextResponse.json(
+      { error: itemError?.message ?? "Item not found." },
+      { status: 404 },
+    );
+  }
+
   const { data: lastMedia } = await supabase
     .from("item_media")
     .select("position")
@@ -60,41 +74,23 @@ export async function POST(request: Request) {
     .eq("item_id", itemId)
     .eq("is_primary", true);
 
-  const uploads = await Promise.all(
-    files.map(async (file, index) => {
-      const mediaId = crypto.randomUUID();
-      const safeFilename = sanitizeFilename(file.name);
-      const storagePath = `org/${orgId}/catalog/${catalogId}/item/${itemId}/media/${mediaId}/${safeFilename}`;
+  const insertRows = uploads.map((upload, index) => ({
+    id: upload.id,
+    item_id: itemId,
+    bucket: upload.bucket ?? BUCKET_NAME,
+    storage_path: upload.storage_path,
+    kind: upload.kind,
+    mime_type: upload.mime_type ?? null,
+    bytes: upload.bytes ?? null,
+    alt: upload.alt ?? null,
+    title: upload.title ?? null,
+    is_primary: index === 0,
+    position: basePosition + index + 1,
+  })) satisfies Database["public"]["Tables"]["item_media"]["Insert"][];
 
-      const { error } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(storagePath, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || undefined,
-        });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      return {
-        id: mediaId,
-        item_id: itemId,
-        bucket: BUCKET_NAME,
-        storage_path: storagePath,
-        kind: file.type.startsWith("video") ? "video" : "image",
-        mime_type: file.type || null,
-        bytes: file.size,
-        alt: imageAlt || null,
-        title: title || null,
-        is_primary: index === 0,
-        position: basePosition + index + 1,
-      } satisfies Database["public"]["Tables"]["item_media"]["Insert"];
-    }),
-  );
-
-  const { error: mediaError } = await supabase.from("item_media").insert(uploads);
+  const { error: mediaError } = await supabase
+    .from("item_media")
+    .insert(insertRows);
   if (mediaError) {
     return NextResponse.json(
       { error: mediaError.message ?? "Failed to save media." },
@@ -102,17 +98,17 @@ export async function POST(request: Request) {
     );
   }
 
-  if (uploads[0]) {
+  if (insertRows[0]) {
     await supabase
       .from("items")
       .update({
-        image_path: uploads[0].storage_path,
-        image_alt: uploads[0].alt ?? null,
+        image_path: insertRows[0].storage_path,
+        image_alt: insertRows[0].alt ?? null,
       })
       .eq("id", itemId);
   }
 
-  return NextResponse.json({ ok: true, count: uploads.length });
+  return NextResponse.json({ ok: true, media: insertRows });
 }
 
 export async function DELETE(request: Request) {
@@ -148,7 +144,7 @@ export async function DELETE(request: Request) {
 
   const { data: mediaRows, error: fetchError } = await supabase
     .from("item_media")
-    .select("id, storage_path, bucket")
+    .select("id, storage_path, bucket, is_primary")
     .eq("item_id", itemId)
     .in("id", mediaIds);
 
@@ -162,6 +158,10 @@ export async function DELETE(request: Request) {
   if (!mediaRows?.length) {
     return NextResponse.json({ ok: true, count: 0 });
   }
+
+  const deletedPaths = new Set(
+    mediaRows.map((row) => row.storage_path),
+  );
 
   const grouped: Record<string, string[]> = {};
   mediaRows.forEach((row) => {
@@ -187,6 +187,47 @@ export async function DELETE(request: Request) {
       { status: 500 },
     );
   }
+
+  const { data: remainingMedia } = await supabase
+    .from("item_media")
+    .select("id, storage_path, alt, is_primary, position")
+    .eq("item_id", itemId)
+    .order("position", { ascending: true });
+
+  if (!remainingMedia?.length) {
+    await supabase
+      .from("items")
+      .update({ image_path: null, image_alt: null })
+      .eq("id", itemId);
+    return NextResponse.json({ ok: true, count: mediaRows.length });
+  }
+
+  let nextPrimary = remainingMedia.find((row) => row.is_primary);
+
+  if (!nextPrimary) {
+    nextPrimary = remainingMedia[0];
+    await supabase
+      .from("item_media")
+      .update({ is_primary: false })
+      .eq("item_id", itemId);
+    await supabase
+      .from("item_media")
+      .update({ is_primary: true })
+      .eq("id", nextPrimary.id)
+      .eq("item_id", itemId);
+  }
+
+  if (nextPrimary && deletedPaths.has(nextPrimary.storage_path)) {
+    nextPrimary = remainingMedia.find((row) => row.is_primary) ?? remainingMedia[0];
+  }
+
+  await supabase
+    .from("items")
+    .update({
+      image_path: nextPrimary.storage_path,
+      image_alt: nextPrimary.alt ?? null,
+    })
+    .eq("id", itemId);
 
   return NextResponse.json({ ok: true, count: mediaRows.length });
 }

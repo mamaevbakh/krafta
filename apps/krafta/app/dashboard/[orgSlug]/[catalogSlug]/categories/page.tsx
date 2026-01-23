@@ -65,7 +65,7 @@ export default async function DashboardCategoriesPage({ params }: PageProps) {
   if (!catalog?.id) {
     return (
       <main className="w-full">
-        <div className="mx-auto max-w-[1248px] px-6 py-8">
+        <div className="mx-auto max-w-312 px-6 py-8">
           <p className="text-sm text-muted-foreground">
             Catalog not found.
           </p>

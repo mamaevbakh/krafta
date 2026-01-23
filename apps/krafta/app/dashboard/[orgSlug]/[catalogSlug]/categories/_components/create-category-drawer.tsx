@@ -185,10 +185,10 @@ export function CreateCategoryDrawer({
     >
       <DrawerContent
         className={cn(
-          "flex h-full flex-col px-0 data-[vaul-drawer-direction=right]:!max-w-none",
+          "flex h-full flex-col px-0 data-[vaul-drawer-direction=right]:max-w-none!",
           aiOpen
-            ? "data-[vaul-drawer-direction=right]:!w-screen md:data-[vaul-drawer-direction=right]:!w-[65vw]"
-            : "data-[vaul-drawer-direction=right]:!w-screen md:data-[vaul-drawer-direction=right]:!w-[35vw]"
+            ? "data-[vaul-drawer-direction=right]:w-screen! md:data-[vaul-drawer-direction=right]:w-[65vw]!"
+            : "data-[vaul-drawer-direction=right]:w-screen! md:data-[vaul-drawer-direction=right]:w-[35vw]!"
         )}
       >
         <DrawerHeader className="border-b px-6 py-4">
@@ -333,7 +333,7 @@ export function CreateCategoryDrawer({
                                   event.target.value,
                                 )
                               }
-                              className="min-h-[88px] resize-none"
+                              className="min-h-22 resize-none"
                             />
                           </Field>
                         </FieldGroup>

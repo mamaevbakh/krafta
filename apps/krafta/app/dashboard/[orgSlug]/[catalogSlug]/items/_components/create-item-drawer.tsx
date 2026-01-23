@@ -1,7 +1,7 @@
 "use client"
 
 import { Check, Trash2, XIcon } from "lucide-react"
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 
 import {
@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import type { CatalogCategory, Item } from "@/lib/catalogs/types"
 import {
@@ -49,6 +50,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer"
 import { createItem, updateItem } from "./actions"
+import { createClient as createBrowserClient } from "@/lib/supabase/client"
 
 type LocaleOption = {
   id: string
@@ -62,6 +64,27 @@ type TranslationState = {
   name: string
   description: string
   image_alt: string
+}
+
+type UploadCommit = {
+  id: string
+  bucket: string
+  storage_path: string
+  kind: "image" | "video"
+  mime_type: string | null
+  bytes: number | null
+  title: string | null
+  alt: string | null
+}
+
+type PendingUpload = {
+  clientId: string
+  preview: string
+  fileName: string
+  isVideo: boolean
+  status: "uploading" | "uploaded" | "error"
+  error?: string
+  upload?: UploadCommit
 }
 
 type CreateItemDrawerProps = {
@@ -148,10 +171,12 @@ export function CreateItemDrawer({
   const [slugTouched, setSlugTouched] = useState(false)
   const [priceValue, setPriceValue] = useState("")
   const [categoryId, setCategoryId] = useState("")
-  const [mediaFiles, setMediaFiles] = useState<File[]>([])
-  const [mediaPreviews, setMediaPreviews] = useState<string[]>([])
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
   const [existingMedia, setExistingMedia] = useState(initialMedia)
   const [mediaToDelete, setMediaToDelete] = useState<string[]>([])
+  const [draftItemId, setDraftItemId] = useState<string | null>(null)
+  const [didSave, setDidSave] = useState(false)
+  const pendingUploadsRef = useRef<PendingUpload[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -171,18 +196,28 @@ export function CreateItemDrawer({
     setSlugValue(item?.slug ?? "")
     setPriceValue(formatPriceInput(item?.price_cents ?? null))
     setCategoryId(item?.category_id ?? "")
-    setMediaFiles([])
-    setMediaPreviews([])
+    setPendingUploads((prev) => {
+      prev.forEach((upload) => URL.revokeObjectURL(upload.preview))
+      return []
+    })
     setExistingMedia(initialMedia)
     setMediaToDelete([])
+    setDraftItemId(mode === "edit" ? null : crypto.randomUUID())
+    setDidSave(false)
     setErrorMessage(null)
-  }, [enabledLocales, initialMedia, initialTranslations, item, open])
+  }, [enabledLocales, initialMedia, initialTranslations, item, mode, open])
+
+  useEffect(() => {
+    pendingUploadsRef.current = pendingUploads
+  }, [pendingUploads])
 
   useEffect(() => {
     return () => {
-      mediaPreviews.forEach((preview) => URL.revokeObjectURL(preview))
+      pendingUploadsRef.current.forEach((upload) =>
+        URL.revokeObjectURL(upload.preview),
+      )
     }
-  }, [mediaPreviews])
+  }, [])
 
   const storageBaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL ??
@@ -194,6 +229,10 @@ export function CreateItemDrawer({
   const defaultImageAlt = translations[defaultLocale]?.image_alt ?? ""
   const isEdit = mode === "edit" && !!item
   const slugPreview = slugValue.trim()
+  const mediaTargetId = isEdit ? item?.id ?? null : draftItemId
+  const isUploadingMedia = pendingUploads.some(
+    (upload) => upload.status === "uploading",
+  )
 
   useEffect(() => {
     if (!open) return
@@ -227,26 +266,225 @@ export function CreateItemDrawer({
     return Math.round(parsed * 100)
   }
 
-  async function uploadMedia(targetItemId: string) {
-    if (!mediaFiles.length) return
-
-    const formData = new FormData()
-    formData.append("itemId", targetItemId)
-    formData.append("orgId", orgId)
-    formData.append("catalogId", catalogId)
-    formData.append("slug", slugValue)
-    formData.append("title", defaultName)
-    formData.append("imageAlt", defaultImageAlt)
-    mediaFiles.forEach((file) => formData.append("media", file))
+  async function commitMediaUploads(
+    targetItemId: string,
+    uploads: UploadCommit[],
+  ) {
+    if (!uploads.length) return []
 
     const response = await fetch("/api/items/media", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        itemId: targetItemId,
+        uploads,
+      }),
     })
 
     if (!response.ok) {
       const data = await response.json().catch(() => null)
-      throw new Error(data?.error ?? "Failed to upload media.")
+      throw new Error(data?.error ?? "Failed to save media.")
+    }
+
+    const data = (await response.json().catch(() => null)) as
+      | { media?: typeof existingMedia }
+      | null
+
+    return data?.media ?? []
+  }
+
+  async function cleanupPendingUploads(entries: PendingUpload[]) {
+    const toRemove = entries
+      .map((entry) => entry.upload)
+      .filter((upload): upload is UploadCommit => !!upload)
+
+    if (!toRemove.length) return
+
+    await fetch("/api/items/media/cleanup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entries: toRemove.map((upload) => ({
+          bucket: upload.bucket,
+          storage_path: upload.storage_path,
+        })),
+      }),
+    })
+  }
+
+  async function startMediaUpload(
+    targetItemId: string,
+    files: File[],
+    clientIds: string[],
+  ) {
+    if (!files.length) return
+
+    const response = await fetch("/api/items/media/upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        itemId: targetItemId,
+        orgId,
+        catalogId,
+        files: files.map((file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        })),
+      }),
+    })
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      const message = data?.error ?? "Failed to prepare uploads."
+      setErrorMessage(message)
+      setPendingUploads((prev) =>
+        prev.map((entry) =>
+          clientIds.includes(entry.clientId)
+            ? { ...entry, status: "error", error: message }
+            : entry,
+        ),
+      )
+      return
+    }
+
+    const data = (await response.json().catch(() => null)) as
+      | {
+          uploads?: Array<{
+            id: string
+            bucket: string
+            storagePath: string
+            token: string
+            kind: "image" | "video"
+            mimeType: string | null
+            bytes: number | null
+          }>
+        }
+      | null
+
+    const uploads = data?.uploads ?? []
+
+    if (!uploads.length) {
+      const message = "Failed to prepare uploads."
+      setErrorMessage(message)
+      setPendingUploads((prev) =>
+        prev.map((entry) =>
+          clientIds.includes(entry.clientId)
+            ? { ...entry, status: "error", error: message }
+            : entry,
+        ),
+      )
+      return
+    }
+
+    const uploadByClientId = new Map(
+      clientIds.map((clientId, index) => [
+        clientId,
+        uploads[index],
+      ]),
+    )
+
+    const supabase = createBrowserClient()
+
+    const results = await Promise.all(
+      uploads.map((upload, index) =>
+        supabase.storage
+          .from(upload.bucket)
+          .uploadToSignedUrl(
+            upload.storagePath,
+            upload.token,
+            files[index],
+            {
+              contentType: files[index]?.type || undefined,
+            },
+          ),
+      ),
+    )
+
+    const failedClientIds = new Set<string>()
+    const successfulClientIds = new Set<string>()
+    const successfulByClientId = new Map<string, UploadCommit>()
+
+    results.forEach((result, index) => {
+      const clientId = clientIds[index]
+      const upload = uploads[index]
+      if (!clientId || !upload || result.error) {
+        failedClientIds.add(clientId)
+        return
+      }
+      successfulClientIds.add(clientId)
+      successfulByClientId.set(clientId, {
+        id: upload.id,
+        bucket: upload.bucket,
+        storage_path: upload.storagePath,
+        kind: upload.kind,
+        mime_type: upload.mimeType ?? null,
+        bytes: upload.bytes ?? null,
+        title: defaultName || null,
+        alt: defaultImageAlt || null,
+      })
+    })
+
+    setPendingUploads((prev) =>
+      prev.map((entry) => {
+        if (!uploadByClientId.has(entry.clientId)) return entry
+        if (failedClientIds.has(entry.clientId)) {
+          return {
+            ...entry,
+            status: "error",
+            error: "Upload failed.",
+          }
+        }
+        const upload = uploadByClientId.get(entry.clientId)
+        if (!upload) return entry
+        return {
+          ...entry,
+          status: "uploaded",
+          upload: {
+            id: upload.id,
+            bucket: upload.bucket,
+            storage_path: upload.storagePath,
+            kind: upload.kind,
+            mime_type: upload.mimeType ?? null,
+            bytes: upload.bytes ?? null,
+            title: defaultName || null,
+            alt: defaultImageAlt || null,
+          },
+        }
+      }),
+    )
+
+    if (failedClientIds.size) {
+      setErrorMessage("Some uploads failed. Please try again.")
+    }
+
+    const activeClientIds = new Set(
+      pendingUploadsRef.current.map((entry) => entry.clientId),
+    )
+    const committedClientIds = new Set(
+      [...successfulClientIds].filter((clientId) =>
+        activeClientIds.has(clientId),
+      ),
+    )
+    const committedUploads = [...committedClientIds]
+      .map((clientId) => successfulByClientId.get(clientId))
+      .filter((upload): upload is UploadCommit => !!upload)
+
+    if (isEdit && item?.id && committedUploads.length) {
+      try {
+        const media = await commitMediaUploads(item.id, committedUploads)
+        setExistingMedia((prev) => [
+          ...prev.map((entry) => ({ ...entry, is_primary: false })),
+          ...media,
+        ])
+        setPendingUploads((prev) =>
+          prev.filter((entry) => !committedClientIds.has(entry.clientId)),
+        )
+      } catch (error) {
+        setErrorMessage(
+          (error as Error)?.message ?? "Failed to save media.",
+        )
+      }
     }
   }
 
@@ -283,6 +521,30 @@ export function CreateItemDrawer({
       throw new Error(data?.error ?? "Failed to update media.")
     }
   }
+
+  function removePendingUpload(entry: PendingUpload) {
+    URL.revokeObjectURL(entry.preview)
+    setPendingUploads((prev) =>
+      prev.filter((upload) => upload.clientId !== entry.clientId),
+    )
+    if (entry.status === "uploaded" && entry.upload) {
+      void cleanupPendingUploads([entry])
+    }
+  }
+
+  useEffect(() => {
+    if (open || didSave) return
+    const pending = pendingUploadsRef.current.filter(
+      (entry) => entry.status === "uploaded" && entry.upload,
+    )
+    if (!pending.length) return
+
+    void cleanupPendingUploads(pending)
+    setPendingUploads((prev) => {
+      prev.forEach((upload) => URL.revokeObjectURL(upload.preview))
+      return []
+    })
+  }, [didSave, open])
 
   return (
     <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
@@ -332,6 +594,23 @@ export function CreateItemDrawer({
                     return
                   }
 
+                  if (pendingUploads.some((upload) => upload.status === "uploading")) {
+                    setErrorMessage("Please wait for media uploads to finish.")
+                    return
+                  }
+
+                  const readyUploads = pendingUploads
+                    .map((upload) =>
+                      upload.upload
+                        ? {
+                            ...upload.upload,
+                            title: defaultName || null,
+                            alt: defaultImageAlt || null,
+                          }
+                        : null,
+                    )
+                    .filter((upload): upload is UploadCommit => !!upload)
+
                   const payload = enabledLocales.map((locale) => ({
                     locale: locale.locale,
                     name: translations[locale.locale]?.name ?? "",
@@ -372,18 +651,33 @@ export function CreateItemDrawer({
                       }
                     }
 
-                    if (mediaFiles.length) {
+                    if (readyUploads.length) {
                       try {
-                        await uploadMedia(item.id)
+                        const media = await commitMediaUploads(
+                          item.id,
+                          readyUploads,
+                        )
+                        setExistingMedia((prev) => [
+                          ...prev.map((entry) => ({ ...entry, is_primary: false })),
+                          ...media,
+                        ])
+                        setPendingUploads((prev) => {
+                          prev.forEach((upload) =>
+                            URL.revokeObjectURL(upload.preview),
+                          )
+                          return []
+                        })
                       } catch (error) {
                         setErrorMessage(
-                          (error as Error)?.message ?? "Failed to upload media.",
+                          (error as Error)?.message ?? "Failed to save media.",
                         )
                         return
                       }
                     }
                   } else {
+                    const nextItemId = draftItemId ?? crypto.randomUUID()
                     const result = await createItem({
+                      itemId: nextItemId,
                       catalogId,
                       catalogSlug,
                       categoryId,
@@ -405,18 +699,25 @@ export function CreateItemDrawer({
                       return
                     }
 
-                    if (mediaFiles.length) {
+                    if (readyUploads.length) {
                       try {
-                        await uploadMedia(result.itemId)
+                        await commitMediaUploads(result.itemId, readyUploads)
                       } catch (error) {
                         setErrorMessage(
-                          (error as Error)?.message ?? "Failed to upload media.",
+                          (error as Error)?.message ?? "Failed to save media.",
                         )
                         return
                       }
                     }
                   }
 
+                  setPendingUploads((prev) => {
+                    prev.forEach((upload) =>
+                      URL.revokeObjectURL(upload.preview),
+                    )
+                    return []
+                  })
+                  setDidSave(true)
                   onOpenChange(false)
                   router.refresh()
                 })
@@ -534,14 +835,34 @@ export function CreateItemDrawer({
                                   const files = Array.from(
                                     event.target.files ?? [],
                                   )
-                                  mediaPreviews.forEach((preview) =>
-                                    URL.revokeObjectURL(preview),
+                                  if (!files.length) return
+                                  if (!mediaTargetId) {
+                                    setErrorMessage(
+                                      "Save item details before uploading media.",
+                                    )
+                                    return
+                                  }
+                                  const clientIds = files.map(() =>
+                                    crypto.randomUUID(),
                                   )
-                                  setMediaFiles(files)
-                                  setMediaPreviews(
-                                    files.map((file) =>
-                                      URL.createObjectURL(file),
-                                    ),
+                                  const previews = files.map((file) =>
+                                    URL.createObjectURL(file),
+                                  )
+                                  setPendingUploads((prev) => [
+                                    ...prev,
+                                    ...files.map((file, index) => ({
+                                      clientId: clientIds[index],
+                                      preview: previews[index],
+                                      fileName: file.name,
+                                      isVideo: file.type.startsWith("video"),
+                                      status: "uploading" as const,
+                                    })),
+                                  ])
+                                  event.target.value = ""
+                                  void startMediaUpload(
+                                    mediaTargetId,
+                                    files,
+                                    clientIds,
                                   )
                                 }}
                               />
@@ -611,7 +932,17 @@ export function CreateItemDrawer({
                                           aria-label="Remove media"
                                           onClick={() => {
                                             setExistingMedia((prev) =>
-                                              prev.filter((media) => media.id !== entry.id),
+                                              prev
+                                                .filter((media) => media.id !== entry.id)
+                                                .map((media, index, list) => {
+                                                  if (list.some((item) => item.is_primary)) {
+                                                    return media
+                                                  }
+                                                  if (index === 0) {
+                                                    return { ...media, is_primary: true }
+                                                  }
+                                                  return media
+                                                }),
                                             )
                                             setMediaToDelete((prev) =>
                                               prev.includes(entry.id)
@@ -629,33 +960,52 @@ export function CreateItemDrawer({
                                 </div>
                               ) : null}
 
-                              {mediaPreviews.length ? (
+                              {pendingUploads.length ? (
                                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                  {mediaPreviews.map((preview, index) => {
-                                    const file = mediaFiles[index]
-                                    const isVideo = file?.type.startsWith("video")
-
-                                    return (
-                                      <div
-                                        key={preview}
-                                        className="overflow-hidden rounded-md border bg-muted/40"
+                                  {pendingUploads.map((entry) => (
+                                    <div
+                                      key={entry.clientId}
+                                      className="group relative overflow-hidden rounded-md border bg-muted/40"
+                                    >
+                                      {entry.isVideo ? (
+                                        <video
+                                          src={entry.preview}
+                                          controls
+                                          className="max-h-48 w-full object-cover"
+                                        />
+                                      ) : (
+                                        <img
+                                          src={entry.preview}
+                                          alt={entry.fileName}
+                                          className="max-h-48 w-full object-cover"
+                                        />
+                                      )}
+                                      {entry.status === "uploading" && (
+                                        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 text-xs font-medium text-white">
+                                          <Spinner className="size-4 text-white" />
+                                          Uploading
+                                        </div>
+                                      )}
+                                      {entry.status === "uploaded" && (
+                                        <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-black">
+                                          Ready
+                                        </span>
+                                      )}
+                                      {entry.status === "error" && (
+                                        <span className="absolute left-2 top-2 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-semibold text-white">
+                                          Failed
+                                        </span>
+                                      )}
+                                      <button
+                                        type="button"
+                                        aria-label="Remove pending media"
+                                        onClick={() => removePendingUpload(entry)}
+                                        className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition group-hover:opacity-100"
                                       >
-                                        {isVideo ? (
-                                          <video
-                                            src={preview}
-                                            controls
-                                            className="max-h-48 w-full object-cover"
-                                          />
-                                        ) : (
-                                          <img
-                                            src={preview}
-                                            alt="Preview"
-                                            className="max-h-48 w-full object-cover"
-                                          />
-                                        )}
-                                      </div>
-                                    )
-                                  })}
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  ))}
                                 </div>
                               ) : null}
                             </Field>
@@ -765,9 +1115,13 @@ export function CreateItemDrawer({
               className="flex-1 lg:flex-none"
               type="submit"
               form="create-item-form"
-              disabled={isPending}
+              disabled={isPending || isUploadingMedia}
             >
-              {isEdit ? "Save changes" : "Create item"}
+              {isUploadingMedia
+                ? "Uploading media..."
+                : isEdit
+                  ? "Save changes"
+                  : "Create item"}
             </Button>
           </div>
         </DrawerFooter>

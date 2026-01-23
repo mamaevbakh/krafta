@@ -22,6 +22,7 @@ export type ItemTranslationInput = {
 export async function createItem(params: {
   catalogId: string;
   catalogSlug: string;
+  itemId?: string;
   categoryId: string;
   name: string;
   slug?: string;
@@ -70,6 +71,7 @@ export async function createItem(params: {
   const { data: item, error: itemError } = await supabase
     .from("items")
     .insert({
+      id: params.itemId ?? undefined,
       catalog_id: params.catalogId,
       category_id: params.categoryId,
       name: baseName,
