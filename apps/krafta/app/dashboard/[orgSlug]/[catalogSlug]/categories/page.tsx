@@ -1,8 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { DataTable } from "./_components/data-table";
-import { columns } from "./_components/columns";
 import type { CatalogCategory } from "@/lib/catalogs/types";
-import { CreateCategoryDrawer } from "./_components/create-category-drawer";
+import { CategoriesPanel } from "./_components/categories-panel";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
@@ -20,6 +18,20 @@ export default async function DashboardCategoriesPage({ params }: PageProps) {
     .maybeSingle();
 
   let categories: CatalogCategory[] = [];
+  let locales: {
+    id: string;
+    locale: string;
+    is_default: boolean;
+    is_enabled: boolean;
+    sort_order: number;
+  }[] = [];
+  let translations: {
+    id: string;
+    category_id: string;
+    locale: string;
+    name: string;
+    description: string | null;
+  }[] = [];
   if (catalog?.id) {
     const { data } = await supabase
       .from("catalog_categories")
@@ -28,29 +40,47 @@ export default async function DashboardCategoriesPage({ params }: PageProps) {
       .order("position", { ascending: true });
 
     categories = (data ?? []) as CatalogCategory[];
+
+    const { data: localeData } = await supabase
+      .from("catalog_locales")
+      .select("id, locale, is_default, is_enabled, sort_order")
+      .eq("catalog_id", catalog.id)
+      .order("sort_order", { ascending: true });
+
+    locales = localeData ?? [];
+
+    if (categories.length) {
+      const { data: translationData } = await supabase
+        .from("catalog_category_translations")
+        .select("id, category_id, locale, name, description")
+        .in(
+          "category_id",
+          categories.map((category) => category.id),
+        );
+
+      translations = translationData ?? [];
+    }
+  }
+
+  if (!catalog?.id) {
+    return (
+      <main className="w-full">
+        <div className="mx-auto max-w-[1248px] px-6 py-8">
+          <p className="text-sm text-muted-foreground">
+            Catalog not found.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <main className="w-full">
-      <div className="w-full border-b">
-        <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
-          <div className="space-y-1">
-            <h1 className="text-[32px] font-semibold tracking-tight">
-              Categories
-            </h1>
-          </div>
-          <CreateCategoryDrawer />
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-[1248px] px-6 py-8">
-        <DataTable
-          columns={columns}
-          data={categories}
-          enableStatusTabs
-          searchPlaceholder="Search categories..."
-        />
-      </div>
-    </main>
+    <CategoriesPanel
+      catalogId={catalog.id}
+      catalogSlug={catalogSlug}
+      categories={categories}
+      locales={locales}
+      translations={translations}
+    />
   );
 }

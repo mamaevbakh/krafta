@@ -29,7 +29,7 @@ function getItemImageUrl(item: Item): string | null {
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!baseUrl) return null;
 
-  return `${baseUrl}/storage/v1/object/public/krafta/${item.image_path}`;
+  return `${baseUrl}/storage/v1/object/public/public-assets/${item.image_path}`;
 }
 
 // ---- context --------------------------------------------------------------

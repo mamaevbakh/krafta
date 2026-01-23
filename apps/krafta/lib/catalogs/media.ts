@@ -10,5 +10,5 @@ export function getCatalogLogoUrl(catalog: Catalog): string | null {
 
 export function getItemImageUrl(item: Item): string | null {
   if (!item.image_path || !baseUrl) return null;
-  return `${baseUrl}/storage/v1/object/public/krafta/${item.image_path}`;
+  return `${baseUrl}/storage/v1/object/public/public-assets/${item.image_path}`;
 }

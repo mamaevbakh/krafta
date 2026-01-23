@@ -28,10 +28,12 @@ function formatCreatedAt(value: string) {
 
 function CategoryActions({
   category,
+  onEdit,
   align = "end",
   size = "icon-sm",
 }: {
   category: CatalogCategory
+  onEdit?: (category: CatalogCategory) => void
   align?: "start" | "center" | "end"
   size?: "icon" | "icon-sm" | "icon-lg"
 }) {
@@ -55,12 +57,12 @@ function CategoryActions({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          disabled
           onSelect={(e) => {
             e.preventDefault()
+            onEdit?.(category)
           }}
         >
-          Edit (coming soon)
+          Edit
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled
@@ -180,3 +182,51 @@ export const columns: ColumnDef<CatalogCategory>[] = [
     },
   },
 ]
+
+export function createColumns({
+  onEdit,
+}: {
+  onEdit?: (category: CatalogCategory) => void
+}): ColumnDef<CatalogCategory>[] {
+  return columns.map((column) => {
+    if (column.id === "actions") {
+      return {
+        ...column,
+        cell: ({ row }) => {
+          const category = row.original
+          return (
+            <CategoryActions category={category} size="icon" onEdit={onEdit} />
+          )
+        },
+      }
+    }
+
+    if (column.accessorKey === "name") {
+      return {
+        ...column,
+        cell: ({ row }) => {
+          const category = row.original
+          return (
+            <div className="relative min-w-0">
+              <div className="lg:hidden">
+                <div className="pr-10 text-sm font-medium text-foreground break-words whitespace-normal">
+                  {category.name || "Untitled category"}
+                </div>
+                <div className="absolute right-0 top-0">
+                  <CategoryActions category={category} onEdit={onEdit} />
+                </div>
+              </div>
+              <div className="hidden lg:block">
+                <div className="text-sm font-medium text-foreground break-words whitespace-normal">
+                  {category.name || "Untitled category"}
+                </div>
+              </div>
+            </div>
+          )
+        },
+      }
+    }
+
+    return column
+  })
+}

@@ -40,10 +40,12 @@ function formatCreatedAt(value: string) {
 
 function ItemActions({
   item,
+  onEdit,
   align = "end",
   size = "icon-sm",
 }: {
   item: Item
+  onEdit?: (item: Item) => void
   align?: "start" | "center" | "end"
   size?: "icon" | "icon-sm" | "icon-lg"
 }) {
@@ -67,12 +69,12 @@ function ItemActions({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          disabled
           onSelect={(e) => {
             e.preventDefault()
+            onEdit?.(item)
           }}
         >
-          Edit (coming soon)
+          Edit
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled
@@ -97,7 +99,12 @@ function ItemActions({
 }
 
 export function createColumns(
-  currencySettings?: CurrencySettings
+  currencySettings?: CurrencySettings,
+  {
+    onEdit,
+  }: {
+    onEdit?: (item: Item) => void
+  } = {},
 ): ColumnDef<Item>[] {
   return [
   {
@@ -166,7 +173,7 @@ export function createColumns(
                 </span>
               </div>
               <div className="absolute right-0 top-0">
-                <ItemActions item={item} />
+                <ItemActions item={item} onEdit={onEdit} />
               </div>
             </div>
 
@@ -234,7 +241,7 @@ export function createColumns(
     cell: ({ row }) => {
       const item = row.original
 
-      return <ItemActions item={item} size="icon" />
+      return <ItemActions item={item} size="icon" onEdit={onEdit} />
     },
   },
 ]
