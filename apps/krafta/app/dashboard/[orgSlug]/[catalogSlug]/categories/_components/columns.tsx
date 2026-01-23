@@ -201,7 +201,7 @@ export function createColumns({
       }
     }
 
-    if (column.accessorKey === "name") {
+    if ("accessorKey" in column && column.accessorKey === "name") {
       return {
         ...column,
         cell: ({ row }) => {

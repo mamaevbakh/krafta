@@ -400,6 +400,11 @@ export function CreateItemDrawer({
                       return
                     }
 
+                    if (!result.itemId) {
+                      setErrorMessage("Item was created without an id.")
+                      return
+                    }
+
                     if (mediaFiles.length) {
                       try {
                         await uploadMedia(result.itemId)

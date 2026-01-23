@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         title: title || null,
         is_primary: index === 0,
         position: basePosition + index + 1,
-      };
+      } satisfies Database["public"]["Tables"]["item_media"]["Insert"];
     }),
   );
 
