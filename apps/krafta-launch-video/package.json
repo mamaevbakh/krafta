@@ -1,0 +1,22 @@
+{
+  "name": "krafta-launch-video",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "remotion preview src/index.ts",
+    "render": "remotion render src/index.ts KraftaDemo out/krafta-demo.mp4",
+    "render:prores": "remotion render src/index.ts KraftaDemo out/krafta-demo.mov --codec=prores",
+    "render:statement": "remotion render src/index.ts KraftaLaunch out/krafta-statement.mp4"
+  },
+  "dependencies": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "*"
+  },
+  "devDependencies": {
+    "@remotion/cli": "*",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
+  }
+}

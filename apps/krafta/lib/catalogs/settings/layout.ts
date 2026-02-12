@@ -1,6 +1,10 @@
 // lib/catalogs/settings/layout.ts
 
-export type HeaderVariant = "header-basic" | "header-center" | "header-hero";
+export type HeaderVariant =
+  | "header-basic"
+  | "header-basic-free-logo"
+  | "header-center"
+  | "header-hero";
 
 export type CategoryNavVariant =
   | "nav-tabs"

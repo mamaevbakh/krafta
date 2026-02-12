@@ -1,0 +1,5 @@
+interface:
+  display_name: "Krafta Component Builder"
+  short_description: "Create and wire Builder layout variants in Krafta"
+  default_prompt: "Use $krafta-catalog-component-builder to add a new item card variant and wire it into the Builder and preview flow."
+

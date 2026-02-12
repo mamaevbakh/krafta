@@ -18,6 +18,7 @@ import { getCatalogBySlug } from "@/lib/catalogs/data";
 
 const HEADER_LABELS: Record<HeaderVariant, string> = {
   "header-basic": "Basic Header",
+  "header-basic-free-logo": "Basic Header (Free Logo)",
   "header-center": "Centered Header",
   "header-hero": "Hero Header",
 };

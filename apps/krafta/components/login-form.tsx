@@ -157,6 +157,7 @@ export function LoginForm({
                     value={otpCode}
                     onChange={(value) => setOtpCode(value)}
                     disabled={isPending}
+                    containerClassName="justify-center"
                     autoFocus
                   >
                     <InputOTPGroup className="*:data-[slot=input-otp-slot]:h-12 *:data-[slot=input-otp-slot]:w-10 *:data-[slot=input-otp-slot]:text-xl">

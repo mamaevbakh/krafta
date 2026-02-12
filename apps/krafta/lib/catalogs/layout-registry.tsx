@@ -6,6 +6,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 // Headers
 import { CatalogHeader } from "@/components/catalogs/headers/header-basic";
+import { CatalogHeaderBasicFreeLogo } from "@/components/catalogs/headers/header-basic-free-logo";
 import { CatalogHeaderCenter } from "@/components/catalogs/headers/header-center";
 import { CatalogHeaderHero } from "@/components/catalogs/headers/header-hero";
 
@@ -81,6 +82,7 @@ const headerRegistry: Record<
   React.ComponentType<HeaderProps>
 > = {
   "header-basic": CatalogHeader,
+  "header-basic-free-logo": CatalogHeaderBasicFreeLogo,
   "header-center": CatalogHeaderCenter,
   "header-hero": CatalogHeaderHero,
 };
