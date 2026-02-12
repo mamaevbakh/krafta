@@ -22,13 +22,12 @@ export function CatalogHeaderBasicFreeLogo({
           alt={`${catalogName} logo`}
           width={1}
           height={1}
-          className="h-auto w-auto max-w-full rounded-sm object-contain"
-          style={{ width: "auto", height: "auto", maxHeight: "40vh" }}
+          className="h-auto w-full rounded-sm object-contain"
+          style={{ width: "100%", height: "auto" }}
         />
       )}
 
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">{catalogName}</h1>
         {description && (
           <p className="text-sm text-muted-foreground">{description}</p>
         )}
