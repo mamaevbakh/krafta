@@ -1,6 +1,10 @@
 // lib/catalogs/layout-registry.tsx
 import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
-import type { Catalog, CategoryWithItems, Item } from "@/lib/catalogs/types";
+import type {
+  PublicCatalog,
+  PublicCategoryWithItems,
+  PublicItem,
+} from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 
@@ -16,8 +20,6 @@ import { BigPhotoCard } from "@/components/catalogs/cards/card-photo-big";
 import { CatalogItemCard } from "@/components/catalogs/cards/card-default";
 import { PhotoRowCard } from "@/components/catalogs/cards/card-photo-row";
 import { GlassBlurCard } from "@/components/catalogs/cards/card-glass-blur";
-import { ItemDetailSheet } from "@/components/catalogs/items/item-detail-sheet-view";
-import { ItemDetailFullscreen } from "@/components/catalogs/items/item-detail-fullscreen-view";
 
 // Sections
 import { SectionBasic } from "@/components/catalogs/sections/section-basic";
@@ -33,25 +35,25 @@ import { CategoryNavTabsDashboard } from "@/components/catalogs/navbars/category
 export type HeaderProps = {
   catalogName: string;
   description: string | null;
-  catalog: Catalog;
+  catalog: PublicCatalog;
   logoUrl: string | null;
   tags: string[] | null;
 };
 
 export type CategoryNavProps = {
-  categories: CategoryWithItems[];
+  categories: PublicCategoryWithItems[];
   activeCategoryId?: string | null;
   baseHref: string;
   activeCategorySlug?: string | null;
 };
 
 export type SectionProps = {
-  category: CategoryWithItems;
+  category: PublicCategoryWithItems;
   children: React.ReactNode;
 };
 
 export type ItemCardProps = {
-  item: Item;
+  item: PublicItem;
   imageUrl: string | null;
   imageAspectRatio?: number;
   columns?: number;
@@ -59,22 +61,14 @@ export type ItemCardProps = {
 };
 
 export type ItemDetailProps = {
-  item: Item;
-  category: CategoryWithItems | null;
+  item: PublicItem;
+  category: PublicCategoryWithItems | null;
   imageUrl: string | null;
   itemAspectRatio?: number;
   backHref?: string;
   onClose?: () => void;
   currencySettings?: CurrencySettings;
 };
-
-export type ItemDetailRegistryEntry = {
-  Component: React.ComponentType<ItemDetailProps>;
-  drawerClassName?: string;
-};
-
-export type ItemDetailComponent =
-  React.ComponentType<ItemDetailProps>;
 
 // HEADER VARIANTS
 const headerRegistry: Record<
@@ -119,19 +113,6 @@ const itemCardRegistry: Record<
   "card-glass-blur": GlassBlurCard,
 };
 
-const itemDetailRegistry: Record<
-  CatalogLayoutSettings["itemDetailVariant"],
-  ItemDetailRegistryEntry
-> = {
-  "item-sheet": {
-    Component: ItemDetailSheet,
-  },
-  "item-fullscreen": {
-    Component: ItemDetailFullscreen,
-    drawerClassName: "h-[100dvh] p-0",
-  },
-};
-
 export const headerVariants = Object.keys(
   headerRegistry,
 ) as CatalogLayoutSettings["headerVariant"][];
@@ -144,19 +125,16 @@ export const sectionVariants = Object.keys(
 export const itemCardVariants = Object.keys(
   itemCardRegistry,
 ) as CatalogLayoutSettings["itemCardVariant"][];
-export const itemDetailVariants = Object.keys(
-  itemDetailRegistry,
-) as CatalogLayoutSettings["itemDetailVariant"][];
+export const itemDetailVariants = [
+  "item-sheet",
+  "item-fullscreen",
+] as CatalogLayoutSettings["itemDetailVariant"][];
 
 export function resolveCatalogLayout(layout: CatalogLayoutSettings) {
-  const detailEntry = itemDetailRegistry[layout.itemDetailVariant];
-
   return {
     Header: headerRegistry[layout.headerVariant],
     Section: sectionRegistry[layout.sectionVariant],
     ItemCard: itemCardRegistry[layout.itemCardVariant],
     CategoryNav: categoryNavRegistry[layout.categoryNavVariant],
-    ItemDetail: detailEntry.Component,
-    itemDetailDrawerClassName: detailEntry.drawerClassName,
   };
 }

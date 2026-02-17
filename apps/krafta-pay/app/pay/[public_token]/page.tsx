@@ -55,7 +55,7 @@ export default async function PayPage({
 
   return (
     <div className="mx-auto max-w-md p-6">
-        <BrandWordmark text="Krafta.Pay" className="mb-6 text-3xl text-center w-full" />
+        <BrandWordmark text="Krafta•Pay" className="mb-6 text-3xl text-center w-full" />
       
 
       <div className="mt-4 rounded-lg border p-4">
@@ -117,7 +117,7 @@ export default async function PayPage({
 
       <div className="mt-6 flex gap-1 text-xs text-muted-foreground items-center justify-center">
         <span>Powered by</span>
-        <BrandWordmark text="Krafta.Pay" className="text-xs" />
+        <BrandWordmark text="Krafta•Pay" className="text-xs" />
       </div>
     </div>
   );

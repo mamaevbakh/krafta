@@ -15,7 +15,7 @@ export default function Home() {
                 </p>
 
                 <h1 className="mt-4">
-                  <BrandWordmark text="Krafta.Pay" className="leading-none text-[clamp(6rem,10vw,12rem)]  " />
+                  <BrandWordmark text="Krafta•Pay" className="leading-none text-[clamp(6rem,10vw,12rem)]  " />
                 </h1>
 
                 <div className="mt-8 flex flex-col gap-4 text-base font-medium sm:flex-row">

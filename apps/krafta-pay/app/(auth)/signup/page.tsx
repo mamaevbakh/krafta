@@ -16,7 +16,7 @@ export default async function SignupPage({
   return (
     <div className="rounded-xl border bg-background p-6 shadow-sm">
       <div className="flex flex-col items-center text-center">
-        <BrandWordmark text="Krafta.Pay" className="text-4xl leading-none" />
+        <BrandWordmark text="Krafta•Pay" className="text-4xl leading-none" />
         <h1 className="mt-6 text-xl font-semibold">Create account</h1>
         <p className="mt-2 text-sm text-muted-foreground">Use the same email as Krafta.</p>
       </div>

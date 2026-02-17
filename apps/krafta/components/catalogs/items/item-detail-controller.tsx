@@ -3,14 +3,17 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import dynamic from "next/dynamic";
 
-import type { CategoryWithItems, Item } from "@/lib/catalogs/types";
+import type { PublicCategoryWithItems, PublicItem } from "@/lib/catalogs/types";
 import type { ItemDetailVariant } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import {
@@ -19,18 +22,13 @@ import {
 } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { ItemDetailSheet } from "@/components/catalogs/items/item-detail-sheet-view";
-import { ItemDetailFullscreen } from "@/components/catalogs/items/item-detail-fullscreen-view";
+import { getItemImageUrl } from "@/lib/catalogs/media";
 
-// ---- helpers --------------------------------------------------------------
-
-function getItemImageUrl(item: Item): string | null {
-  if (!item.image_path) return null;
-
-  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!baseUrl) return null;
-
-  return `${baseUrl}/storage/v1/object/public/public-assets/${item.image_path}`;
-}
+const ItemDetailFullscreen = dynamic(() =>
+  import("@/components/catalogs/items/item-detail-fullscreen-view").then(
+    (module) => module.ItemDetailFullscreen,
+  ),
+);
 
 // ---- context --------------------------------------------------------------
 
@@ -44,7 +42,7 @@ const ItemSheetContext = createContext<ItemSheetContextValue | null>(null);
 // ---- provider -------------------------------------------------------------
 
 type ItemSheetProviderProps = {
-  categoriesWithItems: CategoryWithItems[];
+  categoriesWithItems: PublicCategoryWithItems[];
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref: string;
@@ -64,14 +62,12 @@ export function ItemSheetProvider({
   itemDetailVariant = "item-sheet",
   currencySettings,
 }: ItemSheetProviderProps) {
+  const isFullscreenDetail = itemDetailVariant === "item-fullscreen";
   const ItemDetailComponent =
-    itemDetailVariant === "item-fullscreen"
-      ? ItemDetailFullscreen
-      : ItemDetailSheet;
-  const itemDetailDrawerClassName =
-    itemDetailVariant === "item-fullscreen"
-      ? "h-[100dvh] p-0"
-      : undefined;
+    isFullscreenDetail ? ItemDetailFullscreen : ItemDetailSheet;
+  const itemDetailDrawerClassName = isFullscreenDetail
+    ? "h-[100dvh] p-0"
+    : undefined;
   const normalizedBase = useMemo(
     () => baseHref.replace(/\/+$/, "") || "/",
     [baseHref],
@@ -80,7 +76,7 @@ export function ItemSheetProvider({
   // --- lookup maps ---------------------------------------------------------
 
   const itemLookup = useMemo(() => {
-    const map: Record<string, Item> = {};
+    const map: Record<string, PublicItem> = {};
     categoriesWithItems.forEach((category) => {
       category.items.forEach((item) => {
         const slug = item.slug ?? String(item.id);
@@ -103,7 +99,7 @@ export function ItemSheetProvider({
   }, [categoriesWithItems]);
 
   const categoryBySlug = useMemo(() => {
-    const map: Record<string, CategoryWithItems> = {};
+    const map: Record<string, PublicCategoryWithItems> = {};
     categoriesWithItems.forEach((category) => {
       const key = category.slug ?? String(category.id);
       map[key] = category;
@@ -131,19 +127,13 @@ export function ItemSheetProvider({
   const [currentCategorySlug, setCurrentCategorySlug] = useState<string | null>(
     activeCategorySlug ?? null,
   );
-
-  // --- initial link hydration (deep links) ---------------------------------
+  const currentCategorySlugRef = useRef<string | null>(
+    activeCategorySlug ?? null,
+  );
 
   useEffect(() => {
-    if (activeItemSlug && itemLookup[activeItemSlug]) {
-      const derivedCategory =
-        activeCategorySlug ?? itemToCategorySlug[activeItemSlug] ?? null;
-
-      setCurrentItemSlug(activeItemSlug);
-      setCurrentCategorySlug(derivedCategory);
-      setOpen(true);
-    }
-  }, [activeCategorySlug, activeItemSlug, itemLookup, itemToCategorySlug]);
+    currentCategorySlugRef.current = currentCategorySlug;
+  }, [currentCategorySlug]);
 
   // --- popstate sync (back / forward buttons) -----------------------------
 
@@ -183,9 +173,21 @@ export function ItemSheetProvider({
     return () => window.removeEventListener("popstate", handlePopState);
   }, [baseSegments, categoryBySlug, itemLookup, itemToCategorySlug]);
 
-  if (!categoriesWithItems.length) {
-    return <>{children}</>;
-  }
+  useEffect(() => {
+    if (!isFullscreenDetail || !open) return;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow =
+      document.documentElement.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow =
+        previousHtmlOverflow;
+    };
+  }, [isFullscreenDetail, open]);
 
   const currentItem = currentItemSlug ? itemLookup[currentItemSlug] : null;
   const currentCategory = currentCategorySlug
@@ -196,16 +198,16 @@ export function ItemSheetProvider({
 
   // --- helpers -------------------------------------------------------------
 
-  function buildPath(
+  const buildPath = useCallback((
     categorySlug: string | null | undefined,
     itemSlug: string | null | undefined,
-  ) {
+  ) => {
     const categoryPart = categorySlug ? `/${categorySlug}` : "";
     const itemPart = itemSlug ? `/${itemSlug}` : "";
     return `${normalizedBase}${categoryPart}${itemPart}`;
-  }
+  }, [normalizedBase]);
 
-  function openItem(itemSlug: string, categorySlug?: string | null) {
+  const openItem = useCallback((itemSlug: string, categorySlug?: string | null) => {
     const normalizedItemSlug = itemSlug ?? null;
     if (!normalizedItemSlug || !itemLookup[normalizedItemSlug]) return;
 
@@ -223,11 +225,16 @@ export function ItemSheetProvider({
     setOpen(true);
 
     window.history.pushState(null, "", pathWithPreview);
-  }
+  }, [
+    activeCategorySlug,
+    buildPath,
+    itemLookup,
+    itemToCategorySlug,
+  ]);
 
-  function closeItem() {
+  const closeItem = useCallback(() => {
     const fallbackCategorySlug =
-      currentCategorySlug ?? activeCategorySlug ?? null;
+      currentCategorySlugRef.current ?? activeCategorySlug ?? null;
 
     const path = buildPath(fallbackCategorySlug, null);
     const pathWithPreview = appendPreviewSearch(path);
@@ -236,30 +243,21 @@ export function ItemSheetProvider({
     setCurrentItemSlug(null);
 
     window.history.replaceState(null, "", pathWithPreview);
+  }, [activeCategorySlug, buildPath]);
+
+  const ctxValue: ItemSheetContextValue = useMemo(
+    () => ({
+      openItem,
+      closeItem,
+    }),
+    [closeItem, openItem],
+  );
+
+  if (!categoriesWithItems.length) {
+    return <>{children}</>;
   }
 
-  const ctxValue: ItemSheetContextValue = {
-    openItem,
-    closeItem,
-  };
-
-  if (itemDetailVariant === "item-fullscreen") {
-    useEffect(() => {
-      if (!open) return;
-      const previousBodyOverflow = document.body.style.overflow;
-      const previousHtmlOverflow =
-        document.documentElement.style.overflow;
-
-      document.body.style.overflow = "hidden";
-      document.documentElement.style.overflow = "hidden";
-
-      return () => {
-        document.body.style.overflow = previousBodyOverflow;
-        document.documentElement.style.overflow =
-          previousHtmlOverflow;
-      };
-    }, [open]);
-
+  if (isFullscreenDetail) {
     return (
       <ItemSheetContext.Provider value={ctxValue}>
         {children}

@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 
 
 export const metadata: Metadata = {
-  title: "Krafta.Pay",
+  title: "Krafta•Pay",
   description: "Payment Orchestration for Digital Commerce and Developers",
 };
 

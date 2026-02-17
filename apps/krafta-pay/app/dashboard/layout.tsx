@@ -18,7 +18,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       <header className="border-b bg-background">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <Link className="text-sm font-semibold" href="/dashboard">
-            Krafta.Pay Dashboard
+            Krafta•Pay Dashboard
           </Link>
           <form action={signOutAction}>
             <Button type="submit" variant="secondary" size="sm">

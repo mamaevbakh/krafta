@@ -10,7 +10,10 @@ import {
   normalizeCurrencySettings,
 } from "./currency";
 
-export type Catalog = Tables<"catalogs">;
+export type CatalogSettingsSource = Pick<
+  Tables<"catalogs">,
+  "settings_layout" | "settings_currency"
+>;
 
 export type CatalogSettings = {
   layout: CatalogLayoutSettings;
@@ -18,18 +21,28 @@ export type CatalogSettings = {
   // later: branding, i18n, behavior
 };
 
-export function normalizeCatalogSettings(catalog: Catalog): CatalogSettings {
-  const rawLayout = (catalog as any).settings_layout ?? {};
-  const rawCurrency = (catalog as any).settings_currency ?? {};
+export function normalizeCatalogSettings(
+  catalog: CatalogSettingsSource,
+): CatalogSettings {
+  const rawLayout =
+    typeof catalog.settings_layout === "object" &&
+    catalog.settings_layout !== null
+      ? (catalog.settings_layout as Record<string, unknown>)
+      : {};
+  const rawCurrency =
+    typeof catalog.settings_currency === "object" &&
+    catalog.settings_currency !== null
+      ? (catalog.settings_currency as Record<string, unknown>)
+      : {};
 
   return {
     layout: normalizeLayoutSettings({
       ...defaultLayoutSettings,
-      ...(rawLayout as Record<string, unknown>),
+      ...rawLayout,
     }),
     currency: normalizeCurrencySettings({
       ...defaultCurrencySettings,
-      ...(rawCurrency as Record<string, unknown>),
+      ...rawCurrency,
     }),
   };
 }

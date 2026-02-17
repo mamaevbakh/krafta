@@ -14,7 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import type { CategoryWithItems, Item } from "@/lib/catalogs/types";
+import type {
+  PublicCategoryWithItems,
+  PublicItem,
+} from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
@@ -40,21 +43,21 @@ type SearchDocument = {
   item_slug?: string | null;
 };
 
-type CatalogSearchProps = {
+export type CatalogSearchProps = {
   catalogId: string;
   orgId?: string | null;
-  categoriesWithItems: CategoryWithItems[];
+  categoriesWithItems: PublicCategoryWithItems[];
   currencySettings?: CurrencySettings;
 };
 
 type ItemMatch = {
-  item: Item;
+  item: PublicItem;
   categorySlug: string | null;
   result?: SearchDocument;
 };
 
 type CategoryMatch = {
-  category: CategoryWithItems;
+  category: PublicCategoryWithItems;
   result?: SearchDocument;
 };
 
@@ -94,83 +97,81 @@ export function CatalogSearch({
   const loadingStartRef = React.useRef(0);
   const loadingTimerRef = React.useRef<number | null>(null);
 
-  const categoryById = React.useMemo(() => {
-    const map = new Map<string, CategoryWithItems>();
-    categoriesWithItems.forEach((category) => {
-      map.set(category.id, category);
-    });
-    return map;
-  }, [categoriesWithItems]);
+  const searchIndex = React.useMemo(() => {
+    const categoryById = new Map<string, PublicCategoryWithItems>();
+    const categoryBySlug = new Map<string, PublicCategoryWithItems>();
+    const categoryByTitle = new Map<string, PublicCategoryWithItems>();
+    const itemById = new Map<string, PublicItem>();
+    const itemBySlug = new Map<string, PublicItem>();
+    const itemByTitle = new Map<string, PublicItem>();
+    const categorySlugForItemId = new Map<string, string | null>();
 
-  const categoryBySlug = React.useMemo(() => {
-    const map = new Map<string, CategoryWithItems>();
-    categoriesWithItems.forEach((category) => {
-      const slug = category.slug ?? String(category.id);
-      map.set(slug, category);
-    });
-    return map;
-  }, [categoriesWithItems]);
+    if (!open) {
+      return {
+        categoryById,
+        categoryBySlug,
+        categoryByTitle,
+        itemById,
+        itemBySlug,
+        itemByTitle,
+        categorySlugForItemId,
+      };
+    }
 
-  const itemById = React.useMemo(() => {
-    const map = new Map<string, Item>();
     categoriesWithItems.forEach((category) => {
-      category.items.forEach((item) => {
-        map.set(item.id, item);
-      });
-    });
-    return map;
-  }, [categoriesWithItems]);
+      categoryById.set(category.id, category);
 
-  const itemBySlug = React.useMemo(() => {
-    const map = new Map<string, Item>();
-    categoriesWithItems.forEach((category) => {
-      category.items.forEach((item) => {
-        const slug = item.slug ?? String(item.id);
-        map.set(slug, item);
-      });
-    });
-    return map;
-  }, [categoriesWithItems]);
-
-  const itemByTitle = React.useMemo(() => {
-    const map = new Map<string, Item>();
-    categoriesWithItems.forEach((category) => {
-      category.items.forEach((item) => {
-        const key = normalizeLabel(item.name);
-        if (key) map.set(key, item);
-      });
-    });
-    return map;
-  }, [categoriesWithItems]);
-
-  const categoryByTitle = React.useMemo(() => {
-    const map = new Map<string, CategoryWithItems>();
-    categoriesWithItems.forEach((category) => {
-      const key = normalizeLabel(category.name);
-      if (key) map.set(key, category);
-    });
-    return map;
-  }, [categoriesWithItems]);
-
-  const categorySlugForItemId = React.useMemo(() => {
-    const map = new Map<string, string | null>();
-    categoriesWithItems.forEach((category) => {
       const categorySlug = category.slug ?? String(category.id);
+      categoryBySlug.set(categorySlug, category);
+
+      const categoryTitle = normalizeLabel(category.name);
+      if (categoryTitle) categoryByTitle.set(categoryTitle, category);
+
       category.items.forEach((item) => {
-        map.set(item.id, categorySlug);
+        itemById.set(item.id, item);
+
+        const itemSlug = item.slug ?? String(item.id);
+        itemBySlug.set(itemSlug, item);
+        categorySlugForItemId.set(item.id, categorySlug);
+
+        const itemTitle = normalizeLabel(item.name);
+        if (itemTitle) itemByTitle.set(itemTitle, item);
       });
     });
-    return map;
-  }, [categoriesWithItems]);
+
+    return {
+      categoryById,
+      categoryBySlug,
+      categoryByTitle,
+      itemById,
+      itemBySlug,
+      itemByTitle,
+      categorySlugForItemId,
+    };
+  }, [categoriesWithItems, open]);
+
+  const {
+    categoryById,
+    categoryBySlug,
+    categoryByTitle,
+    itemById,
+    itemBySlug,
+    itemByTitle,
+    categorySlugForItemId,
+  } = searchIndex;
 
   const resolvedResults = React.useMemo(() => {
+    if (!open || results.length === 0) {
+      return { items: [], categories: [] };
+    }
+
     const items = new Map<string, ItemMatch>();
     const categories = new Map<string, CategoryMatch>();
 
     results.forEach((result) => {
       const resultType = getResultType(result);
-      let resolvedItem: Item | null = null;
-      let resolvedCategory: CategoryWithItems | null = null;
+      let resolvedItem: PublicItem | null = null;
+      let resolvedCategory: PublicCategoryWithItems | null = null;
       const sourceTable = result.source_table?.toLowerCase() ?? "";
       const sourceId = result.source_id ?? null;
       const resultTags = (result.tags ?? []).map((tag) => tag.toLowerCase());
@@ -238,6 +239,7 @@ export function CatalogSearch({
       categories: Array.from(categories.values()),
     };
   }, [
+    open,
     results,
     categoryById,
     categoryBySlug,
@@ -332,7 +334,7 @@ export function CatalogSearch({
     };
   }, [catalogId, orgId, open, query]);
 
-  const handleCategorySelect = React.useCallback((category: CategoryWithItems) => {
+  const handleCategorySelect = React.useCallback((category: PublicCategoryWithItems) => {
     const targetId = `category-${category.slug ?? category.id}`;
     setOpen(false);
 

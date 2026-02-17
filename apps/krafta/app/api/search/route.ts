@@ -87,15 +87,21 @@ export async function POST(request: Request) {
     );
   }
 
-  await supabase.rpc("log_search", {
-    p_query: query,
-    p_mode: results?.[0]?.mode ?? "none",
-    p_has_embedding: !!embedding,
-    p_results_count: results?.length ?? 0,
-    p_top_result_id: results?.[0]?.id ?? "",
-    p_org_id: orgId ?? "",
-    p_catalog_id: catalogId ?? "",
-  });
+  void (async () => {
+    try {
+      await supabase.rpc("log_search", {
+        p_query: query,
+        p_mode: results?.[0]?.mode ?? "none",
+        p_has_embedding: !!embedding,
+        p_results_count: results?.length ?? 0,
+        p_top_result_id: results?.[0]?.id ?? "",
+        p_org_id: orgId ?? "",
+        p_catalog_id: catalogId ?? "",
+      });
+    } catch {
+      // Non-blocking best-effort logging.
+    }
+  })();
 
   return NextResponse.json(results ?? []);
 }

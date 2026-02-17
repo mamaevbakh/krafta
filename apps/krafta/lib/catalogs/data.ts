@@ -1,6 +1,11 @@
 // lib/catalogs/data.ts
 import { cacheTag } from "next/cache";
-import type { Catalog, CategoryWithItems, Item, CatalogCategory } from "./types";
+import type {
+  PublicCatalog,
+  PublicCatalogCategory,
+  PublicCategoryWithItems,
+  PublicItem,
+} from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -16,13 +21,13 @@ const supabaseHeaders = {
 
 export async function getCatalogBySlug(
   slug: string
-): Promise<Catalog | null> {
+): Promise<PublicCatalog | null> {
   "use cache";
   cacheTag(`catalog:${slug}`, "catalogs");
 
   const url = `${supabaseUrl}/rest/v1/catalogs?slug=eq.${encodeURIComponent(
     slug,
-  )}&select=*`;
+  )}&select=id,slug,name,description,logo_path,org_id,tags,settings_layout,settings_currency`;
   const response = await fetch(url, {
     headers: supabaseHeaders,
     next: {
@@ -32,7 +37,7 @@ export async function getCatalogBySlug(
   });
 
   if (!response.ok) return null;
-  const data = (await response.json()) as Catalog[];
+  const data = (await response.json()) as PublicCatalog[];
   const catalog = data[0] ?? null;
   if (catalog?.id) {
     cacheTag(`catalog:${catalog.id}`);
@@ -42,7 +47,7 @@ export async function getCatalogBySlug(
 
 export async function getCatalogStructure(
   catalogId: string
-): Promise<CategoryWithItems[]> {
+): Promise<PublicCategoryWithItems[]> {
   "use cache";
   cacheTag(`catalog:${catalogId}`, `catalog-structure:${catalogId}`);
 
@@ -51,10 +56,10 @@ export async function getCatalogStructure(
   )}&is_enabled=eq.true&select=locale,is_default,sort_order&order=sort_order.asc`;
   const categoriesUrl = `${supabaseUrl}/rest/v1/catalog_categories?catalog_id=eq.${encodeURIComponent(
     catalogId,
-  )}&is_active=eq.true&select=*&order=position.asc`;
+  )}&is_active=eq.true&select=id,slug,name,position&order=position.asc`;
   const itemsUrl = `${supabaseUrl}/rest/v1/items?catalog_id=eq.${encodeURIComponent(
     catalogId,
-  )}&is_active=eq.true&select=*&order=position.asc`;
+  )}&is_active=eq.true&select=id,slug,category_id,name,description,price_cents,image_path,image_alt,position&order=position.asc`;
 
   const [localesResponse, categoriesResponse, itemsResponse] = await Promise.all([
     fetch(localesUrl, {
@@ -81,7 +86,7 @@ export async function getCatalogStructure(
   ]);
 
   if (!categoriesResponse.ok) return [];
-  const categories = (await categoriesResponse.json()) as CatalogCategory[];
+  const categories = (await categoriesResponse.json()) as PublicCatalogCategory[];
 
   if (!itemsResponse.ok) {
     return categories.map((category) => ({
@@ -89,7 +94,7 @@ export async function getCatalogStructure(
       items: [],
     }));
   }
-  const items = (await itemsResponse.json()) as Item[];
+  const items = (await itemsResponse.json()) as PublicItem[];
 
   const locales = localesResponse.ok
     ? ((await localesResponse.json()) as Array<{
@@ -111,7 +116,7 @@ export async function getCatalogStructure(
           defaultLocale,
         )}&category_id=in.(${categoryIds
           .map((id) => encodeURIComponent(id))
-          .join(",")})&select=category_id,name,description`
+          .join(",")})&select=category_id,name`
       : null;
   const itemTranslationUrl =
     defaultLocale && itemIds.length
@@ -164,7 +169,6 @@ export async function getCatalogStructure(
       ? ((await categoryTranslationsResponse.json()) as Array<{
           category_id: string;
           name: string | null;
-          description: string | null;
         }>)
       : [];
   const itemTranslations =
@@ -202,7 +206,7 @@ export async function getCatalogStructure(
     }
   });
 
-  const itemsByCategory = new Map<string, Item[]>();
+  const itemsByCategory = new Map<string, PublicItem[]>();
   for (const item of items) {
     const translation = itemTranslationById.get(item.id);
     const mediaPath = item.image_path || mediaByItemId.get(item.id) || null;

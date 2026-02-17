@@ -20,8 +20,9 @@ export function CatalogHeaderBasicFreeLogo({
         <Image
           src={logoUrl}
           alt={`${catalogName} logo`}
-          width={1}
-          height={1}
+          width={500}
+          preload={true}
+          height={500}
           className="h-auto w-full rounded-sm object-contain"
           style={{ width: "100%", height: "auto" }}
         />

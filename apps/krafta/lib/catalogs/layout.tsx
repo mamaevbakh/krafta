@@ -1,6 +1,6 @@
 // lib/catalogs/layout.tsx
 
-import type { Catalog, CategoryWithItems } from "@/lib/catalogs/types";
+import type { PublicCatalog, PublicCategoryWithItems } from "@/lib/catalogs/types";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import {
   normalizeLayoutSettings,
@@ -16,11 +16,11 @@ import {
   ItemSheetProvider,
   ItemSheetTrigger,
 } from "@/components/catalogs/items/item-detail-controller";
-import { CatalogSearch } from "@/components/catalogs/search/catalog-search";
+import { CatalogSearchLazy } from "@/components/catalogs/search/catalog-search-lazy";
 
 type Props = {
-  catalog: Catalog;
-  categoriesWithItems: CategoryWithItems[];
+  catalog: PublicCatalog;
+  categoriesWithItems: PublicCategoryWithItems[];
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref?: string;
@@ -95,6 +95,7 @@ export function CatalogLayout({
 
   return (
     <ItemSheetProvider
+      key={`${activeCategorySlugResolved ?? "none"}:${activeItemSlug ?? "none"}`}
       categoriesWithItems={categoriesWithItems}
       activeCategorySlug={activeCategorySlugResolved}
       activeItemSlug={activeItemSlug}
@@ -165,7 +166,7 @@ export function CatalogLayout({
           })}
         </section>
       </main>
-      <CatalogSearch
+      <CatalogSearchLazy
         catalogId={catalog.id}
         orgId={catalog.org_id ?? null}
         categoriesWithItems={categoriesWithItems}
