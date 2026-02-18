@@ -8,6 +8,7 @@ import {
   type CookieSnapshot,
 } from "@/lib/dashboard/catalogs";
 import { createClient } from "@/lib/supabase/server";
+import { getUserSafely } from "@krafta/supabase/auth";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { CatalogSwitcherSkeleton } from "@/components/dashboard/catalog-switcher";
 
@@ -37,7 +38,7 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
 
   // Get current user
   const supabase = await createClient();
-  const { data: { user: authUser } } = await supabase.auth.getUser();
+  const { user: authUser } = await getUserSafely(supabase);
   const user = {
     name: authUser?.user_metadata?.full_name || authUser?.email?.split("@")[0] || "User",
     email: authUser?.email || "",

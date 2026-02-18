@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
+import { getUserSafely } from "@krafta/supabase/auth";
 
 /**
  * Send magic link + OTP code to user's email
@@ -102,6 +103,6 @@ export async function signOut() {
  */
 export async function getCurrentUser() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getUserSafely(supabase);
   return user;
 }

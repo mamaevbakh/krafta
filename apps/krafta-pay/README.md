@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Krafta Pay
 
-## Getting Started
+Krafta Pay is the hosted billing app (checkout + merchant billing dashboard).
 
-First, run the development server:
+## Local Run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm --filter krafta-pay dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Default local URL: `http://localhost:3001`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Required Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# Shared Supabase project
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 
-## Learn More
+# Internal/API auth
+KRAFTA_PAY_INTERNAL_SECRET=...
+KRAFTA_PAY_API_KEYS_SECRET=...
+PAY_CREDENTIALS_SECRET=...
 
-To learn more about Next.js, take a look at the following resources:
+# Runtime context
+PAY_ENV=test
+PAY_BASE_URL=http://localhost:3001
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Krafta app origins used by login handoff
+KRAFTA_APP_URL=http://localhost:3000
+KRAFTA_APP_URLS=http://localhost:3000,https://krafta.org,https://krafta.uz
+NEXT_PUBLIC_KRAFTA_APP_URL=http://localhost:3000
+NEXT_PUBLIC_KRAFTA_APP_URLS=http://localhost:3000,https://krafta.org,https://krafta.uz
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Supabase Auth URL Setup
 
-## Deploy on Vercel
+In Supabase Authentication settings:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Site URL should be an app origin (for example `https://krafta.org`), not a callback path.
+- Redirect URLs must include each callback used by deployed domains:
+  - `https://krafta.org/auth/confirm`
+  - `https://pay.krafta.uz/auth/confirm`
+  - `http://localhost:3000/auth/confirm`
+  - `http://localhost:3001/auth/confirm`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Auth Model
+
+- `krafta-pay` does not have a standalone login form.
+- Visiting `/dashboard` on Pay redirects to Krafta (`/auth/pay-handoff`).
+- Krafta generates a Supabase magic link targeting Pay `/auth/confirm`.
+- After callback, user returns to the original Pay URL.

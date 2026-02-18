@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getUserSafely } from "@krafta/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 import {
@@ -41,6 +42,34 @@ function getAllowedPayOrigins() {
   return [...new Set(configured)];
 }
 
+function isLocalHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function isAllowedPayTarget(target: URL, allowedOrigins: string[]) {
+  if (allowedOrigins.includes(target.origin)) {
+    return true;
+  }
+
+  if (!isLocalHostname(target.hostname)) {
+    return false;
+  }
+
+  // Dev convenience: allow localhost scheme mismatch (http/https) on same host:port.
+  return allowedOrigins.some((origin) => {
+    try {
+      const allowed = new URL(origin);
+      return (
+        isLocalHostname(allowed.hostname) &&
+        allowed.hostname === target.hostname &&
+        allowed.port === target.port
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 export async function GET(request: NextRequest) {
   const headersList = request.headers;
   const origin = getRequestOrigin(headersList);
@@ -53,19 +82,19 @@ export async function GET(request: NextRequest) {
   const target = new URL(absoluteNext);
 
   const payOrigins = getAllowedPayOrigins();
-  if (!payOrigins.includes(target.origin)) {
+  if (!isAllowedPayTarget(target, payOrigins)) {
     return NextResponse.redirect(absoluteNext);
   }
 
   const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const { user, authError: userError } = await getUserSafely(supabase);
 
-  if (userError || !userData.user) {
+  if (userError || !user) {
     const loginTarget = `${origin}/login?next=${encodeURIComponent(request.nextUrl.toString())}`;
     return NextResponse.redirect(loginTarget);
   }
 
-  if (!userData.user.email) {
+  if (!user.email) {
     return fail("missing_user_email");
   }
 
@@ -88,7 +117,7 @@ export async function GET(request: NextRequest) {
 
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: "magiclink",
-    email: userData.user.email,
+    email: user.email,
     options: {
       redirectTo: callbackUrl,
     },

@@ -2,6 +2,7 @@ import { LoginForm } from "@/components/login-form";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { createClient } from "@/lib/supabase/server";
 import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
+import { getUserSafely } from "@krafta/supabase/auth";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -19,7 +20,7 @@ export default async function LoginPage({
 
   // Check if user is already logged in
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getUserSafely(supabase);
 
   if (user) {
     redirect(next);

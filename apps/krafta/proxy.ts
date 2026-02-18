@@ -1,5 +1,4 @@
-
-import { createServerClient } from "@supabase/ssr";
+import { updateSession } from "@krafta/supabase/proxy";
 import { NextResponse, type NextRequest } from "next/server";
 import { normalizeNextPath } from "@/lib/auth/redirect";
 
@@ -11,38 +10,13 @@ import { normalizeNextPath } from "@/lib/auth/redirect";
  * 2. Protects /dashboard routes from unauthenticated users
  */
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
+  const { response: sessionResponse, user } = await updateSession(request);
+  const applySessionCookies = (target: NextResponse) => {
+    for (const cookie of sessionResponse.cookies.getAll()) {
+      target.cookies.set(cookie);
     }
-  );
-
-  // IMPORTANT: Do not use getSession() for authorization.
-  // Use getUser() instead as it validates the session on the server.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    return target;
+  };
 
   const { pathname } = request.nextUrl;
 
@@ -58,7 +32,7 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/login";
     const returnPath = `${pathname}${request.nextUrl.search}`;
     url.searchParams.set("next", returnPath);
-    return NextResponse.redirect(url);
+    return applySessionCookies(NextResponse.redirect(url));
   }
 
   // Auth routes - redirect to dashboard if already authenticated
@@ -73,10 +47,10 @@ export async function proxy(request: NextRequest) {
       "/dashboard",
     );
     const target = new URL(next, request.url);
-    return NextResponse.redirect(target);
+    return applySessionCookies(NextResponse.redirect(target));
   }
 
-  return supabaseResponse;
+  return sessionResponse;
 }
 
 export const config = {

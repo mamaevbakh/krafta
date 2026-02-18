@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { getUserSafely } from "@krafta/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { getRequestOrigin } from "@/lib/auth/redirect";
 import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
@@ -28,8 +29,8 @@ async function startUpgradeAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) {
+  const { user: authUser, authError } = await getUserSafely(supabase);
+  if (authError || !authUser) {
     redirect(`/login?next=/dashboard/${orgSlug}/${catalogSlug}/billing`);
   }
 
@@ -37,7 +38,7 @@ async function startUpgradeAction(formData: FormData) {
     .from("organization_members")
     .select("id")
     .eq("org_id", customerOrgId)
-    .eq("user_id", auth.user.id)
+    .eq("user_id", authUser.id)
     .maybeSingle();
   if (membershipErr) {
     redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(membershipErr.message)}`);
@@ -69,14 +70,14 @@ async function startUpgradeAction(formData: FormData) {
       cancelUrl,
       returnUrl: successUrl,
       customerRef: {
-        email: auth.user.email,
-        customerUserRef: auth.user.id,
+        email: authUser.email,
+        customerUserRef: authUser.id,
       },
       catalogContext: {
         org_slug: orgSlug,
         catalog_slug: catalogSlug,
       },
-      initiatedByUserId: auth.user.id,
+      initiatedByUserId: authUser.id,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create checkout session";

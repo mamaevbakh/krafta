@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
-import { getUserSafely } from "@/lib/safe-auth";
+import { getUserSafely } from "@krafta/supabase/auth";
 
 export default async function DashboardPage({
   searchParams,

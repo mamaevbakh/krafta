@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getUserSafely } from "@/lib/safe-auth";
+import { getUserSafely } from "@krafta/supabase/auth";
 
 export type OrgRole = "owner" | "admin" | "member";
 

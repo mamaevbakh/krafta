@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createCheckoutSession } from "@krafta/payments-core";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
-import { getUserSafely } from "@/lib/safe-auth";
+import { getUserSafely } from "@krafta/supabase/auth";
 
 export async function createHostedCheckoutAction(formData: FormData) {
   const orgId = String(formData.get("orgId") ?? "").trim();

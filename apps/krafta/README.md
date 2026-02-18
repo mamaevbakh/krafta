@@ -399,12 +399,15 @@ KRAFTA_SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 # Billing orchestration
 KRAFTA_PAY_URL=https://pay.krafta.org
+PAY_BASE_URL=https://pay.krafta.org
 KRAFTA_PAY_API_KEY=krp_test_xxxxxxxxxxxxxxxxx
 KRAFTA_PAY_INTERNAL_SECRET=shared-secret-with-krafta-pay
 
-# Optional for multi-domain auth redirect allowlist
-# Example: https://pay.krafta.uz,https://pay.krafta.org,https://pay.krafta.company
+# Optional for multi-domain auth redirect allowlist (comma-separated, no spaces)
+# Example: https://pay.krafta.uz,https://pay.krafta.org
 KRAFTA_ALLOWED_REDIRECT_ORIGINS=
+KRAFTA_PAY_URLS=
+PAY_BASE_URLS=
 ```
 
 ### Required (krafta-pay)
@@ -422,10 +425,24 @@ PAY_CREDENTIALS_SECRET=your-encryption-secret
 # Optional app-login origin overrides (for multi-domain deployments)
 KRAFTA_APP_URL=https://krafta.org
 KRAFTA_APP_URLS=
+NEXT_PUBLIC_KRAFTA_APP_URL=https://krafta.org
+NEXT_PUBLIC_KRAFTA_APP_URLS=
 
 # Provider credentials (per-org in DB)
 # Configured in payments.org_provider_accounts + payments.org_provider_account_secrets
 ```
+
+### Supabase Auth URL Configuration
+
+In your Supabase project Authentication settings:
+
+- Site URL: base app URL (for example `https://krafta.org`, not `/auth/confirm`)
+- Redirect URLs must include:
+  - `https://krafta.org/auth/confirm`
+  - `https://pay.krafta.uz/auth/confirm` (or your Pay domain)
+  - local dev callbacks if needed:
+    - `http://localhost:3000/auth/confirm`
+    - `http://localhost:3001/auth/confirm`
 
 ---
 
