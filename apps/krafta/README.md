@@ -400,6 +400,10 @@ KRAFTA_SUPABASE_SERVICE_ROLE_KEY=eyJ...
 # Billing orchestration
 KRAFTA_PAY_URL=https://pay.krafta.org
 KRAFTA_PAY_API_KEY=krp_test_xxxxxxxxxxxxxxxxx
+
+# Optional for multi-domain auth redirect allowlist
+# Example: https://pay.krafta.uz,https://pay.krafta.org,https://pay.krafta.company
+KRAFTA_ALLOWED_REDIRECT_ORIGINS=
 ```
 
 ### Required (krafta-pay)
@@ -413,6 +417,10 @@ PAY_ENV=live
 KRAFTA_PAY_INTERNAL_SECRET=your-shared-hmac-secret
 KRAFTA_PAY_API_KEYS_SECRET=your-api-key-hash-secret
 PAY_CREDENTIALS_SECRET=your-encryption-secret
+
+# Optional app-login origin overrides (for multi-domain deployments)
+KRAFTA_APP_URL=https://krafta.org
+KRAFTA_APP_URLS=
 
 # Provider credentials (per-org in DB)
 # Configured in payments.org_provider_accounts + payments.org_provider_account_secrets

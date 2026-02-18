@@ -12,6 +12,14 @@ function parseOrigin(value: string | null | undefined): string | null {
   }
 }
 
+function parseOriginList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => parseOrigin(entry.trim()))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
 export function getRequestOrigin(headersList: HeaderReader): string {
   const originFromHeader = parseOrigin(headersList.get("origin"));
   if (originFromHeader) {
@@ -33,11 +41,18 @@ export function getAllowedRedirectOrigins(origin: string): string[] {
   const isLocalOrigin =
     origin.includes("localhost") || origin.includes("127.0.0.1");
 
+  const extraOrigins = [
+    ...parseOriginList(process.env.KRAFTA_ALLOWED_REDIRECT_ORIGINS),
+    ...parseOriginList(process.env.KRAFTA_PAY_URLS),
+    ...parseOriginList(process.env.PAY_BASE_URLS),
+  ];
+
   const origins = [
     origin,
     process.env.KRAFTA_APP_URL,
     process.env.KRAFTA_PAY_URL,
     process.env.PAY_BASE_URL,
+    ...extraOrigins,
     isLocalOrigin ? "http://localhost:3001" : null,
     isLocalOrigin ? "http://127.0.0.1:3001" : null,
   ]

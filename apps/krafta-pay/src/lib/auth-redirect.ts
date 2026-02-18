@@ -12,6 +12,14 @@ function parseOrigin(value: string | null | undefined): string | null {
   }
 }
 
+function parseOriginList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => parseOrigin(entry.trim()))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
 export function getRequestOrigin(headersList: HeaderReader): string {
   const originFromHeader = parseOrigin(headersList.get("origin"));
   if (originFromHeader) {
@@ -55,9 +63,15 @@ export function normalizePayNext(
 }
 
 export function getKraftaAppOrigin(): string {
+  const appOrigins = [
+    ...parseOriginList(process.env.KRAFTA_APP_URLS),
+    ...parseOriginList(process.env.NEXT_PUBLIC_KRAFTA_APP_URLS),
+  ];
+
   return (
     parseOrigin(process.env.KRAFTA_APP_URL) ??
     parseOrigin(process.env.NEXT_PUBLIC_KRAFTA_APP_URL) ??
+    appOrigins[0] ??
     "http://localhost:3000"
   );
 }
