@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  normalizeNextPath,
+  toAbsoluteRedirectUrl,
+} from "@/lib/auth/redirect";
 
 /**
  * Auth confirmation handler for:
@@ -23,7 +27,7 @@ export async function GET(request: NextRequest) {
     | "magiclink"
     | null;
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const next = normalizeNextPath(searchParams.get("next"), origin);
   const error = searchParams.get("error");
   const error_description = searchParams.get("error_description");
 
@@ -52,7 +56,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Successfully verified, redirect to next page
-    return NextResponse.redirect(`${origin}${next}`);
+    return NextResponse.redirect(toAbsoluteRedirectUrl(next, origin));
   }
 
   // Handle OAuth callback (PKCE code exchange)
@@ -67,7 +71,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Successfully exchanged, redirect to next page
-    return NextResponse.redirect(`${origin}${next}`);
+    return NextResponse.redirect(toAbsoluteRedirectUrl(next, origin));
   }
 
   // No valid parameters provided

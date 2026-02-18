@@ -15,6 +15,8 @@ import type {
 } from "@/lib/catalogs/settings/layout";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import { getCatalogBySlug } from "@/lib/catalogs/data";
+import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
+import Link from "next/link";
 
 const HEADER_LABELS: Record<HeaderVariant, string> = {
   "header-basic": "Basic Header",
@@ -59,13 +61,39 @@ type BuilderPageProps = {
 export default async function CatalogBuilderPage({
   params,
 }: BuilderPageProps) {
-  const { catalogSlug } = await params;
+  const { catalogSlug, orgSlug } = await params;
   const catalog = await getCatalogBySlug(catalogSlug);
   if (!catalog) {
     return (
       <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
         <div className="mt-8 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
           Catalog not found for builder preview.
+        </div>
+      </div>
+    );
+  }
+
+  const entitlement = await getOrgBillingEntitlement(catalog.org_id);
+  if (entitlement.status === "locked") {
+    return (
+      <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
+        <div className="mt-8 rounded-xl border border-border bg-background p-6">
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            Billing Required
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+            Unlock Builder with an active subscription
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your organization currently does not have an active billing entitlement.
+            Go to Billing to upgrade and continue using Builder.
+          </p>
+          <Link
+            href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}
+            className="mt-4 inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            Open Billing
+          </Link>
         </div>
       </div>
     );

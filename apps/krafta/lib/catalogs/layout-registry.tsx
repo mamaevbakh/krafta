@@ -36,6 +36,7 @@ export type HeaderProps = {
   catalogName: string;
   description: string | null;
   catalog: PublicCatalog;
+  headerSettings: CatalogLayoutSettings["header"];
   logoUrl: string | null;
   tags: string[] | null;
 };

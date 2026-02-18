@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
+import type { CatalogLayoutOverride } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 type PreviewPreset = {
@@ -24,7 +24,7 @@ export function CatalogPreviewFrame({
   currencyOverrides,
 }: {
   catalogSlug: string;
-  layoutOverrides?: Partial<CatalogLayoutSettings>;
+  layoutOverrides?: CatalogLayoutOverride;
   currencyOverrides?: CurrencySettings;
 }) {
   const [presetId, setPresetId] = useState<string>("desktop");
@@ -65,6 +65,45 @@ export function CatalogPreviewFrame({
     }
     if (layoutOverrides?.itemCard?.aspectRatio) {
       params.set("ratio", String(layoutOverrides.itemCard.aspectRatio));
+    }
+    const freeLogoSettings = layoutOverrides?.header?.basicFreeLogo;
+    if (freeLogoSettings) {
+      if (freeLogoSettings.showLogo !== undefined) {
+        params.set("hflShowLogo", freeLogoSettings.showLogo ? "1" : "0");
+      }
+      if (freeLogoSettings.showTitle !== undefined) {
+        params.set("hflShowTitle", freeLogoSettings.showTitle ? "1" : "0");
+      }
+      if (freeLogoSettings.showDescription !== undefined) {
+        params.set(
+          "hflShowDescription",
+          freeLogoSettings.showDescription ? "1" : "0",
+        );
+      }
+      if (freeLogoSettings.showTags !== undefined) {
+        params.set("hflShowTags", freeLogoSettings.showTags ? "1" : "0");
+      }
+      if (freeLogoSettings.logoFullWidth !== undefined) {
+        params.set("hflLogoFull", freeLogoSettings.logoFullWidth ? "1" : "0");
+      }
+      if (freeLogoSettings.logoAspectRatio !== undefined) {
+        params.set("hflRatio", String(freeLogoSettings.logoAspectRatio));
+      }
+      if (freeLogoSettings.logoCornerRadius !== undefined) {
+        params.set("hflCorner", String(freeLogoSettings.logoCornerRadius));
+      }
+      if (freeLogoSettings.backgroundColorLight) {
+        params.set("hflBgLight", freeLogoSettings.backgroundColorLight);
+      }
+      if (freeLogoSettings.backgroundColorDark) {
+        params.set("hflBgDark", freeLogoSettings.backgroundColorDark);
+      }
+      if (freeLogoSettings.bannerLightPath) {
+        params.set("hflBannerLight", freeLogoSettings.bannerLightPath);
+      }
+      if (freeLogoSettings.bannerDarkPath) {
+        params.set("hflBannerDark", freeLogoSettings.bannerDarkPath);
+      }
     }
     if (currencyOverrides) {
       params.set("cur", currencyOverrides.defaultCurrency);

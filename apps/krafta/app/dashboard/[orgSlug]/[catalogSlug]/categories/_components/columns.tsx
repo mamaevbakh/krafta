@@ -29,11 +29,13 @@ function formatCreatedAt(value: string) {
 function CategoryActions({
   category,
   onEdit,
+  onDelete,
   align = "end",
   size = "icon-sm",
 }: {
   category: CatalogCategory
   onEdit?: (category: CatalogCategory) => void
+  onDelete?: (category: CatalogCategory) => void
   align?: "start" | "center" | "end"
   size?: "icon" | "icon-sm" | "icon-lg"
 }) {
@@ -65,12 +67,12 @@ function CategoryActions({
           Edit
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled
           onSelect={(e) => {
             e.preventDefault()
+            onDelete?.(category)
           }}
         >
-          Delete (coming soon)
+          Delete
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -185,8 +187,10 @@ export const columns: ColumnDef<CatalogCategory>[] = [
 
 export function createColumns({
   onEdit,
+  onDelete,
 }: {
   onEdit?: (category: CatalogCategory) => void
+  onDelete?: (category: CatalogCategory) => void
 }): ColumnDef<CatalogCategory>[] {
   return columns.map((column) => {
     if (column.id === "actions") {
@@ -195,7 +199,12 @@ export function createColumns({
         cell: ({ row }) => {
           const category = row.original
           return (
-            <CategoryActions category={category} size="icon" onEdit={onEdit} />
+            <CategoryActions
+              category={category}
+              size="icon"
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
           )
         },
       }
@@ -213,7 +222,11 @@ export function createColumns({
                   {category.name || "Untitled category"}
                 </div>
                 <div className="absolute right-0 top-0">
-                  <CategoryActions category={category} onEdit={onEdit} />
+                  <CategoryActions
+                    category={category}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                  />
                 </div>
               </div>
               <div className="hidden lg:block">

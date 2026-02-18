@@ -16,24 +16,28 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getCatalogAssetUrl } from "@/lib/catalogs/media";
+import { cn } from "@/lib/utils";
 
 export type CatalogOption = {
   id: string;
   name: string;
   slug: string;
-  logo?: string | null;
+  logo_path?: string | null;
 };
 
 type CatalogSwitcherProps = {
   orgSlug: string;
   currentCatalogSlug: string;
   catalogs: CatalogOption[];
+  triggerClassName?: string;
 };
 
 export function CatalogSwitcher({
   orgSlug,
   currentCatalogSlug,
   catalogs,
+  triggerClassName,
 }: CatalogSwitcherProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -74,17 +78,21 @@ export function CatalogSwitcher({
 
   const activeCatalog = selectedCatalog ?? catalogs[0];
   const catalogInitial = (activeCatalog?.name || "C").slice(0, 1).toUpperCase();
+  const activeCatalogLogo = getCatalogAssetUrl(activeCatalog?.logo_path);
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ring transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 active:bg-accent active:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+          className={cn(
+            "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ring transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 active:bg-accent active:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground md:w-auto",
+            triggerClassName
+          )}
           aria-label="Select catalog"
         >
-          {activeCatalog?.logo ? (
+          {activeCatalogLogo ? (
             <Image
-              src={activeCatalog.logo}
+              src={activeCatalogLogo}
               alt={activeCatalog.name}
               width={32}
               height={32}
@@ -95,7 +103,7 @@ export function CatalogSwitcher({
               <span className="text-xs font-semibold">{catalogInitial}</span>
             </div>
           )}
-          <div className="grid flex-1 text-left text-sm leading-tight">
+          <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium">{activeCatalog?.name}</span>
             <span className="truncate text-xs text-muted-foreground">Catalogs</span>
           </div>
@@ -118,36 +126,40 @@ export function CatalogSwitcher({
         <DropdownMenuLabel className="text-xs text-muted-foreground">
           Catalogs
         </DropdownMenuLabel>
-        {filteredCatalogs.map((catalog, index) => (
-          <DropdownMenuItem
-            key={catalog.id}
-            className="gap-2 p-2"
-            onClick={() => {
-              setSelectedSlug(catalog.slug);
-              if (catalog.slug !== selectedSlug) {
-                router.push(`/dashboard/${orgSlug}/${catalog.slug}`);
-              }
-            }}
-          >
-            {catalog.logo ? (
-              <Image
-                src={catalog.logo}
-                alt={catalog.name}
-                width={24}
-                height={24}
-                className="size-6 shrink-0 rounded-md object-cover"
-              />
-            ) : (
-              <div className="flex size-6 items-center justify-center rounded-md border">
-                <span className="text-[10px] font-semibold">
-                  {catalog.name.slice(0, 1).toUpperCase()}
-                </span>
-              </div>
-            )}
-            {catalog.name}
-            <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
-          </DropdownMenuItem>
-        ))}
+        {filteredCatalogs.map((catalog, index) => {
+          const catalogLogo = getCatalogAssetUrl(catalog.logo_path);
+
+          return (
+            <DropdownMenuItem
+              key={catalog.id}
+              className="gap-2 p-2"
+              onClick={() => {
+                setSelectedSlug(catalog.slug);
+                if (catalog.slug !== selectedSlug) {
+                  router.push(`/dashboard/${orgSlug}/${catalog.slug}`);
+                }
+              }}
+            >
+              {catalogLogo ? (
+                <Image
+                  src={catalogLogo}
+                  alt={catalog.name}
+                  width={24}
+                  height={24}
+                  className="size-6 shrink-0 rounded-md object-cover"
+                />
+              ) : (
+                <div className="flex size-6 items-center justify-center rounded-md border">
+                  <span className="text-[10px] font-semibold">
+                    {catalog.name.slice(0, 1).toUpperCase()}
+                  </span>
+                </div>
+              )}
+              <span className="flex-1 truncate">{catalog.name}</span>
+              <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          );
+        })}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="gap-2 p-2"

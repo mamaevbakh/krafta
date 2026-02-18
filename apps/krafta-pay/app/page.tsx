@@ -1,8 +1,16 @@
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
+import { headers } from "next/headers";
+import {
+  buildKraftaLoginUrl,
+  getRequestOrigin,
+} from "@/lib/auth-redirect";
 
-export default function Home() {
+export default async function Home() {
+  const origin = getRequestOrigin(await headers());
+  const loginUrl = buildKraftaLoginUrl(`${origin}/dashboard`);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black px-6 py-16 font-sans">
       
@@ -20,7 +28,7 @@ export default function Home() {
 
                 <div className="mt-8 flex flex-col gap-4 text-base font-medium sm:flex-row">
                   <Button variant="secondary" size="lg">
-                    <Link href="/login">Login</Link>
+                    <Link href={loginUrl}>Login</Link>
                   </Button>
 
                   <Button variant="default" size="lg">

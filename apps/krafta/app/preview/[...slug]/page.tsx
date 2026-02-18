@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 
 import { getCatalogBySlug, getCatalogStructure } from "@/lib/catalogs/data";
 import { CatalogLayout } from "@/lib/catalogs/layout";
-import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
+import type {
+  CatalogLayoutOverride,
+  CatalogLayoutSettings,
+} from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import {
   categoryNavVariants,
@@ -77,7 +80,7 @@ async function PreviewCatalogContent({
 
 function getPreviewLayoutOverride(
   searchParams: Record<string, string | string[] | undefined>,
-): Partial<CatalogLayoutSettings> | undefined {
+): CatalogLayoutOverride | undefined {
   if (searchParams.preview !== "1") return undefined;
 
   const header =
@@ -109,7 +112,7 @@ function getPreviewLayoutOverride(
       ? Number(searchParams.ratio)
       : undefined;
 
-  const override: Partial<CatalogLayoutSettings> = {};
+  const override: CatalogLayoutOverride = {};
 
   if (
     header &&
@@ -173,6 +176,101 @@ function getPreviewLayoutOverride(
     override.itemCard = {
       columns: hasValidColumns ? columns : 2,
       aspectRatio: hasValidRatio ? ratio : 4 / 3,
+    };
+  }
+
+  const showLogo =
+    searchParams.hflShowLogo === "1"
+      ? true
+      : searchParams.hflShowLogo === "0"
+        ? false
+        : undefined;
+  const showTitle =
+    searchParams.hflShowTitle === "1"
+      ? true
+      : searchParams.hflShowTitle === "0"
+        ? false
+        : undefined;
+  const showDescription =
+    searchParams.hflShowDescription === "1"
+      ? true
+      : searchParams.hflShowDescription === "0"
+        ? false
+        : undefined;
+  const showTags =
+    searchParams.hflShowTags === "1"
+      ? true
+      : searchParams.hflShowTags === "0"
+        ? false
+        : undefined;
+  const logoFullWidth =
+    searchParams.hflLogoFull === "1"
+      ? true
+      : searchParams.hflLogoFull === "0"
+        ? false
+        : undefined;
+  const headerRatio =
+    typeof searchParams.hflRatio === "string"
+      ? Number(searchParams.hflRatio)
+      : undefined;
+  const headerCorner =
+    typeof searchParams.hflCorner === "string"
+      ? Number(searchParams.hflCorner)
+      : undefined;
+  const backgroundColorLight =
+    typeof searchParams.hflBgLight === "string"
+      ? searchParams.hflBgLight
+      : undefined;
+  const backgroundColorDark =
+    typeof searchParams.hflBgDark === "string"
+      ? searchParams.hflBgDark
+      : undefined;
+  const bannerLightPath =
+    typeof searchParams.hflBannerLight === "string"
+      ? searchParams.hflBannerLight
+      : undefined;
+  const bannerDarkPath =
+    typeof searchParams.hflBannerDark === "string"
+      ? searchParams.hflBannerDark
+      : undefined;
+
+  const hasFreeLogoOverride = [
+    showLogo,
+    showTitle,
+    showDescription,
+    showTags,
+    logoFullWidth,
+    headerRatio,
+    headerCorner,
+    backgroundColorLight,
+    backgroundColorDark,
+    bannerLightPath,
+    bannerDarkPath,
+  ].some((value) => value !== undefined);
+
+  if (hasFreeLogoOverride) {
+    override.header = {
+      basicFreeLogo: {
+        ...(showLogo !== undefined ? { showLogo } : {}),
+        ...(showTitle !== undefined ? { showTitle } : {}),
+        ...(showDescription !== undefined ? { showDescription } : {}),
+        ...(showTags !== undefined ? { showTags } : {}),
+        ...(logoFullWidth !== undefined ? { logoFullWidth } : {}),
+        ...(headerRatio && headerRatio > 0
+          ? { logoAspectRatio: headerRatio }
+          : {}),
+        ...(headerCorner !== undefined && Number.isFinite(headerCorner)
+          ? { logoCornerRadius: Math.max(0, headerCorner) }
+          : {}),
+        ...(backgroundColorLight !== undefined
+          ? { backgroundColorLight }
+          : {}),
+        ...(backgroundColorDark !== undefined
+          ? { backgroundColorDark }
+          : {}),
+        ...(bannerLightPath !== undefined ? { bannerLightPath } : {}),
+        ...(bannerDarkPath !== undefined ? { bannerDarkPath } : {}),
+      },
     };
   }
 

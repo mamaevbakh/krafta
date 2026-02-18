@@ -29,6 +29,21 @@ export default async function DashboardPage({
         <p className="mt-1 text-sm text-muted-foreground">Signed in as {auth.user?.email}</p>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <Link className="rounded-md border bg-background p-4 text-sm hover:bg-muted" href={`/dashboard/providers${orgOptions[0]?.id ? `?orgId=${orgOptions[0].id}` : ""}`}>
+          <p className="font-medium">Provider Setup</p>
+          <p className="mt-1 text-muted-foreground">Configure Uzum credentials and webhook secret.</p>
+        </Link>
+        <Link className="rounded-md border bg-background p-4 text-sm hover:bg-muted" href={`/dashboard/plans${orgOptions[0]?.id ? `?orgId=${orgOptions[0].id}` : ""}`}>
+          <p className="font-medium">Plans</p>
+          <p className="mt-1 text-muted-foreground">Create and manage subscription plans.</p>
+        </Link>
+        <Link className="rounded-md border bg-background p-4 text-sm hover:bg-muted" href={`/dashboard/subscriptions${orgOptions[0]?.id ? `?orgId=${orgOptions[0].id}` : ""}`}>
+          <p className="font-medium">Subscriptions</p>
+          <p className="mt-1 text-muted-foreground">Inspect active, past due, and canceled subscriptions.</p>
+        </Link>
+      </div>
+
       {sp.error ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
           {sp.error}

@@ -1332,6 +1332,14 @@ export type Database = {
         }
         Returns: string
       }
+      catalog_search_sync_category_document: {
+        Args: { p_category_id: string }
+        Returns: undefined
+      }
+      catalog_search_sync_item_document: {
+        Args: { p_item_id: string }
+        Returns: undefined
+      }
       log_search: {
         Args: {
           p_catalog_id: string

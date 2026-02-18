@@ -13,10 +13,17 @@ export async function POST(
 
     const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
     const payBaseUrl = process.env.PAY_BASE_URL ?? "http://localhost:3001";
+    const providerId = String(body.providerId ?? "");
+    if (providerId !== "uzum") {
+      return NextResponse.json(
+        { error: "provider_not_enabled_in_stage1" },
+        { status: 400 },
+      );
+    }
 
     const result = await selectProviderCreateAttempt(
       supabase,
-      { publicToken: public_token, providerId: body.providerId, viewType: body.viewType },
+      { publicToken: public_token, providerId, viewType: body.viewType },
       environment,
       payBaseUrl
     );

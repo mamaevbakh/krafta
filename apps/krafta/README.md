@@ -396,6 +396,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 # Search (server-side only)
 KRAFTA_SUPABASE_URL=https://xxx.supabase.co
 KRAFTA_SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Billing orchestration
+KRAFTA_PAY_URL=https://pay.krafta.org
+KRAFTA_PAY_API_KEY=krp_test_xxxxxxxxxxxxxxxxx
 ```
 
 ### Required (krafta-pay)
@@ -404,9 +408,14 @@ KRAFTA_SUPABASE_SERVICE_ROLE_KEY=eyJ...
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
+PAY_BASE_URL=https://pay.krafta.org
+PAY_ENV=live
+KRAFTA_PAY_INTERNAL_SECRET=your-shared-hmac-secret
+KRAFTA_PAY_API_KEYS_SECRET=your-api-key-hash-secret
+PAY_CREDENTIALS_SECRET=your-encryption-secret
 
 # Provider credentials (per-org in DB)
-# Configured via org_provider_configs table
+# Configured in payments.org_provider_accounts + payments.org_provider_account_secrets
 ```
 
 ---

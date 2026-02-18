@@ -30,6 +30,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { signOut } from "@/lib/auth/actions";
+import Link from "next/link";
 
 export function NavUser({
   user,
@@ -90,9 +91,11 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard">
                 <Sparkles />
                 Upgrade to Pro
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
@@ -101,9 +104,11 @@ export function NavUser({
                 <BadgeCheck />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard">
                 <CreditCard />
                 Billing
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Bell />

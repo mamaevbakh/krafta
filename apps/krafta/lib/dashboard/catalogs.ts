@@ -2,7 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { cacheLife } from "next/cache";
 import type { Tables, Database } from "@/lib/supabase/types";
 
-export type CatalogSummary = Pick<Tables<"catalogs">, "id" | "name" | "slug">;
+export type CatalogSummary = Pick<
+  Tables<"catalogs">,
+  "id" | "name" | "slug" | "logo_path"
+>;
 export type CookieSnapshot = Array<{ name: string; value: string }>;
 
 export async function getOrgCatalogSummaries(
@@ -28,7 +31,7 @@ export async function getOrgCatalogSummaries(
 
   const { data, error } = await supabase
     .from("catalogs")
-    .select("id, name, slug, org_id, organizations!inner(slug)")
+    .select("id, name, slug, logo_path, org_id, organizations!inner(slug)")
     .eq("organizations.slug", orgSlug)
     .order("created_at", { ascending: true });
 
@@ -36,5 +39,10 @@ export async function getOrgCatalogSummaries(
     return [];
   }
 
-  return (data ?? []).map(({ id, name, slug }) => ({ id, name, slug }));
+  return (data ?? []).map(({ id, name, slug, logo_path }) => ({
+    id,
+    name,
+    slug,
+    logo_path,
+  }));
 }

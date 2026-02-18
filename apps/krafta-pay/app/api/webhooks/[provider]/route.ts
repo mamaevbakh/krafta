@@ -7,37 +7,46 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ provider: string }> }
 ) {
-  const supabase = createAdminSupabase();
-  const { provider } = await params;
-
-  const rawBody = await req.text();
-  const headers: Record<string, string | null> = {};
-  req.headers.forEach((v, k) => (headers[k] = v));
-
-  const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
-
-  const result = await handleWebhookEvent(
-    supabase,
-    { providerId: provider, rawBody, headers },
-    environment
-  );
-
-  if (result.checkoutPublicToken) {
-    try {
-      await broadcastCheckoutUpdate(supabase, result.checkoutPublicToken, {
-        reason: "webhook_processed",
-        provider,
-        paymentIntentId: result.paymentIntentId,
-        at: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn("realtime broadcast failed", {
-        provider,
-        publicToken: result.checkoutPublicToken,
-        error: e instanceof Error ? e.message : String(e),
-      });
+  try {
+    const supabase = createAdminSupabase();
+    const { provider } = await params;
+    if (provider !== "uzum") {
+      return NextResponse.json({ error: "provider_not_enabled_in_stage1" }, { status: 400 });
     }
-  }
 
-  return NextResponse.json({ ok: true });
+    const rawBody = await req.text();
+    const headers: Record<string, string | null> = {};
+    req.headers.forEach((v, k) => (headers[k] = v));
+
+    const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
+
+    const result = await handleWebhookEvent(
+      supabase,
+      { providerId: provider, rawBody, headers },
+      environment
+    );
+
+    if (result.checkoutPublicToken) {
+      try {
+        await broadcastCheckoutUpdate(supabase, result.checkoutPublicToken, {
+          reason: "webhook_processed",
+          provider,
+          paymentIntentId: result.paymentIntentId,
+          at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn("realtime broadcast failed", {
+          provider,
+          publicToken: result.checkoutPublicToken,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "webhook_failed";
+    console.error("webhook failed", { message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

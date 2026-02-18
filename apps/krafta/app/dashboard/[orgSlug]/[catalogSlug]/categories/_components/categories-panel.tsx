@@ -1,12 +1,15 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 import type { CatalogCategory } from "@/lib/catalogs/types"
 import { DataTable } from "./data-table"
 import { createColumns } from "./columns"
 import { Button } from "@/components/ui/button"
 import { CreateCategoryDrawer } from "./create-category-drawer"
+import { deleteCategory } from "./actions"
 
 type LocaleOption = {
   id: string
@@ -39,6 +42,7 @@ export function CategoriesPanel({
   locales,
   translations,
 }: CategoriesPanelProps) {
+  const router = useRouter()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<CatalogCategory | null>(
     null,
@@ -50,6 +54,32 @@ export function CategoriesPanel({
       (translation) => translation.category_id === editingCategory.id,
     )
   }, [editingCategory, translations])
+
+  async function handleDeleteCategory(category: CatalogCategory) {
+    const shouldDelete = window.confirm(
+      `Delete "${category.name}" and all of its items? This cannot be undone.`,
+    )
+    if (!shouldDelete) return
+
+    const result = await deleteCategory({
+      catalogId,
+      catalogSlug,
+      categoryId: category.id,
+    })
+
+    if (!result.ok) {
+      toast.error(result.error ?? "Failed to delete category.")
+      return
+    }
+
+    if (editingCategory?.id === category.id) {
+      setEditingCategory(null)
+      setDrawerOpen(false)
+    }
+
+    toast.success("Category deleted.")
+    router.refresh()
+  }
 
   return (
     <main className="w-full">
@@ -78,10 +108,17 @@ export function CategoriesPanel({
               setEditingCategory(category)
               setDrawerOpen(true)
             },
+            onDelete: (category) => {
+              void handleDeleteCategory(category)
+            },
           })}
           data={categories}
           enableStatusTabs
           searchPlaceholder="Search categories..."
+          onRowClick={(category) => {
+            setEditingCategory(category)
+            setDrawerOpen(true)
+          }}
         />
       </div>
 

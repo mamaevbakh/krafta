@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import type { CatalogLayoutSettings } from "@/lib/catalogs/settings/layout";
+import type {
+  CatalogLayoutOverride,
+  CatalogLayoutSettings,
+  HeaderBasicFreeLogoSettings,
+} from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
 import { Button } from "@/components/ui/button";
@@ -29,12 +33,23 @@ const COMMON_ASPECT_RATIOS: AspectPreset[] = [
   { width: 9, height: 16 },
 ];
 
-function getAspectInputs(ratio: number): AspectPreset {
+const LOGO_ASPECT_RATIOS: AspectPreset[] = [
+  { width: 1, height: 1 },
+  { width: 2, height: 1 },
+  { width: 3, height: 1 },
+  { width: 4, height: 1 },
+  { width: 16, height: 9 },
+];
+
+function getAspectInputs(
+  ratio: number,
+  presets: AspectPreset[] = COMMON_ASPECT_RATIOS,
+): AspectPreset {
   const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
-  let bestMatch = COMMON_ASPECT_RATIOS[0];
+  let bestMatch = presets[0];
   let bestDiff = Infinity;
 
-  for (const preset of COMMON_ASPECT_RATIOS) {
+  for (const preset of presets) {
     const presetRatio = preset.width / preset.height;
     const diff = Math.abs(presetRatio - safeRatio);
     if (diff < bestDiff) {
@@ -77,8 +92,16 @@ export function CatalogBuilderPanel({
   navOptions,
 }: BuilderPanelProps) {
   const initialAspectInputs = useMemo(
-    () => getAspectInputs(initialLayout.itemCard.aspectRatio),
+    () => getAspectInputs(initialLayout.itemCard.aspectRatio, COMMON_ASPECT_RATIOS),
     [initialLayout.itemCard.aspectRatio],
+  );
+  const initialHeaderLogoAspectInputs = useMemo(
+    () =>
+      getAspectInputs(
+        initialLayout.header.basicFreeLogo.logoAspectRatio,
+        LOGO_ASPECT_RATIOS,
+      ),
+    [initialLayout.header.basicFreeLogo.logoAspectRatio],
   );
 
   const [headerVariant, setHeaderVariant] = useState(
@@ -123,6 +146,42 @@ export function CatalogBuilderPanel({
   const [labelPosition, setLabelPosition] = useState(
     initialCurrency.labelPosition,
   );
+  const [showHeaderLogo, setShowHeaderLogo] = useState(
+    initialLayout.header.basicFreeLogo.showLogo,
+  );
+  const [showHeaderTitle, setShowHeaderTitle] = useState(
+    initialLayout.header.basicFreeLogo.showTitle,
+  );
+  const [showHeaderDescription, setShowHeaderDescription] = useState(
+    initialLayout.header.basicFreeLogo.showDescription,
+  );
+  const [showHeaderTags, setShowHeaderTags] = useState(
+    initialLayout.header.basicFreeLogo.showTags,
+  );
+  const [headerLogoFullWidth, setHeaderLogoFullWidth] = useState(
+    initialLayout.header.basicFreeLogo.logoFullWidth,
+  );
+  const [headerLogoAspectWidth, setHeaderLogoAspectWidth] = useState(
+    initialHeaderLogoAspectInputs.width,
+  );
+  const [headerLogoAspectHeight, setHeaderLogoAspectHeight] = useState(
+    initialHeaderLogoAspectInputs.height,
+  );
+  const [headerLogoCornerRadius, setHeaderLogoCornerRadius] = useState(
+    initialLayout.header.basicFreeLogo.logoCornerRadius,
+  );
+  const [headerBannerLightPath, setHeaderBannerLightPath] = useState(
+    initialLayout.header.basicFreeLogo.bannerLightPath ?? "",
+  );
+  const [headerBannerDarkPath, setHeaderBannerDarkPath] = useState(
+    initialLayout.header.basicFreeLogo.bannerDarkPath ?? "",
+  );
+  const [headerBackgroundColorLight, setHeaderBackgroundColorLight] = useState(
+    initialLayout.header.basicFreeLogo.backgroundColorLight,
+  );
+  const [headerBackgroundColorDark, setHeaderBackgroundColorDark] = useState(
+    initialLayout.header.basicFreeLogo.backgroundColorDark,
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   const aspectRatio = useMemo(() => {
@@ -136,6 +195,17 @@ export function CatalogBuilderPanel({
         : 1;
     return safeWidth / safeHeight;
   }, [aspectWidth, aspectHeight]);
+  const headerLogoAspectRatio = useMemo(() => {
+    const safeWidth =
+      Number.isFinite(headerLogoAspectWidth) && headerLogoAspectWidth > 0
+        ? headerLogoAspectWidth
+        : 1;
+    const safeHeight =
+      Number.isFinite(headerLogoAspectHeight) && headerLogoAspectHeight > 0
+        ? headerLogoAspectHeight
+        : 1;
+    return safeWidth / safeHeight;
+  }, [headerLogoAspectWidth, headerLogoAspectHeight]);
 
   const layoutOverrides = useMemo(
     () => ({
@@ -148,6 +218,21 @@ export function CatalogBuilderPanel({
         columns: itemCardColumns,
         aspectRatio,
       },
+      header: {
+        basicFreeLogo: {
+          showLogo: showHeaderLogo,
+          showTitle: showHeaderTitle,
+          showDescription: showHeaderDescription,
+          showTags: showHeaderTags,
+          logoFullWidth: headerLogoFullWidth,
+          logoAspectRatio: headerLogoAspectRatio,
+          logoCornerRadius: headerLogoCornerRadius,
+          bannerLightPath: headerBannerLightPath.trim() || null,
+          bannerDarkPath: headerBannerDarkPath.trim() || null,
+          backgroundColorLight: headerBackgroundColorLight.trim() || "transparent",
+          backgroundColorDark: headerBackgroundColorDark.trim() || "transparent",
+        },
+      },
     }),
     [
       headerVariant,
@@ -157,8 +242,19 @@ export function CatalogBuilderPanel({
       itemDetailVariant,
       itemCardColumns,
       aspectRatio,
+      showHeaderLogo,
+      showHeaderTitle,
+      showHeaderDescription,
+      showHeaderTags,
+      headerLogoFullWidth,
+      headerLogoAspectRatio,
+      headerLogoCornerRadius,
+      headerBannerLightPath,
+      headerBannerDarkPath,
+      headerBackgroundColorLight,
+      headerBackgroundColorDark,
     ],
-  );
+  ) satisfies CatalogLayoutOverride;
   const currencyOverrides = useMemo(
     () => ({
       defaultCurrency: currencyCode,
@@ -193,6 +289,21 @@ export function CatalogBuilderPanel({
     params.set("curDecimal", decimalSeparator);
     params.set("curDecimals", showDecimals ? "1" : "0");
     params.set("curPos", labelPosition);
+    params.set("hflShowLogo", showHeaderLogo ? "1" : "0");
+    params.set("hflShowTitle", showHeaderTitle ? "1" : "0");
+    params.set("hflShowDescription", showHeaderDescription ? "1" : "0");
+    params.set("hflShowTags", showHeaderTags ? "1" : "0");
+    params.set("hflLogoFull", headerLogoFullWidth ? "1" : "0");
+    params.set("hflRatio", String(headerLogoAspectRatio));
+    params.set("hflCorner", String(headerLogoCornerRadius));
+    params.set("hflBgLight", headerBackgroundColorLight || "transparent");
+    params.set("hflBgDark", headerBackgroundColorDark || "transparent");
+    if (headerBannerLightPath.trim()) {
+      params.set("hflBannerLight", headerBannerLightPath.trim());
+    }
+    if (headerBannerDarkPath.trim()) {
+      params.set("hflBannerDark", headerBannerDarkPath.trim());
+    }
 
     return `/preview/${catalogSlug}?${params.toString()}`;
   }, [
@@ -210,6 +321,17 @@ export function CatalogBuilderPanel({
     decimalSeparator,
     showDecimals,
     labelPosition,
+    showHeaderLogo,
+    showHeaderTitle,
+    showHeaderDescription,
+    showHeaderTags,
+    headerLogoFullWidth,
+    headerLogoAspectRatio,
+    headerLogoCornerRadius,
+    headerBackgroundColorLight,
+    headerBackgroundColorDark,
+    headerBannerLightPath,
+    headerBannerDarkPath,
   ]);
 
   const handleSave = async () => {
@@ -226,6 +348,21 @@ export function CatalogBuilderPanel({
       itemCard: {
         columns: itemCardColumns,
         aspectRatio,
+      },
+      header: {
+        basicFreeLogo: {
+          showLogo: showHeaderLogo,
+          showTitle: showHeaderTitle,
+          showDescription: showHeaderDescription,
+          showTags: showHeaderTags,
+          logoFullWidth: headerLogoFullWidth,
+          logoAspectRatio: headerLogoAspectRatio,
+          logoCornerRadius: headerLogoCornerRadius,
+          bannerLightPath: headerBannerLightPath.trim() || null,
+          bannerDarkPath: headerBannerDarkPath.trim() || null,
+          backgroundColorLight: headerBackgroundColorLight.trim() || "transparent",
+          backgroundColorDark: headerBackgroundColorDark.trim() || "transparent",
+        } satisfies HeaderBasicFreeLogoSettings,
       },
     };
     const settingsCurrency: CurrencySettings = {
@@ -268,6 +405,218 @@ export function CatalogBuilderPanel({
           selected={headerVariant}
           onSelect={setHeaderVariant}
         />
+
+        {headerVariant === "header-basic-free-logo" && (
+          <section className="rounded-lg border bg-background p-4">
+            <h2 className="text-sm font-semibold">Header: Free Logo Settings</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Tune visibility, logo framing, and themed media for this header.
+            </p>
+            <div className="mt-4 grid gap-4">
+              <div className="grid gap-3 rounded-md border border-border/70 p-3">
+                <h3 className="text-xs font-medium text-foreground">Visibility</h3>
+                <label className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showHeaderLogo}
+                    onChange={(event) => setShowHeaderLogo(event.target.checked)}
+                    className="h-4 w-4 rounded border-border text-foreground"
+                  />
+                  Show logo
+                </label>
+                <label className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showHeaderDescription}
+                    onChange={(event) =>
+                      setShowHeaderDescription(event.target.checked)
+                    }
+                    className="h-4 w-4 rounded border-border text-foreground"
+                  />
+                  Show description
+                </label>
+                <label className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showHeaderTitle}
+                    onChange={(event) => setShowHeaderTitle(event.target.checked)}
+                    className="h-4 w-4 rounded border-border text-foreground"
+                  />
+                  Show title
+                </label>
+                <label className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showHeaderTags}
+                    onChange={(event) => setShowHeaderTags(event.target.checked)}
+                    className="h-4 w-4 rounded border-border text-foreground"
+                  />
+                  Show tags
+                </label>
+              </div>
+
+              <div
+                className={[
+                  "grid gap-3 rounded-md border border-border/70 p-3",
+                  showHeaderLogo ? "" : "opacity-60",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-medium text-foreground">Logo frame</h3>
+                  {!showHeaderLogo && (
+                    <span className="text-[11px] text-muted-foreground">Logo hidden</span>
+                  )}
+                </div>
+                <label className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={headerLogoFullWidth}
+                    onChange={(event) => setHeaderLogoFullWidth(event.target.checked)}
+                    className="h-4 w-4 rounded border-border text-foreground"
+                  />
+                  Stretch logo edge-to-edge
+                </label>
+                <p className="text-[11px] text-muted-foreground">
+                  This expands the logo across the full header width.
+                </p>
+
+                <div className="grid gap-2 text-xs text-muted-foreground">
+                  <span>Aspect ratio</span>
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={headerLogoAspectWidth}
+                      onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        if (!Number.isFinite(nextValue)) return;
+                        setHeaderLogoAspectWidth(Math.max(1, Math.round(nextValue)));
+                      }}
+                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    />
+                    <span className="text-xs text-muted-foreground">/</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={headerLogoAspectHeight}
+                      onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        if (!Number.isFinite(nextValue)) return;
+                        setHeaderLogoAspectHeight(Math.max(1, Math.round(nextValue)));
+                      }}
+                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-2">
+                    {LOGO_ASPECT_RATIOS.map((preset) => {
+                      const presetLabel = `${preset.width}:${preset.height}`;
+                      const isSelected =
+                        headerLogoAspectWidth === preset.width &&
+                        headerLogoAspectHeight === preset.height;
+                      return (
+                        <button
+                          key={presetLabel}
+                          type="button"
+                          onClick={() => {
+                            setHeaderLogoAspectWidth(preset.width);
+                            setHeaderLogoAspectHeight(preset.height);
+                          }}
+                          className={[
+                            "rounded-md border px-2 py-1 text-xs",
+                            isSelected
+                              ? "border-foreground bg-foreground text-background"
+                              : "border-border text-foreground hover:border-foreground",
+                          ].join(" ")}
+                        >
+                          {presetLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    Computed ratio: {headerLogoAspectRatio.toFixed(3)}
+                  </span>
+                </div>
+
+                <label className="grid gap-2 text-xs text-muted-foreground">
+                  Corner radius (px)
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={headerLogoCornerRadius}
+                    onChange={(event) => {
+                      const nextValue = Number(event.target.value);
+                      if (!Number.isFinite(nextValue)) return;
+                      setHeaderLogoCornerRadius(Math.max(0, Math.round(nextValue)));
+                    }}
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 rounded-md border border-border/70 p-3">
+                <h3 className="text-xs font-medium text-foreground">Banner images</h3>
+                <label className="grid gap-2 text-xs text-muted-foreground">
+                  Light theme path
+                  <input
+                    type="text"
+                    value={headerBannerLightPath}
+                    onChange={(event) => setHeaderBannerLightPath(event.target.value)}
+                    placeholder="krafta/catalogs/.../banner-light.png or https://..."
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-xs text-muted-foreground">
+                  Dark theme path
+                  <input
+                    type="text"
+                    value={headerBannerDarkPath}
+                    onChange={(event) => setHeaderBannerDarkPath(event.target.value)}
+                    placeholder="krafta/catalogs/.../banner-dark.png or https://..."
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+                <p className="text-[11px] text-muted-foreground">
+                  Leave one side empty to reuse the other image in both themes.
+                </p>
+              </div>
+
+              <div className="grid gap-3 rounded-md border border-border/70 p-3">
+                <h3 className="text-xs font-medium text-foreground">Background colors</h3>
+                <label className="grid gap-2 text-xs text-muted-foreground">
+                  Light theme color
+                  <input
+                    type="text"
+                    value={headerBackgroundColorLight}
+                    onChange={(event) =>
+                      setHeaderBackgroundColorLight(event.target.value)
+                    }
+                    placeholder="transparent, #ffffff, rgb(...)"
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-xs text-muted-foreground">
+                  Dark theme color
+                  <input
+                    type="text"
+                    value={headerBackgroundColorDark}
+                    onChange={(event) =>
+                      setHeaderBackgroundColorDark(event.target.value)
+                    }
+                    placeholder="transparent, #111827, rgb(...)"
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+        )}
 
         <OptionSection
           title="Sections"

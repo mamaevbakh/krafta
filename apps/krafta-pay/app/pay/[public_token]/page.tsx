@@ -48,6 +48,7 @@ export default async function PayPage({
   const providers =
     (accounts ?? [])
       .filter((a: any) => a.providers?.is_active)
+      .filter((a: any) => a.provider_id === "uzum")
       .map((a: any) => ({
         id: a.provider_id as string,
         name: a.providers.display_name as string,

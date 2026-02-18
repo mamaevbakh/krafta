@@ -40,6 +40,16 @@ type ColumnMeta = {
   cellClassName?: string
 }
 
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+
+  return Boolean(
+    target.closest(
+      "button, a, input, textarea, select, [role='button'], [role='checkbox'], [role='menuitem'], [data-slot='checkbox']",
+    ),
+  )
+}
+
 export function DataTable<TData, TValue>({
   columns,
   data,
@@ -47,6 +57,7 @@ export function DataTable<TData, TValue>({
   enableStatusTabs = false,
   statusColumnId = "is_active",
   searchPlaceholder = "Search...",
+  onRowClick,
 }: {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -54,6 +65,7 @@ export function DataTable<TData, TValue>({
   enableStatusTabs?: boolean
   statusColumnId?: string
   searchPlaceholder?: string
+  onRowClick?: (row: TData) => void
 }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -246,6 +258,12 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  className={onRowClick ? "cursor-pointer" : undefined}
+                  onClick={(event) => {
+                    if (!onRowClick) return
+                    if (isInteractiveTarget(event.target)) return
+                    onRowClick(row.original)
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell

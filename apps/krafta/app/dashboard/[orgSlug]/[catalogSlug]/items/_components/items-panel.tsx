@@ -1,6 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 import type { CatalogCategory, Item } from "@/lib/catalogs/types"
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency"
@@ -8,6 +10,7 @@ import { DataTable } from "./data-table"
 import { createColumns } from "./columns"
 import { Button } from "@/components/ui/button"
 import { CreateItemDrawer } from "./create-item-drawer"
+import { deleteItem } from "./actions"
 
 type LocaleOption = {
   id: string
@@ -62,6 +65,7 @@ export function ItemsPanel({
   media,
   currencySettings,
 }: ItemsPanelProps) {
+  const router = useRouter()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Item | null>(null)
 
@@ -76,6 +80,32 @@ export function ItemsPanel({
     if (!editingItem) return []
     return media.filter((entry) => entry.item_id === editingItem.id)
   }, [editingItem, media])
+
+  async function handleDeleteItem(item: Item) {
+    const shouldDelete = window.confirm(
+      `Delete "${item.name}"? This cannot be undone.`,
+    )
+    if (!shouldDelete) return
+
+    const result = await deleteItem({
+      catalogId,
+      catalogSlug,
+      itemId: item.id,
+    })
+
+    if (!result.ok) {
+      toast.error(result.error ?? "Failed to delete item.")
+      return
+    }
+
+    if (editingItem?.id === item.id) {
+      setEditingItem(null)
+      setDrawerOpen(false)
+    }
+
+    toast.success("Item deleted.")
+    router.refresh()
+  }
 
   return (
     <main className="w-full">
@@ -102,10 +132,17 @@ export function ItemsPanel({
               setEditingItem(item)
               setDrawerOpen(true)
             },
+            onDelete: (item) => {
+              void handleDeleteItem(item)
+            },
           })}
           data={items}
           enableStatusTabs
           searchPlaceholder="Search items..."
+          onRowClick={(item) => {
+            setEditingItem(item)
+            setDrawerOpen(true)
+          }}
         />
       </div>
 

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { HandleWebhookInput, HandleWebhookResult } from "./types";
+import { finalizeInitialPayment, markPaymentFailed } from "./subscription";
+import { verifyUzumWebhookSignature } from "./providers/uzum";
 
 export async function handleWebhookEvent(
   supabase: SupabaseClient,
@@ -31,6 +33,52 @@ export async function handleWebhookEvent(
         ? `operationState:${String((payload as any).operationState)}`
         : "unknown";
 
+  // Fast idempotency guard on provider event id
+  if (providerEventId) {
+    const { data: existingEvent, error: existingEventErr } = await supabase
+      .schema("payments")
+      .from("payment_events")
+      .select("id")
+      .eq("provider_id", input.providerId)
+      .eq("provider_event_id", providerEventId)
+      .maybeSingle();
+    if (existingEventErr) throw existingEventErr;
+    if (existingEvent) {
+      return { ok: true };
+    }
+  }
+
+  let matchedAttempt:
+    | {
+        id: string;
+        payment_intent_id: string;
+        org_provider_account_id: string;
+      }
+    | null = null;
+
+  if (providerPaymentId) {
+    const { data: attempt, error: attemptErr } = await supabase
+      .schema("payments")
+      .from("payment_attempts")
+      .select("id, payment_intent_id, org_provider_account_id")
+      .eq("provider_id", input.providerId)
+      .eq("provider_payment_id", providerPaymentId)
+      .order("created_at", { ascending: false })
+      .maybeSingle();
+    if (attemptErr) throw attemptErr;
+    matchedAttempt = attempt ?? null;
+  }
+
+  if (input.providerId === "uzum") {
+    await verifyUzumWebhookSignature({
+      supabase,
+      orgProviderAccountId: matchedAttempt?.org_provider_account_id,
+      rawBody: input.rawBody,
+      headers: input.headers,
+      allowUnsigned: process.env.PAY_ALLOW_UNSIGNED_UZUM_WEBHOOKS === "true",
+    });
+  }
+
   const { data: evt, error: evtErr } = await supabase
     .schema("payments")
     .from("payment_events")
@@ -48,82 +96,81 @@ export async function handleWebhookEvent(
 
   if (evtErr) throw evtErr;
 
-  // 2) Minimal provider-specific handling (MVP)
-  // NOTE: Signature verification should be added once webhook_secret_encrypted is wired.
-  if (input.providerId === "uzum" && providerPaymentId) {
-    const opStateRaw =
-      payload && typeof payload === "object" && "operationState" in payload
-        ? String((payload as any).operationState)
-        : null;
+  try {
+    // 2) Provider-specific handling
+    if (input.providerId === "uzum" && providerPaymentId) {
+      const opStateRaw =
+        payload && typeof payload === "object" && "operationState" in payload
+          ? String((payload as any).operationState)
+          : null;
 
-    const normalizedState = opStateRaw?.toUpperCase() ?? null;
-    const attemptStatus =
-      normalizedState === "SUCCESS" ? "succeeded" :
-      normalizedState === "CANCEL" ? "failed" :
-      normalizedState === "ERROR" ? "failed" :
-      null;
+      const normalizedState = opStateRaw?.toUpperCase() ?? null;
+      const isSuccess = normalizedState === "SUCCESS";
+      const isFailure = normalizedState === "CANCEL" || normalizedState === "ERROR";
 
-    if (attemptStatus) {
-      const { data: attempt, error: attErr } = await supabase
-        .schema("payments")
-        .from("payment_attempts")
-        .select("id, payment_intent_id")
-        .eq("provider_id", input.providerId)
-        .eq("provider_payment_id", providerPaymentId)
-        .order("created_at", { ascending: false })
-        .maybeSingle();
+      if ((isSuccess || isFailure) && matchedAttempt) {
+        paymentIntentId = matchedAttempt.payment_intent_id;
 
-      if (attErr) throw attErr;
+        if (isSuccess) {
+          await finalizeInitialPayment(supabase, {
+            paymentIntentId: matchedAttempt.payment_intent_id,
+            providerId: input.providerId,
+            providerPaymentId,
+            payload,
+            attemptId: matchedAttempt.id,
+          });
+        } else {
+          await markPaymentFailed(supabase, {
+            paymentIntentId: matchedAttempt.payment_intent_id,
+            providerId: input.providerId,
+            providerPaymentId,
+            payload,
+          });
+        }
 
-      if (attempt) {
-        paymentIntentId = attempt.payment_intent_id;
-
-        const { error: updAttErr } = await supabase
-          .schema("payments")
-          .from("payment_attempts")
-          .update({ status: attemptStatus })
-          .eq("id", attempt.id);
-
-        if (updAttErr) throw updAttErr;
-
-        const { error: updIntErr } = await supabase
-          .schema("payments")
-          .from("payment_intents")
-          .update({ status: attemptStatus })
-          .eq("id", attempt.payment_intent_id);
-
-        if (updIntErr) throw updIntErr;
-
-        const { data: session, error: sessErr } = await supabase
+        const { data: session, error: sessionErr } = await supabase
           .schema("payments")
           .from("checkout_sessions")
           .select("public_token")
-          .eq("payment_intent_id", attempt.payment_intent_id)
+          .eq("payment_intent_id", matchedAttempt.payment_intent_id)
           .order("created_at", { ascending: false })
           .maybeSingle();
-
-        if (sessErr) throw sessErr;
+        if (sessionErr) throw sessionErr;
         if (session?.public_token) checkoutPublicToken = session.public_token;
       }
     }
-  }
 
-  // 2) Provider-specific mapping (later):
-  // - verify signature using org_provider_account_secrets
-  // - map event -> payment_attempts.provider_payment_id
-  // - update attempt + intent status
-  // For now, we just store the event and return OK.
-  await supabase
-    .schema("payments")
-    .from("payment_events")
-    .update({ processed_at: new Date().toISOString() })
-    .eq("id", evt.id);
+    await supabase
+      .schema("payments")
+      .from("payment_events")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("id", evt.id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "webhook_processing_failed";
+    await supabase
+      .schema("payments")
+      .from("payment_events")
+      .update({
+        processed_at: new Date().toISOString(),
+        processing_error: message,
+      })
+      .eq("id", evt.id);
+    throw error;
+  }
 
   return {
     ok: true,
     checkoutPublicToken,
     paymentIntentId,
   };
+}
+
+export async function applyWebhookEvent(
+  supabase: SupabaseClient,
+  input: HandleWebhookInput,
+  environment: "test" | "live",
+) {
+  return handleWebhookEvent(supabase, input, environment);
 }
 
 function safeJsonParse(s: string) {

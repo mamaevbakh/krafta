@@ -41,11 +41,13 @@ function formatCreatedAt(value: string) {
 function ItemActions({
   item,
   onEdit,
+  onDelete,
   align = "end",
   size = "icon-sm",
 }: {
   item: Item
   onEdit?: (item: Item) => void
+  onDelete?: (item: Item) => void
   align?: "start" | "center" | "end"
   size?: "icon" | "icon-sm" | "icon-lg"
 }) {
@@ -77,12 +79,12 @@ function ItemActions({
           Edit
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled
           onSelect={(e) => {
             e.preventDefault()
+            onDelete?.(item)
           }}
         >
-          Delete (coming soon)
+          Delete
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -102,8 +104,10 @@ export function createColumns(
   currencySettings?: CurrencySettings,
   {
     onEdit,
+    onDelete,
   }: {
     onEdit?: (item: Item) => void
+    onDelete?: (item: Item) => void
   } = {},
 ): ColumnDef<Item>[] {
   return [
@@ -173,7 +177,7 @@ export function createColumns(
                 </span>
               </div>
               <div className="absolute right-0 top-0">
-                <ItemActions item={item} onEdit={onEdit} />
+                <ItemActions item={item} onEdit={onEdit} onDelete={onDelete} />
               </div>
             </div>
 
@@ -241,7 +245,14 @@ export function createColumns(
     cell: ({ row }) => {
       const item = row.original
 
-      return <ItemActions item={item} size="icon" onEdit={onEdit} />
+      return (
+        <ItemActions
+          item={item}
+          size="icon"
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      )
     },
   },
 ]

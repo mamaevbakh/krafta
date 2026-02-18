@@ -1,9 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createCheckoutSession } from "@krafta/payments-core";
+import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 
 export async function createHostedCheckoutAction(formData: FormData) {
   const orgId = String(formData.get("orgId") ?? "").trim();
@@ -19,7 +21,8 @@ export async function createHostedCheckoutAction(formData: FormData) {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) {
-    redirect("/login?next=/dashboard");
+    const origin = getRequestOrigin(await headers());
+    redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
   }
 
   // Access control: user must belong to org.

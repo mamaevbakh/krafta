@@ -2,6 +2,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
+import {
+  deleteSearchDocumentsBySourceIds,
+  syncCategorySearchDocuments,
+} from "@/lib/catalogs/search-documents";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/types";
 
 function slugify(value: string): string {
   return value
@@ -17,6 +23,50 @@ export type CategoryTranslationInput = {
   name: string;
   description?: string | null;
 };
+
+type StorageMediaRow = {
+  bucket: string;
+  storage_path: string;
+};
+
+function createAdminSupabaseClient() {
+  const supabaseUrl =
+    process.env.KRAFTA_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.KRAFTA_SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+
+  return createSupabaseClient<Database>(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+}
+
+async function cleanupMediaStorage(rows: StorageMediaRow[]) {
+  if (!rows.length) {
+    return;
+  }
+
+  const adminClient = createAdminSupabaseClient();
+  if (!adminClient) {
+    return;
+  }
+
+  const groupedByBucket = rows.reduce<Record<string, string[]>>((acc, row) => {
+    if (!acc[row.bucket]) {
+      acc[row.bucket] = [];
+    }
+    acc[row.bucket].push(row.storage_path);
+    return acc;
+  }, {});
+
+  await Promise.all(
+    Object.entries(groupedByBucket).map(([bucket, paths]) =>
+      adminClient.storage.from(bucket).remove(paths),
+    ),
+  );
+}
 
 export async function createCategory(params: {
   catalogId: string;
@@ -100,6 +150,8 @@ export async function createCategory(params: {
       };
     }
   }
+
+  await syncCategorySearchDocuments({ categoryId: category.id, client: supabase });
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -232,10 +284,152 @@ export async function updateCategory(params: {
     }
   }
 
+  await syncCategorySearchDocuments({
+    categoryId: params.categoryId,
+    client: supabase,
+  });
+
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
     catalogSlug: params.catalogSlug,
   });
 
   return { ok: true };
+}
+
+export async function deleteCategory(params: {
+  catalogId: string;
+  catalogSlug: string;
+  categoryId: string;
+}) {
+  const supabase = await createClient();
+
+  const { data: category, error: categoryError } = await supabase
+    .from("catalog_categories")
+    .select("id, catalog_id")
+    .eq("id", params.categoryId)
+    .eq("catalog_id", params.catalogId)
+    .maybeSingle();
+
+  if (categoryError || !category) {
+    return { ok: false, error: categoryError?.message ?? "Category not found." };
+  }
+
+  const { data: categoryTranslations, error: categoryTranslationsError } =
+    await supabase
+      .from("catalog_category_translations")
+      .select("id")
+      .eq("category_id", category.id);
+
+  if (categoryTranslationsError) {
+    return { ok: false, error: categoryTranslationsError.message };
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from("items")
+    .select("id")
+    .eq("catalog_id", params.catalogId)
+    .eq("category_id", category.id);
+
+  if (itemsError) {
+    return { ok: false, error: itemsError.message };
+  }
+
+  const itemIds = (items ?? []).map((item) => item.id);
+  let itemTranslationIds: string[] = [];
+  let mediaRows: StorageMediaRow[] = [];
+
+  if (itemIds.length) {
+    const { data: itemTranslations, error: itemTranslationsError } = await supabase
+      .from("item_translations")
+      .select("id")
+      .in("item_id", itemIds);
+
+    if (itemTranslationsError) {
+      return { ok: false, error: itemTranslationsError.message };
+    }
+
+    itemTranslationIds = (itemTranslations ?? []).map((translation) => translation.id);
+
+    const { data: media, error: mediaError } = await supabase
+      .from("item_media")
+      .select("bucket, storage_path")
+      .in("item_id", itemIds);
+
+    if (mediaError) {
+      return { ok: false, error: mediaError.message };
+    }
+
+    mediaRows = media ?? [];
+  }
+
+  const sourceIds = [
+    category.id,
+    ...(categoryTranslations ?? []).map((translation) => translation.id),
+    ...itemIds,
+    ...itemTranslationIds,
+  ];
+  const deleteSearchDocsResult = await deleteSearchDocumentsBySourceIds({
+    sourceIds,
+    client: supabase,
+  });
+  if (!deleteSearchDocsResult.ok) {
+    return { ok: false, error: deleteSearchDocsResult.error };
+  }
+
+  await cleanupMediaStorage(mediaRows);
+
+  if (itemIds.length) {
+    const { error: deleteItemMediaError } = await supabase
+      .from("item_media")
+      .delete()
+      .in("item_id", itemIds);
+
+    if (deleteItemMediaError) {
+      return { ok: false, error: deleteItemMediaError.message };
+    }
+
+    const { error: deleteItemTranslationsError } = await supabase
+      .from("item_translations")
+      .delete()
+      .in("item_id", itemIds);
+
+    if (deleteItemTranslationsError) {
+      return { ok: false, error: deleteItemTranslationsError.message };
+    }
+
+    const { error: deleteItemsError } = await supabase
+      .from("items")
+      .delete()
+      .in("id", itemIds);
+
+    if (deleteItemsError) {
+      return { ok: false, error: deleteItemsError.message };
+    }
+  }
+
+  const { error: deleteCategoryTranslationsError } = await supabase
+    .from("catalog_category_translations")
+    .delete()
+    .eq("category_id", category.id);
+
+  if (deleteCategoryTranslationsError) {
+    return { ok: false, error: deleteCategoryTranslationsError.message };
+  }
+
+  const { error: deleteCategoryError } = await supabase
+    .from("catalog_categories")
+    .delete()
+    .eq("id", category.id);
+
+  if (deleteCategoryError) {
+    return { ok: false, error: deleteCategoryError.message };
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true, deletedItems: itemIds.length };
 }

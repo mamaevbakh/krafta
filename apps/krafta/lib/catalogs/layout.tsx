@@ -4,7 +4,7 @@ import type { PublicCatalog, PublicCategoryWithItems } from "@/lib/catalogs/type
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import {
   normalizeLayoutSettings,
-  type CatalogLayoutSettings,
+  type CatalogLayoutOverride,
 } from "@/lib/catalogs/settings/layout";
 import {
   normalizeCurrencySettings,
@@ -24,7 +24,7 @@ type Props = {
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref?: string;
-  layoutOverride?: Partial<CatalogLayoutSettings>;
+  layoutOverride?: CatalogLayoutOverride;
   currencyOverride?: CurrencySettings;
 };
 
@@ -62,6 +62,14 @@ export function CatalogLayout({
         itemCard: {
           ...layout.itemCard,
           ...(layoutOverride.itemCard ?? {}),
+        },
+        header: {
+          ...layout.header,
+          ...(layoutOverride.header ?? {}),
+          basicFreeLogo: {
+            ...layout.header.basicFreeLogo,
+            ...(layoutOverride.header?.basicFreeLogo ?? {}),
+          },
         },
       })
     : layout;
@@ -109,6 +117,7 @@ export function CatalogLayout({
         <Header
           catalogName={catalog.name}
           catalog={catalog}
+          headerSettings={resolvedLayout.header}
           logoUrl={logoUrl}
           description={catalog.description}
           tags={catalog.tags}

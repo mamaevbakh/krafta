@@ -3,19 +3,23 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
 
 /**
  * Send magic link + OTP code to user's email
  */
-export async function signInWithEmail(email: string) {
+export async function signInWithEmail(email: string, next?: string) {
   const supabase = await createClient();
   const headersList = await headers();
-  const origin = headersList.get("origin") || "";
+  const origin = getRequestOrigin(headersList);
+  const resolvedNext = normalizeNextPath(next, origin);
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${origin}/auth/confirm`,
+      emailRedirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(
+        resolvedNext,
+      )}`,
       // Allow new users to sign up automatically
       shouldCreateUser: true,
     },
@@ -54,15 +58,18 @@ export async function verifyOtpCode(email: string, token: string) {
 /**
  * Sign in with Google OAuth (PKCE flow)
  */
-export async function signInWithGoogle() {
+export async function signInWithGoogle(next?: string) {
   const supabase = await createClient();
   const headersList = await headers();
-  const origin = headersList.get("origin") || "";
+  const origin = getRequestOrigin(headersList);
+  const resolvedNext = normalizeNextPath(next, origin);
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${origin}/auth/confirm`,
+      redirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(
+        resolvedNext,
+      )}`,
       queryParams: {
         access_type: "offline",
         prompt: "consent",

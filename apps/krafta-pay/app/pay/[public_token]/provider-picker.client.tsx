@@ -126,7 +126,7 @@ export function ProviderPicker({
 
       {!uzumProvider ? (
         <div className="mt-3 text-xs text-muted-foreground">
-          Uzum isnt configured for this merchant/environment.
+          Uzum isn&apos;t configured for this merchant/environment.
         </div>
       ) : null}
     </div>

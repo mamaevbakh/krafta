@@ -33,6 +33,24 @@ export type ItemCardSettings = {
   aspectRatio: number; // numeric ratio
 };
 
+export type HeaderBasicFreeLogoSettings = {
+  showLogo: boolean;
+  showTitle: boolean;
+  showDescription: boolean;
+  showTags: boolean;
+  logoFullWidth: boolean;
+  logoAspectRatio: number;
+  logoCornerRadius: number;
+  bannerLightPath: string | null;
+  bannerDarkPath: string | null;
+  backgroundColorLight: string;
+  backgroundColorDark: string;
+};
+
+export type HeaderSettings = {
+  basicFreeLogo: HeaderBasicFreeLogoSettings;
+};
+
 export type CatalogLayoutSettings = {
   headerVariant: HeaderVariant;
   sectionVariant: SectionVariant;
@@ -40,6 +58,16 @@ export type CatalogLayoutSettings = {
   categoryNavVariant: CategoryNavVariant;
   itemDetailVariant: ItemDetailVariant;
   itemCard: ItemCardSettings;
+  header: HeaderSettings;
+};
+
+export type CatalogLayoutOverride = Partial<
+  Omit<CatalogLayoutSettings, "itemCard" | "header">
+> & {
+  itemCard?: Partial<ItemCardSettings>;
+  header?: {
+    basicFreeLogo?: Partial<HeaderBasicFreeLogoSettings>;
+  };
 };
 
 // ----------------
@@ -51,6 +79,24 @@ export const defaultItemCardSettings: ItemCardSettings = {
   aspectRatio: 4 / 3,
 };
 
+export const defaultHeaderBasicFreeLogoSettings: HeaderBasicFreeLogoSettings = {
+  showLogo: true,
+  showTitle: true,
+  showDescription: true,
+  showTags: true,
+  logoFullWidth: false,
+  logoAspectRatio: 1,
+  logoCornerRadius: 4,
+  bannerLightPath: null,
+  bannerDarkPath: null,
+  backgroundColorLight: "transparent",
+  backgroundColorDark: "transparent",
+};
+
+export const defaultHeaderSettings: HeaderSettings = {
+  basicFreeLogo: defaultHeaderBasicFreeLogoSettings,
+};
+
 export const defaultLayoutSettings: CatalogLayoutSettings = {
   headerVariant: "header-center",
   sectionVariant: "section-pill-tabs",
@@ -58,6 +104,7 @@ export const defaultLayoutSettings: CatalogLayoutSettings = {
   categoryNavVariant: "nav-tabs",
   itemDetailVariant: "item-sheet",
   itemCard: defaultItemCardSettings,
+  header: defaultHeaderSettings,
 };
 
 // ----------------
@@ -111,15 +158,102 @@ function normalizeColumns(raw: unknown, fallback: number): number {
   return fallback;
 }
 
+function normalizeBoolean(raw: unknown, fallback: boolean): boolean {
+  if (typeof raw === "boolean") return raw;
+  return fallback;
+}
+
+function normalizeNonNegativeNumber(raw: unknown, fallback: number): number {
+  const num = Number(raw);
+  if (Number.isFinite(num) && num >= 0) return num;
+  return fallback;
+}
+
+function normalizeOptionalString(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeColor(raw: unknown, fallback: string): string {
+  if (typeof raw !== "string") return fallback;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function normalizeHeaderBasicFreeLogoSettings(
+  raw: unknown,
+): HeaderBasicFreeLogoSettings {
+  const source =
+    raw && typeof raw === "object"
+      ? (raw as Partial<HeaderBasicFreeLogoSettings>)
+      : {};
+
+  return {
+    showLogo: normalizeBoolean(
+      source.showLogo,
+      defaultHeaderBasicFreeLogoSettings.showLogo,
+    ),
+    showDescription: normalizeBoolean(
+      source.showDescription,
+      defaultHeaderBasicFreeLogoSettings.showDescription,
+    ),
+    showTitle: normalizeBoolean(
+      source.showTitle,
+      defaultHeaderBasicFreeLogoSettings.showTitle,
+    ),
+    showTags: normalizeBoolean(
+      source.showTags,
+      defaultHeaderBasicFreeLogoSettings.showTags,
+    ),
+    logoFullWidth: normalizeBoolean(
+      source.logoFullWidth,
+      defaultHeaderBasicFreeLogoSettings.logoFullWidth,
+    ),
+    logoAspectRatio: normalizeAspectRatio(
+      source.logoAspectRatio,
+      defaultHeaderBasicFreeLogoSettings.logoAspectRatio,
+    ),
+    logoCornerRadius: normalizeNonNegativeNumber(
+      source.logoCornerRadius,
+      defaultHeaderBasicFreeLogoSettings.logoCornerRadius,
+    ),
+    bannerLightPath: normalizeOptionalString(source.bannerLightPath),
+    bannerDarkPath: normalizeOptionalString(source.bannerDarkPath),
+    backgroundColorLight: normalizeColor(
+      source.backgroundColorLight,
+      defaultHeaderBasicFreeLogoSettings.backgroundColorLight,
+    ),
+    backgroundColorDark: normalizeColor(
+      source.backgroundColorDark,
+      defaultHeaderBasicFreeLogoSettings.backgroundColorDark,
+    ),
+  };
+}
+
+function normalizeHeaderSettings(raw: unknown): HeaderSettings {
+  const source =
+    raw && typeof raw === "object"
+      ? (raw as { basicFreeLogo?: unknown })
+      : {};
+
+  return {
+    basicFreeLogo: normalizeHeaderBasicFreeLogoSettings(source.basicFreeLogo),
+  };
+}
+
 // ----------------
 // MAIN NORMALIZER
 // ----------------
 
 export function normalizeLayoutSettings(
-  layoutRaw: Partial<CatalogLayoutSettings> | Record<string, unknown> = {},
+  layoutRaw: CatalogLayoutOverride | Record<string, unknown> = {},
 ): CatalogLayoutSettings {
-  const raw = layoutRaw as Partial<CatalogLayoutSettings> & {
+  const raw = layoutRaw as CatalogLayoutOverride & {
     itemCard?: Record<string, unknown>;
+    header?: {
+      basicFreeLogo?: Record<string, unknown>;
+    };
   };
 
   const normalizedItemCard: ItemCardSettings = {
@@ -143,5 +277,6 @@ export function normalizeLayoutSettings(
     categoryNavVariant: normalizeCategoryNavVariant(raw.categoryNavVariant),
     itemDetailVariant: normalizeItemDetailVariant(raw.itemDetailVariant),
     itemCard: normalizedItemCard,
+    header: normalizeHeaderSettings(raw.header),
   };
 }

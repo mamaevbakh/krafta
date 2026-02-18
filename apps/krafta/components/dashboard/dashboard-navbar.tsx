@@ -38,6 +38,7 @@ const DASHBOARD_LINKS = [
   { segment: "categories", label: "Categories" },
   { segment: "items", label: "Items" },
   { segment: "builder", label: "Builder" },
+  { segment: "billing", label: "Billing" },
   { segment: "settings", label: "Settings" },
 ] as const;
 
@@ -73,21 +74,21 @@ export function DashboardNavbar({
     <div className="flex flex-col">
       {/* Logo block */}
       <header className="px-6 py-3 h-16">
-        <nav className="h-full flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <h1 className="h-full flex items-center text-2xl">
-              <BrandWordmark className="text-2xl" />
-            </h1>
+        <nav className="h-full flex items-center gap-3">
+          <h1 className="h-full shrink-0 flex items-center text-2xl">
+            <BrandWordmark className="text-2xl" />
+          </h1>
 
+          <div className="grid min-w-0 flex-1 grid-cols-2 items-center gap-2 md:flex md:w-auto md:flex-none md:gap-3">
             {/* User profile dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ring transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 active:bg-accent active:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground">
+                <button className="flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ring transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 active:bg-accent active:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground md:w-auto">
                   <Avatar className="h-8 w-8 rounded-lg">
                     <AvatarImage src={user.avatar} alt={user.name} />
                     <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                   </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
+                  <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{user.name}</span>
                     <span className="truncate text-xs text-muted-foreground">{user.email}</span>
                   </div>
@@ -109,9 +110,11 @@ export function DashboardNavbar({
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}>
                     <Sparkles className="size-4" />
                     Upgrade to Pro
+                    </Link>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
@@ -120,9 +123,11 @@ export function DashboardNavbar({
                     <BadgeCheck className="size-4" />
                     Account
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}>
                     <CreditCard className="size-4" />
                     Billing
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <Bell className="size-4" />
@@ -141,6 +146,7 @@ export function DashboardNavbar({
               orgSlug={orgSlug}
               currentCatalogSlug={catalogSlug}
               catalogs={catalogs}
+              triggerClassName="w-full min-w-0 md:w-auto"
             />
           </div>
         </nav>
@@ -148,30 +154,32 @@ export function DashboardNavbar({
 
       {/* Navigation block */}
       <nav className="relative px-4 -mt-2.5">
-  {/* Fake bottom border */}
-  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-border" />
+        {/* Fake bottom border */}
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-border" />
 
-  <LayoutGroup id="dashboard-nav">
-    <NavigationMenu>
-    {DASHBOARD_LINKS.map(({ segment, label }) => {
-      const href = segment ? `${basePath}/${segment}` : basePath;
-      const isActive = segment
-        ? pathname.startsWith(href)
-        : pathname === href;
+        <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <LayoutGroup id="dashboard-nav">
+            <NavigationMenu className="w-max max-w-none flex-none justify-start">
+              {DASHBOARD_LINKS.map(({ segment, label }) => {
+                const href = segment ? `${basePath}/${segment}` : basePath;
+                const isActive = segment
+                  ? pathname.startsWith(href)
+                  : pathname === href;
 
-      return (
-      <DashboardNavLink
-        key={href}
-        asChild
-        isActive={isActive}
-      >
-        <Link href={href}>{label}</Link>
-      </DashboardNavLink>
-      );
-    })}
-    </NavigationMenu>
-  </LayoutGroup>
-</nav>
+                return (
+                  <DashboardNavLink
+                    key={href}
+                    asChild
+                    isActive={isActive}
+                  >
+                    <Link href={href}>{label}</Link>
+                  </DashboardNavLink>
+                );
+              })}
+            </NavigationMenu>
+          </LayoutGroup>
+        </div>
+      </nav>
     </div>
   );
 }

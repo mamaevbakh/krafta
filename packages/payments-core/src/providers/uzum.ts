@@ -1,6 +1,8 @@
 import type { ProviderAttemptResult } from "./index";
+import crypto from "crypto";
 
 import { getCheckoutSessionByPublicToken, getOrgProviderAccountSecrets, getPaymentIntentById } from "../db";
+import { decryptSecretJsonMaybe } from "../secrets";
 
 type UzumCredentials = {
   apiBaseUrl: string;
@@ -65,11 +67,12 @@ function getUzumCartFromMetadata(metadata: unknown): unknown | null {
 }
 
 function parseUzumCredentials(credentials: unknown): UzumCredentials {
-  if (!credentials || typeof credentials !== "object") {
+  const decrypted = decryptSecretJsonMaybe(credentials);
+  if (!decrypted || typeof decrypted !== "object") {
     throw new Error("uzum_credentials_invalid");
   }
 
-  const rec = credentials as Record<string, unknown>;
+  const rec = decrypted as Record<string, unknown>;
 
   const apiBaseUrl = rec.apiBaseUrl;
   const terminalId = rec.terminalId;
@@ -86,6 +89,76 @@ function parseUzumCredentials(credentials: unknown): UzumCredentials {
     apiKey,
     contentLanguage: (contentLanguage as UzumCredentials["contentLanguage"]) ?? undefined,
   };
+}
+
+type ParsedWebhookSecret = {
+  webhookSecret: string | null;
+};
+
+function parseWebhookSecret(raw: unknown): ParsedWebhookSecret {
+  const decrypted = decryptSecretJsonMaybe(raw);
+  if (!decrypted) return { webhookSecret: null };
+
+  if (typeof decrypted === "string" && decrypted.trim()) {
+    return { webhookSecret: decrypted.trim() };
+  }
+
+  if (typeof decrypted === "object") {
+    const rec = decrypted as Record<string, unknown>;
+    const keys = ["secret", "webhookSecret", "token", "signatureSecret"];
+    for (const key of keys) {
+      const value = rec[key];
+      if (typeof value === "string" && value.trim()) {
+        return { webhookSecret: value.trim() };
+      }
+    }
+  }
+
+  return { webhookSecret: null };
+}
+
+function parseSignatureHeader(headers: Record<string, string | null>) {
+  const candidateKeys = [
+    "x-uzum-signature",
+    "x-signature",
+    "signature",
+    "x-sign",
+  ];
+
+  for (const key of candidateKeys) {
+    const value = headers[key] ?? headers[key.toLowerCase()];
+    if (!value) continue;
+
+    const normalized = value.trim();
+    if (!normalized) continue;
+    if (normalized.startsWith("sha256=")) {
+      return normalized.slice("sha256=".length);
+    }
+    return normalized;
+  }
+
+  return null;
+}
+
+function isValidHmacSignature({
+  rawBody,
+  secret,
+  signature,
+}: {
+  rawBody: string;
+  secret: string;
+  signature: string;
+}) {
+  const expectedHex = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody, "utf8")
+    .digest("hex");
+
+  const normalized = signature.toLowerCase();
+  const expected = Buffer.from(expectedHex, "utf8");
+  const got = Buffer.from(normalized, "utf8");
+  if (expected.length !== got.length) return false;
+  return crypto.timingSafeEqual(expected, got);
 }
 
 type CreateAttemptCtx = {
@@ -156,6 +229,9 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
   const errorCode = Number(json.errorCode ?? 0);
   if (errorCode !== 0) {
     const message = typeof json.message === "string" ? json.message : "Uzum error";
+    if (errorCode === 3045) {
+      throw new Error("uzum_autofiscalization_cart_required");
+    }
     throw new Error(`uzum_register_error:${errorCode}:${message}`);
   }
 
@@ -171,5 +247,133 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
     providerPaymentId,
     status: "requires_action",
     raw: { request: body, response: json, environment: ctx.environment },
+  };
+}
+
+export async function verifyUzumWebhookSignature(params: {
+  supabase: any;
+  orgProviderAccountId: string | null | undefined;
+  rawBody: string;
+  headers: Record<string, string | null>;
+  allowUnsigned: boolean;
+}) {
+  if (!params.orgProviderAccountId) {
+    if (params.allowUnsigned) return;
+    throw new Error("uzum_webhook_missing_org_provider_account");
+  }
+
+  const secrets = await getOrgProviderAccountSecrets(
+    params.supabase,
+    params.orgProviderAccountId,
+  );
+  const { webhookSecret } = parseWebhookSecret(secrets.webhook_secret_encrypted);
+
+  if (!webhookSecret) {
+    if (params.allowUnsigned) return;
+    throw new Error("uzum_webhook_secret_missing");
+  }
+
+  const signature = parseSignatureHeader(params.headers);
+  if (!signature) {
+    if (params.allowUnsigned) return;
+    throw new Error("uzum_webhook_signature_missing");
+  }
+
+  const isValid = isValidHmacSignature({
+    rawBody: params.rawBody,
+    secret: webhookSecret,
+    signature,
+  });
+
+  if (!isValid) {
+    throw new Error("uzum_webhook_signature_invalid");
+  }
+}
+
+type CreateRecurringChargeInput = {
+  supabase: any;
+  orgProviderAccountId: string;
+  paymentIntentId: string;
+  providerToken: string;
+  clientId: string;
+  description: string | null;
+  orderNumber: string;
+  currency: string;
+  amountMinor: number;
+  phoneNumber?: string | null;
+};
+
+type RecurringChargeResult = {
+  providerPaymentId?: string;
+  status: "succeeded" | "processing" | "failed";
+  raw: Record<string, unknown>;
+};
+
+export async function createUzumRecurringCharge(
+  input: CreateRecurringChargeInput,
+): Promise<RecurringChargeResult> {
+  const secrets = await getOrgProviderAccountSecrets(
+    input.supabase,
+    input.orgProviderAccountId,
+  );
+  const creds = parseUzumCredentials(secrets.credentials_encrypted);
+  const apiBaseUrl = normalizeBaseUrl(creds.apiBaseUrl);
+
+  const url = `${apiBaseUrl}/api/v1/payment/merchantPay`;
+  const body: Record<string, unknown> = {
+    clientId: input.clientId,
+    amount: input.amountMinor,
+    currency: uzumCurrencyCode(input.currency),
+    paymentDetails: input.description ?? "Subscription renewal",
+    orderNumber: input.orderNumber,
+    paymentParams: {
+      payType: "TWO_STEP",
+      operationType: "AUTHORIZE",
+      bindingId: input.providerToken,
+      ...(input.phoneNumber ? { phoneNumber: input.phoneNumber } : {}),
+    },
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Language": creds.contentLanguage ?? "ru-RU",
+      "X-Terminal-Id": creds.terminalId,
+      "X-API-Key": creds.apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const json = (await res.json().catch(() => null)) as any;
+  if (!res.ok) {
+    return {
+      status: "failed",
+      raw: { request: body, response: json, httpStatus: res.status },
+    };
+  }
+
+  const result = json?.result ?? {};
+  const actionCode = Number(json?.actionCode ?? result?.actionCode ?? 0);
+  const operationState = String(
+    json?.operationState ?? result?.operationState ?? "",
+  ).toUpperCase();
+
+  const providerPaymentId =
+    (typeof json?.orderId === "string" && json.orderId) ||
+    (typeof result?.orderId === "string" && result.orderId) ||
+    undefined;
+
+  const status =
+    operationState === "SUCCESS" || actionCode === 0
+      ? "succeeded"
+      : operationState === "PROCESSING"
+        ? "processing"
+        : "failed";
+
+  return {
+    providerPaymentId,
+    status,
+    raw: { request: body, response: json },
   };
 }

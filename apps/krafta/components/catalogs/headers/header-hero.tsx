@@ -6,6 +6,7 @@ type CatalogHeaderHeroProps = {
   description?: string | null;
   logoUrl?: string | null;
   tags?: string[] | null;
+  headerSettings?: unknown;
 };
 
 export function CatalogHeaderHero({

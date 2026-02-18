@@ -20,6 +20,7 @@ export async function POST(
     const url = new URL(req.url);
     const providerId = url.searchParams.get("provider");
     if (!providerId) throw new Error("missing_provider");
+    if (providerId !== "uzum") throw new Error("provider_not_enabled_in_stage1");
 
     const supabase = createAdminSupabase();
     const { public_token } = await params;

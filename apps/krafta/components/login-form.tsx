@@ -30,21 +30,23 @@ import { toast } from "sonner";
 
 type Step = "email" | "otp";
 
+type LoginFormProps = React.ComponentProps<"div"> & {
+  next?: string;
+};
+
 export function LoginForm({
   className,
+  next = "/dashboard",
   ...props
-}: React.ComponentProps<"div">) {
+}: LoginFormProps) {
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) return;
-
+  const sendEmail = () => {
     startTransition(async () => {
-      const result = await signInWithEmail(email);
+      const result = await signInWithEmail(email, next);
       if (result.error) {
         toast.error(result.error);
       } else {
@@ -52,6 +54,12 @@ export function LoginForm({
         setStep("otp");
       }
     });
+  };
+
+  const handleEmailSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    sendEmail();
   };
 
   const handleOtpSubmit = (e: React.FormEvent) => {
@@ -64,15 +72,14 @@ export function LoginForm({
         toast.error(result.error);
       } else {
         toast.success("Successfully logged in!");
-        // Redirect will happen automatically via middleware or manual redirect
-        window.location.href = "/dashboard";
+        window.location.href = next;
       }
     });
   };
 
   const handleGoogleSignIn = () => {
     startTransition(async () => {
-      const result = await signInWithGoogle();
+      const result = await signInWithGoogle(next);
       if (result?.error) {
         toast.error(result.error);
       }
@@ -195,7 +202,7 @@ export function LoginForm({
                     type="button"
                     variant="link"
                     size="sm"
-                    onClick={handleEmailSubmit}
+                    onClick={sendEmail}
                     disabled={isPending}
                   >
                     Resend code
