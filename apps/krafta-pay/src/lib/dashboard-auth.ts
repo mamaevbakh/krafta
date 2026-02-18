@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getUserSafely } from "@/lib/safe-auth";
 
 export type OrgRole = "owner" | "admin" | "member";
 
@@ -10,10 +11,10 @@ const ROLE_RANK: Record<OrgRole, number> = {
 
 export async function getAuthenticatedUserOrThrow() {
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw new Error(error.message);
-  if (!data.user) throw new Error("unauthorized");
-  return { supabase, user: data.user };
+  const { user, authError } = await getUserSafely(supabase);
+  if (authError) throw new Error("unauthorized");
+  if (!user) throw new Error("unauthorized");
+  return { supabase, user };
 }
 
 export async function requireOrgMembership(params: {

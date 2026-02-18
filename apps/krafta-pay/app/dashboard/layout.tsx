@@ -6,12 +6,13 @@ import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
+import { getUserSafely } from "@/lib/safe-auth";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
+  const { user, authError } = await getUserSafely(supabase);
 
-  if (error || !data.user) {
+  if (authError || !user) {
     const origin = getRequestOrigin(await headers());
     redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
   }

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getUserSafely } from "@/lib/safe-auth";
 
 export type MembershipOption = {
   orgId: string;
@@ -9,13 +10,13 @@ export type MembershipOption = {
 
 export async function getCurrentUserMemberships(): Promise<MembershipOption[]> {
   const supabase = await createClient();
-  const { data: auth, error: authError } = await supabase.auth.getUser();
-  if (authError || !auth.user) return [];
+  const { user, authError } = await getUserSafely(supabase);
+  if (authError || !user) return [];
 
   const { data, error } = await supabase
     .from("organization_members")
     .select("org_id, role, organizations!inner(id, name, slug)")
-    .eq("user_id", auth.user.id)
+    .eq("user_id", user.id)
     .order("created_at", { ascending: true });
   if (error) return [];
 

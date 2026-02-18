@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
+import { getUserSafely } from "@/lib/safe-auth";
 
 export default async function DashboardPage({
   searchParams,
@@ -14,8 +15,7 @@ export default async function DashboardPage({
 }) {
   const sp = await searchParams;
   const supabase = await createClient();
-  const { data: auth, error: authError } = await supabase.auth.getUser();
-  const user = auth.user;
+  const { user, authError } = await getUserSafely(supabase);
 
   if (authError || !user) {
     const origin = getRequestOrigin(await headers());

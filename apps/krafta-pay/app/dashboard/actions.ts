@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createCheckoutSession } from "@krafta/payments-core";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
+import { getUserSafely } from "@/lib/safe-auth";
 
 export async function createHostedCheckoutAction(formData: FormData) {
   const orgId = String(formData.get("orgId") ?? "").trim();
@@ -19,8 +20,8 @@ export async function createHostedCheckoutAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: auth, error: authError } = await supabase.auth.getUser();
-  if (authError || !auth.user) {
+  const { user, authError } = await getUserSafely(supabase);
+  if (authError || !user) {
     const origin = getRequestOrigin(await headers());
     redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
   }
@@ -30,7 +31,7 @@ export async function createHostedCheckoutAction(formData: FormData) {
     .from("organization_members")
     .select("id")
     .eq("org_id", orgId)
-    .eq("user_id", auth.user.id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (!membership) {
