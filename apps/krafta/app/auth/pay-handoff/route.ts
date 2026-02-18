@@ -127,6 +127,16 @@ export async function GET(request: NextRequest) {
     return fail(linkError.message || "pay_magiclink_generation_failed");
   }
 
+  const tokenHash = linkData.properties?.hashed_token;
+  const verificationType = linkData.properties?.verification_type ?? "magiclink";
+  if (tokenHash) {
+    const confirmUrl = new URL(`${target.origin}/auth/confirm`);
+    confirmUrl.searchParams.set("token_hash", tokenHash);
+    confirmUrl.searchParams.set("type", verificationType);
+    confirmUrl.searchParams.set("next", absoluteNext);
+    return NextResponse.redirect(confirmUrl.toString());
+  }
+
   const actionLink = linkData.properties?.action_link;
   if (!actionLink) {
     return fail("missing_pay_action_link");
