@@ -19,8 +19,8 @@ export async function createHostedCheckoutAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) {
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError || !auth.user) {
     const origin = getRequestOrigin(await headers());
     redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
   }

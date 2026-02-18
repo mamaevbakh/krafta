@@ -9,9 +9,9 @@ import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
 
-  if (!data.user) {
+  if (error || !data.user) {
     const origin = getRequestOrigin(await headers());
     redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
   }

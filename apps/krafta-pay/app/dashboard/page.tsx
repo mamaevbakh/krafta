@@ -14,10 +14,10 @@ export default async function DashboardPage({
 }) {
   const sp = await searchParams;
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
+  const { data: auth, error: authError } = await supabase.auth.getUser();
   const user = auth.user;
 
-  if (!user) {
+  if (authError || !user) {
     const origin = getRequestOrigin(await headers());
     redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
   }

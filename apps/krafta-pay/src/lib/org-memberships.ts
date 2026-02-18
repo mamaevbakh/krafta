@@ -9,8 +9,8 @@ export type MembershipOption = {
 
 export async function getCurrentUserMemberships(): Promise<MembershipOption[]> {
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return [];
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError || !auth.user) return [];
 
   const { data, error } = await supabase
     .from("organization_members")
