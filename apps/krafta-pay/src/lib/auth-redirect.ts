@@ -78,5 +78,5 @@ export function getKraftaAppOrigin(): string {
 
 export function buildKraftaLoginUrl(next: string): string {
   const base = getKraftaAppOrigin();
-  return `${base}/login?next=${encodeURIComponent(next)}`;
+  return `${base}/auth/pay-handoff?next=${encodeURIComponent(next)}`;
 }

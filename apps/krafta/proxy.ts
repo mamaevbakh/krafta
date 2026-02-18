@@ -1,6 +1,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { normalizeNextPath } from "@/lib/auth/redirect";
 
 /**
  * Proxy to refresh auth session and protect routes.
@@ -55,7 +56,8 @@ export async function proxy(request: NextRequest) {
     // Redirect to login with a return URL
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    const returnPath = `${pathname}${request.nextUrl.search}`;
+    url.searchParams.set("next", returnPath);
     return NextResponse.redirect(url);
   }
 
@@ -64,9 +66,14 @@ export async function proxy(request: NextRequest) {
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
 
   if (isAuthRoute && user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    const requestOrigin = request.nextUrl.origin;
+    const next = normalizeNextPath(
+      request.nextUrl.searchParams.get("next"),
+      requestOrigin,
+      "/dashboard",
+    );
+    const target = new URL(next, request.url);
+    return NextResponse.redirect(target);
   }
 
   return supabaseResponse;

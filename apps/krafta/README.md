@@ -400,6 +400,7 @@ KRAFTA_SUPABASE_SERVICE_ROLE_KEY=eyJ...
 # Billing orchestration
 KRAFTA_PAY_URL=https://pay.krafta.org
 KRAFTA_PAY_API_KEY=krp_test_xxxxxxxxxxxxxxxxx
+KRAFTA_PAY_INTERNAL_SECRET=shared-secret-with-krafta-pay
 
 # Optional for multi-domain auth redirect allowlist
 # Example: https://pay.krafta.uz,https://pay.krafta.org,https://pay.krafta.company
