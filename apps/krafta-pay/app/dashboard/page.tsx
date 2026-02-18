@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createHostedCheckoutAction } from "@/app/dashboard/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 
 export default async function DashboardPage({
   searchParams,
@@ -12,11 +15,17 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
+  const user = auth.user;
+
+  if (!user) {
+    const origin = getRequestOrigin(await headers());
+    redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
+  }
 
   const { data: memberships } = await supabase
     .from("organization_members")
     .select("role, organizations(id, name, slug)")
-    .eq("user_id", auth.user!.id);
+    .eq("user_id", user.id);
 
   const orgOptions = (memberships ?? [])
     .map((m: any) => m.organizations)
@@ -26,7 +35,7 @@ export default async function DashboardPage({
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Signed in as {auth.user?.email}</p>
+        <p className="mt-1 text-sm text-muted-foreground">Signed in as {user.email}</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
