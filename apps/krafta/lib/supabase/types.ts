@@ -317,6 +317,47 @@ export type Database = {
           },
         ]
       }
+      org_tax_profiles: {
+        Row: {
+          country_iso2: string
+          created_at: string
+          metadata: Json
+          org_id: string
+          schema_id: string
+          tax_identity_type: string
+          tax_identity_value: string
+          updated_at: string
+        }
+        Insert: {
+          country_iso2: string
+          created_at?: string
+          metadata?: Json
+          org_id: string
+          schema_id: string
+          tax_identity_type: string
+          tax_identity_value: string
+          updated_at?: string
+        }
+        Update: {
+          country_iso2?: string
+          created_at?: string
+          metadata?: Json
+          org_id?: string
+          schema_id?: string
+          tax_identity_type?: string
+          tax_identity_value?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_tax_profiles_schema_id_fkey"
+            columns: ["schema_id"]
+            isOneToOne: false
+            referencedRelation: "tax_schemas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_attempts: {
         Row: {
           checkout_url: string | null
@@ -556,6 +597,64 @@ export type Database = {
           },
         ]
       }
+      plan_tax_classifications: {
+        Row: {
+          created_at: string
+          metadata: Json
+          package_code: string | null
+          plan_id: string
+          schema_id: string
+          tax_code: string
+          tax_code_entry_id: string | null
+          updated_at: string
+          vat_percent: number | null
+        }
+        Insert: {
+          created_at?: string
+          metadata?: Json
+          package_code?: string | null
+          plan_id: string
+          schema_id: string
+          tax_code: string
+          tax_code_entry_id?: string | null
+          updated_at?: string
+          vat_percent?: number | null
+        }
+        Update: {
+          created_at?: string
+          metadata?: Json
+          package_code?: string | null
+          plan_id?: string
+          schema_id?: string
+          tax_code?: string
+          tax_code_entry_id?: string | null
+          updated_at?: string
+          vat_percent?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_tax_classifications_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: true
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_tax_classifications_schema_id_fkey"
+            columns: ["schema_id"]
+            isOneToOne: false
+            referencedRelation: "tax_schemas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_tax_classifications_tax_code_entry_id_fkey"
+            columns: ["tax_code_entry_id"]
+            isOneToOne: false
+            referencedRelation: "tax_code_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plans: {
         Row: {
           amount_minor: number
@@ -729,6 +828,127 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tax_code_entries: {
+        Row: {
+          created_at: string
+          id: string
+          metadata: Json
+          package_code: string
+          registry_id: string
+          tax_code: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          package_code: string
+          registry_id: string
+          tax_code: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          package_code?: string
+          registry_id?: string
+          tax_code?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_code_entries_registry_id_fkey"
+            columns: ["registry_id"]
+            isOneToOne: false
+            referencedRelation: "tax_code_registries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tax_code_registries: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          metadata: Json
+          name: string
+          org_id: string
+          schema_id: string
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name: string
+          org_id: string
+          schema_id: string
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name?: string
+          org_id?: string
+          schema_id?: string
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_code_registries_schema_id_fkey"
+            columns: ["schema_id"]
+            isOneToOne: false
+            referencedRelation: "tax_schemas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tax_schemas: {
+        Row: {
+          code: string
+          country_iso2: string
+          created_at: string
+          id: string
+          is_active: boolean
+          metadata: Json
+          name: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          code: string
+          country_iso2: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          code?: string
+          country_iso2?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
       }
     }
     Views: {

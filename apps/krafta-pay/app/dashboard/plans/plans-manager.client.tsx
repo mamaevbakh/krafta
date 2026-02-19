@@ -15,6 +15,7 @@ type Plan = {
   trial_days: number;
   is_active: boolean;
   spic?: string | null;
+  packageCode?: string | null;
 };
 
 type EditDraft = {
@@ -26,6 +27,7 @@ type EditDraft = {
   trialDays: string;
   isActive: boolean;
   spic: string;
+  packageCode: string;
 };
 
 export function PlansManagerClient({
@@ -49,6 +51,7 @@ export function PlansManagerClient({
   const [trialDays, setTrialDays] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [spic, setSpic] = useState("");
+  const [packageCode, setPackageCode] = useState("");
 
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
@@ -92,6 +95,7 @@ export function PlansManagerClient({
     setTrialDays("0");
     setIsActive(true);
     setSpic("");
+    setPackageCode("");
   }
 
   async function createPlan(e: React.FormEvent) {
@@ -114,6 +118,7 @@ export function PlansManagerClient({
           trialDays: Number(trialDays),
           isActive,
           spic: spic.trim() || null,
+          packageCode: packageCode.trim() || null,
         }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -137,6 +142,7 @@ export function PlansManagerClient({
       trialDays: String(plan.trial_days),
       isActive: plan.is_active,
       spic: plan.spic ?? "",
+      packageCode: plan.packageCode ?? "",
     });
   }
 
@@ -164,6 +170,7 @@ export function PlansManagerClient({
           trialDays: Number(editDraft.trialDays),
           isActive: editDraft.isActive,
           spic: editDraft.spic.trim() || null,
+          packageCode: editDraft.packageCode.trim() || null,
         }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -297,6 +304,17 @@ export function PlansManagerClient({
             placeholder="06209001001000000"
           />
         </div>
+        <div className="grid gap-1 md:col-span-2">
+          <label className="text-sm font-medium" htmlFor="plan-package-code">
+            Package code
+          </label>
+          <Input
+            id="plan-package-code"
+            value={packageCode}
+            onChange={(e) => setPackageCode(e.target.value)}
+            placeholder="Catalog package code from Tasnif"
+          />
+        </div>
         <label className="mt-2 flex items-center gap-2 text-sm">
           <input checked={isActive} onChange={(e) => setIsActive(e.target.checked)} type="checkbox" />
           Active
@@ -329,6 +347,9 @@ export function PlansManagerClient({
                         </p>
                         <p className="text-xs text-muted-foreground">
                           SPIC: {plan.spic || "not set"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Package code: {plan.packageCode || "not set"}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Status: {plan.is_active ? "active" : "disabled"}
@@ -396,6 +417,16 @@ export function PlansManagerClient({
                           value={editDraft.spic}
                           onChange={(e) => setEditDraft({ ...editDraft, spic: e.target.value })}
                           placeholder="06209001001000000"
+                        />
+                      </div>
+                      <div className="grid gap-1 md:col-span-2">
+                        <label className="text-xs text-muted-foreground">Package code</label>
+                        <Input
+                          value={editDraft.packageCode}
+                          onChange={(e) =>
+                            setEditDraft({ ...editDraft, packageCode: e.target.value })
+                          }
+                          placeholder="Catalog package code from Tasnif"
                         />
                       </div>
                       <label className="flex items-center gap-2 text-sm md:col-span-2">

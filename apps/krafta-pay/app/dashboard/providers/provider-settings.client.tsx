@@ -19,6 +19,11 @@ type ProviderState = {
     hasApiKey: boolean;
     hasWebhookSecret: boolean;
   };
+  fiscalization?: {
+    country: string | null;
+    taxIdentityType: "TIN" | "PINFL" | null;
+    taxIdentityValue: string | null;
+  };
 };
 
 export function ProviderSettingsClient({
@@ -42,6 +47,9 @@ export function ProviderSettingsClient({
   const [webhookSecret, setWebhookSecret] = useState("");
   const [displayLabel, setDisplayLabel] = useState("Uzum");
   const [environment, setEnvironment] = useState<"test" | "live">("live");
+  const [fiscalCountry, setFiscalCountry] = useState("UZ");
+  const [taxIdentityType, setTaxIdentityType] = useState<"TIN" | "PINFL">("TIN");
+  const [taxIdentityValue, setTaxIdentityValue] = useState("");
 
   const selectedMembership = useMemo(
     () => memberships.find((membership) => membership.orgId === orgId) ?? null,
@@ -69,9 +77,22 @@ export function ProviderSettingsClient({
       .then((json) => {
         if (ignore) return;
         setProviderState(json ?? null);
+        setApiBaseUrl("");
+        setTerminalId("");
+        setDisplayLabel("Uzum");
+        setFiscalCountry("UZ");
+        setTaxIdentityType("TIN");
+        setTaxIdentityValue("");
         if (json?.credentials?.apiBaseUrl) setApiBaseUrl(json.credentials.apiBaseUrl);
         if (json?.credentials?.terminalId) setTerminalId(json.credentials.terminalId);
         if (json?.account?.displayLabel) setDisplayLabel(json.account.displayLabel);
+        if (json?.fiscalization?.country) setFiscalCountry(json.fiscalization.country);
+        if (json?.fiscalization?.taxIdentityType) {
+          setTaxIdentityType(json.fiscalization.taxIdentityType);
+        }
+        if (json?.fiscalization?.taxIdentityValue) {
+          setTaxIdentityValue(json.fiscalization.taxIdentityValue);
+        }
       })
       .catch((e) => {
         if (ignore) return;
@@ -106,6 +127,9 @@ export function ProviderSettingsClient({
           terminalId,
           apiKey,
           webhookSecret,
+          fiscalCountry,
+          taxIdentityType,
+          taxIdentityValue,
           status: "active",
         }),
       });
@@ -177,6 +201,47 @@ export function ProviderSettingsClient({
         </div>
 
         <div className="grid gap-1">
+          <label className="text-sm font-medium" htmlFor="provider-fiscal-country">
+            Fiscal country
+          </label>
+          <Input
+            id="provider-fiscal-country"
+            value={fiscalCountry}
+            onChange={(e) => setFiscalCountry(e.target.value.toUpperCase())}
+            placeholder="UZ"
+            required
+          />
+        </div>
+
+        <div className="grid gap-1">
+          <label className="text-sm font-medium" htmlFor="provider-tax-type">
+            Tax identity type
+          </label>
+          <select
+            id="provider-tax-type"
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            value={taxIdentityType}
+            onChange={(e) => setTaxIdentityType(e.target.value as "TIN" | "PINFL")}
+          >
+            <option value="TIN">TIN</option>
+            <option value="PINFL">PINFL</option>
+          </select>
+        </div>
+
+        <div className="grid gap-1">
+          <label className="text-sm font-medium" htmlFor="provider-tax-value">
+            Tax identity value
+          </label>
+          <Input
+            id="provider-tax-value"
+            value={taxIdentityValue}
+            onChange={(e) => setTaxIdentityValue(e.target.value)}
+            placeholder="123456789"
+            required
+          />
+        </div>
+
+        <div className="grid gap-1">
           <label className="text-sm font-medium" htmlFor="provider-api-base">
             API base URL
           </label>
@@ -243,6 +308,16 @@ export function ProviderSettingsClient({
           </p>
           <p className="text-muted-foreground">
             Webhook secret configured: {providerState.credentials?.hasWebhookSecret ? "yes" : "no"}
+          </p>
+          <p className="text-muted-foreground">
+            Fiscal country: {providerState.fiscalization?.country ?? "not set"}
+          </p>
+          <p className="text-muted-foreground">
+            Tax identity:{" "}
+            {providerState.fiscalization?.taxIdentityType &&
+            providerState.fiscalization?.taxIdentityValue
+              ? `${providerState.fiscalization.taxIdentityType} ${providerState.fiscalization.taxIdentityValue}`
+              : "not set"}
           </p>
         </div>
       ) : null}

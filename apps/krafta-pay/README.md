@@ -50,3 +50,26 @@ In Supabase Authentication settings:
 - Visiting `/dashboard` on Pay redirects to Krafta (`/auth/pay-handoff`).
 - Krafta generates a Supabase magic link targeting Pay `/auth/confirm`.
 - After callback, user returns to the original Pay URL.
+
+## Fiscalization (Phase 2)
+
+Stage 2 introduces canonical tax/fiscal modeling:
+
+- `payments.tax_schemas`
+- `payments.tax_code_registries`
+- `payments.tax_code_entries`
+- `payments.org_tax_profiles`
+- `payments.plan_tax_classifications`
+
+Dashboard flow:
+
+1. Configure merchant tax identity in Providers (`TIN`/`PINFL`).
+2. Upload SPIC + package code registry in `Dashboard -> Tax Codes`.
+3. Assign plan fiscal fields in `Dashboard -> Plans` (`SPIC` + `package code`).
+
+Checkout uses:
+
+- org tax profile (`TIN`/`PINFL`) +
+- plan tax classification (`SPIC` + `package code`)
+
+and snapshots them into checkout/payment metadata for reproducible fiscal payloads.

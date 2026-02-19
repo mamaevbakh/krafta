@@ -47,6 +47,10 @@ export default async function DashboardPage({
           <p className="font-medium">Plans</p>
           <p className="mt-1 text-muted-foreground">Create and manage subscription plans.</p>
         </Link>
+        <Link className="rounded-md border bg-background p-4 text-sm hover:bg-muted" href={`/dashboard/tax-codes${orgOptions[0]?.id ? `?orgId=${orgOptions[0].id}` : ""}`}>
+          <p className="font-medium">Tax Codes</p>
+          <p className="mt-1 text-muted-foreground">Upload SPIC + package code registries.</p>
+        </Link>
         <Link className="rounded-md border bg-background p-4 text-sm hover:bg-muted" href={`/dashboard/subscriptions${orgOptions[0]?.id ? `?orgId=${orgOptions[0].id}` : ""}`}>
           <p className="font-medium">Subscriptions</p>
           <p className="mt-1 text-muted-foreground">Inspect active, past due, and canceled subscriptions.</p>

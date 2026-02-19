@@ -64,6 +64,41 @@ function normalizeSpic(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizePackageCode(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value));
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeVatPercent(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+type TaxIdentityType = "TIN" | "PINFL";
+type FiscalTaxIdentity = {
+  type: TaxIdentityType;
+  value: string;
+};
+
+function normalizeTaxIdentityType(value: unknown): TaxIdentityType | null {
+  if (value === "TIN" || value === "PINFL") return value;
+  return null;
+}
+
+function normalizeTaxIdentityValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function getPlanFiscalSpic(metadata: Record<string, unknown>) {
   const direct = normalizeSpic(metadata.spic);
   if (direct) return direct;
@@ -73,6 +108,40 @@ function getPlanFiscalSpic(metadata: Record<string, unknown>) {
     const nested = fiscalization as Record<string, unknown>;
     const nestedSpic = normalizeSpic(nested.spic);
     if (nestedSpic) return nestedSpic;
+  }
+
+  return null;
+}
+
+function getPlanFiscalPackageCode(metadata: Record<string, unknown>) {
+  const direct = normalizePackageCode(
+    metadata.packageCode ?? metadata.package_code,
+  );
+  if (direct) return direct;
+
+  const fiscalization = metadata.fiscalization;
+  if (fiscalization && typeof fiscalization === "object") {
+    const nested = fiscalization as Record<string, unknown>;
+    const nestedPackageCode = normalizePackageCode(
+      nested.packageCode ?? nested.package_code,
+    );
+    if (nestedPackageCode) return nestedPackageCode;
+  }
+
+  return null;
+}
+
+function getPlanFiscalVatPercent(metadata: Record<string, unknown>) {
+  const direct = normalizeVatPercent(metadata.vatPercent ?? metadata.vat_percent);
+  if (direct !== null) return direct;
+
+  const fiscalization = metadata.fiscalization;
+  if (fiscalization && typeof fiscalization === "object") {
+    const nested = fiscalization as Record<string, unknown>;
+    const nestedVatPercent = normalizeVatPercent(
+      nested.vatPercent ?? nested.vat_percent,
+    );
+    if (nestedVatPercent !== null) return nestedVatPercent;
   }
 
   return null;
@@ -92,15 +161,201 @@ function getUzumCartFromMetadata(metadata: Record<string, unknown>) {
   return null;
 }
 
-function buildUzumCartFromSpic(params: {
+function getTaxIdentityFromFiscalizationObject(
+  fiscalization: Record<string, unknown>,
+): FiscalTaxIdentity | null {
+  if (
+    fiscalization.taxIdentity &&
+    typeof fiscalization.taxIdentity === "object" &&
+    !Array.isArray(fiscalization.taxIdentity)
+  ) {
+    const taxIdentity = fiscalization.taxIdentity as Record<string, unknown>;
+    const type = normalizeTaxIdentityType(taxIdentity.type);
+    const value = normalizeTaxIdentityValue(taxIdentity.value);
+    if (type && value) {
+      return { type, value };
+    }
+  }
+
+  const tin = normalizeTaxIdentityValue(fiscalization.TIN ?? fiscalization.tin);
+  if (tin) {
+    return { type: "TIN", value: tin };
+  }
+
+  const pinfl = normalizeTaxIdentityValue(
+    fiscalization.PINFL ?? fiscalization.pinfl,
+  );
+  if (pinfl) {
+    return { type: "PINFL", value: pinfl };
+  }
+
+  return null;
+}
+
+function getOrgUzumFiscalization(metadata: unknown): {
+  country: string | null;
+  schema: string | null;
+  taxIdentity: FiscalTaxIdentity | null;
+} {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return { country: null, schema: null, taxIdentity: null };
+  }
+  const record = metadata as Record<string, unknown>;
+
+  if (
+    record.fiscalization &&
+    typeof record.fiscalization === "object" &&
+    !Array.isArray(record.fiscalization)
+  ) {
+    const fiscalization = record.fiscalization as Record<string, unknown>;
+    const country =
+      typeof fiscalization.country === "string" ? fiscalization.country : null;
+    const schema =
+      typeof fiscalization.schema === "string" ? fiscalization.schema : null;
+    const taxIdentity = getTaxIdentityFromFiscalizationObject(fiscalization);
+    return { country, schema, taxIdentity };
+  }
+
+  return { country: null, schema: null, taxIdentity: null };
+}
+
+function getTaxIdentityFromEnv(): FiscalTaxIdentity | null {
+  const tin = normalizeTaxIdentityValue(process.env.KRAFTA_PAY_FISCAL_TIN);
+  if (tin) return { type: "TIN", value: tin };
+
+  const pinfl = normalizeTaxIdentityValue(process.env.KRAFTA_PAY_FISCAL_PINFL);
+  if (pinfl) return { type: "PINFL", value: pinfl };
+
+  return null;
+}
+
+async function resolveOrgUzumFiscalization(
+  supabase: SupabaseClient,
+  orgId: string,
+) {
+  const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
+  const { data, error } = await supabase
+    .schema("payments")
+    .from("org_provider_accounts")
+    .select("metadata")
+    .eq("org_id", orgId)
+    .eq("provider_id", "uzum")
+    .eq("environment", environment)
+    .eq("status", "active")
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+
+  const metadata = Array.isArray(data) && data.length > 0 ? data[0]?.metadata : null;
+  return getOrgUzumFiscalization(metadata);
+}
+
+async function resolveOrgTaxProfile(
+  supabase: SupabaseClient,
+  orgId: string,
+) {
+  const db = supabase as any;
+  const { data: profile, error: profileErr } = await db
+    .schema("payments")
+    .from("org_tax_profiles")
+    .select("country_iso2, schema_id, tax_identity_type, tax_identity_value")
+    .eq("org_id", orgId)
+    .maybeSingle();
+  if (profileErr && profileErr.code !== "PGRST205") throw profileErr;
+
+  if (profile) {
+    let schemaCode: string | null = null;
+    if (profile.schema_id) {
+      const { data: schema, error: schemaErr } = await db
+        .schema("payments")
+        .from("tax_schemas")
+        .select("code")
+        .eq("id", profile.schema_id)
+        .maybeSingle();
+      if (schemaErr && schemaErr.code !== "PGRST205") throw schemaErr;
+      schemaCode = typeof schema?.code === "string" ? schema.code : null;
+    }
+
+    const type = normalizeTaxIdentityType(profile.tax_identity_type);
+    const value = normalizeTaxIdentityValue(profile.tax_identity_value);
+    return {
+      country: typeof profile.country_iso2 === "string" ? profile.country_iso2 : null,
+      schema: schemaCode,
+      taxIdentity: type && value ? ({ type, value } as FiscalTaxIdentity) : null,
+    };
+  }
+
+  return resolveOrgUzumFiscalization(supabase, orgId);
+}
+
+async function resolvePlanTaxClassification(
+  supabase: SupabaseClient,
+  planId: string,
+) {
+  const db = supabase as any;
+  const { data: classification, error: classificationErr } = await db
+    .schema("payments")
+    .from("plan_tax_classifications")
+    .select("schema_id, tax_code_entry_id, tax_code, package_code, vat_percent")
+    .eq("plan_id", planId)
+    .maybeSingle();
+  if (classificationErr && classificationErr.code !== "PGRST205") {
+    throw classificationErr;
+  }
+  if (!classification) return null;
+
+  let schemaCode: string | null = null;
+  if (classification.schema_id) {
+    const { data: schema, error: schemaErr } = await db
+      .schema("payments")
+      .from("tax_schemas")
+      .select("code")
+      .eq("id", classification.schema_id)
+      .maybeSingle();
+    if (schemaErr && schemaErr.code !== "PGRST205") throw schemaErr;
+    schemaCode = typeof schema?.code === "string" ? schema.code : null;
+  }
+
+  let taxCode = normalizeSpic(classification.tax_code);
+  let packageCode = normalizePackageCode(classification.package_code);
+  if ((!taxCode || !packageCode) && classification.tax_code_entry_id) {
+    const { data: entry, error: entryErr } = await db
+      .schema("payments")
+      .from("tax_code_entries")
+      .select("tax_code, package_code")
+      .eq("id", classification.tax_code_entry_id)
+      .maybeSingle();
+    if (entryErr && entryErr.code !== "PGRST205") throw entryErr;
+    taxCode = taxCode ?? normalizeSpic(entry?.tax_code);
+    packageCode = packageCode ?? normalizePackageCode(entry?.package_code);
+  }
+
+  return {
+    schemaCode,
+    taxCode,
+    packageCode,
+    vatPercent: normalizeVatPercent(classification.vat_percent),
+    taxCodeEntryId:
+      typeof classification.tax_code_entry_id === "string"
+        ? classification.tax_code_entry_id
+        : null,
+  };
+}
+
+function buildUzumCartFromFiscalization(params: {
   amountMinor: number;
   title: string;
   spic: string;
+  packageCode: string;
+  vatPercent?: number | null;
+  taxIdentity: FiscalTaxIdentity;
 }) {
-  const packageCode = process.env.KRAFTA_PAY_FISCAL_PACKAGE_CODE ?? "1546532";
   const vatPercentRaw = Number(process.env.KRAFTA_PAY_FISCAL_VAT_PERCENT ?? "0");
   const vatPercent = Number.isFinite(vatPercentRaw) ? vatPercentRaw : 0;
-  const tin = process.env.KRAFTA_PAY_FISCAL_TIN ?? "123456789";
+  const resolvedVatPercent =
+    typeof params.vatPercent === "number" && Number.isFinite(params.vatPercent)
+      ? params.vatPercent
+      : vatPercent;
 
   return {
     cartId: `subscription-cart-${Date.now()}`,
@@ -115,9 +370,9 @@ function buildUzumCartFromSpic(params: {
         total: params.amountMinor,
         receiptParams: {
           spic: params.spic,
-          packageCode,
-          vatPercent,
-          TIN: tin,
+          packageCode: params.packageCode,
+          vatPercent: resolvedVatPercent,
+          [params.taxIdentity.type]: params.taxIdentity.value,
         },
       },
     ],
@@ -127,7 +382,10 @@ function buildUzumCartFromSpic(params: {
 function buildDemoUzumCart(params: {
   amountMinor: number;
   title: string;
+  taxIdentity?: FiscalTaxIdentity | null;
 }) {
+  const taxIdentity = params.taxIdentity ?? { type: "TIN" as const, value: "123456789" };
+
   return {
     cartId: `subscription-cart-${Date.now()}`,
     receiptType: "PURCHASE",
@@ -143,7 +401,7 @@ function buildDemoUzumCart(params: {
           spic: "10305008003000000",
           packageCode: "1546532",
           vatPercent: 0,
-          TIN: "123456789",
+          [taxIdentity.type]: taxIdentity.value,
         },
       },
     ],
@@ -196,6 +454,12 @@ export async function createSubscriptionCheckout(
     plan.metadata && typeof plan.metadata === "object"
       ? (plan.metadata as Record<string, unknown>)
       : {};
+  const orgFiscalization = await resolveOrgTaxProfile(
+    supabase,
+    input.merchantOrgId,
+  );
+  const fallbackTaxIdentity = getTaxIdentityFromEnv();
+  const planClassification = await resolvePlanTaxClassification(supabase, plan.id);
 
   // Merchant can store fiscal cart on plan metadata and it will be applied automatically.
   if (!hasUzumCartMetadata(metadata)) {
@@ -206,23 +470,58 @@ export async function createSubscriptionCheckout(
   }
 
   if (!hasUzumCartMetadata(metadata)) {
-    const planSpic = getPlanFiscalSpic(planMetadata);
+    const planSpic = planClassification?.taxCode ?? getPlanFiscalSpic(planMetadata);
     if (planSpic) {
-      metadata.uzumCart = buildUzumCartFromSpic({
+      const planPackageCode =
+        planClassification?.packageCode ?? getPlanFiscalPackageCode(planMetadata);
+      if (!planPackageCode) {
+        throw new Error("plan_package_code_required_for_spic");
+      }
+
+      const taxIdentity = orgFiscalization.taxIdentity ?? fallbackTaxIdentity;
+      if (!taxIdentity) {
+        throw new Error("org_tax_identity_required_for_fiscalization");
+      }
+
+      metadata.uzumCart = buildUzumCartFromFiscalization({
         amountMinor: plan.amount_minor,
         title: plan.name ?? "Subscription plan",
         spic: planSpic,
+        packageCode: planPackageCode,
+        vatPercent:
+          planClassification?.vatPercent ?? getPlanFiscalVatPercent(planMetadata),
+        taxIdentity,
       });
+      metadata.fiscalization = {
+        country: orgFiscalization.country ?? "UZ",
+        schema:
+          planClassification?.schemaCode ??
+          orgFiscalization.schema ??
+          "UZ_AUTOFISCAL_V1",
+        spic: planSpic,
+        packageCode: planPackageCode,
+        taxIdentity,
+        taxCodeEntryId: planClassification?.taxCodeEntryId ?? null,
+      };
     }
   }
 
   // Uzum test terminals with AUTOFISCALIZATION enabled require cart fiscal params.
   // Auto-attach a demo cart only in test env when merchant hasn't provided one.
   if ((process.env.PAY_ENV ?? "live") === "test" && !hasUzumCartMetadata(metadata)) {
+    const demoTaxIdentity = orgFiscalization.taxIdentity ?? fallbackTaxIdentity;
     metadata.uzumCart = buildDemoUzumCart({
       amountMinor: plan.amount_minor,
       title: plan.name ?? "Subscription plan",
+      taxIdentity: demoTaxIdentity,
     });
+    if (demoTaxIdentity) {
+      metadata.fiscalization = {
+        country: orgFiscalization.country ?? "UZ",
+        schema: orgFiscalization.schema ?? "UZ_AUTOFISCAL_V1",
+        taxIdentity: demoTaxIdentity,
+      };
+    }
   }
 
   let customerId: string | null = null;
