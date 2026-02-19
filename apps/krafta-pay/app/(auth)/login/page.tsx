@@ -11,6 +11,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ next?: string | string[] }>;
 }) {
+  
   const sp = await searchParams;
   const rawNext = Array.isArray(sp.next) ? sp.next[0] : sp.next;
   const origin = getRequestOrigin(await headers());
