@@ -20,10 +20,14 @@ export async function POST(
         { status: 400 },
       );
     }
+    const requestedViewType =
+      body.viewType === "WEB_VIEW" || body.viewType === "REDIRECT" || body.viewType === "IFRAME"
+        ? body.viewType
+        : "WEB_VIEW";
 
     const result = await selectProviderCreateAttempt(
       supabase,
-      { publicToken: public_token, providerId, viewType: body.viewType },
+      { publicToken: public_token, providerId, viewType: requestedViewType },
       environment,
       payBaseUrl
     );

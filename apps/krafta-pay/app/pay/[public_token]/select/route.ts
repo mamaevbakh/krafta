@@ -19,8 +19,13 @@ export async function POST(
   try {
     const url = new URL(req.url);
     const providerId = url.searchParams.get("provider");
+    const viewTypeParam = url.searchParams.get("viewType");
     if (!providerId) throw new Error("missing_provider");
     if (providerId !== "uzum") throw new Error("provider_not_enabled_in_stage1");
+    const viewType =
+      viewTypeParam === "WEB_VIEW" || viewTypeParam === "REDIRECT" || viewTypeParam === "IFRAME"
+        ? viewTypeParam
+        : "WEB_VIEW";
 
     const supabase = createAdminSupabase();
     const { public_token } = await params;
@@ -29,7 +34,7 @@ export async function POST(
 
     const { redirectUrl } = await selectProviderCreateAttempt(
       supabase,
-      { publicToken: public_token, providerId },
+      { publicToken: public_token, providerId, viewType },
       environment,
       payBaseUrl
     );

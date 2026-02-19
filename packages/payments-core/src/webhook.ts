@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { HandleWebhookInput, HandleWebhookResult } from "./types";
 import { finalizeInitialPayment, markPaymentFailed } from "./subscription";
-import { verifyUzumWebhookSignature } from "./providers/uzum";
+import { createUzumRecurringCharge, verifyUzumWebhookSignature } from "./providers/uzum";
 
 export async function handleWebhookEvent(
   supabase: SupabaseClient,
@@ -53,6 +53,7 @@ export async function handleWebhookEvent(
         id: string;
         payment_intent_id: string;
         org_provider_account_id: string;
+        status: string;
       }
     | null = null;
 
@@ -60,7 +61,7 @@ export async function handleWebhookEvent(
     const { data: attempt, error: attemptErr } = await supabase
       .schema("payments")
       .from("payment_attempts")
-      .select("id, payment_intent_id, org_provider_account_id")
+      .select("id, payment_intent_id, org_provider_account_id, status")
       .eq("provider_id", input.providerId)
       .eq("provider_payment_id", providerPaymentId)
       .order("created_at", { ascending: false })
@@ -107,18 +108,112 @@ export async function handleWebhookEvent(
       const normalizedState = opStateRaw?.toUpperCase() ?? null;
       const isSuccess = normalizedState === "SUCCESS";
       const isFailure = normalizedState === "CANCEL" || normalizedState === "ERROR";
+      const bindingId = pickBindingId(payload);
+      const isBindingSetupAttempt =
+        matchedAttempt?.status === "requires_action" ||
+        matchedAttempt?.status === "initialized";
 
       if ((isSuccess || isFailure) && matchedAttempt) {
         paymentIntentId = matchedAttempt.payment_intent_id;
 
         if (isSuccess) {
-          await finalizeInitialPayment(supabase, {
-            paymentIntentId: matchedAttempt.payment_intent_id,
-            providerId: input.providerId,
-            providerPaymentId,
-            payload,
-            attemptId: matchedAttempt.id,
-          });
+          // Binding-first flow:
+          // 1) checkout register returns bindingId in webhook
+          // 2) run merchantPay using that binding
+          // 3) finalize subscription only after merchantPay success
+          if (bindingId && isBindingSetupAttempt) {
+            const { data: intent, error: intentErr } = await supabase
+              .schema("payments")
+              .from("payment_intents")
+              .select("id, amount_minor, currency, description, order_id, status, metadata")
+              .eq("id", matchedAttempt.payment_intent_id)
+              .maybeSingle();
+            if (intentErr) throw intentErr;
+            if (!intent) throw new Error("payment_intent_not_found");
+
+            const { data: session, error: sessionErr } = await supabase
+              .schema("payments")
+              .from("checkout_sessions")
+              .select("id, org_id, customer_id, success_url, cancel_url, return_url, metadata")
+              .eq("payment_intent_id", matchedAttempt.payment_intent_id)
+              .order("created_at", { ascending: false })
+              .maybeSingle();
+            if (sessionErr) throw sessionErr;
+
+            const chargeResult = await createUzumRecurringCharge({
+              supabase,
+              orgProviderAccountId: matchedAttempt.org_provider_account_id,
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              providerToken: bindingId,
+              clientId: session?.customer_id ?? session?.org_id ?? "unknown",
+              description: intent.description ?? "Checkout payment",
+              orderNumber: String(intent.order_id ?? intent.id),
+              orderId: providerPaymentId,
+              currency: intent.currency,
+              amountMinor: intent.amount_minor,
+              returnUrl: session?.return_url ?? session?.success_url ?? session?.cancel_url ?? null,
+              uzumCart:
+                getUzumCartFromMetadata(intent.metadata) ??
+                getUzumCartFromMetadata(session?.metadata) ??
+                null,
+            });
+
+            const normalizedAttemptStatus =
+              chargeResult.status === "succeeded"
+                ? "succeeded"
+                : chargeResult.status === "processing"
+                  ? "processing"
+                  : "failed";
+            const { error: attemptUpdateErr } = await supabase
+              .schema("payments")
+              .from("payment_attempts")
+              .update({
+                status: normalizedAttemptStatus,
+                provider_payment_id: chargeResult.providerPaymentId ?? providerPaymentId,
+                raw_init_response: {
+                  bindingWebhookPayload: payload,
+                  chargeResult: chargeResult.raw,
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", matchedAttempt.id);
+            if (attemptUpdateErr) throw attemptUpdateErr;
+
+            if (chargeResult.status === "succeeded") {
+              await finalizeInitialPayment(supabase, {
+                paymentIntentId: matchedAttempt.payment_intent_id,
+                providerId: input.providerId,
+                providerPaymentId: chargeResult.providerPaymentId ?? providerPaymentId,
+                payload,
+                attemptId: matchedAttempt.id,
+              });
+            } else if (chargeResult.status === "failed") {
+              await markPaymentFailed(supabase, {
+                paymentIntentId: matchedAttempt.payment_intent_id,
+                providerId: input.providerId,
+                providerPaymentId: chargeResult.providerPaymentId ?? providerPaymentId,
+                payload: chargeResult.raw,
+              });
+            } else {
+              const { error: intentProcessingErr } = await supabase
+                .schema("payments")
+                .from("payment_intents")
+                .update({
+                  status: "processing",
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", matchedAttempt.payment_intent_id);
+              if (intentProcessingErr) throw intentProcessingErr;
+            }
+          } else {
+            await finalizeInitialPayment(supabase, {
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              providerId: input.providerId,
+              providerPaymentId,
+              payload,
+              attemptId: matchedAttempt.id,
+            });
+          }
         } else {
           await markPaymentFailed(supabase, {
             paymentIntentId: matchedAttempt.payment_intent_id,
@@ -175,4 +270,28 @@ export async function applyWebhookEvent(
 
 function safeJsonParse(s: string) {
   try { return JSON.parse(s); } catch { return null; }
+}
+
+function pickBindingId(payload: unknown) {
+  if (!payload || typeof payload !== "object") return null;
+  const rec = payload as Record<string, unknown>;
+  if (typeof rec.bindingId === "string" && rec.bindingId) return rec.bindingId;
+  if (typeof rec.binding_id === "string" && rec.binding_id) return rec.binding_id;
+  if (rec.result && typeof rec.result === "object") {
+    const nested = rec.result as Record<string, unknown>;
+    if (typeof nested.bindingId === "string" && nested.bindingId) return nested.bindingId;
+    if (typeof nested.binding_id === "string" && nested.binding_id) return nested.binding_id;
+  }
+  return null;
+}
+
+function getUzumCartFromMetadata(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const rec = metadata as Record<string, unknown>;
+  if (rec.uzumCart && typeof rec.uzumCart === "object") return rec.uzumCart;
+  if (rec.uzum && typeof rec.uzum === "object") {
+    const uz = rec.uzum as Record<string, unknown>;
+    if (uz.cart && typeof uz.cart === "object") return uz.cart;
+  }
+  return null;
 }

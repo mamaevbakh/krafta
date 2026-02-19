@@ -11,6 +11,8 @@ type UzumCredentials = {
   contentLanguage?: "ru-RU" | "uz-UZ" | "en-EN";
 };
 
+type UzumViewType = "WEB_VIEW" | "IFRAME" | "REDIRECT";
+
 function assertString(v: unknown, name: string): asserts v is string {
   if (typeof v !== "string" || v.trim() === "") {
     throw new Error(`${name}_is_required`);
@@ -19,6 +21,10 @@ function assertString(v: unknown, name: string): asserts v is string {
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.replace(/\/+$/, "");
+}
+
+function pickHttpsUrl(...candidates: Array<string | null | undefined>) {
+  return candidates.find((u) => typeof u === "string" && u.startsWith("https://")) ?? null;
 }
 
 function uzumCurrencyCode(currency: string): number {
@@ -39,11 +45,8 @@ function pickReturnUrl(session: {
 }, payBaseUrl: string, publicToken: string) {
   const fallback = `${payBaseUrl.replace(/\/+$/, "")}/pay/${publicToken}`;
 
-  const pickHttps = (...candidates: Array<string | null | undefined>) =>
-    candidates.find((u) => typeof u === "string" && u.startsWith("https://")) ?? null;
-
-  const successUrl = pickHttps(session.success_url, session.return_url, fallback);
-  const failureUrl = pickHttps(session.cancel_url, session.return_url, fallback);
+  const successUrl = pickHttpsUrl(session.success_url, session.return_url, fallback);
+  const failureUrl = pickHttpsUrl(session.cancel_url, session.return_url, fallback);
 
   if (!successUrl || !failureUrl) {
     throw new Error("uzum_requires_https_success_and_failure_urls");
@@ -64,6 +67,17 @@ function getUzumCartFromMetadata(metadata: unknown): unknown | null {
   }
 
   return null;
+}
+
+function buildRecurringReturnUrl(returnUrl?: string | null) {
+  const configuredBase = process.env.PAY_BASE_URL?.replace(/\/+$/, "");
+  const configuredFallback = configuredBase ? `${configuredBase}/pay/return` : null;
+  const hardFallback = "https://pay.krafta.uz/pay/return";
+  const resolved = pickHttpsUrl(returnUrl, configuredFallback, hardFallback);
+  if (!resolved) {
+    throw new Error("uzum_requires_https_success_and_failure_urls");
+  }
+  return resolved;
 }
 
 function parseUzumCredentials(credentials: unknown): UzumCredentials {
@@ -88,6 +102,15 @@ function parseUzumCredentials(credentials: unknown): UzumCredentials {
     terminalId,
     apiKey,
     contentLanguage: (contentLanguage as UzumCredentials["contentLanguage"]) ?? undefined,
+  };
+}
+
+function getUzumHeaders(creds: UzumCredentials) {
+  return {
+    "Content-Type": "application/json",
+    "Content-Language": creds.contentLanguage ?? "ru-RU",
+    "X-Terminal-Id": creds.terminalId,
+    "X-API-Key": creds.apiKey,
   };
 }
 
@@ -170,7 +193,7 @@ type CreateAttemptCtx = {
   paymentAttemptId: string;
   publicToken: string;
   payBaseUrl: string;
-  viewType?: "WEB_VIEW" | "IFRAME" | "REDIRECT";
+  viewType?: UzumViewType;
 };
 
 export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<ProviderAttemptResult> {
@@ -188,12 +211,24 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
   const url = `${apiBaseUrl}/api/v1/payment/register`;
 
   const cart = getUzumCartFromMetadata(session.metadata);
-  const viewType = ctx.viewType ?? "REDIRECT";
+  let customerPhone: string | null = null;
+  if (session.customer_id) {
+    const { data: customer, error: customerErr } = await ctx.supabase
+      .schema("payments")
+      .from("customers")
+      .select("phone")
+      .eq("id", session.customer_id)
+      .maybeSingle();
+    if (customerErr) throw customerErr;
+    customerPhone = customer?.phone ?? null;
+  }
+
+  const viewType = ctx.viewType ?? "WEB_VIEW";
   const body = {
     amount: intent.amount_minor,
     clientId: session.customer_id ?? session.org_id,
     currency: uzumCurrencyCode(intent.currency),
-    paymentDetails: intent.description ?? "Payment",
+    paymentDetails: intent.description ?? "Card binding",
     orderNumber: pickOrderNumber(intent.id, intent.order_id),
     viewType,
     sessionTimeoutSecs: 1800,
@@ -201,18 +236,15 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
     failureUrl,
     ...(cart ? { merchantParams: { cart } } : {}),
     paymentParams: {
-      payType: "ONE_STEP",
+      payType: "TWO_STEP",
+      operationType: "BINDING",
+      ...(customerPhone ? { phoneNumber: customerPhone } : {}),
     },
   };
 
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Content-Language": creds.contentLanguage ?? "ru-RU",
-      "X-Terminal-Id": creds.terminalId,
-      "X-API-Key": creds.apiKey,
-    },
+    headers: getUzumHeaders(creds),
     body: JSON.stringify(body),
   });
 
@@ -300,7 +332,12 @@ type CreateRecurringChargeInput = {
   orderNumber: string;
   currency: string;
   amountMinor: number;
+  orderId?: string | null;
+  returnUrl?: string | null;
+  viewType?: UzumViewType;
+  uzumCart?: unknown;
   phoneNumber?: string | null;
+  cvc?: string | null;
 };
 
 type RecurringChargeResult = {
@@ -318,6 +355,84 @@ export async function createUzumRecurringCharge(
   );
   const creds = parseUzumCredentials(secrets.credentials_encrypted);
   const apiBaseUrl = normalizeBaseUrl(creds.apiBaseUrl);
+  const headers = getUzumHeaders(creds);
+  const returnUrl = buildRecurringReturnUrl(input.returnUrl);
+
+  const cart =
+    input.uzumCart && typeof input.uzumCart === "object" ? input.uzumCart : null;
+  let orderId = input.orderId?.trim() || null;
+
+  let registerPayload: Record<string, unknown> | null = null;
+  let registerResponse: unknown = null;
+  if (!orderId) {
+    const registerUrl = `${apiBaseUrl}/api/v1/payment/register`;
+    registerPayload = {
+      amount: input.amountMinor,
+      clientId: input.clientId,
+      currency: uzumCurrencyCode(input.currency),
+      paymentDetails: input.description ?? "Subscription renewal",
+      orderNumber: input.orderNumber,
+      viewType: input.viewType ?? "REDIRECT",
+      sessionTimeoutSecs: 1800,
+      successUrl: returnUrl,
+      failureUrl: returnUrl,
+      ...(cart ? { merchantParams: { cart } } : {}),
+      paymentParams: {
+        payType: "ONE_STEP",
+      },
+    };
+
+    const registerRes = await fetch(registerUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(registerPayload),
+    });
+
+    registerResponse = (await registerRes.json().catch(() => null)) as any;
+    if (!registerRes.ok) {
+      return {
+        status: "failed",
+        raw: {
+          register: {
+            request: registerPayload,
+            response: registerResponse,
+            httpStatus: registerRes.status,
+          },
+        },
+      };
+    }
+
+    const registerErrorCode = Number((registerResponse as any)?.errorCode ?? 0);
+    if (registerErrorCode !== 0) {
+      return {
+        status: "failed",
+        raw: {
+          register: {
+            request: registerPayload,
+            response: registerResponse,
+            errorCode: registerErrorCode,
+          },
+        },
+      };
+    }
+
+    orderId =
+      (typeof (registerResponse as any)?.result?.orderId === "string" &&
+        (registerResponse as any).result.orderId) ||
+      null;
+    if (!orderId) {
+      return {
+        status: "failed",
+        raw: {
+          register: {
+            request: registerPayload,
+            response: registerResponse,
+            error: "missing_order_id",
+          },
+        },
+      };
+    }
+  }
 
   const url = `${apiBaseUrl}/api/v1/payment/merchantPay`;
   const body: Record<string, unknown> = {
@@ -326,6 +441,15 @@ export async function createUzumRecurringCharge(
     currency: uzumCurrencyCode(input.currency),
     paymentDetails: input.description ?? "Subscription renewal",
     orderNumber: input.orderNumber,
+    orderId,
+    returnUrl,
+    ...(cart ? { merchantParams: { cart } } : {}),
+    processData: {
+      type: "bind",
+      bindingId: input.providerToken,
+      ...(input.cvc ? { cvc: input.cvc } : {}),
+    },
+    // Compatibility fallback for older schema variants.
     paymentParams: {
       payType: "TWO_STEP",
       operationType: "AUTHORIZE",
@@ -336,12 +460,7 @@ export async function createUzumRecurringCharge(
 
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Content-Language": creds.contentLanguage ?? "ru-RU",
-      "X-Terminal-Id": creds.terminalId,
-      "X-API-Key": creds.apiKey,
-    },
+    headers,
     body: JSON.stringify(body),
   });
 
@@ -349,11 +468,15 @@ export async function createUzumRecurringCharge(
   if (!res.ok) {
     return {
       status: "failed",
-      raw: { request: body, response: json, httpStatus: res.status },
+      raw: {
+        register: registerPayload ? { request: registerPayload, response: registerResponse } : null,
+        merchantPay: { request: body, response: json, httpStatus: res.status },
+      },
     };
   }
 
   const result = json?.result ?? {};
+  const errorCode = Number(json?.errorCode ?? result?.errorCode ?? 0);
   const actionCode = Number(json?.actionCode ?? result?.actionCode ?? 0);
   const operationState = String(
     json?.operationState ?? result?.operationState ?? "",
@@ -365,7 +488,9 @@ export async function createUzumRecurringCharge(
     undefined;
 
   const status =
-    operationState === "SUCCESS" || actionCode === 0
+    errorCode !== 0
+      ? "failed"
+      : operationState === "SUCCESS" || actionCode === 0
       ? "succeeded"
       : operationState === "PROCESSING"
         ? "processing"
@@ -374,6 +499,9 @@ export async function createUzumRecurringCharge(
   return {
     providerPaymentId,
     status,
-    raw: { request: body, response: json },
+    raw: {
+      register: registerPayload ? { request: registerPayload, response: registerResponse } : null,
+      merchantPay: { request: body, response: json },
+    },
   };
 }

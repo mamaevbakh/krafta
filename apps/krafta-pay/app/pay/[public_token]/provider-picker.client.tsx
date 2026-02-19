@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLinkIcon } from "lucide-react";
 
 type Provider = {
   id: string;
@@ -34,7 +33,6 @@ export function ProviderPicker({
 
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uzumIframeUrl, setUzumIframeUrl] = useState<string | null>(null);
 
   async function startProvider(providerId: string, viewType?: "WEB_VIEW" | "IFRAME" | "REDIRECT") {
     setIsStarting(true);
@@ -58,11 +56,6 @@ export function ProviderPicker({
       const redirectUrl = (json as any).redirectUrl as string | undefined;
       if (!redirectUrl) throw new Error("missing_redirect_url");
 
-      if (providerId === "uzum" && viewType === "IFRAME") {
-        setUzumIframeUrl(redirectUrl);
-        return;
-      }
-
       window.location.assign(redirectUrl);
     } catch (e) {
       setError(getErrorMessage(e));
@@ -74,46 +67,18 @@ export function ProviderPicker({
   return (
     <div className="mt-3 space-y-2">
       {providers.map((p) => {
-        const isUzum = p.id === "uzum";
-        const showUzumIframe = isUzum && !!uzumIframeUrl;
-
         return (
-          <div key={p.id} className="rounded-md border">
+          <div key={p.id} className="rounded-md border p-1">
             <button
               type="button"
               className="w-full rounded-md px-4 py-3 text-left hover:bg-muted disabled:opacity-60"
               disabled={isStarting}
-              onClick={() =>
-                startProvider(p.id, isUzum ? "IFRAME" : "REDIRECT")
-              }
+              onClick={() => startProvider(p.id, p.id === "uzum" ? "WEB_VIEW" : "REDIRECT")}
             >
               <div className="flex items-center justify-between">
                 <span>{p.name}</span>
               </div>
             </button>
-
-            {showUzumIframe ? (
-              <div className="border-t p-3">
-                <div className="mb-2 flex items-center justify-end">
-                  <a
-                    href={uzumIframeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Open in new tab"
-                    title="Open in new tab"
-                    className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-muted"
-                  >
-                    <ExternalLinkIcon className="h-4 w-4" />
-                  </a>
-                </div>
-
-                <iframe
-                  src={uzumIframeUrl}
-                  className="h-180 w-full rounded-md border bg-white"
-                  allow="payment *; clipboard-read *; clipboard-write *"
-                />
-              </div>
-            ) : null}
           </div>
         );
       })}

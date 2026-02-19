@@ -1094,11 +1094,51 @@ export async function chargeRenewal(
   const { data: plan, error: planErr } = await supabase
     .schema("payments")
     .from("plans")
-    .select("amount_minor, currency, interval_count")
+    .select("amount_minor, currency, interval_count, name, metadata")
     .eq("id", subscription.plan_id)
     .maybeSingle();
   if (planErr) throw planErr;
   if (!plan) throw new Error("plan_not_found");
+
+  const planMetadata =
+    plan.metadata && typeof plan.metadata === "object"
+      ? (plan.metadata as Record<string, unknown>)
+      : {};
+  let renewalUzumCart = getUzumCartFromMetadata(planMetadata);
+
+  if (!renewalUzumCart) {
+    const orgFiscalization = await resolveOrgTaxProfile(supabase, subscription.org_id);
+    const fallbackTaxIdentity = getTaxIdentityFromEnv();
+    const planClassification = await resolvePlanTaxClassification(
+      supabase,
+      subscription.plan_id,
+    );
+    const planSpic = planClassification?.taxCode ?? getPlanFiscalSpic(planMetadata);
+    const planPackageCode =
+      planClassification?.packageCode ?? getPlanFiscalPackageCode(planMetadata);
+    const taxIdentity = orgFiscalization.taxIdentity ?? fallbackTaxIdentity;
+
+    if (planSpic && planPackageCode && taxIdentity) {
+      renewalUzumCart = buildUzumCartFromFiscalization({
+        amountMinor: plan.amount_minor,
+        title: plan.name ?? "Subscription renewal",
+        spic: planSpic,
+        packageCode: planPackageCode,
+        vatPercent:
+          planClassification?.vatPercent ?? getPlanFiscalVatPercent(planMetadata),
+        taxIdentity,
+      });
+    }
+  }
+
+  if (!renewalUzumCart && (process.env.PAY_ENV ?? "live") === "test") {
+    const fallbackTaxIdentity = getTaxIdentityFromEnv();
+    renewalUzumCart = buildDemoUzumCart({
+      amountMinor: plan.amount_minor,
+      title: plan.name ?? "Subscription renewal",
+      taxIdentity: fallbackTaxIdentity,
+    });
+  }
 
   const periodStartIso = periodStart.toISOString();
   const periodEndIso = addMonths(
@@ -1172,6 +1212,7 @@ export async function chargeRenewal(
     orderNumber: renewal.paymentIntentId,
     currency: plan.currency,
     amountMinor: plan.amount_minor,
+    uzumCart: renewalUzumCart,
     phoneNumber: customer?.phone,
   });
 
