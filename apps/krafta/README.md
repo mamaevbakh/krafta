@@ -12,6 +12,8 @@ Built for SMBs, creators, freelancers, restaurants, retail stores, and service p
 
 - [The Problem](#the-problem)
 - [Core Features](#core-features)
+- [Product Scope (Current)](#product-scope-current)
+- [Product Status (Done vs Pending)](#product-status-done-vs-pending)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -52,6 +54,61 @@ Today, most SMBs face the same issues:
 | **Krafta Pay** | Unified payment layer with native UI. Uzcard, Humo, Visa, Mastercard. Webhooks & callbacks |
 | **Admin Dashboard** | CRUD for catalogs, categories, items. Order management, analytics |
 | **AI Layer** | Product descriptions, pricing suggestions, catalog structuring, merchant assistant, customer chat |
+
+---
+
+## Product Scope (Current)
+
+Krafta is the merchant-facing product application in this monorepo.
+
+- `apps/krafta` is the main SaaS app merchants use to build and operate catalogs.
+- `apps/krafta-pay` is a separate hosted billing infrastructure app that Krafta uses as a client (for subscriptions and hosted checkout).
+- In the current architecture, a Krafta merchant upgrades from Krafta, but payment/billing orchestration is executed in Krafta Pay.
+
+This separation is intentional:
+
+- Krafta focuses on catalog UX, dashboard UX, and product features.
+- Krafta Pay focuses on provider integrations, hosted checkout, subscriptions, webhooks, and recurring billing.
+
+---
+
+## Product Status (Done vs Pending)
+
+Snapshot date: **February 23, 2026**
+
+### Done (Implemented and usable)
+
+- Authentication with Supabase Auth across the Krafta app.
+- Organization + catalog dashboard routing (`/dashboard/[orgSlug]/[catalogSlug]`).
+- Catalog CRUD foundations (catalogs, categories, items, media).
+- Public catalog rendering via dynamic routes (`/[...slug]`).
+- Configurable catalog component/layout system (registry-based variants and per-component tweaks).
+- Catalog search foundation (hybrid search APIs and search documents pipeline present in schema/app).
+- Billing page integration in Krafta that:
+  - shows current billing/entitlement state,
+  - requests plans from Krafta Pay,
+  - initiates upgrade into hosted checkout.
+- Cross-app auth handoff flow (Krafta -> Krafta Pay) implemented at the application level.
+
+### In Progress / Recently Added (Needs production hardening)
+
+- Billing UX polish and error handling across cross-domain auth and redirect edge cases.
+- Entitlement enforcement consistency across all premium features (some flows are implemented, but this should be centralized and audited continuously).
+- Catalog builder flexibility for component-specific configuration (framework is in place; more UI controls/variants can be added incrementally).
+
+### Pending (Product roadmap / not fully implemented)
+
+- Full order management product experience in Krafta (customer ordering lifecycle, merchant fulfillment tooling) at production-ready scope.
+- Advanced analytics and merchant reporting UX.
+- Comprehensive taxonomy/category hierarchy UX (nested categories and taxonomy-grade tooling).
+- Advanced subscription UX inside Krafta (upgrades/downgrades, proration policies, self-serve billing management beyond MVP integration).
+- Multi-product billing integrations beyond Krafta Catalogs as a client of Krafta Pay.
+
+### Product Notes (Important)
+
+- Krafta merchants (e.g. Aladeen) are **customers of Krafta Catalogs**, not merchants inside Krafta Pay provider onboarding.
+- Krafta Catalogs itself is currently the merchant/client of Krafta Pay in MVP.
+- Future state: additional startups/products can become Krafta Pay merchants and use the same billing infrastructure with BYO acquirer accounts.
 
 ---
 

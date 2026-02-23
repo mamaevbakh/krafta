@@ -38,15 +38,10 @@ function pickOrderNumber(intentId: string, orderId: string | null) {
   return intentId;
 }
 
-function pickReturnUrl(session: {
-  success_url: string | null;
-  cancel_url: string | null;
-  return_url: string | null;
-}, payBaseUrl: string, publicToken: string) {
-  const fallback = `${payBaseUrl.replace(/\/+$/, "")}/pay/${publicToken}`;
-
-  const successUrl = pickHttpsUrl(session.success_url, session.return_url, fallback);
-  const failureUrl = pickHttpsUrl(session.cancel_url, session.return_url, fallback);
+function pickCheckoutCallbackUrls(payBaseUrl: string, publicToken: string) {
+  const base = payBaseUrl.replace(/\/+$/, "");
+  const successUrl = pickHttpsUrl(`${base}/pay/${publicToken}/success`);
+  const failureUrl = pickHttpsUrl(`${base}/pay/${publicToken}/failure`);
 
   if (!successUrl || !failureUrl) {
     throw new Error("uzum_requires_https_success_and_failure_urls");
@@ -206,7 +201,10 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
   const creds = parseUzumCredentials(secrets.credentials_encrypted);
 
   const apiBaseUrl = normalizeBaseUrl(creds.apiBaseUrl);
-  const { successUrl, failureUrl } = pickReturnUrl(session, ctx.payBaseUrl, ctx.publicToken);
+  const { successUrl, failureUrl } = pickCheckoutCallbackUrls(
+    ctx.payBaseUrl,
+    ctx.publicToken,
+  );
 
   const url = `${apiBaseUrl}/api/v1/payment/register`;
 
