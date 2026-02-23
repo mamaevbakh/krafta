@@ -33,7 +33,6 @@ export function ProviderPicker({
 
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [embeddedUrl, setEmbeddedUrl] = useState<string | null>(null);
 
   async function startProvider(providerId: string, viewType?: "WEB_VIEW" | "IFRAME" | "REDIRECT") {
     setIsStarting(true);
@@ -57,11 +56,6 @@ export function ProviderPicker({
       const redirectUrl = (json as any).redirectUrl as string | undefined;
       if (!redirectUrl) throw new Error("missing_redirect_url");
 
-      if (providerId === "uzum" && viewType === "IFRAME") {
-        setEmbeddedUrl(redirectUrl);
-        return;
-      }
-
       window.location.assign(redirectUrl);
     } catch (e) {
       setError(getErrorMessage(e));
@@ -71,71 +65,66 @@ export function ProviderPicker({
   }
 
   return (
-    <>
-      <div className="mt-3 space-y-2">
-        {providers.map((p) => {
-          return (
+    <div className="mt-3 space-y-3">
+      {uzumProvider ? (
+        <div className="rounded-xl border bg-muted/30 p-4">
+          <div className="text-sm font-medium">What happens next</div>
+          <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+            <p>
+              <span className="font-medium text-foreground">Step 1.</span> You will open Uzum&apos;s secure page to attach your card.
+            </p>
+            <p>
+              <span className="font-medium text-foreground">Step 2.</span> After the card is attached, Krafta Pay charges your subscription automatically.
+            </p>
+            <p>
+              You may see <span className="font-medium text-foreground">0.00 UZS</span> during card attachment. That is a card binding verification, not your subscription charge.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {providers.map((p) => {
+        return (
           <div key={p.id} className="rounded-md border p-1">
             <button
               type="button"
               className="w-full rounded-md px-4 py-3 text-left hover:bg-muted disabled:opacity-60"
               disabled={isStarting}
-              onClick={() => startProvider(p.id, p.id === "uzum" ? "IFRAME" : "REDIRECT")}
+              onClick={() => startProvider(p.id, p.id === "uzum" ? "REDIRECT" : "REDIRECT")}
             >
-              <div className="flex items-center justify-between">
-                <span>{p.name}</span>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Opens secure provider page and returns automatically
+                  </div>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {isStarting ? "Opening..." : "Continue"}
+                </span>
               </div>
             </button>
           </div>
-          );
-        })}
+        );
+      })}
 
-        {error ? (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
-
-        {!uzumProvider ? (
-          <div className="mt-3 text-xs text-muted-foreground">
-            Uzum isn&apos;t configured for this merchant/environment.
-          </div>
-        ) : null}
-      </div>
-
-      {embeddedUrl ? (
-        <div className="fixed inset-0 z-50 bg-background">
-          <div className="flex h-dvh w-screen flex-col">
-            <div className="flex items-center justify-between border-b px-3 py-2">
-              <div className="text-sm font-medium">Secure payment</div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={embeddedUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
-                >
-                  Open in new tab
-                </a>
-                <button
-                  type="button"
-                  className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
-                  onClick={() => setEmbeddedUrl(null)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-
-            <iframe
-              title="Uzum Checkout"
-              src={embeddedUrl}
-              className="h-full w-full flex-1 bg-white"
-              allow="payment *; clipboard-read *; clipboard-write *"
-            />
-          </div>
+      {isStarting ? (
+        <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+          Opening Uzum secure card attachment page...
         </div>
       ) : null}
-    </>
+
+      {error ? (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Could not start Uzum checkout: {error}
+        </div>
+      ) : null}
+
+      {!uzumProvider ? (
+        <div className="text-xs text-muted-foreground">
+          Uzum is not configured for this merchant in the current environment.
+        </div>
+      ) : null}
+    </div>
   );
 }

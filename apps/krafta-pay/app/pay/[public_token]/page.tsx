@@ -56,8 +56,7 @@ export default async function PayPage({
 
   return (
     <div className="mx-auto max-w-md p-6">
-        <BrandWordmark text="Krafta•Pay" className="mb-6 text-3xl text-center w-full" />
-      
+      <BrandWordmark text="Krafta•Pay" className="mb-6 w-full text-center text-3xl" />
 
       <div className="mt-4 rounded-lg border p-4">
         <div className="text-sm text-muted-foreground">Amount</div>
@@ -67,6 +66,21 @@ export default async function PayPage({
         {intent?.description ? (
           <div className="mt-2 text-sm text-muted-foreground">{intent.description}</div>
         ) : null}
+      </div>
+
+      <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+        <div className="text-sm font-medium">How this payment works</div>
+        <div className="mt-2 space-y-1.5 text-sm text-muted-foreground">
+          <p>
+            You will first attach your card on Uzum&apos;s secure page.
+          </p>
+          <p>
+            Krafta Pay then charges your subscription automatically and brings you back here.
+          </p>
+          <p>
+            A <span className="font-medium text-foreground">0.00 UZS</span> step may appear during card attachment. This is a verification step, not your subscription charge.
+          </p>
+        </div>
       </div>
 
       <div className="mt-4">
@@ -99,13 +113,13 @@ export default async function PayPage({
       </div>
 
       <div className="mt-6">
-        <div className="text-sm font-medium">Payment methods</div>
+        <div className="text-sm font-medium">Choose payment method</div>
 
         {!isTerminal ? (
           <ProviderPicker publicToken={public_token} providers={providers} />
         ) : (
           <div className="mt-3 text-sm text-muted-foreground">
-            This checkout session is no longer accepting new payments.
+            This checkout session is no longer accepting new payment attempts.
           </div>
         )}
 

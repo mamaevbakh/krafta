@@ -157,6 +157,27 @@ export function PayResultRedirect({
   const intentStatus = status?.paymentIntent?.status?.toLowerCase() ?? "unknown";
   const waitingForWebhook =
     mode === "success" ? intentStatus !== "succeeded" : !isTerminal(intentStatus);
+  const isSucceeded = intentStatus === "succeeded";
+  const isFailed =
+    intentStatus === "failed" || intentStatus === "canceled" || intentStatus === "cancelled";
+
+  const title =
+    mode === "success"
+      ? isSucceeded
+        ? "Subscription payment confirmed"
+        : "Finalizing your subscription"
+      : isFailed
+        ? "Payment was not completed"
+        : "Checking payment status";
+
+  const helperText =
+    mode === "success"
+      ? isSucceeded
+        ? "Your card was attached and your subscription payment is confirmed. We will return you automatically."
+        : "Your card was attached successfully. Krafta Pay is now confirming the subscription charge."
+      : isFailed
+        ? "The payment was not completed. You can return and try again."
+        : "We are still checking the result with the payment provider.";
 
   return (
     <div className="flex min-h-dvh w-full items-center justify-center p-6">
@@ -164,9 +185,7 @@ export function PayResultRedirect({
         <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
           Krafta Pay
         </div>
-        <h1 className="mt-3 text-2xl font-semibold">
-          {mode === "success" ? "Payment confirmation" : "Payment status"}
-        </h1>
+        <h1 className="mt-3 text-2xl font-semibold">{title}</h1>
 
         <div className="mt-4 rounded-xl border p-4">
           <div className="text-sm text-muted-foreground">Current status</div>
@@ -175,10 +194,12 @@ export function PayResultRedirect({
           </div>
         </div>
 
+        <p className="mt-4 text-sm text-muted-foreground">{helperText}</p>
+
         {waitingForWebhook ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            We are waiting for the payment confirmation from the provider. This page will continue automatically.
-          </p>
+          <div className="mt-3 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+            This can take a few seconds while we process provider callbacks and webhooks.
+          </div>
         ) : null}
 
         {countdown !== null ? (
