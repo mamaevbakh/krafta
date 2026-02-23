@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { HandleWebhookInput, HandleWebhookResult } from "./types";
+import { writePaymentDebugLog } from "./debug-log";
 import { finalizeInitialPayment, markPaymentFailed } from "./subscription";
 import { createUzumRecurringCharge, verifyUzumWebhookSignature } from "./providers/uzum";
 
@@ -32,6 +33,22 @@ export async function handleWebhookEvent(
       : (payload && typeof payload === "object" && "operationState" in payload)
         ? `operationState:${String((payload as any).operationState)}`
         : "unknown";
+
+  await writePaymentDebugLog(supabase, {
+    scope: "webhook",
+    event: "received",
+    providerId: input.providerId,
+    data: {
+      eventType,
+      providerEventId,
+      providerPaymentId,
+      signatureHeaderPresent: Boolean(
+        input.headers["x-uzum-signature"] ??
+          input.headers["x-signature"] ??
+          input.headers.signature,
+      ),
+    },
+  });
 
   // Fast idempotency guard on provider event id
   if (providerEventId) {
@@ -77,6 +94,16 @@ export async function handleWebhookEvent(
       rawBody: input.rawBody,
       headers: input.headers,
       allowUnsigned: process.env.PAY_ALLOW_UNSIGNED_UZUM_WEBHOOKS === "true",
+    });
+    await writePaymentDebugLog(supabase, {
+      scope: "webhook",
+      event: "signature_verified",
+      providerId: input.providerId,
+      paymentIntentId: matchedAttempt?.payment_intent_id ?? null,
+      paymentAttemptId: matchedAttempt?.id ?? null,
+      data: {
+        providerPaymentId,
+      },
     });
   }
 
@@ -134,7 +161,7 @@ export async function handleWebhookEvent(
             const { data: session, error: sessionErr } = await supabase
               .schema("payments")
               .from("checkout_sessions")
-              .select("id, org_id, customer_id, success_url, cancel_url, return_url, metadata")
+              .select("id, public_token, org_id, customer_id, success_url, cancel_url, return_url, metadata")
               .eq("payment_intent_id", matchedAttempt.payment_intent_id)
               .order("created_at", { ascending: false })
               .maybeSingle();
@@ -152,10 +179,26 @@ export async function handleWebhookEvent(
               currency: intent.currency,
               amountMinor: intent.amount_minor,
               returnUrl: session?.return_url ?? session?.success_url ?? session?.cancel_url ?? null,
+              publicToken: session?.public_token ?? null,
               uzumCart:
                 getUzumCartFromMetadata(intent.metadata) ??
                 getUzumCartFromMetadata(session?.metadata) ??
                 null,
+            });
+
+            await writePaymentDebugLog(supabase, {
+              scope: "webhook",
+              event: "binding_charge_result",
+              providerId: input.providerId,
+              publicToken: session?.public_token ?? null,
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              paymentAttemptId: matchedAttempt.id,
+              level: chargeResult.status === "failed" ? "warn" : "info",
+              data: {
+                bindingProviderPaymentId: providerPaymentId,
+                chargeProviderPaymentId: chargeResult.providerPaymentId ?? null,
+                chargeStatus: chargeResult.status,
+              },
             });
 
             const normalizedAttemptStatus =
@@ -240,6 +283,18 @@ export async function handleWebhookEvent(
       .from("payment_events")
       .update({ processed_at: new Date().toISOString() })
       .eq("id", evt.id);
+
+    await writePaymentDebugLog(supabase, {
+      scope: "webhook",
+      event: "processed",
+      providerId: input.providerId,
+      publicToken: checkoutPublicToken ?? null,
+      paymentIntentId: paymentIntentId ?? null,
+      data: {
+        eventType,
+        providerPaymentId,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "webhook_processing_failed";
     await supabase
@@ -250,6 +305,19 @@ export async function handleWebhookEvent(
         processing_error: message,
       })
       .eq("id", evt.id);
+    await writePaymentDebugLog(supabase, {
+      scope: "webhook",
+      event: "processing_error",
+      providerId: input.providerId,
+      publicToken: checkoutPublicToken ?? null,
+      paymentIntentId: paymentIntentId ?? null,
+      level: "error",
+      data: {
+        eventType,
+        providerPaymentId,
+        error: message,
+      },
+    });
     throw error;
   }
 

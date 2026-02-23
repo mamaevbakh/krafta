@@ -2,6 +2,7 @@ import type { ProviderAttemptResult } from "./index";
 import crypto from "crypto";
 
 import { getCheckoutSessionByPublicToken, getOrgProviderAccountSecrets, getPaymentIntentById } from "../db";
+import { writePaymentDebugLog } from "../debug-log";
 import { decryptSecretJsonMaybe } from "../secrets";
 
 type UzumCredentials = {
@@ -73,6 +74,26 @@ function buildRecurringReturnUrl(returnUrl?: string | null) {
     throw new Error("uzum_requires_https_success_and_failure_urls");
   }
   return resolved;
+}
+
+function redactForDebug(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(redactForDebug);
+
+  const out: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "bindingId" && typeof raw === "string") {
+      out[key] =
+        raw.length > 8 ? `${raw.slice(0, 4)}...${raw.slice(-4)}` : "***";
+      continue;
+    }
+    if (key.toLowerCase() === "cvc" && typeof raw === "string") {
+      out[key] = "***";
+      continue;
+    }
+    out[key] = redactForDebug(raw);
+  }
+  return out;
 }
 
 function parseUzumCredentials(credentials: unknown): UzumCredentials {
@@ -240,6 +261,20 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
     },
   };
 
+  await writePaymentDebugLog(ctx.supabase, {
+    scope: "uzum",
+    event: "register.request",
+    providerId: "uzum",
+    publicToken: ctx.publicToken,
+    paymentIntentId: ctx.paymentIntentId,
+    paymentAttemptId: ctx.paymentAttemptId,
+    data: {
+      url,
+      callbackUrls: { successUrl, failureUrl },
+      request: redactForDebug(body) as Record<string, unknown>,
+    },
+  });
+
   const res = await fetch(url, {
     method: "POST",
     headers: getUzumHeaders(creds),
@@ -247,6 +282,20 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
   });
 
   const json = (await res.json().catch(() => null)) as any;
+
+  await writePaymentDebugLog(ctx.supabase, {
+    scope: "uzum",
+    event: "register.response",
+    providerId: "uzum",
+    publicToken: ctx.publicToken,
+    paymentIntentId: ctx.paymentIntentId,
+    paymentAttemptId: ctx.paymentAttemptId,
+    level: res.ok ? "info" : "warn",
+    data: {
+      httpStatus: res.status,
+      response: redactForDebug(json) as Record<string, unknown> | null,
+    },
+  });
 
   if (!res.ok) {
     throw new Error(`uzum_register_http_${res.status}`);
@@ -336,6 +385,7 @@ type CreateRecurringChargeInput = {
   uzumCart?: unknown;
   phoneNumber?: string | null;
   cvc?: string | null;
+  publicToken?: string | null;
 };
 
 type RecurringChargeResult = {
@@ -387,6 +437,20 @@ export async function createUzumRecurringCharge(
     });
 
     registerResponse = (await registerRes.json().catch(() => null)) as any;
+    await writePaymentDebugLog(input.supabase, {
+      scope: "uzum",
+      event: "merchant_pay.register_for_order.response",
+      providerId: "uzum",
+      publicToken: input.publicToken ?? null,
+      paymentIntentId: input.paymentIntentId,
+      level: registerRes.ok ? "info" : "warn",
+      data: {
+        url: registerUrl,
+        request: redactForDebug(registerPayload) as Record<string, unknown>,
+        httpStatus: registerRes.status,
+        response: redactForDebug(registerResponse) as Record<string, unknown> | null,
+      },
+    });
     if (!registerRes.ok) {
       return {
         status: "failed",
@@ -456,6 +520,18 @@ export async function createUzumRecurringCharge(
     },
   };
 
+  await writePaymentDebugLog(input.supabase, {
+    scope: "uzum",
+    event: "merchant_pay.request",
+    providerId: "uzum",
+    publicToken: input.publicToken ?? null,
+    paymentIntentId: input.paymentIntentId,
+    data: {
+      url,
+      request: redactForDebug(body) as Record<string, unknown>,
+    },
+  });
+
   const res = await fetch(url, {
     method: "POST",
     headers,
@@ -463,6 +539,18 @@ export async function createUzumRecurringCharge(
   });
 
   const json = (await res.json().catch(() => null)) as any;
+  await writePaymentDebugLog(input.supabase, {
+    scope: "uzum",
+    event: "merchant_pay.response",
+    providerId: "uzum",
+    publicToken: input.publicToken ?? null,
+    paymentIntentId: input.paymentIntentId,
+    level: res.ok ? "info" : "warn",
+    data: {
+      httpStatus: res.status,
+      response: redactForDebug(json) as Record<string, unknown> | null,
+    },
+  });
   if (!res.ok) {
     return {
       status: "failed",

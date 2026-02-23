@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
-import { selectProviderCreateAttempt } from "@krafta/payments-core";
+import { selectProviderCreateAttempt, writePaymentDebugLog } from "@krafta/payments-core";
 
 export async function POST(
   req: Request,
@@ -25,6 +25,18 @@ export async function POST(
         ? body.viewType
         : "WEB_VIEW";
 
+    await writePaymentDebugLog(supabase, {
+      scope: "checkout_api",
+      event: "select_provider.request",
+      providerId,
+      publicToken: public_token,
+      data: {
+        requestedViewType,
+        payBaseUrl,
+        environment,
+      },
+    });
+
     const result = await selectProviderCreateAttempt(
       supabase,
       { publicToken: public_token, providerId, viewType: requestedViewType },
@@ -32,11 +44,35 @@ export async function POST(
       payBaseUrl
     );
 
+    await writePaymentDebugLog(supabase, {
+      scope: "checkout_api",
+      event: "select_provider.success",
+      providerId,
+      publicToken: public_token,
+      data: {
+        attemptId: (result as any).attemptId ?? null,
+        hasRedirectUrl: Boolean((result as any).redirectUrl),
+      },
+    });
+
     return NextResponse.json(result);
   } catch (error) {
     const err = error as { message?: string };
     const message = err?.message ?? (typeof error === "string" ? error : "Unknown error");
     console.error("select_provider failed", message);
+    try {
+      const { public_token } = await params;
+      const supabase = createAdminSupabase();
+      await writePaymentDebugLog(supabase, {
+        scope: "checkout_api",
+        event: "select_provider.error",
+        level: "error",
+        publicToken: public_token,
+        data: {
+          error: message,
+        },
+      });
+    } catch {}
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

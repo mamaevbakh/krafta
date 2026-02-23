@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createAdminSupabase } from "@/lib/supabase-admin";
+import { writePaymentDebugLog } from "@krafta/payments-core";
 import { PayResultRedirect } from "../result-redirect.client";
 
 export default async function PaySuccessPage({
@@ -19,6 +20,18 @@ export default async function PaySuccessPage({
 
   if (error) throw error;
   if (!session) notFound();
+
+  await writePaymentDebugLog(supabase, {
+    scope: "callback_page",
+    event: "success.hit",
+    providerId: "uzum",
+    publicToken: public_token,
+    data: {
+      merchantSuccessUrl: (session as any).success_url ?? null,
+      merchantCancelUrl: (session as any).cancel_url ?? null,
+      merchantReturnUrl: (session as any).return_url ?? null,
+    },
+  });
 
   return (
     <PayResultRedirect

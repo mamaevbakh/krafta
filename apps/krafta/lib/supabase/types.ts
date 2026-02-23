@@ -238,6 +238,54 @@ export type Database = {
           },
         ]
       }
+      logs: {
+        Row: {
+          checkout_session_id: string | null
+          created_at: string
+          data: Json
+          environment: string | null
+          event: string
+          id: number
+          level: string
+          org_id: string | null
+          payment_attempt_id: string | null
+          payment_intent_id: string | null
+          provider_id: string | null
+          public_token: string | null
+          type: string
+        }
+        Insert: {
+          checkout_session_id?: string | null
+          created_at?: string
+          data?: Json
+          environment?: string | null
+          event: string
+          id?: number
+          level?: string
+          org_id?: string | null
+          payment_attempt_id?: string | null
+          payment_intent_id?: string | null
+          provider_id?: string | null
+          public_token?: string | null
+          type: string
+        }
+        Update: {
+          checkout_session_id?: string | null
+          created_at?: string
+          data?: Json
+          environment?: string | null
+          event?: string
+          id?: number
+          level?: string
+          org_id?: string | null
+          payment_attempt_id?: string | null
+          payment_intent_id?: string | null
+          provider_id?: string | null
+          public_token?: string | null
+          type?: string
+        }
+        Relationships: []
+      }
       org_provider_account_secrets: {
         Row: {
           created_at: string
