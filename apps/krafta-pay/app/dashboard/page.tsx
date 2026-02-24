@@ -55,6 +55,14 @@ export default async function DashboardPage({
           <p className="font-medium">Subscriptions</p>
           <p className="mt-1 text-muted-foreground">Inspect active, past due, and canceled subscriptions.</p>
         </Link>
+        <Link className="rounded-md border bg-background p-4 text-sm hover:bg-muted" href={`/dashboard/logs${orgOptions[0]?.id ? `?orgId=${orgOptions[0].id}` : ""}`}>
+          <p className="font-medium">Logs</p>
+          <p className="mt-1 text-muted-foreground">Debug provider calls, callbacks, and webhooks without SQL.</p>
+        </Link>
+        <Link className="rounded-md border bg-background p-4 text-sm hover:bg-muted" href="/dashboard/docs">
+          <p className="font-medium">Docs</p>
+          <p className="mt-1 text-muted-foreground">Platform reference, flows, and logs event dictionary.</p>
+        </Link>
       </div>
 
       {sp.error ? (

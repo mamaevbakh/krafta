@@ -31,6 +31,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
               <Link className="hover:underline" href="/dashboard/tax-codes">Tax Codes</Link>
               <Link className="hover:underline" href="/dashboard/api-keys">API Keys</Link>
               <Link className="hover:underline" href="/dashboard/subscriptions">Subscriptions</Link>
+              <Link className="hover:underline" href="/dashboard/logs">Logs</Link>
+              <Link className="hover:underline" href="/dashboard/docs">Docs</Link>
             </nav>
           </div>
           <form action={signOutAction}>

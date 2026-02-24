@@ -21,7 +21,36 @@ type SubscriptionRow = {
     email: string | null;
     phone: string | null;
   } | null;
+  invoices?: Array<{
+    id: string;
+    status: string;
+    amount_due_minor: number;
+    currency: string;
+    due_at: string | null;
+    paid_at: string | null;
+    attempt_count: number;
+    billing_period_start: string | null;
+    billing_period_end: string | null;
+    payment_intent_id: string | null;
+    created_at: string;
+    payment_attempts?: Array<{
+      id: string;
+      provider_id: string;
+      provider_payment_id: string | null;
+      status: string;
+      checkout_url: string | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+  }>;
 };
+
+function fmtDateTime(value?: string | null) {
+  if (!value) return "n/a";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
 
 export function SubscriptionsListClient({
   memberships,
@@ -109,22 +138,97 @@ export function SubscriptionsListClient({
           <div className="mt-3 space-y-3">
             {rows.map((row) => (
               <div key={row.id} className="rounded-md border p-3">
-                <p className="font-medium">
-                  {row.plans?.name ?? "Unknown plan"} · {row.status}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {row.plans?.amount_minor ?? 0} {row.plans?.currency ?? "UZS"} · code{" "}
-                  {row.plans?.code ?? "-"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Customer: {row.customers?.email ?? row.customers?.phone ?? "n/a"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Period: {row.current_period_start ?? "n/a"} → {row.current_period_end ?? "n/a"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Cancel at period end: {row.cancel_at_period_end ? "yes" : "no"}
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">
+                      {row.plans?.name ?? "Unknown plan"} · {row.status}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {row.plans?.amount_minor ?? 0} {row.plans?.currency ?? "UZS"} · code{" "}
+                      {row.plans?.code ?? "-"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Customer: {row.customers?.email ?? row.customers?.phone ?? "n/a"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Period: {fmtDateTime(row.current_period_start)} → {fmtDateTime(row.current_period_end)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Cancel at period end: {row.cancel_at_period_end ? "yes" : "no"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+                    {row.invoices?.length ?? 0} invoice{(row.invoices?.length ?? 0) === 1 ? "" : "s"}
+                  </div>
+                </div>
+
+                <details className="mt-3 rounded-md border bg-muted/10 p-3">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Charges and invoices
+                  </summary>
+                  {!(row.invoices?.length) ? (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      No invoices/charges recorded yet.
+                    </p>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {row.invoices!.map((invoice) => (
+                        <div key={invoice.id} className="rounded-md border bg-background p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-medium">
+                                Invoice {invoice.status} · {invoice.amount_due_minor} {invoice.currency}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Period: {fmtDateTime(invoice.billing_period_start)} → {fmtDateTime(invoice.billing_period_end)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Due: {fmtDateTime(invoice.due_at)} · Paid: {fmtDateTime(invoice.paid_at)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Attempts: {invoice.attempt_count ?? 0} · Payment intent: {invoice.payment_intent_id ?? "n/a"}
+                              </p>
+                            </div>
+                            <div className="text-right text-xs text-muted-foreground">
+                              <p>Created</p>
+                              <p>{fmtDateTime(invoice.created_at)}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 rounded-md border bg-muted/20 p-2">
+                            <p className="text-xs font-medium">Payment attempts</p>
+                            {!(invoice.payment_attempts?.length) ? (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                No payment attempts yet.
+                              </p>
+                            ) : (
+                              <div className="mt-2 space-y-2">
+                                {invoice.payment_attempts!.map((attempt) => (
+                                  <div key={attempt.id} className="rounded-md border bg-background p-2">
+                                    <p className="text-xs font-medium">
+                                      {attempt.provider_id} · {attempt.status}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Provider payment ID: {attempt.provider_payment_id ?? "n/a"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Created: {fmtDateTime(attempt.created_at)} · Updated: {fmtDateTime(attempt.updated_at)}
+                                    </p>
+                                    {attempt.checkout_url ? (
+                                      <p className="truncate text-xs text-muted-foreground">
+                                        Checkout URL: {attempt.checkout_url}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </details>
               </div>
             ))}
           </div>

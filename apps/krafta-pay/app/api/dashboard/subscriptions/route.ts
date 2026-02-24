@@ -26,6 +26,7 @@ export async function GET(req: Request) {
     });
 
     const admin = createAdminSupabase();
+    const adminAny = admin as any;
     const { data, error } = await admin
       .schema("payments")
       .from("subscriptions")
@@ -36,7 +37,68 @@ export async function GET(req: Request) {
       .order("created_at", { ascending: false });
     if (error) throw error;
 
-    return NextResponse.json({ subscriptions: data ?? [] });
+    const subscriptions = (data ?? []) as Array<Record<string, any>>;
+    const subscriptionIds = subscriptions.map((row) => row.id).filter(Boolean);
+
+    let invoices: Array<Record<string, any>> = [];
+    let attempts: Array<Record<string, any>> = [];
+    if (subscriptionIds.length > 0) {
+      const { data: invoiceRows, error: invoicesErr } = await adminAny
+        .schema("payments")
+        .from("invoices")
+        .select(
+          "id, subscription_id, status, amount_due_minor, currency, due_at, paid_at, attempt_count, billing_period_start, billing_period_end, payment_intent_id, created_at, updated_at",
+        )
+        .in("subscription_id", subscriptionIds)
+        .order("created_at", { ascending: false });
+      if (invoicesErr) throw invoicesErr;
+      invoices = invoiceRows ?? [];
+
+      const paymentIntentIds = invoices
+        .map((invoice) => invoice.payment_intent_id)
+        .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+      if (paymentIntentIds.length > 0) {
+        const { data: attemptRows, error: attemptsErr } = await adminAny
+          .schema("payments")
+          .from("payment_attempts")
+          .select(
+            "id, payment_intent_id, provider_id, provider_payment_id, status, checkout_url, created_at, updated_at",
+          )
+          .in("payment_intent_id", paymentIntentIds)
+          .order("created_at", { ascending: false });
+        if (attemptsErr) throw attemptsErr;
+        attempts = attemptRows ?? [];
+      }
+    }
+
+    const attemptsByIntentId = new Map<string, Array<Record<string, any>>>();
+    for (const attempt of attempts) {
+      const key = String(attempt.payment_intent_id ?? "");
+      if (!key) continue;
+      const list = attemptsByIntentId.get(key) ?? [];
+      list.push(attempt);
+      attemptsByIntentId.set(key, list);
+    }
+
+    const invoicesBySubscriptionId = new Map<string, Array<Record<string, any>>>();
+    for (const invoice of invoices) {
+      const key = String(invoice.subscription_id ?? "");
+      if (!key) continue;
+      const list = invoicesBySubscriptionId.get(key) ?? [];
+      list.push({
+        ...invoice,
+        payment_attempts: attemptsByIntentId.get(String(invoice.payment_intent_id ?? "")) ?? [],
+      });
+      invoicesBySubscriptionId.set(key, list);
+    }
+
+    const enrichedSubscriptions = subscriptions.map((row) => ({
+      ...row,
+      invoices: invoicesBySubscriptionId.get(String(row.id)) ?? [],
+    }));
+
+    return NextResponse.json({ subscriptions: enrichedSubscriptions });
   } catch (error) {
     const message = error instanceof Error ? error.message : "subscriptions_get_failed";
     return NextResponse.json({ error: message }, { status: 500 });
