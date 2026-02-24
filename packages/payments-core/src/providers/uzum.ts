@@ -624,13 +624,13 @@ export async function createUzumRecurringCharge(
 
   const url = `${apiBaseUrl}/api/v1/payment/merchantPay`;
   const body: Record<string, unknown> = {
-    orderId: chargeOrder.chargeOrderId,
-    returnUrl,
     processData: {
       type: "bind",
       bindingId: input.providerToken,
       ...(input.cvc ? { cvc: input.cvc } : {}),
     },
+    orderId: chargeOrder.chargeOrderId,
+    returnUrl,
   };
 
   const merchantPayHeadersWithOperationId = withOperationId(baseHeaders);
