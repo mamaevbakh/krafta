@@ -4,11 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { getRequestOrigin } from "@/lib/auth/redirect";
-import {
-  createKraftaPayCustomerPortalSession,
-  createPaySubscriptionCheckout,
-  listKraftaPayPlans,
-} from "@/lib/billing/pay-client";
+import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
 
 type BillingPageProps = {
@@ -110,61 +106,6 @@ async function startUpgradeAction(formData: FormData) {
   redirect(checkout.payUrl);
 }
 
-async function openCustomerPortalAction(formData: FormData) {
-  "use server";
-  const customerOrgId = String(formData.get("customerOrgId") ?? "");
-  const orgSlug = String(formData.get("orgSlug") ?? "");
-  const catalogSlug = String(formData.get("catalogSlug") ?? "");
-
-  if (!customerOrgId || !orgSlug || !catalogSlug) {
-    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=Missing+required+fields`);
-  }
-
-  const supabase = await createClient();
-  const { user: authUser, authError } = await getUserSafely(supabase);
-  if (authError || !authUser) {
-    redirect(`/login?next=/dashboard/${orgSlug}/${catalogSlug}/billing`);
-  }
-
-  const { data: membership, error: membershipErr } = await supabase
-    .from("organization_members")
-    .select("id")
-    .eq("org_id", customerOrgId)
-    .eq("user_id", authUser.id)
-    .maybeSingle();
-  if (membershipErr) {
-    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(membershipErr.message)}`);
-  }
-  if (!membership) {
-    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=Forbidden`);
-  }
-
-  const origin = getRequestOrigin(await headers());
-  const appBaseUrl = resolveAppBaseUrl(origin).replace(/\/+$/, "");
-  const returnUrl = `${appBaseUrl}/dashboard/${orgSlug}/${catalogSlug}/billing`;
-
-  let portal: Awaited<ReturnType<typeof createKraftaPayCustomerPortalSession>>;
-  try {
-    portal = await createKraftaPayCustomerPortalSession({
-      customerOrgId,
-      customerUserRef: authUser.id,
-      returnUrl,
-      metadata: {
-        source: "krafta_billing_page",
-        org_slug: orgSlug,
-        catalog_slug: catalogSlug,
-        initiated_by_user_id: authUser.id,
-      },
-    });
-    redirect(portal.url);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create customer portal session";
-    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(message)}`);
-  }
-
-  redirect(portal.url);
-}
-
 export default async function BillingPage({ params, searchParams }: BillingPageProps) {
   const { orgSlug, catalogSlug } = await params;
   const sp = await searchParams;
@@ -222,7 +163,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
             ) : null}
           </div>
 
-          <form action={openCustomerPortalAction}>
+          <form method="post" action="/api/billing/customer-portal">
             <input type="hidden" name="customerOrgId" value={orgRecord.id} />
             <input type="hidden" name="orgSlug" value={orgSlug} />
             <input type="hidden" name="catalogSlug" value={catalogSlug} />

@@ -119,15 +119,27 @@ export async function createKraftaPayCustomerPortalSession(
   const apiKey = getApiKey();
   const baseUrl = getPayBaseUrl().replace(/\/+$/, "");
 
-  const res = await fetch(`${baseUrl}/api/v1/customer_portal/sessions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: payload,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/api/v1/customer_portal/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: payload,
+      cache: "no-store",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "fetch_failed";
+    const causeCode =
+      error && typeof error === "object" && "cause" in error
+        ? String((error as any).cause?.code ?? "")
+        : "";
+    throw new Error(
+      `pay_customer_portal_fetch_failed${causeCode ? `:${causeCode}` : ""}:${message}`,
+    );
+  }
 
   const json = (await res.json().catch(() => null)) as
     | CreateCustomerPortalSessionResult
