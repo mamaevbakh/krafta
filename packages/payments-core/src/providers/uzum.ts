@@ -392,7 +392,9 @@ type CreateRecurringChargeInput = {
   orderNumber: string;
   currency: string;
   amountMinor: number;
-  orderId?: string | null;
+  // Provider payment order ID for the actual charge operation.
+  // Do not pass the binding orderId here after a BINDING flow.
+  chargeOrderId?: string | null;
   returnUrl?: string | null;
   viewType?: UzumViewType;
   uzumCart?: unknown;
@@ -406,6 +408,120 @@ type RecurringChargeResult = {
   status: "succeeded" | "processing" | "failed";
   raw: Record<string, unknown>;
 };
+
+type EnsureChargeOrderInput = {
+  supabase: any;
+  apiBaseUrl: string;
+  baseHeaders: Record<string, string>;
+  publicToken?: string | null;
+  paymentIntentId: string;
+  clientId: string;
+  description: string | null;
+  orderNumber: string;
+  currency: string;
+  amountMinor: number;
+  returnUrl: string;
+  viewType?: UzumViewType;
+  cart?: unknown | null;
+  existingChargeOrderId?: string | null;
+};
+
+type EnsureChargeOrderResult = {
+  chargeOrderId: string;
+  source: "provided" | "registered";
+  registerPayload: Record<string, unknown> | null;
+  registerResponse: unknown;
+};
+
+async function ensureUzumChargeOrderId(
+  input: EnsureChargeOrderInput,
+): Promise<EnsureChargeOrderResult> {
+  const provided = input.existingChargeOrderId?.trim() || null;
+  if (provided) {
+    return {
+      chargeOrderId: provided,
+      source: "provided",
+      registerPayload: null,
+      registerResponse: null,
+    };
+  }
+
+  const registerUrl = `${input.apiBaseUrl}/api/v1/payment/register`;
+  const registerPayload: Record<string, unknown> = {
+    amount: input.amountMinor,
+    clientId: input.clientId,
+    currency: uzumCurrencyCode(input.currency),
+    paymentDetails: input.description ?? "Subscription renewal",
+    orderNumber: input.orderNumber,
+    viewType: input.viewType ?? "REDIRECT",
+    sessionTimeoutSecs: 1800,
+    successUrl: input.returnUrl,
+    failureUrl: input.returnUrl,
+    ...(input.cart ? { merchantParams: { cart: input.cart } } : {}),
+    paymentParams: {
+      payType: "ONE_STEP",
+    },
+  };
+
+  const registerHeadersWithOperationId = withOperationId(input.baseHeaders);
+  await writePaymentDebugLog(input.supabase, {
+    scope: "uzum",
+    event: "merchant_pay.register_for_order.request",
+    providerId: "uzum",
+    publicToken: input.publicToken ?? null,
+    paymentIntentId: input.paymentIntentId,
+    data: {
+      url: registerUrl,
+      operationId: registerHeadersWithOperationId.operationId,
+      request: redactForDebug(registerPayload) as Record<string, unknown>,
+    },
+  });
+
+  const registerRes = await fetch(registerUrl, {
+    method: "POST",
+    headers: registerHeadersWithOperationId.headers,
+    body: JSON.stringify(registerPayload),
+  });
+
+  const registerResponse = (await registerRes.json().catch(() => null)) as any;
+  await writePaymentDebugLog(input.supabase, {
+    scope: "uzum",
+    event: "merchant_pay.register_for_order.response",
+    providerId: "uzum",
+    publicToken: input.publicToken ?? null,
+    paymentIntentId: input.paymentIntentId,
+    level: registerRes.ok ? "info" : "warn",
+    data: {
+      url: registerUrl,
+      operationId: registerHeadersWithOperationId.operationId,
+      request: redactForDebug(registerPayload) as Record<string, unknown>,
+      httpStatus: registerRes.status,
+      response: redactForDebug(registerResponse) as Record<string, unknown> | null,
+    },
+  });
+
+  if (!registerRes.ok) {
+    throw new Error(`uzum_charge_order_register_http_${registerRes.status}`);
+  }
+
+  const registerErrorCode = Number(registerResponse?.errorCode ?? 0);
+  if (registerErrorCode !== 0) {
+    throw new Error(`uzum_charge_order_register_error:${registerErrorCode}`);
+  }
+
+  const chargeOrderId =
+    (typeof registerResponse?.result?.orderId === "string" && registerResponse.result.orderId) || null;
+  if (!chargeOrderId) {
+    throw new Error("uzum_charge_order_register_missing_order_id");
+  }
+
+  return {
+    chargeOrderId,
+    source: "registered",
+    registerPayload,
+    registerResponse,
+  };
+}
 
 export async function createUzumRecurringCharge(
   input: CreateRecurringChargeInput,
@@ -421,117 +537,43 @@ export async function createUzumRecurringCharge(
 
   const cart =
     input.uzumCart && typeof input.uzumCart === "object" ? input.uzumCart : null;
-  let orderId = input.orderId?.trim() || null;
-
-  let registerPayload: Record<string, unknown> | null = null;
-  let registerResponse: unknown = null;
-  if (!orderId) {
-    const registerUrl = `${apiBaseUrl}/api/v1/payment/register`;
-    registerPayload = {
-      amount: input.amountMinor,
-      clientId: input.clientId,
-      currency: uzumCurrencyCode(input.currency),
-      paymentDetails: input.description ?? "Subscription renewal",
-      orderNumber: input.orderNumber,
-      viewType: input.viewType ?? "REDIRECT",
-      sessionTimeoutSecs: 1800,
-      successUrl: returnUrl,
-      failureUrl: returnUrl,
-      ...(cart ? { merchantParams: { cart } } : {}),
-      paymentParams: {
-        payType: "ONE_STEP",
-      },
-    };
-
-    const registerHeadersWithOperationId = withOperationId(baseHeaders);
-    const registerRes = await fetch(registerUrl, {
-      method: "POST",
-      headers: registerHeadersWithOperationId.headers,
-      body: JSON.stringify(registerPayload),
-    });
-
-    registerResponse = (await registerRes.json().catch(() => null)) as any;
-    await writePaymentDebugLog(input.supabase, {
-      scope: "uzum",
-      event: "merchant_pay.register_for_order.response",
-      providerId: "uzum",
+  let chargeOrder: EnsureChargeOrderResult;
+  try {
+    chargeOrder = await ensureUzumChargeOrderId({
+      supabase: input.supabase,
+      apiBaseUrl,
+      baseHeaders,
       publicToken: input.publicToken ?? null,
       paymentIntentId: input.paymentIntentId,
-      level: registerRes.ok ? "info" : "warn",
-      data: {
-        url: registerUrl,
-        operationId: registerHeadersWithOperationId.operationId,
-        request: redactForDebug(registerPayload) as Record<string, unknown>,
-        httpStatus: registerRes.status,
-        response: redactForDebug(registerResponse) as Record<string, unknown> | null,
-      },
+      clientId: input.clientId,
+      description: input.description,
+      orderNumber: input.orderNumber,
+      currency: input.currency,
+      amountMinor: input.amountMinor,
+      returnUrl,
+      viewType: input.viewType,
+      cart,
+      existingChargeOrderId: input.chargeOrderId ?? null,
     });
-    if (!registerRes.ok) {
-      return {
-        status: "failed",
-        raw: {
-          register: {
-            request: registerPayload,
-            response: registerResponse,
-            httpStatus: registerRes.status,
-          },
-        },
-      };
-    }
-
-    const registerErrorCode = Number((registerResponse as any)?.errorCode ?? 0);
-    if (registerErrorCode !== 0) {
-      return {
-        status: "failed",
-        raw: {
-          register: {
-            request: registerPayload,
-            response: registerResponse,
-            errorCode: registerErrorCode,
-          },
-        },
-      };
-    }
-
-    orderId =
-      (typeof (registerResponse as any)?.result?.orderId === "string" &&
-        (registerResponse as any).result.orderId) ||
-      null;
-    if (!orderId) {
-      return {
-        status: "failed",
-        raw: {
-          register: {
-            request: registerPayload,
-            response: registerResponse,
-            error: "missing_order_id",
-          },
-        },
-      };
-    }
+  } catch (error) {
+    return {
+      status: "failed",
+      raw: {
+        register: null,
+        merchantPay: null,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
   }
 
   const url = `${apiBaseUrl}/api/v1/payment/merchantPay`;
   const body: Record<string, unknown> = {
-    clientId: input.clientId,
-    amount: input.amountMinor,
-    currency: uzumCurrencyCode(input.currency),
-    paymentDetails: input.description ?? "Subscription renewal",
-    orderNumber: input.orderNumber,
-    orderId,
+    orderId: chargeOrder.chargeOrderId,
     returnUrl,
-    ...(cart ? { merchantParams: { cart } } : {}),
     processData: {
       type: "bind",
       bindingId: input.providerToken,
       ...(input.cvc ? { cvc: input.cvc } : {}),
-    },
-    // Compatibility fallback for older schema variants.
-    paymentParams: {
-      payType: "TWO_STEP",
-      operationType: "AUTHORIZE",
-      bindingId: input.providerToken,
-      ...(input.phoneNumber ? { phoneNumber: input.phoneNumber } : {}),
     },
   };
 
@@ -546,6 +588,7 @@ export async function createUzumRecurringCharge(
     data: {
       url,
       operationId: merchantPayHeadersWithOperationId.operationId,
+      chargeOrderIdSource: chargeOrder.source,
       request: redactForDebug(body) as Record<string, unknown>,
     },
   });
@@ -567,6 +610,7 @@ export async function createUzumRecurringCharge(
     data: {
       httpStatus: res.status,
       operationId: merchantPayHeadersWithOperationId.operationId,
+      chargeOrderIdSource: chargeOrder.source,
       response: redactForDebug(json) as Record<string, unknown> | null,
     },
   });
@@ -574,7 +618,11 @@ export async function createUzumRecurringCharge(
     return {
       status: "failed",
       raw: {
-        register: registerPayload ? { request: registerPayload, response: registerResponse } : null,
+        register:
+          chargeOrder.registerPayload
+            ? { request: chargeOrder.registerPayload, response: chargeOrder.registerResponse }
+            : null,
+        chargeOrderIdSource: chargeOrder.source,
         merchantPay: { request: body, response: json, httpStatus: res.status },
       },
     };
@@ -605,7 +653,11 @@ export async function createUzumRecurringCharge(
     providerPaymentId,
     status,
     raw: {
-      register: registerPayload ? { request: registerPayload, response: registerResponse } : null,
+      register:
+        chargeOrder.registerPayload
+          ? { request: chargeOrder.registerPayload, response: chargeOrder.registerResponse }
+          : null,
+      chargeOrderIdSource: chargeOrder.source,
       merchantPay: { request: body, response: json },
     },
   };
