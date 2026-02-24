@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { HandleWebhookInput, HandleWebhookResult } from "./types";
 import { writePaymentDebugLog } from "./debug-log";
-import { finalizeInitialPayment, markPaymentFailed } from "./subscription";
+import {
+  finalizeInitialPayment,
+  markPaymentFailed,
+  persistBindingPaymentMethodForPaymentIntent,
+} from "./subscription";
 import { createUzumRecurringCharge, verifyUzumWebhookSignature } from "./providers/uzum";
 
 export async function handleWebhookEvent(
@@ -146,8 +150,9 @@ export async function handleWebhookEvent(
         if (isSuccess) {
           // Binding-first flow:
           // 1) checkout register returns bindingId in webhook
-          // 2) run merchantPay using that binding
-          // 3) finalize subscription only after merchantPay success
+          // 2) persist bindingId immediately so retries/renewals can reuse it
+          // 3) run merchantPay using that binding
+          // 4) finalize subscription only after merchantPay success
           if (bindingId && isBindingSetupAttempt) {
             const { data: intent, error: intentErr } = await supabase
               .schema("payments")
@@ -166,6 +171,34 @@ export async function handleWebhookEvent(
               .order("created_at", { ascending: false })
               .maybeSingle();
             if (sessionErr) throw sessionErr;
+
+            const bindingPersistResult = await persistBindingPaymentMethodForPaymentIntent(supabase, {
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              providerId: input.providerId,
+              bindingId,
+              orgProviderAccountId: matchedAttempt.org_provider_account_id,
+            });
+
+            await writePaymentDebugLog(supabase, {
+              scope: "webhook",
+              event: "binding_saved",
+              providerId: input.providerId,
+              publicToken: session?.public_token ?? null,
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              paymentAttemptId: matchedAttempt.id,
+              data: {
+                saved: bindingPersistResult.saved,
+                ...(bindingPersistResult.saved
+                  ? {
+                      paymentMethodId: bindingPersistResult.paymentMethodId,
+                      subscriptionId: bindingPersistResult.subscriptionId,
+                      customerId: bindingPersistResult.customerId,
+                      created: bindingPersistResult.created,
+                      setAsDefault: bindingPersistResult.setAsDefault,
+                    }
+                  : { reason: bindingPersistResult.reason }),
+              },
+            });
 
             const chargeResult = await createUzumRecurringCharge({
               supabase,

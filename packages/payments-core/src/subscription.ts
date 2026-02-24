@@ -676,6 +676,98 @@ type FinalizePaymentInput = {
   attemptId?: string | null;
 };
 
+type PersistBindingPaymentMethodInput = {
+  paymentIntentId: string;
+  providerId: string;
+  bindingId: string;
+  orgProviderAccountId: string;
+};
+
+export async function persistBindingPaymentMethodForPaymentIntent(
+  supabase: SupabaseClient,
+  input: PersistBindingPaymentMethodInput,
+) {
+  const { data: invoice, error: invoiceErr } = await supabase
+    .schema("payments")
+    .from("invoices")
+    .select("subscription_id")
+    .eq("payment_intent_id", input.paymentIntentId)
+    .order("created_at", { ascending: false })
+    .maybeSingle();
+  if (invoiceErr) throw invoiceErr;
+  if (!invoice?.subscription_id) {
+    return { saved: false as const, reason: "subscription_not_found_for_payment_intent" as const };
+  }
+
+  const { data: subscription, error: subscriptionErr } = await supabase
+    .schema("payments")
+    .from("subscriptions")
+    .select("id, customer_id, default_payment_method_id")
+    .eq("id", invoice.subscription_id)
+    .maybeSingle();
+  if (subscriptionErr) throw subscriptionErr;
+  if (!subscription?.customer_id) {
+    return { saved: false as const, reason: "subscription_customer_missing" as const };
+  }
+
+  const { data: existingPaymentMethod, error: existingPaymentMethodErr } = await supabase
+    .schema("payments")
+    .from("payment_methods")
+    .select("id")
+    .eq("customer_id", subscription.customer_id)
+    .eq("org_provider_account_id", input.orgProviderAccountId)
+    .eq("provider_id", input.providerId)
+    .eq("provider_token", input.bindingId)
+    .maybeSingle();
+  if (existingPaymentMethodErr) throw existingPaymentMethodErr;
+
+  let paymentMethodId = existingPaymentMethod?.id ?? null;
+  let created = false;
+  if (!paymentMethodId) {
+    const { data: createdPaymentMethod, error: createPaymentMethodErr } = await supabase
+      .schema("payments")
+      .from("payment_methods")
+      .insert({
+        customer_id: subscription.customer_id,
+        org_provider_account_id: input.orgProviderAccountId,
+        provider_id: input.providerId,
+        provider_token: input.bindingId,
+        type: "card_binding",
+        status: "active",
+        is_default: true,
+        metadata: {
+          source: "uzum_binding",
+        },
+      })
+      .select("id")
+      .single();
+    if (createPaymentMethodErr) throw createPaymentMethodErr;
+    paymentMethodId = createdPaymentMethod.id;
+    created = true;
+  }
+
+  const shouldSetDefault = subscription.default_payment_method_id !== paymentMethodId;
+  if (shouldSetDefault) {
+    const { error: setDefaultErr } = await supabase
+      .schema("payments")
+      .from("subscriptions")
+      .update({
+        default_payment_method_id: paymentMethodId,
+      })
+      .eq("id", subscription.id);
+    if (setDefaultErr) throw setDefaultErr;
+  }
+
+  return {
+    saved: true as const,
+    created,
+    paymentMethodId,
+    subscriptionId: subscription.id,
+    customerId: subscription.customer_id,
+    setAsDefault: shouldSetDefault,
+  };
+}
+
 export async function finalizeInitialPayment(
   supabase: SupabaseClient,
   input: FinalizePaymentInput,
@@ -803,49 +895,13 @@ export async function finalizeInitialPayment(
   if (subscriptionUpdateErr) throw subscriptionUpdateErr;
 
   const bindingId = pickBindingId(input.payload);
-  if (bindingId && attempt?.org_provider_account_id && subscription.customer_id) {
-    const { data: existingPaymentMethod, error: existingPaymentMethodErr } = await supabase
-      .schema("payments")
-      .from("payment_methods")
-      .select("id")
-      .eq("customer_id", subscription.customer_id)
-      .eq("org_provider_account_id", attempt.org_provider_account_id)
-      .eq("provider_id", input.providerId)
-      .eq("provider_token", bindingId)
-      .maybeSingle();
-    if (existingPaymentMethodErr) throw existingPaymentMethodErr;
-
-    let paymentMethodId = existingPaymentMethod?.id ?? null;
-    if (!paymentMethodId) {
-      const { data: createdPaymentMethod, error: createPaymentMethodErr } = await supabase
-        .schema("payments")
-        .from("payment_methods")
-        .insert({
-          customer_id: subscription.customer_id,
-          org_provider_account_id: attempt.org_provider_account_id,
-          provider_id: input.providerId,
-          provider_token: bindingId,
-          type: "card_binding",
-          status: "active",
-          is_default: true,
-          metadata: {
-            source: "uzum_binding",
-          },
-        })
-        .select("id")
-        .single();
-      if (createPaymentMethodErr) throw createPaymentMethodErr;
-      paymentMethodId = createdPaymentMethod.id;
-    }
-
-    const { error: setDefaultErr } = await supabase
-      .schema("payments")
-      .from("subscriptions")
-      .update({
-        default_payment_method_id: paymentMethodId,
-      })
-      .eq("id", subscription.id);
-    if (setDefaultErr) throw setDefaultErr;
+  if (bindingId && attempt?.org_provider_account_id) {
+    await persistBindingPaymentMethodForPaymentIntent(supabase, {
+      paymentIntentId: intent.id,
+      providerId: input.providerId,
+      bindingId,
+      orgProviderAccountId: attempt.org_provider_account_id,
+    });
   }
 
   await supabase
