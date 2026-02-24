@@ -82,11 +82,6 @@ function redactForDebug(value: unknown): unknown {
 
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (key === "bindingId" && typeof raw === "string") {
-      out[key] =
-        raw.length > 8 ? `${raw.slice(0, 4)}...${raw.slice(-4)}` : "***";
-      continue;
-    }
     if (key.toLowerCase() === "cvc" && typeof raw === "string") {
       out[key] = "***";
       continue;
@@ -147,7 +142,7 @@ function redactUzumHeadersForDebug(headers: Record<string, string>) {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     const k = key.toLowerCase();
-    if (k === "x-api-key") {
+    if (k === "x-api-key" || k === "x-terminal-id") {
       out[key] = value.length > 8 ? `${value.slice(0, 4)}...${value.slice(-4)}` : "***";
       continue;
     }
