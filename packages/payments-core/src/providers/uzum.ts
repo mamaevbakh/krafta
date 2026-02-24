@@ -143,6 +143,50 @@ function withOperationId(
   };
 }
 
+function redactUzumHeadersForDebug(headers: Record<string, string>) {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const k = key.toLowerCase();
+    if (k === "x-api-key") {
+      out[key] = value.length > 8 ? `${value.slice(0, 4)}...${value.slice(-4)}` : "***";
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function shellEscapeSingleQuotes(value: string) {
+  return value.replace(/'/g, `'\"'\"'`);
+}
+
+function buildDebugHttpCall(params: {
+  method: "POST";
+  url: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+}) {
+  const redactedBody = redactForDebug(params.body) as Record<string, unknown>;
+  const redactedHeaders = redactUzumHeadersForDebug(params.headers);
+  const bodyJson = JSON.stringify(redactedBody, null, 2);
+  const curlParts = [
+    `curl -X ${params.method}`,
+    `'${shellEscapeSingleQuotes(params.url)}'`,
+    ...Object.entries(redactedHeaders).map(
+      ([k, v]) => `-H '${shellEscapeSingleQuotes(`${k}: ${v}`)}'`,
+    ),
+    `-d '${shellEscapeSingleQuotes(bodyJson)}'`,
+  ];
+
+  return {
+    method: params.method,
+    url: params.url,
+    headers: redactedHeaders,
+    body: redactedBody,
+    curl: curlParts.join(" \\\n  "),
+  };
+}
+
 type ParsedWebhookSecret = {
   webhookSecret: string | null;
 };
@@ -285,6 +329,12 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
       url,
       callbackUrls: { successUrl, failureUrl },
       request: redactForDebug(body) as Record<string, unknown>,
+      debugCall: buildDebugHttpCall({
+        method: "POST",
+        url,
+        headers: getUzumHeaders(creds),
+        body,
+      }),
     },
   });
 
@@ -474,6 +524,12 @@ async function ensureUzumChargeOrderId(
       url: registerUrl,
       operationId: registerHeadersWithOperationId.operationId,
       request: redactForDebug(registerPayload) as Record<string, unknown>,
+      debugCall: buildDebugHttpCall({
+        method: "POST",
+        url: registerUrl,
+        headers: registerHeadersWithOperationId.headers,
+        body: registerPayload,
+      }),
     },
   });
 
@@ -590,6 +646,12 @@ export async function createUzumRecurringCharge(
       operationId: merchantPayHeadersWithOperationId.operationId,
       chargeOrderIdSource: chargeOrder.source,
       request: redactForDebug(body) as Record<string, unknown>,
+      debugCall: buildDebugHttpCall({
+        method: "POST",
+        url,
+        headers: merchantPayHeadersWithOperationId.headers,
+        body,
+      }),
     },
   });
 
