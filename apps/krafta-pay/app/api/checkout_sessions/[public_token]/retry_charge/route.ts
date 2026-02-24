@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import {
   createUzumRecurringCharge,
+  extractUzumChargeProviderRefs,
   finalizeInitialPayment,
   markPaymentFailed,
   writePaymentDebugLog,
@@ -237,6 +238,7 @@ export async function POST(
         updated_at: new Date().toISOString(),
         raw_init_response: {
           ...priorAttemptRaw,
+          attemptKind: "manual_retry_bound_charge",
           manualRetry: {
             requestedAt: new Date().toISOString(),
             source: "result_page",
@@ -267,6 +269,11 @@ export async function POST(
         getUzumCartFromMetadata(session.metadata) ??
         null,
     });
+    const uzumRefs = extractUzumChargeProviderRefs(chargeResult.raw);
+    const chargeAttemptProviderPaymentId =
+      chargeResult.providerPaymentId ??
+      uzumRefs.chargeOrderId ??
+      (typeof attempt.provider_payment_id === "string" ? attempt.provider_payment_id : null);
 
     const normalizedAttemptStatus =
       chargeResult.status === "succeeded"
@@ -280,13 +287,16 @@ export async function POST(
       .from("payment_attempts")
       .update({
         status: normalizedAttemptStatus,
-        provider_payment_id: chargeResult.providerPaymentId ?? attempt.provider_payment_id ?? null,
+        provider_payment_id: chargeAttemptProviderPaymentId,
         raw_init_response: ({
           ...priorAttemptRaw,
+          attemptKind: "manual_retry_bound_charge",
+          providerRefs: uzumRefs,
           manualRetry: {
             requestedAt: new Date().toISOString(),
             source: "result_page",
             chargeResult: chargeResult.raw,
+            providerRefs: uzumRefs,
           },
         } as any),
         updated_at: new Date().toISOString(),
@@ -298,7 +308,7 @@ export async function POST(
       await finalizeInitialPayment(supabase, {
         paymentIntentId,
         providerId: "uzum",
-        providerPaymentId: chargeResult.providerPaymentId ?? attempt.provider_payment_id ?? null,
+        providerPaymentId: chargeAttemptProviderPaymentId,
         payload: chargeResult.raw,
         attemptId: attempt.id,
       });
@@ -306,7 +316,7 @@ export async function POST(
       await markPaymentFailed(supabase, {
         paymentIntentId,
         providerId: "uzum",
-        providerPaymentId: chargeResult.providerPaymentId ?? attempt.provider_payment_id ?? null,
+        providerPaymentId: chargeAttemptProviderPaymentId,
         payload: chargeResult.raw,
       });
     } else {
@@ -338,7 +348,8 @@ export async function POST(
       level: chargeResult.status === "failed" ? "warn" : "info",
       data: {
         chargeStatus: chargeResult.status,
-        providerPaymentId: chargeResult.providerPaymentId ?? null,
+        providerPaymentId: chargeAttemptProviderPaymentId,
+        providerRefs: uzumRefs,
       },
     });
 

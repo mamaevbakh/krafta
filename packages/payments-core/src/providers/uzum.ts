@@ -454,6 +454,14 @@ type RecurringChargeResult = {
   raw: Record<string, unknown>;
 };
 
+export type UzumChargeProviderRefs = {
+  chargeOrderId: string | null;
+  merchantPayOrderId: string | null;
+  merchantPayOperationId: string | null;
+  merchantPayMdOrder: string | null;
+  chargeOrderIdSource: "provided" | "registered" | null;
+};
+
 type EnsureChargeOrderInput = {
   supabase: any;
   apiBaseUrl: string;
@@ -718,4 +726,73 @@ export async function createUzumRecurringCharge(
       merchantPay: { request: body, response: json },
     },
   };
+}
+
+export function extractUzumChargeProviderRefs(raw: unknown): UzumChargeProviderRefs {
+  const top = isRecord(raw) ? raw : null;
+
+  const chargeOrderIdSource = (() => {
+    const value = top?.chargeOrderIdSource;
+    return value === "provided" || value === "registered" ? value : null;
+  })();
+
+  const registerResponse = isRecord(top?.register)
+    ? isRecord((top!.register as Record<string, unknown>).response)
+      ? ((top!.register as Record<string, unknown>).response as Record<string, unknown>)
+      : null
+    : null;
+
+  const merchantPay = isRecord(top?.merchantPay)
+    ? (top!.merchantPay as Record<string, unknown>)
+    : null;
+  const merchantPayRequest = isRecord(merchantPay?.request)
+    ? (merchantPay!.request as Record<string, unknown>)
+    : null;
+  const merchantPayResponse = isRecord(merchantPay?.response)
+    ? (merchantPay!.response as Record<string, unknown>)
+    : null;
+  const merchantPayResult = isRecord(merchantPayResponse?.result)
+    ? (merchantPayResponse!.result as Record<string, unknown>)
+    : null;
+  const registerResult = isRecord(registerResponse?.result)
+    ? (registerResponse!.result as Record<string, unknown>)
+    : null;
+
+  const chargeOrderId =
+    pickString(registerResult?.orderId) ??
+    pickString(merchantPayRequest?.orderId) ??
+    pickString(merchantPayResult?.orderId) ??
+    pickString(merchantPayResponse?.orderId) ??
+    null;
+
+  const merchantPayOrderId =
+    pickString(merchantPayResult?.orderId) ??
+    pickString(merchantPayResponse?.orderId) ??
+    null;
+
+  const merchantPayOperationId =
+    pickString(merchantPayResult?.operationId) ??
+    pickString(merchantPayResponse?.operationId) ??
+    null;
+
+  const merchantPayMdOrder =
+    pickString(merchantPayResult?.mdOrder) ??
+    pickString(merchantPayResponse?.mdOrder) ??
+    null;
+
+  return {
+    chargeOrderId,
+    merchantPayOrderId,
+    merchantPayOperationId,
+    merchantPayMdOrder,
+    chargeOrderIdSource,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function pickString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }

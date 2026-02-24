@@ -9,6 +9,7 @@ export type CreateCheckoutSessionInput = {
   successUrl?: string;
   cancelUrl?: string;
   returnUrl?: string;           // fallback return URL
+  customerId?: string;          // existing customer in payments.customers
   customer?: {
     email?: string;
     phone?: string;

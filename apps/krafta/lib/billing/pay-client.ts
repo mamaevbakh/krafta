@@ -34,6 +34,25 @@ export type CreatePaySubscriptionCheckoutResult = {
   payUrl: string;
 };
 
+export type CreateCustomerPortalSessionInput = {
+  customerOrgId: string;
+  returnUrl: string;
+  customerUserRef?: string;
+  flowData?: {
+    type?: "payment_method_update" | "subscription_cancel" | "subscription_update";
+    subscriptionId?: string;
+    [key: string]: unknown;
+  };
+  metadata?: Record<string, unknown>;
+};
+
+export type CreateCustomerPortalSessionResult = {
+  id: string;
+  object: "customer_portal.session";
+  url: string;
+  expiresAt: string;
+};
+
 export type KraftaPayPlan = {
   id: string;
   name: string;
@@ -91,4 +110,32 @@ export async function createPaySubscriptionCheckout(
   }
 
   return json as CreatePaySubscriptionCheckoutResult;
+}
+
+export async function createKraftaPayCustomerPortalSession(
+  input: CreateCustomerPortalSessionInput,
+): Promise<CreateCustomerPortalSessionResult> {
+  const payload = JSON.stringify(input);
+  const apiKey = getApiKey();
+  const baseUrl = getPayBaseUrl().replace(/\/+$/, "");
+
+  const res = await fetch(`${baseUrl}/api/v1/customer_portal/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: payload,
+    cache: "no-store",
+  });
+
+  const json = (await res.json().catch(() => null)) as
+    | CreateCustomerPortalSessionResult
+    | { error?: string }
+    | null;
+  if (!res.ok || !json || ("error" in json && json.error)) {
+    throw new Error((json as { error?: string } | null)?.error ?? `pay_customer_portal_http_${res.status}`);
+  }
+
+  return json as CreateCustomerPortalSessionResult;
 }

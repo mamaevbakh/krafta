@@ -3,10 +3,17 @@ import type { HandleWebhookInput, HandleWebhookResult } from "./types";
 import { writePaymentDebugLog } from "./debug-log";
 import {
   finalizeInitialPayment,
+  completeStandaloneCheckoutSession,
+  markStandaloneCheckoutFailed,
   markPaymentFailed,
+  persistBindingPaymentMethodForCustomer,
   persistBindingPaymentMethodForPaymentIntent,
 } from "./subscription";
-import { createUzumRecurringCharge, verifyUzumWebhookSignature } from "./providers/uzum";
+import {
+  createUzumRecurringCharge,
+  extractUzumChargeProviderRefs,
+  verifyUzumWebhookSignature,
+} from "./providers/uzum";
 
 export async function handleWebhookEvent(
   supabase: SupabaseClient,
@@ -173,12 +180,29 @@ export async function handleWebhookEvent(
               .maybeSingle();
             if (sessionErr) throw sessionErr;
 
-            const bindingPersistResult = await persistBindingPaymentMethodForPaymentIntent(supabase, {
-              paymentIntentId: matchedAttempt.payment_intent_id,
-              providerId: input.providerId,
-              bindingId,
-              orgProviderAccountId: matchedAttempt.org_provider_account_id,
-            });
+            const portalFlow = getPortalFlowFromMetadata(intent.metadata, session?.metadata);
+            const isPortalPaymentMethodUpdate = portalFlow?.type === "payment_method_update";
+            const portalTargetSubscriptionId =
+              portalFlow && typeof portalFlow.subscriptionId === "string"
+                ? portalFlow.subscriptionId
+                : null;
+
+            const bindingPersistResult = isPortalPaymentMethodUpdate
+              ? session?.customer_id
+                ? await persistBindingPaymentMethodForCustomer(supabase, {
+                    customerId: session.customer_id,
+                    providerId: input.providerId,
+                    bindingId,
+                    orgProviderAccountId: matchedAttempt.org_provider_account_id,
+                    setDefaultForSubscriptionId: portalTargetSubscriptionId,
+                  })
+                : ({ saved: false as const, reason: "portal_checkout_customer_missing" as const } as const)
+              : await persistBindingPaymentMethodForPaymentIntent(supabase, {
+                  paymentIntentId: matchedAttempt.payment_intent_id,
+                  providerId: input.providerId,
+                  bindingId,
+                  orgProviderAccountId: matchedAttempt.org_provider_account_id,
+                });
 
             await writePaymentDebugLog(supabase, {
               scope: "webhook",
@@ -196,11 +220,62 @@ export async function handleWebhookEvent(
                       customerId: bindingPersistResult.customerId,
                       created: bindingPersistResult.created,
                       setAsDefault: bindingPersistResult.setAsDefault,
+                      portalFlowType: isPortalPaymentMethodUpdate ? "payment_method_update" : null,
                     }
                   : { reason: bindingPersistResult.reason }),
               },
             });
 
+            if (isPortalPaymentMethodUpdate) {
+              const { error: attemptUpdateErr } = await supabase
+                .schema("payments")
+                .from("payment_attempts")
+                .update({
+                  status: "succeeded",
+                  provider_payment_id: providerPaymentId ?? null,
+                  raw_init_response: {
+                    attemptKind: "portal_payment_method_update_bind",
+                    bindingWebhookPayload: payload,
+                    portalFlow,
+                  },
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", matchedAttempt.id);
+              if (attemptUpdateErr) throw attemptUpdateErr;
+
+              await completeStandaloneCheckoutSession(supabase, {
+                paymentIntentId: matchedAttempt.payment_intent_id,
+                providerId: input.providerId,
+                providerPaymentId: providerPaymentId ?? null,
+                attemptId: matchedAttempt.id,
+                payload,
+              });
+
+              if (portalFlow?.sessionId && session?.org_id && session?.customer_id) {
+                try {
+                  await (supabase as any)
+                    .schema("payments")
+                    .from("customer_portal_events")
+                    .insert({
+                      customer_portal_session_id: portalFlow.sessionId,
+                      org_id: session.org_id,
+                      customer_id: session.customer_id,
+                      subscription_id: portalTargetSubscriptionId,
+                      event_type: "payment_method_update_completed",
+                      payload: {
+                        provider_id: input.providerId,
+                        payment_intent_id: matchedAttempt.payment_intent_id,
+                        payment_attempt_id: matchedAttempt.id,
+                        provider_payment_id: providerPaymentId ?? null,
+                      },
+                    });
+                } catch (portalEventErr) {
+                  console.error("portal audit insert failed (payment_method_update_completed)", {
+                    portalEventErr,
+                  });
+                }
+              }
+            } else {
             const chargeResult = await createUzumRecurringCharge({
               supabase,
               orgProviderAccountId: matchedAttempt.org_provider_account_id,
@@ -225,6 +300,11 @@ export async function handleWebhookEvent(
                 getUzumCartFromMetadata(session?.metadata) ??
                 null,
             });
+            const uzumRefs = extractUzumChargeProviderRefs(chargeResult.raw);
+            const chargeAttemptProviderPaymentId =
+              chargeResult.providerPaymentId ??
+              uzumRefs.chargeOrderId ??
+              providerPaymentId;
 
             await writePaymentDebugLog(supabase, {
               scope: "webhook",
@@ -236,8 +316,9 @@ export async function handleWebhookEvent(
               level: chargeResult.status === "failed" ? "warn" : "info",
               data: {
                 bindingProviderPaymentId: providerPaymentId,
-                chargeProviderPaymentId: chargeResult.providerPaymentId ?? null,
+                chargeProviderPaymentId: chargeAttemptProviderPaymentId ?? null,
                 chargeStatus: chargeResult.status,
+                providerRefs: uzumRefs,
               },
             });
 
@@ -252,10 +333,12 @@ export async function handleWebhookEvent(
               .from("payment_attempts")
               .update({
                 status: normalizedAttemptStatus,
-                provider_payment_id: chargeResult.providerPaymentId ?? providerPaymentId,
+                provider_payment_id: chargeAttemptProviderPaymentId ?? null,
                 raw_init_response: {
+                  attemptKind: "initial_charge_post_bind",
                   bindingWebhookPayload: payload,
                   chargeResult: chargeResult.raw,
+                  providerRefs: uzumRefs,
                 },
                 updated_at: new Date().toISOString(),
               })
@@ -266,7 +349,7 @@ export async function handleWebhookEvent(
               await finalizeInitialPayment(supabase, {
                 paymentIntentId: matchedAttempt.payment_intent_id,
                 providerId: input.providerId,
-                providerPaymentId: chargeResult.providerPaymentId ?? providerPaymentId,
+                providerPaymentId: chargeAttemptProviderPaymentId ?? null,
                 payload,
                 attemptId: matchedAttempt.id,
               });
@@ -274,7 +357,7 @@ export async function handleWebhookEvent(
               await markPaymentFailed(supabase, {
                 paymentIntentId: matchedAttempt.payment_intent_id,
                 providerId: input.providerId,
-                providerPaymentId: chargeResult.providerPaymentId ?? providerPaymentId,
+                providerPaymentId: chargeAttemptProviderPaymentId ?? null,
                 payload: chargeResult.raw,
               });
             } else {
@@ -288,6 +371,7 @@ export async function handleWebhookEvent(
                 .eq("id", matchedAttempt.payment_intent_id);
               if (intentProcessingErr) throw intentProcessingErr;
             }
+            }
           } else {
             await finalizeInitialPayment(supabase, {
               paymentIntentId: matchedAttempt.payment_intent_id,
@@ -298,12 +382,68 @@ export async function handleWebhookEvent(
             });
           }
         } else {
-          await markPaymentFailed(supabase, {
-            paymentIntentId: matchedAttempt.payment_intent_id,
-            providerId: input.providerId,
-            providerPaymentId,
-            payload,
-          });
+          const { data: failedIntent, error: failedIntentErr } = await supabase
+            .schema("payments")
+            .from("payment_intents")
+            .select("metadata")
+            .eq("id", matchedAttempt.payment_intent_id)
+            .maybeSingle();
+          if (failedIntentErr) throw failedIntentErr;
+          const { data: failedSession, error: failedSessionErr } = await supabase
+            .schema("payments")
+            .from("checkout_sessions")
+            .select("org_id, customer_id, metadata")
+            .eq("payment_intent_id", matchedAttempt.payment_intent_id)
+            .order("created_at", { ascending: false })
+            .maybeSingle();
+          if (failedSessionErr) throw failedSessionErr;
+          const failedPortalFlow = getPortalFlowFromMetadata(
+            failedIntent?.metadata,
+            failedSession?.metadata,
+          );
+
+          if (failedPortalFlow?.type === "payment_method_update") {
+            await markStandaloneCheckoutFailed(supabase, {
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              providerId: input.providerId,
+              providerPaymentId,
+              payload,
+              attemptId: matchedAttempt.id,
+            });
+
+            if (failedPortalFlow.sessionId && failedSession?.org_id && failedSession?.customer_id) {
+              try {
+                await (supabase as any)
+                  .schema("payments")
+                  .from("customer_portal_events")
+                  .insert({
+                    customer_portal_session_id: failedPortalFlow.sessionId,
+                    org_id: failedSession.org_id,
+                    customer_id: failedSession.customer_id,
+                    subscription_id: failedPortalFlow.subscriptionId ?? null,
+                    event_type: "payment_method_update_failed",
+                    payload: {
+                      provider_id: input.providerId,
+                      payment_intent_id: matchedAttempt.payment_intent_id,
+                      payment_attempt_id: matchedAttempt.id,
+                      provider_payment_id: providerPaymentId ?? null,
+                      event_type: eventType,
+                    },
+                  });
+              } catch (portalEventErr) {
+                console.error("portal audit insert failed (payment_method_update_failed)", {
+                  portalEventErr,
+                });
+              }
+            }
+          } else {
+            await markPaymentFailed(supabase, {
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              providerId: input.providerId,
+              providerPaymentId,
+              payload,
+            });
+          }
         }
 
         const { data: session, error: sessionErr } = await supabase
@@ -401,6 +541,34 @@ function getUzumCartFromMetadata(metadata: unknown) {
   if (rec.uzum && typeof rec.uzum === "object") {
     const uz = rec.uzum as Record<string, unknown>;
     if (uz.cart && typeof uz.cart === "object") return uz.cart;
+  }
+  return null;
+}
+
+function getPortalFlowFromMetadata(...values: unknown[]) {
+  for (const metadata of values) {
+    if (!metadata || typeof metadata !== "object") continue;
+    const rec = metadata as Record<string, unknown>;
+    if (rec.customerPortal && typeof rec.customerPortal === "object") {
+      const portal = rec.customerPortal as Record<string, unknown>;
+      const type = typeof portal.flowType === "string" ? portal.flowType : null;
+      if (type) {
+        return {
+          type,
+          subscriptionId:
+            typeof portal.subscriptionId === "string" ? portal.subscriptionId : null,
+          sessionId: typeof portal.sessionId === "string" ? portal.sessionId : null,
+        };
+      }
+    }
+    if (typeof rec.portalFlowType === "string") {
+      return {
+        type: rec.portalFlowType,
+        subscriptionId:
+          typeof rec.portalSubscriptionId === "string" ? rec.portalSubscriptionId : null,
+        sessionId: typeof rec.portalSessionId === "string" ? rec.portalSessionId : null,
+      };
+    }
   }
   return null;
 }

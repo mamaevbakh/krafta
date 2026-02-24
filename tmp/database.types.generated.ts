@@ -133,6 +133,117 @@ export type Database = {
           },
         ]
       }
+      customer_portal_events: {
+        Row: {
+          created_at: string
+          customer_id: string
+          customer_portal_session_id: string
+          event_type: string
+          id: string
+          org_id: string
+          payload: Json
+          subscription_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          customer_portal_session_id: string
+          event_type: string
+          id?: string
+          org_id: string
+          payload?: Json
+          subscription_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          customer_portal_session_id?: string
+          event_type?: string
+          id?: string
+          org_id?: string
+          payload?: Json
+          subscription_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_portal_events_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_events_customer_portal_session_id_fkey"
+            columns: ["customer_portal_session_id"]
+            isOneToOne: false
+            referencedRelation: "customer_portal_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_events_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_portal_sessions: {
+        Row: {
+          created_at: string
+          customer_id: string
+          expires_at: string
+          flow_data: Json
+          flow_type: string | null
+          id: string
+          metadata: Json
+          org_id: string
+          return_url: string | null
+          status: string
+          token_hash: string
+          updated_at: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          expires_at: string
+          flow_data?: Json
+          flow_type?: string | null
+          id?: string
+          metadata?: Json
+          org_id: string
+          return_url?: string | null
+          status?: string
+          token_hash: string
+          updated_at?: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          flow_data?: Json
+          flow_type?: string | null
+          id?: string
+          metadata?: Json
+          org_id?: string
+          return_url?: string | null
+          status?: string
+          token_hash?: string
+          updated_at?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_portal_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           created_at: string

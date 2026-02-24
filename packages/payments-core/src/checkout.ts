@@ -45,9 +45,9 @@ export async function createCheckoutSession(
 
   if (intentErr) throw intentErr;
 
-  // (optional) 2) customer record (for now create only if data provided)
-  let customerId: string | null = null;
-  if (input.customer?.email || input.customer?.phone || input.customer?.customerUserRef) {
+  // (optional) 2) customer record
+  let customerId: string | null = input.customerId ?? null;
+  if (!customerId && (input.customer?.email || input.customer?.phone || input.customer?.customerUserRef)) {
     const { data: customer, error: custErr } = await supabase
       .schema("payments")
       .from("customers")

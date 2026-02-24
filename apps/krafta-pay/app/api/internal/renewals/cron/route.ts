@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
-import { runRenewalCycle } from "@krafta/payments-core";
+import { runRenewalCycle, writePaymentDebugLog } from "@krafta/payments-core";
 
 function getCronSecret() {
   return (
@@ -52,10 +52,23 @@ function parseRunDate(value: string | null | undefined) {
 }
 
 async function runRenewals(req: Request, dateOverride?: string | null) {
+  const startedAt = Date.now();
   verifyCronAuth(req);
   const runAt = parseRunDate(dateOverride);
   const supabase = createAdminSupabase();
   const result = await runRenewalCycle(supabase, runAt);
+  await writePaymentDebugLog(supabase, {
+    scope: "renewals_cron",
+    event: "run",
+    data: {
+      source: "vercel_cron",
+      runAt: runAt.toISOString(),
+      durationMs: Date.now() - startedAt,
+      result,
+      userAgent: req.headers.get("user-agent"),
+      vercelCronHeader: req.headers.get("x-vercel-cron") ?? null,
+    },
+  });
   return NextResponse.json({
     ok: true,
     source: "cron",
@@ -71,7 +84,30 @@ export async function GET(req: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "renewals_cron_failed";
     console.error("renewals cron GET failed", { message });
-    return NextResponse.json({ error: message }, { status: 401 });
+    try {
+      const supabase = createAdminSupabase();
+      await writePaymentDebugLog(supabase, {
+        scope: "renewals_cron",
+        event: "error",
+        level: "error",
+        data: {
+          source: "vercel_cron",
+          method: "GET",
+          error: message,
+          userAgent: req.headers.get("user-agent"),
+          vercelCronHeader: req.headers.get("x-vercel-cron") ?? null,
+        },
+      });
+    } catch {}
+    const status =
+      message === "missing_renewals_cron_secret" ||
+      message === "missing_authorization_bearer" ||
+      message === "invalid_cron_secret"
+        ? 401
+        : message === "invalid_date"
+          ? 400
+          : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -86,6 +122,21 @@ export async function POST(req: Request) {
     return await runRenewals(req, dateOverride);
   } catch (error) {
     const message = error instanceof Error ? error.message : "renewals_cron_failed";
+    try {
+      const supabase = createAdminSupabase();
+      await writePaymentDebugLog(supabase, {
+        scope: "renewals_cron",
+        event: "error",
+        level: "error",
+        data: {
+          source: "vercel_cron",
+          method: "POST",
+          error: message,
+          userAgent: req.headers.get("user-agent"),
+          vercelCronHeader: req.headers.get("x-vercel-cron") ?? null,
+        },
+      });
+    } catch {}
     const status =
       message === "missing_renewals_cron_secret" ||
       message === "missing_authorization_bearer" ||

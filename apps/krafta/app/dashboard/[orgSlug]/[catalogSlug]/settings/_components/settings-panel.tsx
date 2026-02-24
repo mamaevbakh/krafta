@@ -17,6 +17,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { getCatalogAssetUrl } from "@/lib/catalogs/media";
 import { cn } from "@/lib/utils";
 import { updateCatalogSettings } from "./actions";
 
@@ -29,8 +30,6 @@ type SettingsPanelProps = {
   tags: string[];
   logoPath: string;
 };
-
-const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 function normalizeTag(value: string) {
   return value.trim().replace(/\s+/g, " ");
@@ -74,10 +73,7 @@ export function SettingsPanel({
   const [isPending, startTransition] = React.useTransition();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const logoUrl =
-    currentLogoPath && baseUrl
-      ? `${baseUrl}/storage/v1/object/public/krafta/${currentLogoPath}`
-      : null;
+  const logoUrl = getCatalogAssetUrl(currentLogoPath);
 
   const handleAddTags = React.useCallback((value: string) => {
     const pieces = value

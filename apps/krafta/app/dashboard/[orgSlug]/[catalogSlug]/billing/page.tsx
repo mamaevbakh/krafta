@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { getRequestOrigin } from "@/lib/auth/redirect";
-import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
+import {
+  createKraftaPayCustomerPortalSession,
+  createPaySubscriptionCheckout,
+  listKraftaPayPlans,
+} from "@/lib/billing/pay-client";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
 
 type BillingPageProps = {
@@ -15,6 +19,25 @@ type BillingPageProps = {
 function resolveAppBaseUrl(origin: string) {
   const configured = process.env.KRAFTA_APP_URL?.trim();
   return configured && configured.length > 0 ? configured : origin;
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "n/a";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "n/a";
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function formatMoney(amountMinor: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+      maximumFractionDigits: 0,
+    }).format(amountMinor / 100);
+  } catch {
+    return `${amountMinor} ${currency.toUpperCase()}`;
+  }
 }
 
 async function startUpgradeAction(formData: FormData) {
@@ -87,6 +110,58 @@ async function startUpgradeAction(formData: FormData) {
   redirect(checkout.payUrl);
 }
 
+async function openCustomerPortalAction(formData: FormData) {
+  "use server";
+  const customerOrgId = String(formData.get("customerOrgId") ?? "");
+  const orgSlug = String(formData.get("orgSlug") ?? "");
+  const catalogSlug = String(formData.get("catalogSlug") ?? "");
+
+  if (!customerOrgId || !orgSlug || !catalogSlug) {
+    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=Missing+required+fields`);
+  }
+
+  const supabase = await createClient();
+  const { user: authUser, authError } = await getUserSafely(supabase);
+  if (authError || !authUser) {
+    redirect(`/login?next=/dashboard/${orgSlug}/${catalogSlug}/billing`);
+  }
+
+  const { data: membership, error: membershipErr } = await supabase
+    .from("organization_members")
+    .select("id")
+    .eq("org_id", customerOrgId)
+    .eq("user_id", authUser.id)
+    .maybeSingle();
+  if (membershipErr) {
+    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(membershipErr.message)}`);
+  }
+  if (!membership) {
+    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=Forbidden`);
+  }
+
+  const origin = getRequestOrigin(await headers());
+  const appBaseUrl = resolveAppBaseUrl(origin).replace(/\/+$/, "");
+  const returnUrl = `${appBaseUrl}/dashboard/${orgSlug}/${catalogSlug}/billing`;
+
+  try {
+    const portal = await createKraftaPayCustomerPortalSession({
+      customerOrgId,
+      customerUserRef: authUser.id,
+      returnUrl,
+      metadata: {
+        source: "krafta_billing_page",
+        org_slug: orgSlug,
+        catalog_slug: catalogSlug,
+        initiated_by_user_id: authUser.id,
+      },
+    });
+    redirect(portal.url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create customer portal session";
+    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(message)}`);
+  }
+}
+
 export default async function BillingPage({ params, searchParams }: BillingPageProps) {
   const { orgSlug, catalogSlug } = await params;
   const sp = await searchParams;
@@ -128,16 +203,31 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
       </div>
 
       <div className="mt-6 rounded-md border bg-background p-4 text-sm">
-        <p className="font-medium">Current entitlement</p>
-        <p className="mt-1 text-muted-foreground">
-          Access state: <span className="font-medium text-foreground">{entitlement.status}</span>
-        </p>
-        <p className="text-muted-foreground">
-          Subscription status: {entitlement.subscriptionStatus ?? "none"}
-        </p>
-        {entitlement.currentPeriodEnd ? (
-          <p className="text-muted-foreground">Current period end: {entitlement.currentPeriodEnd}</p>
-        ) : null}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="font-medium">Current entitlement</p>
+            <p className="mt-1 text-muted-foreground">
+              Access state: <span className="font-medium text-foreground">{entitlement.status}</span>
+            </p>
+            <p className="text-muted-foreground">
+              Subscription status: {entitlement.subscriptionStatus ?? "none"}
+            </p>
+            {entitlement.currentPeriodEnd ? (
+              <p className="text-muted-foreground">
+                Current period end: {formatDateTime(entitlement.currentPeriodEnd)}
+              </p>
+            ) : null}
+          </div>
+
+          <form action={openCustomerPortalAction}>
+            <input type="hidden" name="customerOrgId" value={orgRecord.id} />
+            <input type="hidden" name="orgSlug" value={orgSlug} />
+            <input type="hidden" name="catalogSlug" value={catalogSlug} />
+            <Button type="submit" variant="outline">
+              Manage Billing
+            </Button>
+          </form>
+        </div>
       </div>
 
       {sp.checkout === "success" ? (
@@ -176,7 +266,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
                       {plan.name} ({plan.code})
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {plan.amount_minor} {plan.currency} / {plan.interval_count} month(s)
+                      {formatMoney(plan.amount_minor, plan.currency)} / {plan.interval_count} month(s)
                     </p>
                     {plan.trial_days > 0 ? (
                       <p className="text-xs text-muted-foreground">Trial: {plan.trial_days} days</p>
@@ -187,7 +277,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
                     <input type="hidden" name="orgSlug" value={orgSlug} />
                     <input type="hidden" name="catalogSlug" value={catalogSlug} />
                     <input type="hidden" name="planId" value={plan.id} />
-                    <Button type="submit">Upgrade</Button>
+                    <Button type="submit">Upgrade to {plan.name}</Button>
                   </form>
                 </div>
               </div>

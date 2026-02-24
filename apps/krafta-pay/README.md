@@ -32,6 +32,7 @@ Krafta Pay is intentionally separate from the Krafta product app:
 
 - Internal API to create subscription checkout sessions.
 - Hosted checkout page by opaque public token.
+- Hosted customer portal (Stripe-like session URL pattern, MVP).
 - Uzum checkout initiation (first payment flow).
 - Webhook ingestion and reconciliation.
 - Subscription activation on successful payment.
@@ -54,6 +55,10 @@ Snapshot date: **February 23, 2026**
   - tax code registry upload.
 - Webhook endpoint (`/api/webhooks/uzum`) with signature verification support.
 - Recurring payment support using Uzum `bindingId`.
+- Stripe-like customer portal session API + hosted portal page (MVP):
+  - session URL creation via merchant API key,
+  - hosted portal page for subscription/payment method/invoice visibility,
+  - cancel at period end self-service action.
 - Fiscalization Phase 2 database model:
   - org tax profiles,
   - tax schemas,
@@ -123,6 +128,112 @@ Renewals reuse the saved `bindingId` and skip the card-binding UI step.
 5. **Finalize or dunning**
    - Success: invoice paid, subscription period advances.
    - Failure: invoice stays open and dunning scheduling (`due_at`, `attempt_count`) drives the next retry window.
+
+#### Stripe Lifecycle Alignment (Krafta Pay, BYO-Acquirer)
+
+Krafta Pay is not a Stripe clone at the provider layer (it supports BYO acquirer/provider integrations such as Uzum), but the billing object lifecycle should feel Stripe-like:
+
+- **Subscription statuses (Stripe-like core)**
+  - Supported/runtime today: `incomplete`, `incomplete_expired`, `active`, `past_due`, `canceled`
+  - DB now also allows future Stripe-style statuses: `trialing`, `unpaid`
+- **Invoice statuses**
+  - Runtime today mainly uses: `open`, `paid`, `uncollectible`, `void`
+  - DB now also allows `draft` for future staged finalization flows
+- **Payment retries / dunning**
+  - `invoices.attempt_count` and `invoices.due_at` are used as the retry schedule state (Stripe-equivalent concept of retry count + next attempt time)
+- **BYO acquirer abstraction**
+  - Stripe has `Charge`/`PaymentIntent` native IDs
+  - Krafta Pay stores provider-native refs (for example Uzum charge order / operation IDs) inside attempt metadata (`providerRefs`)
+
+##### Duplicate Failed Subscriptions (Why You May Still See Them)
+
+Historical failed subscriptions created during integration debugging can remain in the database as final audit artifacts (`incomplete_expired`, `canceled`, or `past_due` depending on the point of failure).
+
+To prevent the Stripe-unlike behavior of creating a new subscription on every repeated checkout attempt, Krafta Pay now:
+
+- reuses an existing non-terminal subscription (`incomplete` / `past_due`) when possible,
+- reuses its open invoice + payment intent,
+- creates a fresh `checkout_session` pointing to the same payment intent (resume flow).
+
+This mirrors Stripe's behavior more closely (the subscription lifecycle continues instead of spawning a new subscription object for every failed first payment attempt).
+
+#### Stripe-Like Customer Portal (MVP)
+
+Krafta Pay now provides a **hosted customer portal** pattern similar to Stripe Billing Portal:
+
+1. Krafta (client app) calls a server-to-server API to create a portal session.
+2. Krafta Pay returns a short-lived hosted URL.
+3. Customer opens the hosted URL in Krafta Pay.
+4. Customer can review subscriptions, payment methods, invoices, and perform hosted self-service actions.
+5. Customer returns to Krafta via `returnUrl`.
+
+##### API: Create Customer Portal Session
+
+`POST /api/v1/customer_portal/sessions`
+
+Auth:
+- `Authorization: Bearer <krp_test_... or krp_live_...>`
+
+Request body (example):
+
+```json
+{
+  "customerOrgId": "79e8fd14-adca-4772-bd2b-f7fe87747650",
+  "customerUserRef": "user_123",
+  "returnUrl": "https://krafta.org/dashboard/aladeen/aladeen/billing",
+  "flowData": {
+    "type": "subscription_cancel",
+    "subscriptionId": "431cf1d5-78ee-428d-a7c5-4deaa695495b"
+  }
+}
+```
+
+Response (example):
+
+```json
+{
+  "id": "4b4f0a7b-2e0d-4f6b-9d5a-8f9e7c8a2f10",
+  "object": "customer_portal.session",
+  "url": "https://pay.krafta.uz/portal/<opaque-session-token>",
+  "expiresAt": "2026-02-24T20:15:00.000Z"
+}
+```
+
+Notes:
+- Portal sessions are short-lived (currently **5 minutes** to first use).
+- After first successful open, session expiry is extended (currently ~30 minutes) to support multi-step flows like card rebinding.
+- `returnUrl` is validated against configured Krafta/Krafta Pay origins.
+- Supported flow types: `payment_method_update`, `subscription_cancel`, `subscription_update`.
+
+##### Hosted Portal Actions (Current)
+
+- **Payment method update (Uzum)**
+  - Hosted action launches a **bind-only** Uzum flow.
+  - Webhook persists the new `bindingId` to `payment_methods.provider_token`.
+  - No `merchantPay` charge is executed for this action.
+  - When `flowData.subscriptionId` is provided, the saved method is set as the subscription default.
+- **Subscription cancel**
+  - `cancel_at_period_end` is set on the subscription (hosted self-service action).
+- **Subscription plan update**
+  - `prorationBehavior = "none"`: plan changes immediately, no proration invoice is created.
+  - `prorationBehavior = "defer_to_period_end"`: plan change is stored in `subscriptions.metadata.pending_plan_change` and applied on the next successful renewal.
+
+##### Portal Audit Events
+
+Krafta Pay now writes hosted-portal-specific audit rows to:
+
+- `payments.customer_portal_events`
+
+Examples:
+- `session_created`
+- `session_opened`
+- `payment_method_update_started`
+- `payment_method_update_completed`
+- `subscription_cancel_at_period_end_requested`
+- `subscription_plan_updated`
+- `subscription_plan_update_scheduled`
+
+This complements (not replaces) `payments.logs`.
 
 #### Forever Verification (Operational Invariants)
 
@@ -201,6 +312,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 # Internal/API auth
 KRAFTA_PAY_INTERNAL_SECRET=...
 KRAFTA_PAY_API_KEYS_SECRET=...
+KRAFTA_PAY_PORTAL_SESSION_SECRET=...
 PAY_CREDENTIALS_SECRET=...
 
 # Runtime context

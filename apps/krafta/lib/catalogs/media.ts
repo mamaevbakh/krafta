@@ -2,6 +2,7 @@
 import type { Catalog, Item } from "./types";
 
 const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const STORAGE_PUBLIC_PREFIX = "/storage/v1/object/public/";
 
 type CatalogMediaSource = Pick<Catalog, "logo_path">;
 type ItemMediaSource = Pick<Item, "image_path">;
@@ -19,13 +20,22 @@ export function getCatalogAssetUrl(path: string | null | undefined): string | nu
     return trimmed;
   }
 
-  if (trimmed.startsWith("/storage/v1/object/public/")) {
+  if (trimmed.startsWith(STORAGE_PUBLIC_PREFIX)) {
     if (!baseUrl) return null;
     return `${baseUrl}${trimmed}`;
   }
 
+  if (trimmed.startsWith(STORAGE_PUBLIC_PREFIX.slice(1))) {
+    if (!baseUrl) return null;
+    return `${baseUrl}/${trimmed}`;
+  }
+
   if (!baseUrl) return null;
-  const normalized = trimmed.replace(/^krafta\//, "");
+  const normalized = trimmed
+    .replace(/^\/+/, "")
+    .replace(/^storage\/v1\/object\/public\//, "")
+    .replace(/^public\/krafta\//, "")
+    .replace(/^krafta\//, "");
   return `${baseUrl}/storage/v1/object/public/krafta/${normalized}`;
 }
 

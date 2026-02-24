@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { createUzumRecurringCharge } from "./providers/uzum";
+import { createUzumRecurringCharge, extractUzumChargeProviderRefs } from "./providers/uzum";
 
 const RETRY_SCHEDULE_DAYS = [3, 7, 14] as const;
 
@@ -556,6 +556,22 @@ export async function createSubscriptionCheckout(
     if (customerErr) throw customerErr;
     customerId = customer.id;
   }
+  if (!customerId) throw new Error("customer_create_or_lookup_failed");
+
+  const resumedCheckout = await tryResumeExistingSubscriptionCheckout(supabase, {
+    merchantOrgId: input.merchantOrgId,
+    customerOrgId: input.customerOrgId,
+    customerId,
+    planId: plan.id,
+    payBaseUrl: input.payBaseUrl,
+    successUrl: input.successUrl ?? null,
+    cancelUrl: input.cancelUrl ?? null,
+    returnUrl: input.returnUrl ?? null,
+    metadata,
+  });
+  if (resumedCheckout) {
+    return resumedCheckout;
+  }
 
   const now = new Date();
   const periodStart = now;
@@ -668,6 +684,125 @@ export async function createSubscriptionCheckout(
   };
 }
 
+type ResumeSubscriptionCheckoutInput = {
+  merchantOrgId: string;
+  customerOrgId: string;
+  customerId: string;
+  planId: string;
+  payBaseUrl: string;
+  successUrl: string | null;
+  cancelUrl: string | null;
+  returnUrl: string | null;
+  metadata: Record<string, unknown>;
+};
+
+async function tryResumeExistingSubscriptionCheckout(
+  supabase: SupabaseClient,
+  input: ResumeSubscriptionCheckoutInput,
+): Promise<CreateSubscriptionCheckoutResult | null> {
+  const { data: subscriptions, error: subscriptionErr } = await supabase
+    .schema("payments")
+    .from("subscriptions")
+    .select("id, customer_id, status")
+    .eq("org_id", input.merchantOrgId)
+    .eq("plan_id", input.planId)
+    .eq("customer_id", input.customerId)
+    .in("status", ["incomplete", "past_due"])
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (subscriptionErr) throw subscriptionErr;
+  const nonReusableIntentStatuses = new Set(["succeeded", "canceled", "cancelled"]);
+  for (const subscription of subscriptions ?? []) {
+    const { data: invoice, error: invoiceErr } = await supabase
+      .schema("payments")
+      .from("invoices")
+      .select("id, payment_intent_id, status")
+      .eq("subscription_id", subscription.id)
+      .in("status", ["open"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (invoiceErr) throw invoiceErr;
+    if (!invoice?.payment_intent_id) continue;
+
+    const { data: intent, error: intentErr } = await supabase
+      .schema("payments")
+      .from("payment_intents")
+      .select("id, status")
+      .eq("id", invoice.payment_intent_id)
+      .maybeSingle();
+    if (intentErr) throw intentErr;
+    if (!intent) continue;
+
+    if (nonReusableIntentStatuses.has(String(intent.status ?? "").toLowerCase())) {
+      continue;
+    }
+
+    const nowIso = new Date().toISOString();
+    const { error: intentUpdateErr } = await supabase
+      .schema("payments")
+      .from("payment_intents")
+      .update({
+        return_url: input.returnUrl ?? input.successUrl ?? null,
+        updated_at: nowIso,
+      })
+      .eq("id", intent.id);
+    if (intentUpdateErr) throw intentUpdateErr;
+
+    const publicToken = randomToken(18);
+    const { data: checkoutSession, error: checkoutSessionErr } = await supabase
+      .schema("payments")
+      .from("checkout_sessions")
+      .insert({
+        org_id: input.merchantOrgId,
+        payment_intent_id: intent.id,
+        customer_id: subscription.customer_id,
+        public_token: publicToken,
+        status: "open",
+        success_url: input.successUrl,
+        cancel_url: input.cancelUrl,
+        return_url: input.returnUrl,
+        metadata: {
+          subscription_id: subscription.id,
+          invoice_id: invoice.id,
+          billing_reason: "subscription_resume",
+          resumed: true,
+          merchant_org_id: input.merchantOrgId,
+          customer_org_id: input.customerOrgId,
+          ...input.metadata,
+        },
+      })
+      .select("id")
+      .single();
+    if (checkoutSessionErr) throw checkoutSessionErr;
+
+    await supabase
+      .schema("payments")
+      .from("subscription_events")
+      .insert({
+        subscription_id: subscription.id,
+        event_type: "checkout_resumed",
+        payload: {
+          invoice_id: invoice.id,
+          payment_intent_id: intent.id,
+          reason: "reused_non_terminal_subscription",
+        },
+      });
+
+    return {
+      subscriptionId: subscription.id,
+      invoiceId: invoice.id,
+      checkoutSessionId: checkoutSession.id,
+      paymentIntentId: intent.id,
+      publicToken,
+      payUrl: `${input.payBaseUrl.replace(/\/+$/, "")}/pay/${publicToken}`,
+    };
+  }
+
+  return null;
+}
+
 type FinalizePaymentInput = {
   paymentIntentId: string;
   providerId: string;
@@ -682,6 +817,93 @@ type PersistBindingPaymentMethodInput = {
   bindingId: string;
   orgProviderAccountId: string;
 };
+
+type PersistBindingPaymentMethodForCustomerInput = {
+  customerId: string;
+  providerId: string;
+  bindingId: string;
+  orgProviderAccountId: string;
+  setDefaultForSubscriptionId?: string | null;
+};
+
+export async function persistBindingPaymentMethodForCustomer(
+  supabase: SupabaseClient,
+  input: PersistBindingPaymentMethodForCustomerInput,
+) {
+  const { data: existingPaymentMethod, error: existingPaymentMethodErr } = await supabase
+    .schema("payments")
+    .from("payment_methods")
+    .select("id")
+    .eq("customer_id", input.customerId)
+    .eq("org_provider_account_id", input.orgProviderAccountId)
+    .eq("provider_id", input.providerId)
+    .eq("provider_token", input.bindingId)
+    .maybeSingle();
+  if (existingPaymentMethodErr) throw existingPaymentMethodErr;
+
+  let paymentMethodId = existingPaymentMethod?.id ?? null;
+  let created = false;
+  if (!paymentMethodId) {
+    const { data: createdPaymentMethod, error: createPaymentMethodErr } = await supabase
+      .schema("payments")
+      .from("payment_methods")
+      .insert({
+        customer_id: input.customerId,
+        org_provider_account_id: input.orgProviderAccountId,
+        provider_id: input.providerId,
+        provider_token: input.bindingId,
+        type: "card_binding",
+        status: "active",
+        is_default: true,
+        metadata: {
+          source: "uzum_binding",
+        },
+      })
+      .select("id")
+      .single();
+    if (createPaymentMethodErr) throw createPaymentMethodErr;
+    paymentMethodId = createdPaymentMethod.id;
+    created = true;
+  }
+
+  let setAsDefault = false;
+  let subscriptionId = input.setDefaultForSubscriptionId ?? null;
+  if (input.setDefaultForSubscriptionId) {
+    const { data: subscription, error: subscriptionErr } = await supabase
+      .schema("payments")
+      .from("subscriptions")
+      .select("id, customer_id, default_payment_method_id")
+      .eq("id", input.setDefaultForSubscriptionId)
+      .eq("customer_id", input.customerId)
+      .maybeSingle();
+    if (subscriptionErr) throw subscriptionErr;
+    if (subscription) {
+      subscriptionId = subscription.id;
+      setAsDefault = subscription.default_payment_method_id !== paymentMethodId;
+      if (setAsDefault) {
+        const { error: setDefaultErr } = await supabase
+          .schema("payments")
+          .from("subscriptions")
+          .update({
+            default_payment_method_id: paymentMethodId,
+          })
+          .eq("id", subscription.id);
+        if (setDefaultErr) throw setDefaultErr;
+      }
+    } else {
+      subscriptionId = null;
+    }
+  }
+
+  return {
+    saved: true as const,
+    created,
+    paymentMethodId,
+    customerId: input.customerId,
+    subscriptionId,
+    setAsDefault,
+  };
+}
 
 export async function persistBindingPaymentMethodForPaymentIntent(
   supabase: SupabaseClient,
@@ -710,62 +932,121 @@ export async function persistBindingPaymentMethodForPaymentIntent(
     return { saved: false as const, reason: "subscription_customer_missing" as const };
   }
 
-  const { data: existingPaymentMethod, error: existingPaymentMethodErr } = await supabase
-    .schema("payments")
-    .from("payment_methods")
-    .select("id")
-    .eq("customer_id", subscription.customer_id)
-    .eq("org_provider_account_id", input.orgProviderAccountId)
-    .eq("provider_id", input.providerId)
-    .eq("provider_token", input.bindingId)
-    .maybeSingle();
-  if (existingPaymentMethodErr) throw existingPaymentMethodErr;
-
-  let paymentMethodId = existingPaymentMethod?.id ?? null;
-  let created = false;
-  if (!paymentMethodId) {
-    const { data: createdPaymentMethod, error: createPaymentMethodErr } = await supabase
-      .schema("payments")
-      .from("payment_methods")
-      .insert({
-        customer_id: subscription.customer_id,
-        org_provider_account_id: input.orgProviderAccountId,
-        provider_id: input.providerId,
-        provider_token: input.bindingId,
-        type: "card_binding",
-        status: "active",
-        is_default: true,
-        metadata: {
-          source: "uzum_binding",
-        },
-      })
-      .select("id")
-      .single();
-    if (createPaymentMethodErr) throw createPaymentMethodErr;
-    paymentMethodId = createdPaymentMethod.id;
-    created = true;
-  }
-
-  const shouldSetDefault = subscription.default_payment_method_id !== paymentMethodId;
-  if (shouldSetDefault) {
-    const { error: setDefaultErr } = await supabase
-      .schema("payments")
-      .from("subscriptions")
-      .update({
-        default_payment_method_id: paymentMethodId,
-      })
-      .eq("id", subscription.id);
-    if (setDefaultErr) throw setDefaultErr;
-  }
+  const persistResult = await persistBindingPaymentMethodForCustomer(supabase, {
+    customerId: subscription.customer_id,
+    providerId: input.providerId,
+    bindingId: input.bindingId,
+    orgProviderAccountId: input.orgProviderAccountId,
+    setDefaultForSubscriptionId: subscription.id,
+  });
 
   return {
     saved: true as const,
-    created,
-    paymentMethodId,
+    created: persistResult.created,
+    paymentMethodId: persistResult.paymentMethodId,
     subscriptionId: subscription.id,
     customerId: subscription.customer_id,
-    setAsDefault: shouldSetDefault,
+    setAsDefault: persistResult.setAsDefault,
   };
+}
+
+type CompleteStandaloneCheckoutInput = {
+  paymentIntentId: string;
+  providerId: string;
+  providerPaymentId?: string | null;
+  attemptId?: string | null;
+  payload?: unknown;
+};
+
+export async function completeStandaloneCheckoutSession(
+  supabase: SupabaseClient,
+  input: CompleteStandaloneCheckoutInput,
+) {
+  const nowIso = new Date().toISOString();
+  let attemptId = input.attemptId ?? null;
+
+  if (!attemptId) {
+    const { data: latestAttempt, error: attemptErr } = await supabase
+      .schema("payments")
+      .from("payment_attempts")
+      .select("id")
+      .eq("payment_intent_id", input.paymentIntentId)
+      .eq("provider_id", input.providerId)
+      .order("created_at", { ascending: false })
+      .maybeSingle();
+    if (attemptErr) throw attemptErr;
+    attemptId = latestAttempt?.id ?? null;
+  }
+
+  if (attemptId) {
+    const { error: attemptUpdateErr } = await supabase
+      .schema("payments")
+      .from("payment_attempts")
+      .update({
+        status: "succeeded",
+        provider_payment_id: input.providerPaymentId ?? null,
+        updated_at: nowIso,
+      })
+      .eq("id", attemptId);
+    if (attemptUpdateErr) throw attemptUpdateErr;
+  }
+
+  const { error: intentUpdateErr } = await supabase
+    .schema("payments")
+    .from("payment_intents")
+    .update({ status: "succeeded", updated_at: nowIso })
+    .eq("id", input.paymentIntentId);
+  if (intentUpdateErr) throw intentUpdateErr;
+
+  const { error: sessionUpdateErr } = await supabase
+    .schema("payments")
+    .from("checkout_sessions")
+    .update({ status: "completed", updated_at: nowIso })
+    .eq("payment_intent_id", input.paymentIntentId);
+  if (sessionUpdateErr) throw sessionUpdateErr;
+
+  return { paymentIntentId: input.paymentIntentId, attemptId };
+}
+
+export async function markStandaloneCheckoutFailed(
+  supabase: SupabaseClient,
+  input: MarkFailedInput & { attemptId?: string | null },
+) {
+  const nowIso = new Date().toISOString();
+  const attemptId = input.attemptId ?? null;
+
+  if (attemptId) {
+    const { error: attemptUpdateErr } = await supabase
+      .schema("payments")
+      .from("payment_attempts")
+      .update({
+        status: "failed",
+        provider_payment_id: input.providerPaymentId ?? null,
+        updated_at: nowIso,
+      })
+      .eq("id", attemptId);
+    if (attemptUpdateErr) throw attemptUpdateErr;
+  }
+
+  const { error: intentUpdateErr } = await supabase
+    .schema("payments")
+    .from("payment_intents")
+    .update({
+      status: "failed",
+      updated_at: nowIso,
+    })
+    .eq("id", input.paymentIntentId);
+  if (intentUpdateErr) throw intentUpdateErr;
+
+  const { error: sessionUpdateErr } = await supabase
+    .schema("payments")
+    .from("checkout_sessions")
+    .update({
+      status: "failed",
+      updated_at: nowIso,
+    })
+    .eq("payment_intent_id", input.paymentIntentId);
+  if (sessionUpdateErr) throw sessionUpdateErr;
 }
 
 export async function finalizeInitialPayment(
@@ -1121,7 +1402,9 @@ export async function chargeRenewal(
   const { data: subscription, error: subscriptionErr } = await supabase
     .schema("payments")
     .from("subscriptions")
-    .select("id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_end, cancel_at_period_end")
+    .select(
+      "id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_end, cancel_at_period_end, metadata",
+    )
     .eq("id", params.subscriptionId)
     .maybeSingle();
   if (subscriptionErr) throw subscriptionErr;
@@ -1147,11 +1430,31 @@ export async function chargeRenewal(
     return { skipped: true, reason: "canceled_at_period_end" as const };
   }
 
+  const subscriptionMetadata =
+    subscription.metadata && typeof subscription.metadata === "object"
+      ? ({ ...(subscription.metadata as Record<string, unknown>) } as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const pendingPlanChange =
+    subscriptionMetadata.pending_plan_change &&
+    typeof subscriptionMetadata.pending_plan_change === "object"
+      ? (subscriptionMetadata.pending_plan_change as Record<string, unknown>)
+      : null;
+  const pendingPlanId =
+    pendingPlanChange && typeof pendingPlanChange.plan_id === "string"
+      ? pendingPlanChange.plan_id
+      : null;
+  const pendingEffectiveAt =
+    pendingPlanChange && typeof pendingPlanChange.effective_at === "string"
+      ? pendingPlanChange.effective_at
+      : null;
+  const effectivePlanId =
+    pendingPlanId && pendingEffectiveAt === "period_end" ? pendingPlanId : subscription.plan_id;
+
   const { data: plan, error: planErr } = await supabase
     .schema("payments")
     .from("plans")
     .select("amount_minor, currency, interval_count, name, metadata")
-    .eq("id", subscription.plan_id)
+    .eq("id", effectivePlanId)
     .maybeSingle();
   if (planErr) throw planErr;
   if (!plan) throw new Error("plan_not_found");
@@ -1167,7 +1470,7 @@ export async function chargeRenewal(
     const fallbackTaxIdentity = getTaxIdentityFromEnv();
     const planClassification = await resolvePlanTaxClassification(
       supabase,
-      subscription.plan_id,
+      effectivePlanId,
     );
     const planSpic = planClassification?.taxCode ?? getPlanFiscalSpic(planMetadata);
     const planPackageCode =
@@ -1273,19 +1576,26 @@ export async function chargeRenewal(
     uzumCart: renewalUzumCart,
     phoneNumber: customer?.phone,
   });
+  const uzumRefs = extractUzumChargeProviderRefs(chargeResult.raw);
+  const chargeAttemptProviderPaymentId =
+    chargeResult.providerPaymentId ?? uzumRefs.chargeOrderId ?? null;
 
   const { error: updateAttemptErr } = await supabase
     .schema("payments")
     .from("payment_attempts")
     .update({
-      provider_payment_id: chargeResult.providerPaymentId ?? null,
+      provider_payment_id: chargeAttemptProviderPaymentId,
       status:
         chargeResult.status === "succeeded"
           ? "succeeded"
           : chargeResult.status === "processing"
             ? "processing"
             : "failed",
-      raw_init_response: chargeResult.raw ?? {},
+      raw_init_response: {
+        attemptKind: "renewal_off_session",
+        ...(chargeResult.raw ?? {}),
+        providerRefs: uzumRefs,
+      },
       updated_at: new Date().toISOString(),
     })
     .eq("id", attempt.id);
@@ -1295,9 +1605,36 @@ export async function chargeRenewal(
     await finalizeInitialPayment(supabase, {
       paymentIntentId: renewal.paymentIntentId,
       providerId: "uzum",
-      providerPaymentId: chargeResult.providerPaymentId,
+      providerPaymentId: chargeAttemptProviderPaymentId,
       attemptId: attempt.id,
     });
+
+    if (effectivePlanId !== subscription.plan_id) {
+      delete subscriptionMetadata.pending_plan_change;
+      const nowIso = new Date().toISOString();
+      const { error: subscriptionPlanUpdateErr } = await supabase
+        .schema("payments")
+        .from("subscriptions")
+        .update({
+          plan_id: effectivePlanId,
+          metadata: subscriptionMetadata,
+          updated_at: nowIso,
+        })
+        .eq("id", subscription.id);
+      if (subscriptionPlanUpdateErr) throw subscriptionPlanUpdateErr;
+
+      await supabase.schema("payments").from("subscription_events").insert({
+        subscription_id: subscription.id,
+        event_type: "scheduled_plan_change_applied",
+        payload: {
+          from_plan_id: subscription.plan_id,
+          to_plan_id: effectivePlanId,
+          payment_intent_id: renewal.paymentIntentId,
+          source: "renewal_cycle",
+        },
+      });
+    }
+
     return { skipped: false, paymentIntentId: renewal.paymentIntentId };
   }
 
@@ -1305,7 +1642,7 @@ export async function chargeRenewal(
     await markPaymentFailed(supabase, {
       paymentIntentId: renewal.paymentIntentId,
       providerId: "uzum",
-      providerPaymentId: chargeResult.providerPaymentId,
+      providerPaymentId: chargeAttemptProviderPaymentId,
       payload: chargeResult.raw,
     });
   } else {
