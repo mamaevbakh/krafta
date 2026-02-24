@@ -255,7 +255,9 @@ export async function POST(
       providerToken,
       clientId: session.customer_id ?? session.org_id ?? "unknown",
       description: intent.description ?? "Checkout payment",
-      orderNumber: String(intent.order_id ?? intent.id),
+      // Must differ from the binding register orderNumber, otherwise Uzum may
+      // return the binding orderId again (idempotent by orderNumber).
+      orderNumber: `manual-${Date.now()}-${attempt.id.slice(0, 8)}`,
       currency: intent.currency,
       amountMinor: intent.amount_minor,
       returnUrl: session.return_url ?? session.success_url ?? session.cancel_url ?? null,

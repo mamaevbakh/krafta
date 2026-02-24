@@ -208,7 +208,11 @@ export async function handleWebhookEvent(
               providerToken: bindingId,
               clientId: session?.customer_id ?? session?.org_id ?? "unknown",
               description: intent.description ?? "Checkout payment",
-              orderNumber: String(intent.order_id ?? intent.id),
+              // IMPORTANT: Uzum register appears idempotent by orderNumber.
+              // The binding flow already used paymentIntent/orderNumber, so the
+              // post-bind charge must use a distinct orderNumber to get a new
+              // charge orderId (which is then passed to merchantPay).
+              orderNumber: `charge-${matchedAttempt.id}`,
               // Binding order and charge order are separate operations.
               // We intentionally omit chargeOrderId here so the provider client
               // registers a fresh payment order before merchantPay.
