@@ -165,6 +165,8 @@ export function PayResultRedirect({
     mode === "success"
       ? isSucceeded
         ? "Subscription payment confirmed"
+        : isFailed
+          ? "Card attached, subscription charge failed"
         : "Finalizing your subscription"
       : isFailed
         ? "Payment was not completed"
@@ -174,6 +176,8 @@ export function PayResultRedirect({
     mode === "success"
       ? isSucceeded
         ? "Your card was attached and your subscription payment is confirmed. We will return you automatically."
+        : isFailed
+          ? "Your card was attached successfully, but Krafta Pay could not complete the subscription charge yet. You can retry from checkout."
         : "Your card was attached successfully. Krafta Pay is now confirming the subscription charge."
       : isFailed
         ? "The payment was not completed. You can return and try again."

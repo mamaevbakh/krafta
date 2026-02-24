@@ -175,7 +175,9 @@ export async function handleWebhookEvent(
               clientId: session?.customer_id ?? session?.org_id ?? "unknown",
               description: intent.description ?? "Checkout payment",
               orderNumber: String(intent.order_id ?? intent.id),
-              orderId: providerPaymentId,
+              // Do not reuse the binding orderId for the charge call.
+              // Uzum can reject merchantPay with "Invalid payment status" when the
+              // order is already completed as a binding flow.
               currency: intent.currency,
               amountMinor: intent.amount_minor,
               returnUrl: session?.return_url ?? session?.success_url ?? session?.cancel_url ?? null,
