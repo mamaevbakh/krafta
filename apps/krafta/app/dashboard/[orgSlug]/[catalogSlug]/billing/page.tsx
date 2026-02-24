@@ -143,8 +143,9 @@ async function openCustomerPortalAction(formData: FormData) {
   const appBaseUrl = resolveAppBaseUrl(origin).replace(/\/+$/, "");
   const returnUrl = `${appBaseUrl}/dashboard/${orgSlug}/${catalogSlug}/billing`;
 
+  let portal: Awaited<ReturnType<typeof createKraftaPayCustomerPortalSession>>;
   try {
-    const portal = await createKraftaPayCustomerPortalSession({
+    portal = await createKraftaPayCustomerPortalSession({
       customerOrgId,
       customerUserRef: authUser.id,
       returnUrl,
@@ -160,6 +161,8 @@ async function openCustomerPortalAction(formData: FormData) {
     const message = error instanceof Error ? error.message : "Failed to create customer portal session";
     redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(message)}`);
   }
+
+  redirect(portal.url);
 }
 
 export default async function BillingPage({ params, searchParams }: BillingPageProps) {
