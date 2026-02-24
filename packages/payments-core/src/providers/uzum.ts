@@ -130,6 +130,19 @@ function getUzumHeaders(creds: UzumCredentials) {
   };
 }
 
+function withOperationId(
+  headers: Record<string, string>,
+  operationId = crypto.randomUUID(),
+) {
+  return {
+    headers: {
+      ...headers,
+      "X-Operation-Id": operationId,
+    },
+    operationId,
+  };
+}
+
 type ParsedWebhookSecret = {
   webhookSecret: string | null;
 };
@@ -403,7 +416,7 @@ export async function createUzumRecurringCharge(
   );
   const creds = parseUzumCredentials(secrets.credentials_encrypted);
   const apiBaseUrl = normalizeBaseUrl(creds.apiBaseUrl);
-  const headers = getUzumHeaders(creds);
+  const baseHeaders = getUzumHeaders(creds);
   const returnUrl = buildRecurringReturnUrl(input.returnUrl);
 
   const cart =
@@ -430,9 +443,10 @@ export async function createUzumRecurringCharge(
       },
     };
 
+    const registerHeadersWithOperationId = withOperationId(baseHeaders);
     const registerRes = await fetch(registerUrl, {
       method: "POST",
-      headers,
+      headers: registerHeadersWithOperationId.headers,
       body: JSON.stringify(registerPayload),
     });
 
@@ -446,6 +460,7 @@ export async function createUzumRecurringCharge(
       level: registerRes.ok ? "info" : "warn",
       data: {
         url: registerUrl,
+        operationId: registerHeadersWithOperationId.operationId,
         request: redactForDebug(registerPayload) as Record<string, unknown>,
         httpStatus: registerRes.status,
         response: redactForDebug(registerResponse) as Record<string, unknown> | null,
@@ -520,6 +535,8 @@ export async function createUzumRecurringCharge(
     },
   };
 
+  const merchantPayHeadersWithOperationId = withOperationId(baseHeaders);
+
   await writePaymentDebugLog(input.supabase, {
     scope: "uzum",
     event: "merchant_pay.request",
@@ -528,13 +545,14 @@ export async function createUzumRecurringCharge(
     paymentIntentId: input.paymentIntentId,
     data: {
       url,
+      operationId: merchantPayHeadersWithOperationId.operationId,
       request: redactForDebug(body) as Record<string, unknown>,
     },
   });
 
   const res = await fetch(url, {
     method: "POST",
-    headers,
+    headers: merchantPayHeadersWithOperationId.headers,
     body: JSON.stringify(body),
   });
 
@@ -548,6 +566,7 @@ export async function createUzumRecurringCharge(
     level: res.ok ? "info" : "warn",
     data: {
       httpStatus: res.status,
+      operationId: merchantPayHeadersWithOperationId.operationId,
       response: redactForDebug(json) as Record<string, unknown> | null,
     },
   });
