@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Image from "next/image";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import type {
@@ -14,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { hapticError, hapticSuccess } from "@/lib/haptics-client";
 import { saveCatalogLayout } from "@/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions";
+import { getCatalogAssetUrl } from "@/lib/catalogs/media";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 type OptionConfig<T extends string> = {
   label: string;
@@ -70,7 +73,10 @@ function getAspectInputs(
 
 type BuilderPanelProps = {
   catalogId: string;
+  orgId: string;
   catalogSlug: string;
+  catalogName: string;
+  catalogLogoPath: string | null;
   initialLayout: CatalogLayoutSettings;
   initialCurrency: CurrencySettings;
   headerOptions: OptionConfig<CatalogLayoutSettings["headerVariant"]>[];
@@ -82,7 +88,10 @@ type BuilderPanelProps = {
 
 export function CatalogBuilderPanel({
   catalogId,
+  orgId,
   catalogSlug,
+  catalogName,
+  catalogLogoPath,
   initialLayout,
   initialCurrency,
   headerOptions,
@@ -182,7 +191,26 @@ export function CatalogBuilderPanel({
   const [headerBackgroundColorDark, setHeaderBackgroundColorDark] = useState(
     initialLayout.header.basicFreeLogo.backgroundColorDark,
   );
+  const [isUploadingHeaderBannerLight, setIsUploadingHeaderBannerLight] =
+    useState(false);
+  const [isUploadingHeaderBannerDark, setIsUploadingHeaderBannerDark] =
+    useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const headerBannerLightInputRef = useRef<HTMLInputElement>(null);
+  const headerBannerDarkInputRef = useRef<HTMLInputElement>(null);
+
+  const catalogLogoFallbackUrl = useMemo(
+    () => getCatalogAssetUrl(catalogLogoPath),
+    [catalogLogoPath],
+  );
+  const headerBannerLightPreviewUrl = useMemo(
+    () => getCatalogAssetUrl(headerBannerLightPath),
+    [headerBannerLightPath],
+  );
+  const headerBannerDarkPreviewUrl = useMemo(
+    () => getCatalogAssetUrl(headerBannerDarkPath),
+    [headerBannerDarkPath],
+  );
 
   const aspectRatio = useMemo(() => {
     const safeWidth =
@@ -395,6 +423,68 @@ export function CatalogBuilderPanel({
     setIsSaving(false);
   };
 
+  const uploadHeaderBanner = async (
+    variant: "light" | "dark",
+    file: File,
+  ) => {
+    const setUploading =
+      variant === "light"
+        ? setIsUploadingHeaderBannerLight
+        : setIsUploadingHeaderBannerDark;
+    const setPath =
+      variant === "light"
+        ? setHeaderBannerLightPath
+        : setHeaderBannerDarkPath;
+    const currentPath =
+      variant === "light" ? headerBannerLightPath : headerBannerDarkPath;
+
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("catalogId", catalogId);
+      formData.append("orgId", orgId);
+      formData.append("variant", variant);
+      formData.append("banner", file);
+      if (currentPath.trim()) {
+        formData.append("previousPath", currentPath.trim());
+      }
+
+      const response = await fetch("/api/catalogs/header-banner", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { bannerPath?: string; error?: string }
+        | null;
+
+      if (!response.ok || !data?.bannerPath) {
+        throw new Error(data?.error ?? "Failed to upload banner image.");
+      }
+
+      setPath(data.bannerPath);
+      toast.success(
+        `${variant === "light" ? "Light" : "Dark"} banner uploaded`,
+      );
+      void hapticSuccess();
+    } catch (error) {
+      toast.error("Banner upload failed", {
+        description:
+          error instanceof Error ? error.message : "Unknown upload error",
+      });
+      void hapticError();
+    } finally {
+      setUploading(false);
+      const inputRef =
+        variant === "light"
+          ? headerBannerLightInputRef
+          : headerBannerDarkInputRef;
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+    }
+  };
+
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-[380px_1fr]">
       <aside className="space-y-6">
@@ -556,31 +646,166 @@ export function CatalogBuilderPanel({
                     className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
                   />
                 </label>
+
+                <div className="grid gap-2 text-xs text-muted-foreground">
+                  <span>Fallback preview (original catalog logo)</span>
+                  <div className="w-full max-w-[220px] overflow-hidden rounded-md border border-border/70 bg-muted/20">
+                    <AspectRatio
+                      ratio={Math.max(0.1, headerLogoAspectRatio)}
+                      className="overflow-hidden"
+                      style={{
+                        borderRadius: `${Math.max(0, headerLogoCornerRadius)}px`,
+                      }}
+                    >
+                      {catalogLogoFallbackUrl ? (
+                        <Image
+                          src={catalogLogoFallbackUrl}
+                          alt={`${catalogName} original logo`}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] text-muted-foreground">
+                          No catalog logo in Settings yet
+                        </div>
+                      )}
+                    </AspectRatio>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    This header uses the catalog logo from Settings as its base image.
+                  </span>
+                </div>
               </div>
 
               <div className="grid gap-3 rounded-md border border-border/70 p-3">
                 <h3 className="text-xs font-medium text-foreground">Banner images</h3>
-                <label className="grid gap-2 text-xs text-muted-foreground">
-                  Light theme path
+                <div className="grid gap-3 rounded-md border border-border/60 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-foreground">
+                      Light theme banner
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isUploadingHeaderBannerLight}
+                        onClick={() => headerBannerLightInputRef.current?.click()}
+                      >
+                        {isUploadingHeaderBannerLight ? "Uploading..." : "Upload"}
+                      </Button>
+                      {headerBannerLightPath.trim() ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHeaderBannerLightPath("")}
+                        >
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
                   <input
-                    type="text"
-                    value={headerBannerLightPath}
-                    onChange={(event) => setHeaderBannerLightPath(event.target.value)}
-                    placeholder="krafta/catalogs/.../banner-light.png or https://..."
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    ref={headerBannerLightInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      void uploadHeaderBanner("light", file);
+                    }}
                   />
-                </label>
+                  <label className="grid gap-2 text-xs text-muted-foreground">
+                    Path or URL
+                    <input
+                      type="text"
+                      value={headerBannerLightPath}
+                      onChange={(event) => setHeaderBannerLightPath(event.target.value)}
+                      placeholder="krafta/org/.../banner-light.png or https://..."
+                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    />
+                  </label>
+                  <div className="relative h-20 overflow-hidden rounded-md border border-border/70 bg-muted/20">
+                    {headerBannerLightPreviewUrl ? (
+                      <Image
+                        src={headerBannerLightPreviewUrl}
+                        alt="Light banner preview"
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground">
+                        No light banner selected
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-                <label className="grid gap-2 text-xs text-muted-foreground">
-                  Dark theme path
+                <div className="grid gap-3 rounded-md border border-border/60 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-foreground">
+                      Dark theme banner
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isUploadingHeaderBannerDark}
+                        onClick={() => headerBannerDarkInputRef.current?.click()}
+                      >
+                        {isUploadingHeaderBannerDark ? "Uploading..." : "Upload"}
+                      </Button>
+                      {headerBannerDarkPath.trim() ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHeaderBannerDarkPath("")}
+                        >
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
                   <input
-                    type="text"
-                    value={headerBannerDarkPath}
-                    onChange={(event) => setHeaderBannerDarkPath(event.target.value)}
-                    placeholder="krafta/catalogs/.../banner-dark.png or https://..."
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    ref={headerBannerDarkInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      void uploadHeaderBanner("dark", file);
+                    }}
                   />
-                </label>
+                  <label className="grid gap-2 text-xs text-muted-foreground">
+                    Path or URL
+                    <input
+                      type="text"
+                      value={headerBannerDarkPath}
+                      onChange={(event) => setHeaderBannerDarkPath(event.target.value)}
+                      placeholder="krafta/org/.../banner-dark.png or https://..."
+                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    />
+                  </label>
+                  <div className="relative h-20 overflow-hidden rounded-md border border-border/70 bg-muted/20">
+                    {headerBannerDarkPreviewUrl ? (
+                      <Image
+                        src={headerBannerDarkPreviewUrl}
+                        alt="Dark banner preview"
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground">
+                        No dark banner selected
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <p className="text-[11px] text-muted-foreground">
                   Leave one side empty to reuse the other image in both themes.
                 </p>

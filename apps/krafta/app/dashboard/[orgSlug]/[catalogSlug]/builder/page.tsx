@@ -139,7 +139,10 @@ export default async function CatalogBuilderPage({
 
       <CatalogBuilderPanel
         catalogId={catalog.id}
+        orgId={catalog.org_id}
         catalogSlug={catalogSlug}
+        catalogName={catalog.name}
+        catalogLogoPath={catalog.logo_path}
         initialLayout={layout}
         initialCurrency={currency}
         headerOptions={headerOptions}

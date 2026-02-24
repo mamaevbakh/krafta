@@ -1265,7 +1265,9 @@ export async function chargeRenewal(
     providerToken: paymentMethod.provider_token,
     clientId: customer?.id ?? subscription.org_id,
     description: "Subscription renewal",
-    orderNumber: renewal.paymentIntentId,
+    // Uzum register may be idempotent by orderNumber. Renewal retries create a
+    // new payment_attempt, so use attempt id to force a fresh charge orderId.
+    orderNumber: `renewal-${attempt.id}`,
     currency: plan.currency,
     amountMinor: plan.amount_minor,
     uzumCart: renewalUzumCart,
