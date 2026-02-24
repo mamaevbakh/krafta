@@ -63,6 +63,8 @@ export function PayResultRedirect({
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [retryPending, setRetryPending] = useState(false);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
   const didStartCountdown = useRef(false);
 
   const primaryTarget = useMemo(() => {
@@ -116,7 +118,7 @@ export function PayResultRedirect({
 
     void fetchStatus();
     const interval = window.setInterval(() => {
-      if (isTerminal(status?.paymentIntent?.status)) return;
+      if (isTerminal(status?.paymentIntent?.status) && !retryPending) return;
       void fetchStatus();
     }, 2000);
 
@@ -124,7 +126,7 @@ export function PayResultRedirect({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [publicToken, status?.paymentIntent?.status]);
+  }, [publicToken, retryPending, status?.paymentIntent?.status]);
 
   useEffect(() => {
     if (didStartCountdown.current) return;
@@ -155,11 +157,18 @@ export function PayResultRedirect({
   }, [countdown, statusTarget]);
 
   const intentStatus = status?.paymentIntent?.status?.toLowerCase() ?? "unknown";
-  const waitingForWebhook =
-    mode === "success" ? intentStatus !== "succeeded" : !isTerminal(intentStatus);
   const isSucceeded = intentStatus === "succeeded";
   const isFailed =
     intentStatus === "failed" || intentStatus === "canceled" || intentStatus === "cancelled";
+  const waitingForWebhook =
+    mode === "success" ? !isSucceeded && !isFailed : !isTerminal(intentStatus);
+  const canManualRetry = mode === "success" && isFailed;
+
+  useEffect(() => {
+    if (!retryPending) return;
+    if (!isTerminal(status?.paymentIntent?.status)) return;
+    setRetryPending(false);
+  }, [retryPending, status?.paymentIntent?.status]);
 
   const title =
     mode === "success"
@@ -177,8 +186,8 @@ export function PayResultRedirect({
       ? isSucceeded
         ? "Your card was attached and your subscription payment is confirmed. We will return you automatically."
         : isFailed
-          ? "Your card was attached successfully, but Krafta Pay could not complete the subscription charge yet. You can retry from checkout."
-        : "Your card was attached successfully. Krafta Pay is now confirming the subscription charge."
+          ? "Your card was attached successfully, but Krafta Pay could not complete the subscription charge yet. You can retry here or return to checkout."
+          : "Your card was attached successfully. Krafta Pay is now confirming the subscription charge."
       : isFailed
         ? "The payment was not completed. You can return and try again."
         : "We are still checking the result with the payment provider.";
@@ -218,7 +227,65 @@ export function PayResultRedirect({
           </div>
         ) : null}
 
+        {retryNote ? (
+          <div className="mt-4 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            {retryNote}
+          </div>
+        ) : null}
+
         <div className="mt-6 flex flex-wrap gap-2">
+          {canManualRetry ? (
+            <button
+              type="button"
+              className="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={retryPending}
+              onClick={async () => {
+                setRetryPending(true);
+                setRetryNote(null);
+                setError(null);
+                try {
+                  const res = await fetch(
+                    `/api/checkout_sessions/${encodeURIComponent(publicToken)}/retry_charge`,
+                    { method: "POST" },
+                  );
+                  const json = (await res.json().catch(() => null)) as
+                    | { error?: string; status?: string; paymentIntentStatus?: string }
+                    | null;
+                  if (!res.ok) {
+                    throw new Error(json?.error ?? `http_${res.status}`);
+                  }
+
+                  const nextIntentStatus = json?.paymentIntentStatus ?? "processing";
+                  setRetryNote(
+                    nextIntentStatus === "succeeded"
+                      ? "Charge retry succeeded. Redirecting shortly..."
+                      : nextIntentStatus === "failed"
+                        ? "Charge retry failed. You can try again in a moment."
+                        : "Charge retry started. We are checking the result now.",
+                  );
+
+                  setStatus((prev) => {
+                    if (!prev) return prev;
+                    return {
+                      ...prev,
+                      paymentIntent: prev.paymentIntent
+                        ? {
+                            ...prev.paymentIntent,
+                            status: nextIntentStatus,
+                            updatedAt: new Date().toISOString(),
+                          }
+                        : prev.paymentIntent,
+                    };
+                  });
+                } catch (e) {
+                  setRetryPending(false);
+                  setError(e instanceof Error ? e.message : String(e));
+                }
+              }}
+            >
+              {retryPending ? "Retrying charge..." : "Retry charge"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="rounded-md border px-3 py-2 text-sm hover:bg-muted"

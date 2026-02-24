@@ -8,6 +8,8 @@ import {
 } from "./subscription";
 import { createUzumRecurringCharge, verifyUzumWebhookSignature } from "./providers/uzum";
 
+const UZUM_BINDING_CHARGE_RETRY_DELAYS_MS = [1000, 3000, 7000] as const;
+
 export async function handleWebhookEvent(
   supabase: SupabaseClient,
   input: HandleWebhookInput,
@@ -35,8 +37,9 @@ export async function handleWebhookEvent(
     (payload && typeof payload === "object" && "event" in payload)
       ? String((payload as any).event)
       : (payload && typeof payload === "object" && "operationState" in payload)
-        ? `operationState:${String((payload as any).operationState)}`
+      ? `operationState:${String((payload as any).operationState)}`
         : "unknown";
+  const bindingId = pickBindingId(payload);
 
   await writePaymentDebugLog(supabase, {
     scope: "webhook",
@@ -46,6 +49,7 @@ export async function handleWebhookEvent(
       eventType,
       providerEventId,
       providerPaymentId,
+      bindingId,
       signatureHeaderPresent: Boolean(
         input.headers["x-uzum-signature"] ??
           input.headers["x-signature"] ??
@@ -139,7 +143,6 @@ export async function handleWebhookEvent(
       const normalizedState = opStateRaw?.toUpperCase() ?? null;
       const isSuccess = normalizedState === "SUCCESS";
       const isFailure = normalizedState === "CANCEL" || normalizedState === "ERROR";
-      const bindingId = pickBindingId(payload);
       const isBindingSetupAttempt =
         matchedAttempt?.status === "requires_action" ||
         matchedAttempt?.status === "initialized";
@@ -200,7 +203,7 @@ export async function handleWebhookEvent(
               },
             });
 
-            const chargeResult = await createUzumRecurringCharge({
+            let chargeResult = await createUzumRecurringCharge({
               supabase,
               orgProviderAccountId: matchedAttempt.org_provider_account_id,
               paymentIntentId: matchedAttempt.payment_intent_id,
@@ -220,6 +223,66 @@ export async function handleWebhookEvent(
                 getUzumCartFromMetadata(session?.metadata) ??
                 null,
             });
+
+            for (let retryIndex = 0; retryIndex < UZUM_BINDING_CHARGE_RETRY_DELAYS_MS.length; retryIndex++) {
+              const errorCode = getUzumMerchantPayErrorCode(chargeResult.raw);
+              if (chargeResult.status !== "failed" || errorCode !== 3000) break;
+
+              const delayMs = UZUM_BINDING_CHARGE_RETRY_DELAYS_MS[retryIndex];
+              await writePaymentDebugLog(supabase, {
+                scope: "webhook",
+                event: "binding_charge_retry_scheduled",
+                providerId: input.providerId,
+                publicToken: session?.public_token ?? null,
+                paymentIntentId: matchedAttempt.payment_intent_id,
+                paymentAttemptId: matchedAttempt.id,
+                level: "warn",
+                data: {
+                  retryAttempt: retryIndex + 1,
+                  maxRetries: UZUM_BINDING_CHARGE_RETRY_DELAYS_MS.length,
+                  delayMs,
+                  errorCode,
+                  bindingProviderPaymentId: providerPaymentId,
+                },
+              });
+
+              await sleep(delayMs);
+
+              chargeResult = await createUzumRecurringCharge({
+                supabase,
+                orgProviderAccountId: matchedAttempt.org_provider_account_id,
+                paymentIntentId: matchedAttempt.payment_intent_id,
+                providerToken: bindingId,
+                clientId: session?.customer_id ?? session?.org_id ?? "unknown",
+                description: intent.description ?? "Checkout payment",
+                orderNumber: String(intent.order_id ?? intent.id),
+                chargeOrderId: providerPaymentId,
+                currency: intent.currency,
+                amountMinor: intent.amount_minor,
+                returnUrl: session?.return_url ?? session?.success_url ?? session?.cancel_url ?? null,
+                publicToken: session?.public_token ?? null,
+                uzumCart:
+                  getUzumCartFromMetadata(intent.metadata) ??
+                  getUzumCartFromMetadata(session?.metadata) ??
+                  null,
+              });
+
+              await writePaymentDebugLog(supabase, {
+                scope: "webhook",
+                event: "binding_charge_retry_result",
+                providerId: input.providerId,
+                publicToken: session?.public_token ?? null,
+                paymentIntentId: matchedAttempt.payment_intent_id,
+                paymentAttemptId: matchedAttempt.id,
+                level: chargeResult.status === "failed" ? "warn" : "info",
+                data: {
+                  retryAttempt: retryIndex + 1,
+                  errorCode: getUzumMerchantPayErrorCode(chargeResult.raw),
+                  chargeStatus: chargeResult.status,
+                  chargeProviderPaymentId: chargeResult.providerPaymentId ?? null,
+                },
+              });
+            }
 
             await writePaymentDebugLog(supabase, {
               scope: "webhook",
@@ -328,6 +391,7 @@ export async function handleWebhookEvent(
       data: {
         eventType,
         providerPaymentId,
+        bindingId,
       },
     });
   } catch (error) {
@@ -397,4 +461,36 @@ function getUzumCartFromMetadata(metadata: unknown) {
     if (uz.cart && typeof uz.cart === "object") return uz.cart;
   }
   return null;
+}
+
+function getUzumMerchantPayErrorCode(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const rec = raw as Record<string, unknown>;
+  const merchantPay = rec.merchantPay;
+  if (!merchantPay || typeof merchantPay !== "object") return null;
+  const merchantPayRec = merchantPay as Record<string, unknown>;
+  const response = merchantPayRec.response;
+  if (!response || typeof response !== "object") return null;
+  const responseRec = response as Record<string, unknown>;
+  const candidates = [
+    responseRec.errorCode,
+    responseRec.code,
+    responseRec.result && typeof responseRec.result === "object"
+      ? (responseRec.result as Record<string, unknown>).errorCode
+      : null,
+  ];
+  for (const candidate of candidates) {
+    const value =
+      typeof candidate === "number"
+        ? candidate
+        : typeof candidate === "string" && candidate.trim()
+          ? Number(candidate)
+          : NaN;
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
