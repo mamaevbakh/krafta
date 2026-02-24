@@ -171,7 +171,7 @@ export async function POST(
       return NextResponse.json({ error: "org_provider_account_missing" }, { status: 409 });
     }
 
-    const bindingChargeOrderId =
+    const bindingOrderId =
       extractBindingOrderIdFromAttemptRaw(attempt.raw_init_response) ??
       (typeof attempt.provider_payment_id === "string" && attempt.provider_payment_id
         ? attempt.provider_payment_id
@@ -188,7 +188,8 @@ export async function POST(
         sessionStatus: session.status ?? null,
         intentStatus: intent.status ?? null,
         hasSavedBinding: true,
-        bindingChargeOrderId,
+        bindingOrderId,
+        chargeOrderStrategy: "register_new_order",
       },
     });
 
@@ -255,7 +256,6 @@ export async function POST(
       clientId: session.customer_id ?? session.org_id ?? "unknown",
       description: intent.description ?? "Checkout payment",
       orderNumber: String(intent.order_id ?? intent.id),
-      chargeOrderId: bindingChargeOrderId,
       currency: intent.currency,
       amountMinor: intent.amount_minor,
       returnUrl: session.return_url ?? session.success_url ?? session.cancel_url ?? null,
