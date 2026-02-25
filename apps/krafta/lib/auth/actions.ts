@@ -1,8 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
 import { getUserSafely } from "@krafta/supabase/auth";
 
@@ -83,7 +83,7 @@ export async function signInWithGoogle(next?: string) {
   }
 
   if (data.url) {
-    redirect(data.url);
+    return { url: data.url };
   }
 
   return { error: "Failed to initiate Google sign in" };

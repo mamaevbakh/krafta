@@ -82,8 +82,14 @@ export function LoginForm({
       const result = await signInWithGoogle(next);
       if (result?.error) {
         toast.error(result.error);
+        return;
       }
-      // If successful, user will be redirected to Google
+      if (result?.url) {
+        window.location.assign(result.url);
+        return;
+      }
+
+      toast.error("Failed to initiate Google sign in");
     });
   };
 
