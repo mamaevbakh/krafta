@@ -496,6 +496,7 @@ In your Supabase project Authentication settings:
 - Site URL: base app URL (for example `https://krafta.org`, not `/auth/confirm`)
 - Redirect URLs must include:
   - `https://krafta.org/auth/confirm`
+  - `https://www.krafta.org/auth/confirm` (if `www` is enabled/canonical)
   - `https://pay.krafta.uz/auth/confirm` (or your Pay domain)
   - local dev callbacks if needed:
     - `http://localhost:3000/auth/confirm`

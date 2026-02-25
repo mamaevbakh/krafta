@@ -333,6 +333,7 @@ In Supabase Authentication settings:
 - Site URL should be an app origin (for example `https://krafta.org`), not a callback path.
 - Redirect URLs must include each callback used by deployed domains:
   - `https://krafta.org/auth/confirm`
+  - `https://www.krafta.org/auth/confirm` (if `www` is enabled/canonical)
   - `https://pay.krafta.uz/auth/confirm`
   - `http://localhost:3000/auth/confirm`
   - `http://localhost:3001/auth/confirm`
