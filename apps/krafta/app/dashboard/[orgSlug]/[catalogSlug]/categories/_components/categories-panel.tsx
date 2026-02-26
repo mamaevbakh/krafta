@@ -1,5 +1,6 @@
 "use client"
 
+import { Plus } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -8,7 +9,7 @@ import type { CatalogCategory } from "@/lib/catalogs/types"
 import { DataTable } from "./data-table"
 import { createColumns } from "./columns"
 import { Button } from "@/components/ui/button"
-import { CreateCategoryDrawer } from "./create-category-drawer"
+import { CreateCategoryDialog } from "./create-category-dialog"
 import { deleteCategory } from "./actions"
 
 type LocaleOption = {
@@ -43,7 +44,7 @@ export function CategoriesPanel({
   translations,
 }: CategoriesPanelProps) {
   const router = useRouter()
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<CatalogCategory | null>(
     null,
   )
@@ -74,7 +75,7 @@ export function CategoriesPanel({
 
     if (editingCategory?.id === category.id) {
       setEditingCategory(null)
-      setDrawerOpen(false)
+      setCategoryDialogOpen(false)
     }
 
     toast.success("Category deleted.")
@@ -93,9 +94,10 @@ export function CategoriesPanel({
           <Button
             onClick={() => {
               setEditingCategory(null)
-              setDrawerOpen(true)
+              setCategoryDialogOpen(true)
             }}
           >
+            <Plus className="size-4" />
             Create category
           </Button>
         </div>
@@ -106,7 +108,7 @@ export function CategoriesPanel({
           columns={createColumns({
             onEdit: (category) => {
               setEditingCategory(category)
-              setDrawerOpen(true)
+              setCategoryDialogOpen(true)
             },
             onDelete: (category) => {
               void handleDeleteCategory(category)
@@ -117,14 +119,14 @@ export function CategoriesPanel({
           searchPlaceholder="Search categories..."
           onRowClick={(category) => {
             setEditingCategory(category)
-            setDrawerOpen(true)
+            setCategoryDialogOpen(true)
           }}
         />
       </div>
 
-      <CreateCategoryDrawer
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
+      <CreateCategoryDialog
+        open={categoryDialogOpen}
+        onOpenChange={setCategoryDialogOpen}
         catalogId={catalogId}
         catalogSlug={catalogSlug}
         locales={locales}

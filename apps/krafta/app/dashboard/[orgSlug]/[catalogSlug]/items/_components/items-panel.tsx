@@ -1,5 +1,6 @@
 "use client"
 
+import { Plus } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -9,7 +10,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency"
 import { DataTable } from "./data-table"
 import { createColumns } from "./columns"
 import { Button } from "@/components/ui/button"
-import { CreateItemDrawer } from "./create-item-drawer"
+import { CreateItemFlowDialog } from "./create-item-flow-dialog"
 import { deleteItem } from "./actions"
 
 type LocaleOption = {
@@ -66,7 +67,7 @@ export function ItemsPanel({
   currencySettings,
 }: ItemsPanelProps) {
   const router = useRouter()
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [itemDialogOpen, setItemDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Item | null>(null)
 
   const editingTranslations = useMemo(() => {
@@ -100,7 +101,7 @@ export function ItemsPanel({
 
     if (editingItem?.id === item.id) {
       setEditingItem(null)
-      setDrawerOpen(false)
+      setItemDialogOpen(false)
     }
 
     toast.success("Item deleted.")
@@ -117,9 +118,10 @@ export function ItemsPanel({
           <Button
             onClick={() => {
               setEditingItem(null)
-              setDrawerOpen(true)
+              setItemDialogOpen(true)
             }}
           >
+            <Plus className="size-4" />
             Add item
           </Button>
         </div>
@@ -130,7 +132,7 @@ export function ItemsPanel({
           columns={createColumns(currencySettings, {
             onEdit: (item) => {
               setEditingItem(item)
-              setDrawerOpen(true)
+              setItemDialogOpen(true)
             },
             onDelete: (item) => {
               void handleDeleteItem(item)
@@ -141,14 +143,14 @@ export function ItemsPanel({
           searchPlaceholder="Search items..."
           onRowClick={(item) => {
             setEditingItem(item)
-            setDrawerOpen(true)
+            setItemDialogOpen(true)
           }}
         />
       </div>
 
-      <CreateItemDrawer
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
+      <CreateItemFlowDialog
+        open={itemDialogOpen}
+        onOpenChange={setItemDialogOpen}
         orgId={orgId}
         catalogId={catalogId}
         catalogSlug={catalogSlug}

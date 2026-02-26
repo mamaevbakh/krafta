@@ -3,22 +3,7 @@
 import { XIcon } from "lucide-react"
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-} from "@/components/ai-elements/conversation"
-import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputTools,
-} from "@/components/ai-elements/prompt-input"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import {
   Field,
   FieldDescription,
@@ -32,14 +17,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import type { CatalogCategory } from "@/lib/catalogs/types"
 import { createCategory, updateCategory } from "./actions"
 
@@ -51,7 +35,7 @@ type LocaleOption = {
   sort_order: number
 }
 
-type CreateCategoryDrawerProps = {
+type CreateCategoryDialogProps = {
   catalogId: string
   catalogSlug: string
   locales: LocaleOption[]
@@ -74,7 +58,7 @@ type TranslationState = {
   description: string
 }
 
-export function CreateCategoryDrawer({
+export function CreateCategoryDialog({
   catalogId,
   catalogSlug,
   locales,
@@ -84,9 +68,8 @@ export function CreateCategoryDrawer({
   category,
   initialTranslations = [],
   existingSlugs = [],
-}: CreateCategoryDrawerProps) {
+}: CreateCategoryDialogProps) {
   const router = useRouter()
-  const [aiOpen, setAiOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [slugValue, setSlugValue] = useState("")
@@ -164,61 +147,63 @@ export function CreateCategoryDrawer({
   }, [defaultName, open, slugTouched])
 
   useEffect(() => {
-    if (!slugValue) {
-      setSlugError("Category slug could not be generated.")
+    const normalized = slugValue.trim().toLowerCase()
+    const canValidateRequiredSlug =
+      slugTouched || defaultName.trim().length > 0 || isEdit
+
+    if (!normalized) {
+      setSlugError(
+        canValidateRequiredSlug ? "Category slug could not be generated." : null,
+      )
       return
     }
-    const normalized = slugValue.trim().toLowerCase()
     const isDuplicate = existingSlugs.some(
       (slug) =>
         slug.toLowerCase() === normalized &&
         slug.toLowerCase() !== (category?.slug ?? "").toLowerCase(),
     )
     setSlugError(isDuplicate ? "This slug is already used in this catalog." : null)
-  }, [category?.slug, existingSlugs, slugValue])
+  }, [category?.slug, defaultName, existingSlugs, isEdit, slugTouched, slugValue])
 
   return (
-    <Drawer
-      direction="right"
-      open={open}
-      onOpenChange={onOpenChange}
-    >
-      <DrawerContent
-        className={cn(
-          "flex h-full flex-col px-0 data-[vaul-drawer-direction=right]:max-w-none!",
-          aiOpen
-            ? "data-[vaul-drawer-direction=right]:w-screen! md:data-[vaul-drawer-direction=right]:w-[65vw]!"
-            : "data-[vaul-drawer-direction=right]:w-screen! md:data-[vaul-drawer-direction=right]:w-[35vw]!"
-        )}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="!flex !flex-col inset-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden overscroll-contain rounded-none border-0 p-0 shadow-none sm:max-w-none"
       >
-        <DrawerHeader className="border-b px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <DrawerTitle className="text-lg">
-                {isEdit ? "Edit category" : "Create category"}
-              </DrawerTitle>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setAiOpen((open) => !open)}>
-                {aiOpen ? "Close assistant" : "Krafta AI"}
+        <DialogTitle className="sr-only">
+          {isEdit ? "Edit category" : "Create category"}
+        </DialogTitle>
+        <div className="flex h-full min-h-0 w-full flex-col bg-background">
+          <div className="shrink-0 border-b bg-background/95 px-6 py-4 backdrop-blur md:px-8">
+            <div className="mx-auto flex w-full max-w-[1248px] items-center justify-between gap-4">
+              <DialogHeader className="gap-1 p-0 text-left">
+                <DialogTitle className="text-xl tracking-tight md:text-2xl">
+                  {isEdit ? "Edit category" : "Create category"}
+                </DialogTitle>
+                <DialogDescription>
+                  Add translations and metadata for this catalog category.
+                </DialogDescription>
+              </DialogHeader>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close modal"
+                className="size-10 rounded-full"
+                onClick={() => onOpenChange(false)}
+              >
+                <XIcon className="size-4" />
               </Button>
-              <DrawerClose asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Close drawer"
-                >
-                  <XIcon className="size-4" />
-                </Button>
-              </DrawerClose>
             </div>
           </div>
-        </DrawerHeader>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row">
-          <div className="flex-1 px-6 py-6">
+
+          <div className="flex min-h-0 flex-1 overflow-hidden bg-muted/15">
+            <div className="min-w-0 flex-1 overflow-y-auto overscroll-contain">
+              <div className="mx-auto w-full max-w-[980px] px-6 py-6 md:px-8 md:py-8">
             <form
               id="create-category-form"
-              className="space-y-6"
+              className="space-y-8"
               onSubmit={(event) => {
                 event.preventDefault()
                 setErrorMessage(null)
@@ -229,6 +214,13 @@ export function CreateCategoryDrawer({
                     name: translations[locale.locale]?.name ?? "",
                     description: translations[locale.locale]?.description ?? "",
                   }))
+
+                  if (!slugValue.trim()) {
+                    const message = "Category slug could not be generated."
+                    setSlugError(message)
+                    setErrorMessage(message)
+                    return
+                  }
 
                   if (slugError) {
                     setErrorMessage(slugError)
@@ -262,17 +254,20 @@ export function CreateCategoryDrawer({
                 })
               }}
             >
-              <FieldGroup>
-                <FieldSet>
+              <FieldGroup className="gap-6">
+                <FieldSet className="rounded-2xl border bg-background p-5 shadow-xs md:p-6">
                   <FieldLegend>Category details</FieldLegend>
                   <FieldDescription>
                     Add translations for the locales in this catalog.
                   </FieldDescription>
-                  <FieldGroup className="@container/field-group flex flex-col gap-5">
+                  <FieldGroup className="@container/field-group mt-5 flex flex-col gap-5">
                     {enabledLocales.map((locale, index) => (
                       <FieldSet key={locale.id} className="space-y-4 rounded-lg border p-4">
                         <FieldLegend variant="label" className="flex items-center justify-between">
                           <span>{locale.locale.toUpperCase()}</span>
+                          {locale.locale === defaultLocale ? (
+                            <span className="text-xs text-muted-foreground">Default</span>
+                          ) : null}
                         </FieldLegend>
                         <FieldGroup className="gap-4">
                           <Field>
@@ -352,67 +347,33 @@ export function CreateCategoryDrawer({
                 ) : null}
               </FieldGroup>
             </form>
-          </div>
-          {aiOpen ? (
-            
-              <div className="flex h-full flex-col border-l">
-                <div className="border-b px-4 py-3 text-sm font-medium">
-                  Krafta AI
-                </div>
-                <Conversation className="flex-1">
-                  <ConversationContent>
-                    <ConversationEmptyState
-                      title="Start with a prompt"
-                      description="Describe the category and Krafta AI will help."
-                    />
-                  </ConversationContent>
-                </Conversation>
-                <div className="border-t bg-background/70 p-3">
-                  <PromptInput
-                    className="w-full"
-                    onSubmit={(message, event) => {
-                      event.preventDefault()
-                      event.currentTarget.reset()
-                    }}
-                  >
-                    <PromptInputBody>
-                      <PromptInputTextarea />
-                      <PromptInputFooter>
-                        <PromptInputTools>
-                        </PromptInputTools>
-                        <PromptInputSubmit />
-                      </PromptInputFooter>
-                    </PromptInputBody>
-                  </PromptInput>
-                </div>
               </div>
-            
-          ) : null}
-        </div>
-        <DrawerFooter className="border-t px-6 py-4">
-          <div className="flex w-full gap-3 lg:justify-end">
-            <DrawerClose asChild>
+          </div>
+          </div>
+          <DialogFooter className="shrink-0 border-t bg-background px-6 py-4 md:px-8">
+            <div className="mx-auto flex w-full max-w-[1248px] gap-3 lg:justify-end">
               <Button
                 variant="outline"
                 size="lg"
-                className="flex-1 lg:flex-none"
+                className="h-12 flex-1 rounded-full px-5 lg:flex-none"
                 disabled={isPending}
+                onClick={() => onOpenChange(false)}
               >
                 Cancel
               </Button>
-            </DrawerClose>
-            <Button
-              size="lg"
-              className="flex-1 lg:flex-none"
-              type="submit"
-              form="create-category-form"
-              disabled={isPending}
-            >
-              {isEdit ? "Save changes" : "Create category"}
-            </Button>
-          </div>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+              <Button
+                size="lg"
+                className="h-12 flex-1 rounded-full px-6 lg:flex-none"
+                type="submit"
+                form="create-category-form"
+                disabled={isPending}
+              >
+                {isEdit ? "Save changes" : "Create category"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

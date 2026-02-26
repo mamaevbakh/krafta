@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { CatalogSwitcherSkeleton } from "@/components/dashboard/catalog-switcher";
+import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
 
 type CatalogLayoutProps = {
   children: ReactNode;
@@ -38,6 +39,14 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
 
   // Get current user
   const supabase = await createClient();
+  const { data: orgRecord } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("slug", orgSlug)
+    .maybeSingle();
+  const entitlement = orgRecord
+    ? await getOrgBillingEntitlement(orgRecord.id)
+    : null;
   const { user: authUser } = await getUserSafely(supabase);
   const user = {
     name: authUser?.user_metadata?.full_name || authUser?.email?.split("@")[0] || "User",
@@ -52,6 +61,7 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
         catalogSlug={catalogSlug}
         catalogs={catalogs}
         user={user}
+        showUpgradeCta={!entitlement || entitlement.status === "locked"}
       />
       <main className="flex-1 bg-secondary-background">{children}</main>
     </div>

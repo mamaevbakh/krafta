@@ -1202,6 +1202,44 @@ export type Database = {
           },
         ]
       }
+      catalog_item_type_feature_requests: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          id: string
+          org_id: string
+          product_type: Database["public"]["Enums"]["catalog_item_product_type"]
+          requested_by_user_id: string
+          source: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          id?: string
+          org_id: string
+          product_type: Database["public"]["Enums"]["catalog_item_product_type"]
+          requested_by_user_id: string
+          source?: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          org_id?: string
+          product_type?: Database["public"]["Enums"]["catalog_item_product_type"]
+          requested_by_user_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_item_type_feature_requests_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalog_locales: {
         Row: {
           catalog_id: string
@@ -1482,6 +1520,7 @@ export type Database = {
           name: string
           position: number
           price_cents: number
+          product_type: Database["public"]["Enums"]["catalog_item_product_type"]
           slug: string
           updated_at: string
         }
@@ -1498,6 +1537,7 @@ export type Database = {
           name: string
           position?: number
           price_cents?: number
+          product_type?: Database["public"]["Enums"]["catalog_item_product_type"]
           slug: string
           updated_at?: string
         }
@@ -1514,6 +1554,7 @@ export type Database = {
           name?: string
           position?: number
           price_cents?: number
+          product_type?: Database["public"]["Enums"]["catalog_item_product_type"]
           slug?: string
           updated_at?: string
         }
@@ -1740,6 +1781,15 @@ export type Database = {
       }
     }
     Enums: {
+      catalog_item_product_type:
+        | "REGULAR"
+        | "APPOINTMENTS_SERVICE"
+        | "FOOD_AND_BEV"
+        | "EVENT"
+        | "DIGITAL"
+        | "DONATION"
+        | "ONLINE_SERVICE"
+        | "ONLINE_MEMBERSHIP"
       item_media_kind: "image" | "video"
       role: "owner" | "member" | "admin"
     }
@@ -1875,6 +1925,16 @@ export const Constants = {
   },
   public: {
     Enums: {
+      catalog_item_product_type: [
+        "REGULAR",
+        "APPOINTMENTS_SERVICE",
+        "FOOD_AND_BEV",
+        "EVENT",
+        "DIGITAL",
+        "DONATION",
+        "ONLINE_SERVICE",
+        "ONLINE_MEMBERSHIP",
+      ],
       item_media_kind: ["image", "video"],
       role: ["owner", "member", "admin"],
     },

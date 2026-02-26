@@ -67,7 +67,7 @@ export default async function CatalogBuilderPage({
     return (
       <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
         <div className="mt-8 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-          Catalog not found for builder preview.
+          Catalog not found for studio preview.
         </div>
       </div>
     );
@@ -82,11 +82,11 @@ export default async function CatalogBuilderPage({
             Billing Required
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-            Unlock Builder with an active subscription
+            Unlock Studio with an active subscription
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your organization currently does not have an active billing entitlement.
-            Go to Billing to upgrade and continue using Builder.
+            Go to Billing to upgrade and continue using Studio.
           </p>
           <Link
             href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}
@@ -124,19 +124,6 @@ export default async function CatalogBuilderPage({
 
   return (
     <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
-      <header className="flex flex-col gap-2">
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          Catalog Builder
-        </p>
-        <h1 className="text-[32px] font-semibold tracking-tight">
-          Choose your look
-        </h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          Pick components for headers, sections, item cards, and navigation.
-          The preview updates on the right.
-        </p>
-      </header>
-
       <CatalogBuilderPanel
         catalogId={catalog.id}
         orgId={catalog.org_id}

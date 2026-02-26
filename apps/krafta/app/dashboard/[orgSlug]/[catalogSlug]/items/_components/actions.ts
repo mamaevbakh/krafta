@@ -6,8 +6,14 @@ import {
   deleteSearchDocumentsBySourceIds,
   syncItemSearchDocuments,
 } from "@/lib/catalogs/search-documents";
+import { getUserSafely } from "@krafta/supabase/auth";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import {
+  ENABLED_CATALOG_ITEM_PRODUCT_TYPES,
+  isCatalogItemProductType,
+  type CatalogItemProductType,
+} from "./product-types";
 
 function slugify(value: string): string {
   return value
@@ -29,6 +35,17 @@ type StorageMediaRow = {
   bucket: string;
   storage_path: string;
 };
+
+type ItemTypeRequestSummary = {
+  counts: Partial<Record<CatalogItemProductType, number>>;
+  requestedByCurrentUser: CatalogItemProductType[];
+};
+
+function isEnabledProductType(productType: CatalogItemProductType) {
+  return (ENABLED_CATALOG_ITEM_PRODUCT_TYPES as readonly string[]).includes(
+    productType,
+  );
+}
 
 function createAdminSupabaseClient() {
   const supabaseUrl =
@@ -74,6 +91,7 @@ export async function createItem(params: {
   catalogSlug: string;
   itemId?: string;
   categoryId: string;
+  productType?: CatalogItemProductType;
   name: string;
   slug?: string;
   priceCents: number;
@@ -91,6 +109,8 @@ export async function createItem(params: {
   if (!params.categoryId) {
     return { ok: false, error: "Category is required." };
   }
+
+  const productType = params.productType ?? "REGULAR";
 
   const slug = slugify(params.slug?.trim() ?? baseName);
   if (!slug) {
@@ -124,6 +144,7 @@ export async function createItem(params: {
       id: params.itemId ?? undefined,
       catalog_id: params.catalogId,
       category_id: params.categoryId,
+      product_type: productType,
       name: baseName,
       slug,
       price_cents: params.priceCents,
@@ -187,6 +208,7 @@ export async function updateItem(params: {
   catalogSlug: string;
   itemId: string;
   categoryId: string;
+  productType?: CatalogItemProductType;
   name: string;
   slug?: string;
   priceCents: number;
@@ -204,6 +226,8 @@ export async function updateItem(params: {
   if (!params.categoryId) {
     return { ok: false, error: "Category is required." };
   }
+
+  const productType = params.productType ?? "REGULAR";
 
   const slug = slugify(params.slug?.trim() ?? baseName);
   if (!slug) {
@@ -228,6 +252,7 @@ export async function updateItem(params: {
       name: baseName,
       slug,
       category_id: params.categoryId,
+      product_type: productType,
       price_cents: params.priceCents,
       description: params.description ?? null,
       image_alt: params.imageAlt ?? null,
@@ -330,6 +355,102 @@ export async function updateItem(params: {
   });
 
   return { ok: true };
+}
+
+export async function getItemTypeRequestSummary(params: {
+  catalogId: string;
+}) {
+  const supabase = await createClient();
+  const { user } = await getUserSafely(supabase);
+
+  if (!user) {
+    return { ok: false, error: "Unauthorized." } as const;
+  }
+
+  const { data, error } = await supabase
+    .from("catalog_item_type_feature_requests")
+    .select("product_type, requested_by_user_id")
+    .eq("catalog_id", params.catalogId);
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  const counts: Partial<Record<CatalogItemProductType, number>> = {};
+  const requestedByCurrentUser = new Set<CatalogItemProductType>();
+
+  for (const row of data ?? []) {
+    const rawProductType = row.product_type;
+    if (!rawProductType || !isCatalogItemProductType(rawProductType)) continue;
+    counts[rawProductType] = (counts[rawProductType] ?? 0) + 1;
+    if (row.requested_by_user_id === user.id) {
+      requestedByCurrentUser.add(rawProductType);
+    }
+  }
+
+  return {
+    ok: true,
+    summary: {
+      counts,
+      requestedByCurrentUser: [...requestedByCurrentUser],
+    } satisfies ItemTypeRequestSummary,
+  } as const;
+}
+
+export async function requestItemTypeFeature(params: {
+  orgId: string;
+  catalogId: string;
+  productType: CatalogItemProductType;
+}) {
+  if (isEnabledProductType(params.productType)) {
+    return {
+      ok: false,
+      error: "This product type is already supported.",
+    } as const;
+  }
+
+  const supabase = await createClient();
+  const { user } = await getUserSafely(supabase);
+
+  if (!user) {
+    return { ok: false, error: "Unauthorized." } as const;
+  }
+
+  const { error: upsertError } = await supabase
+    .from("catalog_item_type_feature_requests")
+    .upsert(
+      {
+        org_id: params.orgId,
+        catalog_id: params.catalogId,
+        requested_by_user_id: user.id,
+        product_type: params.productType,
+        source: "create_item_type_modal",
+      },
+      {
+        onConflict: "org_id,catalog_id,requested_by_user_id,product_type",
+        ignoreDuplicates: true,
+      },
+    );
+
+  if (upsertError) {
+    return { ok: false, error: upsertError.message } as const;
+  }
+
+  const { count, error: countError } = await supabase
+    .from("catalog_item_type_feature_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("catalog_id", params.catalogId)
+    .eq("product_type", params.productType);
+
+  if (countError) {
+    return { ok: false, error: countError.message } as const;
+  }
+
+  return {
+    ok: true,
+    productType: params.productType,
+    count: count ?? 0,
+  } as const;
 }
 
 export async function deleteItem(params: {

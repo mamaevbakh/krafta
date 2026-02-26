@@ -57,7 +57,7 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     const { data } = await supabase
       .from("items")
       .select(
-        "id, catalog_id, category_id, name, slug, position, price_cents, description, image_path, image_alt, metadata, is_active, created_at",
+        "id, catalog_id, category_id, product_type, name, slug, position, price_cents, description, image_path, image_alt, metadata, is_active, created_at, updated_at",
       )
       .eq("catalog_id", catalog.id)
       .order("position", { ascending: true });

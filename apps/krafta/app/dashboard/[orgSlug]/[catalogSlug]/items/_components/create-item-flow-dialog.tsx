@@ -1,22 +1,22 @@
 "use client"
 
-import { Check, Trash2, XIcon } from "lucide-react"
+import {
+  ArrowLeft,
+  Calendar,
+  Check,
+  Gift,
+  HandCoins,
+  Laptop,
+  Package,
+  Scissors,
+  Trash2,
+  UserRound,
+  UtensilsCrossed,
+  XIcon,
+} from "lucide-react"
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-} from "@/components/ai-elements/conversation"
-import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputTools,
-} from "@/components/ai-elements/prompt-input"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -42,15 +42,26 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import type { CatalogCategory, Item } from "@/lib/catalogs/types"
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer"
-import { createItem, updateItem } from "./actions"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  createItem,
+  getItemTypeRequestSummary,
+  requestItemTypeFeature,
+  updateItem,
+} from "./actions"
 import { createClient as createBrowserClient } from "@/lib/supabase/client"
+import {
+  CATALOG_ITEM_PRODUCT_TYPE_OPTIONS,
+  getCatalogItemProductTypeLabel,
+  isEnabledCatalogItemProductType,
+  type CatalogItemProductType,
+} from "./product-types"
 
 type LocaleOption = {
   id: string
@@ -87,7 +98,14 @@ type PendingUpload = {
   upload?: UploadCommit
 }
 
-type CreateItemDrawerProps = {
+type ItemTypeRequestSummaryState = {
+  counts: Partial<Record<CatalogItemProductType, number>>
+  requestedByCurrentUser: CatalogItemProductType[]
+}
+
+type CreateItemStep = "product-type" | "details"
+
+type CreateItemFlowDialogProps = {
   orgId: string
   catalogId: string
   catalogSlug: string
@@ -133,7 +151,21 @@ function formatPriceInput(value: number | null): string {
   return (value / 100).toFixed(2)
 }
 
-export function CreateItemDrawer({
+const productTypeIcons: Record<
+  CatalogItemProductType,
+  React.ComponentType<{ className?: string }>
+> = {
+  REGULAR: Package,
+  APPOINTMENTS_SERVICE: Scissors,
+  FOOD_AND_BEV: UtensilsCrossed,
+  EVENT: Calendar,
+  DIGITAL: Laptop,
+  DONATION: HandCoins,
+  ONLINE_SERVICE: UserRound,
+  ONLINE_MEMBERSHIP: Gift,
+}
+
+export function CreateItemFlowDialog({
   orgId,
   catalogId,
   catalogSlug,
@@ -145,9 +177,8 @@ export function CreateItemDrawer({
   item,
   initialTranslations = [],
   initialMedia = [],
-}: CreateItemDrawerProps) {
+}: CreateItemFlowDialogProps) {
   const router = useRouter()
-  const [aiOpen, setAiOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -177,6 +208,20 @@ export function CreateItemDrawer({
   const [draftItemId, setDraftItemId] = useState<string | null>(null)
   const [didSave, setDidSave] = useState(false)
   const pendingUploadsRef = useRef<PendingUpload[]>([])
+  const [step, setStep] = useState<CreateItemStep>("product-type")
+  const [productType, setProductType] = useState<CatalogItemProductType | null>(null)
+  const [itemTypeRequestSummary, setItemTypeRequestSummary] =
+    useState<ItemTypeRequestSummaryState>({
+      counts: {},
+      requestedByCurrentUser: [],
+    })
+  const [isLoadingItemTypeRequests, setIsLoadingItemTypeRequests] = useState(false)
+  const [requestingType, setRequestingType] = useState<CatalogItemProductType | null>(
+    null,
+  )
+  const [itemTypeRequestError, setItemTypeRequestError] = useState<string | null>(
+    null,
+  )
 
   useEffect(() => {
     if (!open) return
@@ -205,7 +250,34 @@ export function CreateItemDrawer({
     setDraftItemId(mode === "edit" ? null : crypto.randomUUID())
     setDidSave(false)
     setErrorMessage(null)
+    setStep(mode === "edit" ? "details" : "product-type")
+    setProductType(
+      (item?.product_type as CatalogItemProductType | undefined) ?? null,
+    )
+    setItemTypeRequestError(null)
   }, [enabledLocales, initialMedia, initialTranslations, item, mode, open])
+
+  useEffect(() => {
+    if (!open || mode === "edit") return
+
+    let cancelled = false
+    setIsLoadingItemTypeRequests(true)
+    setItemTypeRequestError(null)
+
+    void getItemTypeRequestSummary({ catalogId }).then((result) => {
+      if (cancelled) return
+      setIsLoadingItemTypeRequests(false)
+      if (!result.ok) {
+        setItemTypeRequestError(result.error ?? "Unable to load feature requests.")
+        return
+      }
+      setItemTypeRequestSummary(result.summary)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [catalogId, mode, open])
 
   useEffect(() => {
     pendingUploadsRef.current = pendingUploads
@@ -228,11 +300,19 @@ export function CreateItemDrawer({
   const defaultDescription = translations[defaultLocale]?.description ?? ""
   const defaultImageAlt = translations[defaultLocale]?.image_alt ?? ""
   const isEdit = mode === "edit" && !!item
+  const isProductTypeStep = !isEdit && step === "product-type"
+  const classificationDialogOpen = open && isProductTypeStep
+  const detailsDialogOpen = open && !isProductTypeStep
+  const hasMultipleEnabledLocales = enabledLocales.length > 1
   const slugPreview = slugValue.trim()
   const mediaTargetId = isEdit ? item?.id ?? null : draftItemId
   const isUploadingMedia = pendingUploads.some(
     (upload) => upload.status === "uploading",
   )
+
+  function handleCloseFlow() {
+    onOpenChange(false)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -257,6 +337,51 @@ export function CreateItemDrawer({
         [field]: value,
       },
     }))
+  }
+
+  async function handleRequestProductTypeFeature(
+    requestedType: CatalogItemProductType,
+  ) {
+    if (isEnabledCatalogItemProductType(requestedType)) return
+    if (
+      itemTypeRequestSummary.requestedByCurrentUser.includes(requestedType) ||
+      requestingType
+    ) {
+      return
+    }
+
+    setItemTypeRequestError(null)
+    setRequestingType(requestedType)
+
+    const result = await requestItemTypeFeature({
+      orgId,
+      catalogId,
+      productType: requestedType,
+    })
+
+    setRequestingType(null)
+
+    if (!result.ok) {
+      setItemTypeRequestError(result.error ?? "Unable to send request.")
+      return
+    }
+
+    setItemTypeRequestSummary((prev) => ({
+      counts: {
+        ...prev.counts,
+        [requestedType]: result.count,
+      },
+      requestedByCurrentUser: prev.requestedByCurrentUser.includes(requestedType)
+        ? prev.requestedByCurrentUser
+        : [...prev.requestedByCurrentUser, requestedType],
+    }))
+  }
+
+  function getItemTypeRequestCountLabel(requestedType: CatalogItemProductType) {
+    const count = itemTypeRequestSummary.counts[requestedType] ?? 0
+    if (count === 0) return "No requests yet"
+    if (count === 1) return "1 request"
+    return `${count} requests`
   }
 
   function parsePriceCents(value: string): number {
@@ -547,48 +672,216 @@ export function CreateItemDrawer({
   }, [didSave, open])
 
   return (
-    <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
-      <DrawerContent
-        className={cn(
-          "flex h-full flex-col px-0 data-[vaul-drawer-direction=right]:!max-w-none",
-          aiOpen
-            ? "data-[vaul-drawer-direction=right]:!w-screen md:data-[vaul-drawer-direction=right]:!w-[65vw]"
-            : "data-[vaul-drawer-direction=right]:!w-screen md:data-[vaul-drawer-direction=right]:!w-[35vw]"
-        )}
+    <>
+      <Dialog
+        open={classificationDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) handleCloseFlow()
+        }}
       >
-        <DrawerHeader className="border-b px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <DrawerTitle className="text-lg">
-                {isEdit ? "Edit item" : "Create item"}
-              </DrawerTitle>
+        <DialogContent
+          aria-describedby={undefined}
+          className="!flex !flex-col h-[min(92vh,820px)] w-full max-w-4xl gap-0 overflow-hidden p-0 sm:max-w-4xl"
+        >
+          <div className="flex h-full w-full flex-col">
+            <DialogHeader className="px-6 pt-6 pb-4 sm:px-6">
+              <DialogTitle>What type of item do you want to create?</DialogTitle>
+              <DialogDescription className="max-w-3xl text-balance leading-7">
+                Item types help you by providing specific fields and settings for
+                each kind of item you want to sell. Only Physical good and Food &
+                beverage are enabled right now.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 overscroll-contain">
+              <div className="space-y-3">
+                  {CATALOG_ITEM_PRODUCT_TYPE_OPTIONS.map((option) => {
+                    const isEnabled = isEnabledCatalogItemProductType(option.value)
+                    const isSelected = productType === option.value
+                    const Icon = productTypeIcons[option.value]
+                    const alreadyRequested =
+                      itemTypeRequestSummary.requestedByCurrentUser.includes(
+                        option.value,
+                      )
+
+                    return (
+                      <div
+                        key={option.value}
+                        className={cn(
+                          "rounded-lg border p-4 transition-colors",
+                          isEnabled && isSelected
+                            ? "border-foreground bg-accent/30 shadow-xs"
+                            : isEnabled
+                              ? "border-border hover:border-foreground/30 hover:bg-accent/20"
+                              : "border-border/80 bg-muted/25",
+                        )}
+                      >
+                        <div className="flex flex-col gap-3 md:grid md:grid-cols-[minmax(0,1fr)_220px] md:items-center md:gap-4">
+                          <button
+                            type="button"
+                            disabled={!isEnabled}
+                            onClick={() => {
+                              if (!isEnabled) return
+                              setErrorMessage(null)
+                              setProductType(option.value)
+                              setStep("details")
+                            }}
+                            className={cn(
+                              "flex min-w-0 items-start gap-4 text-left",
+                              isEnabled ? "cursor-pointer" : "cursor-default",
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-md border",
+                                isEnabled
+                                  ? "bg-background"
+                                  : "border-dashed bg-muted text-muted-foreground",
+                              )}
+                            >
+                              <Icon className="size-5" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="text-base font-semibold">
+                                  {option.title}
+                                </span>
+                                {option.badge ? (
+                                  <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                    {option.badge}
+                                  </span>
+                                ) : null}
+                                {!isEnabled ? (
+                                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                    Coming soon
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="mt-1 block text-sm leading-6 text-muted-foreground">
+                                {option.description}
+                              </span>
+                            </span>
+                          </button>
+
+                          {isEnabled ? (
+                            <div className="flex min-h-8 items-center md:justify-end">
+                              <span className="sr-only">
+                                {isSelected ? "Selected item type" : "Available item type"}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex w-full flex-col items-start gap-2 md:items-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={alreadyRequested ? "secondary" : "outline"}
+                                disabled={
+                                  alreadyRequested || requestingType === option.value
+                                }
+                                onClick={() =>
+                                  void handleRequestProductTypeFeature(option.value)
+                                }
+                              >
+                                {alreadyRequested
+                                  ? "Requested"
+                                  : requestingType === option.value
+                                    ? "Requesting..."
+                                    : "Request this feature"}
+                              </Button>
+                              <p className="text-xs text-muted-foreground">
+                                {getItemTypeRequestCountLabel(option.value)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+              {(isLoadingItemTypeRequests || itemTypeRequestError) && (
+                <div className="pt-4 text-sm text-muted-foreground">
+                  {isLoadingItemTypeRequests
+                    ? "Loading request counts..."
+                    : itemTypeRequestError}
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setAiOpen((open) => !open)}>
-                {aiOpen ? "Close assistant" : "Krafta AI"}
+
+            <DialogFooter className="border-t px-6 py-4 sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseFlow}
+                disabled={isPending}
+              >
+                Cancel
               </Button>
-              <DrawerClose asChild>
+              <Button
+                type="button"
+                disabled={!productType || isPending}
+                onClick={() => {
+                  setErrorMessage(null)
+                  setStep("details")
+                }}
+              >
+                Next
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={detailsDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) handleCloseFlow()
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          aria-describedby={undefined}
+          className="!flex !flex-col inset-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden overscroll-contain rounded-none border-0 p-0 shadow-none sm:max-w-none"
+        >
+          <DialogTitle className="sr-only">
+            {isEdit ? "Edit item" : "Create item"}
+          </DialogTitle>
+          <div className="flex h-full min-h-0 w-full flex-col bg-background">
+            <div className="shrink-0 border-b bg-background/95 px-6 py-4 backdrop-blur md:px-8">
+              <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4">
+                <div>
+                  <p className="text-xl font-semibold tracking-tight md:text-2xl">
+                    {isEdit ? "Edit item" : "Create item"}
+                  </p>
+                </div>
                 <Button
                   variant="ghost"
-                  size="icon-sm"
-                  aria-label="Close drawer"
+                  size="icon"
+                  aria-label="Close modal"
+                  className="size-10 rounded-full"
+                  onClick={handleCloseFlow}
                 >
                   <XIcon className="size-4" />
                 </Button>
-              </DrawerClose>
+              </div>
             </div>
-          </div>
-        </DrawerHeader>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row">
-          <div className="flex-1 px-6 py-6">
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/15">
+              <div className="min-w-0 flex-1 overflow-y-auto overscroll-contain">
+                <div className="mx-auto w-full max-w-[1248px] px-6 py-6 md:px-8 md:py-8">
             <form
               id="create-item-form"
-              className="space-y-6"
+              className="space-y-8"
               onSubmit={(event) => {
                 event.preventDefault()
                 setErrorMessage(null)
 
                 startTransition(async () => {
+                  if (!productType) {
+                    setErrorMessage("Select an item type to continue.")
+                    return
+                  }
+
                   if (!categoryId) {
                     setErrorMessage("Category is required.")
                     return
@@ -626,6 +919,7 @@ export function CreateItemDrawer({
                       catalogSlug,
                       itemId: item.id,
                       categoryId,
+                      productType,
                       name: defaultName,
                       slug: slugValue,
                       priceCents,
@@ -681,6 +975,7 @@ export function CreateItemDrawer({
                       catalogId,
                       catalogSlug,
                       categoryId,
+                      productType,
                       name: defaultName,
                       slug: slugValue,
                       priceCents,
@@ -723,15 +1018,45 @@ export function CreateItemDrawer({
                 })
               }}
             >
-              <FieldGroup>
-                <FieldSet>
+              <FieldGroup className="gap-6">
+                <FieldSet className="rounded-2xl border bg-background p-5 shadow-xs md:p-6">
                   <FieldLegend>Item details</FieldLegend>
                   <FieldDescription>
                     Add translations for the locales in this catalog.
                   </FieldDescription>
-                  <FieldGroup className="@container/field-group flex flex-col gap-5">
+                  <div className="mt-4 rounded-xl border bg-muted/30 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Product type
+                        </p>
+                        <p className="text-sm font-medium">
+                          {productType
+                            ? getCatalogItemProductTypeLabel(productType)
+                            : "Not selected"}
+                        </p>
+                      </div>
+                      {!isEdit ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setStep("product-type")}
+                        >
+                          Change
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <FieldGroup className="@container/field-group mt-5 flex flex-col gap-5">
                     {enabledLocales.map((locale, index) => (
-                      <FieldSet key={locale.id} className="space-y-4 rounded-lg border p-4">
+                      <FieldSet
+                        key={locale.id}
+                        className={cn(
+                          "space-y-4",
+                          hasMultipleEnabledLocales && "rounded-xl border p-4",
+                        )}
+                      >
                         <FieldLegend variant="label" className="flex items-center justify-between">
                           <span>{locale.locale.toUpperCase()}</span>
                           {locale.locale === defaultLocale && (
@@ -1048,7 +1373,7 @@ export function CreateItemDrawer({
                             />
                           </Field>
                         </FieldGroup>
-                        {index < enabledLocales.length - 1 && (
+                        {hasMultipleEnabledLocales && index < enabledLocales.length - 1 && (
                           <FieldSeparator />
                         )}
                       </FieldSet>
@@ -1063,69 +1388,53 @@ export function CreateItemDrawer({
                 ) : null}
               </FieldGroup>
             </form>
-          </div>
-          {aiOpen ? (
-            <div className="flex h-full flex-col border-l">
-              <div className="border-b px-4 py-3 text-sm font-medium">
-                Krafta AI
-              </div>
-              <Conversation className="flex-1">
-                <ConversationContent>
-                  <ConversationEmptyState
-                    title="Start with a prompt"
-                    description="Describe the item and Krafta AI will help."
-                  />
-                </ConversationContent>
-              </Conversation>
-              <div className="border-t bg-background/70 p-3">
-                <PromptInput
-                  className="w-full"
-                  onSubmit={(message, event) => {
-                    event.preventDefault()
-                    event.currentTarget.reset()
-                  }}
-                >
-                  <PromptInputBody>
-                    <PromptInputTextarea />
-                    <PromptInputFooter>
-                      <PromptInputTools>
-                      </PromptInputTools>
-                      <PromptInputSubmit />
-                    </PromptInputFooter>
-                  </PromptInputBody>
-                </PromptInput>
+                </div>
               </div>
             </div>
-          ) : null}
-        </div>
-        <DrawerFooter className="border-t px-6 py-4">
-          <div className="flex w-full gap-3 lg:justify-end">
-            <DrawerClose asChild>
-              <Button
-                variant="outline"
-                size="lg"
-                className="flex-1 lg:flex-none"
-                disabled={isPending}
-              >
-                Cancel
-              </Button>
-            </DrawerClose>
-            <Button
-              size="lg"
-              className="flex-1 lg:flex-none"
-              type="submit"
-              form="create-item-form"
-              disabled={isPending || isUploadingMedia}
-            >
-              {isUploadingMedia
-                ? "Uploading media..."
-                : isEdit
-                  ? "Save changes"
-                  : "Create item"}
-            </Button>
+
+            <div className="shrink-0 border-t bg-background px-6 py-4 md:px-8">
+              <div className="mx-auto flex w-full max-w-[1440px] gap-3 lg:justify-end">
+                {!isEdit ? (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="h-12 flex-1 rounded-full px-5 lg:flex-none"
+                    type="button"
+                    onClick={() => setStep("product-type")}
+                    disabled={isPending}
+                  >
+                    <ArrowLeft className="size-4" />
+                    Back
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="h-12 flex-1 rounded-full px-5 lg:flex-none"
+                    disabled={isPending}
+                    onClick={handleCloseFlow}
+                  >
+                    Cancel
+                  </Button>
+                )}
+                <Button
+                  size="lg"
+                  className="h-12 flex-1 rounded-full px-6 lg:flex-none"
+                  type="submit"
+                  form="create-item-form"
+                  disabled={isPending || isUploadingMedia}
+                >
+                  {isUploadingMedia
+                    ? "Uploading media..."
+                    : isEdit
+                      ? "Save changes"
+                      : "Create item"}
+                </Button>
+              </div>
+            </div>
           </div>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

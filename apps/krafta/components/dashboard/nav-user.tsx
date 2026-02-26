@@ -94,7 +94,7 @@ export function NavUser({
               <DropdownMenuItem asChild>
                 <Link href="/dashboard">
                 <Sparkles />
-                Upgrade to Pro
+                Plans & Billing
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>

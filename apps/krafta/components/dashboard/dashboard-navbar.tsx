@@ -37,7 +37,7 @@ const DASHBOARD_LINKS = [
   { segment: "", label: "Overview" },
   { segment: "categories", label: "Categories" },
   { segment: "items", label: "Items" },
-  { segment: "builder", label: "Builder" },
+  { segment: "builder", label: "Studio" },
   { segment: "billing", label: "Billing" },
   { segment: "settings", label: "Settings" },
 ] as const;
@@ -47,6 +47,7 @@ export function DashboardNavbar({
   catalogSlug,
   catalogs,
   user,
+  showUpgradeCta = true,
 }: {
   orgSlug: string;
   catalogSlug: string;
@@ -56,6 +57,7 @@ export function DashboardNavbar({
     email: string;
     avatar?: string;
   };
+  showUpgradeCta?: boolean;
 }) {
   const pathname = usePathname();
   const basePath = useMemo(
@@ -108,15 +110,19 @@ export function DashboardNavbar({
                     </div>
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem asChild>
-                    <Link href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}>
-                    <Sparkles className="size-4" />
-                    Upgrade to Pro
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
+                {showUpgradeCta ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}>
+                        <Sparkles className="size-4" />
+                        Upgrade to Pro
+                        </Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                ) : null}
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuItem>

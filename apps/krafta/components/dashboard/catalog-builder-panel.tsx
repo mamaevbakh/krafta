@@ -3,7 +3,15 @@
 import Image from "next/image";
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  Layers2,
+  Palette,
+  PanelsTopLeft,
+  ReceiptText,
+  Sparkles,
+} from "lucide-react";
 import type {
   CatalogLayoutOverride,
   CatalogLayoutSettings,
@@ -11,6 +19,7 @@ import type {
 } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { hapticError, hapticSuccess } from "@/lib/haptics-client";
@@ -28,6 +37,8 @@ type AspectPreset = {
   height: number;
 };
 
+type BuilderFocus = "all" | "structure" | "cards" | "brand" | "pricing";
+
 const COMMON_ASPECT_RATIOS: AspectPreset[] = [
   { width: 1, height: 1 },
   { width: 4, height: 3 },
@@ -42,6 +53,44 @@ const LOGO_ASPECT_RATIOS: AspectPreset[] = [
   { width: 3, height: 1 },
   { width: 4, height: 1 },
   { width: 16, height: 9 },
+];
+
+const BUILDER_FOCUS_OPTIONS: Array<{
+  value: BuilderFocus;
+  label: string;
+  description: string;
+  icon: typeof PanelsTopLeft;
+}> = [
+  {
+    value: "all",
+    label: "All",
+    description: "See every control",
+    icon: Sparkles,
+  },
+  {
+    value: "structure",
+    label: "Structure",
+    description: "Header, sections, nav",
+    icon: PanelsTopLeft,
+  },
+  {
+    value: "cards",
+    label: "Cards",
+    description: "Grid + item presentation",
+    icon: Layers2,
+  },
+  {
+    value: "brand",
+    label: "Brand",
+    description: "Header media and polish",
+    icon: Palette,
+  },
+  {
+    value: "pricing",
+    label: "Pricing",
+    description: "Currency formatting",
+    icon: ReceiptText,
+  },
 ];
 
 function getAspectInputs(
@@ -196,6 +245,8 @@ export function CatalogBuilderPanel({
   const [isUploadingHeaderBannerDark, setIsUploadingHeaderBannerDark] =
     useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [builderFocus, setBuilderFocus] = useState<BuilderFocus>("all");
+  const [lastSavedSignature, setLastSavedSignature] = useState<string | null>(null);
   const headerBannerLightInputRef = useRef<HTMLInputElement>(null);
   const headerBannerDarkInputRef = useRef<HTMLInputElement>(null);
 
@@ -301,6 +352,68 @@ export function CatalogBuilderPanel({
       labelPosition,
     ],
   );
+  const initialLayoutOverride = useMemo(
+    () => ({
+      headerVariant: initialLayout.headerVariant,
+      sectionVariant: initialLayout.sectionVariant,
+      itemCardVariant: initialLayout.itemCardVariant,
+      categoryNavVariant: initialLayout.categoryNavVariant,
+      itemDetailVariant: initialLayout.itemDetailVariant,
+      itemCard: {
+        columns: initialLayout.itemCard.columns,
+        aspectRatio: initialLayout.itemCard.aspectRatio,
+      },
+      header: {
+        basicFreeLogo: {
+          showLogo: initialLayout.header.basicFreeLogo.showLogo,
+          showTitle: initialLayout.header.basicFreeLogo.showTitle,
+          showDescription: initialLayout.header.basicFreeLogo.showDescription,
+          showTags: initialLayout.header.basicFreeLogo.showTags,
+          logoFullWidth: initialLayout.header.basicFreeLogo.logoFullWidth,
+          logoAspectRatio: initialLayout.header.basicFreeLogo.logoAspectRatio,
+          logoCornerRadius: initialLayout.header.basicFreeLogo.logoCornerRadius,
+          bannerLightPath: initialLayout.header.basicFreeLogo.bannerLightPath,
+          bannerDarkPath: initialLayout.header.basicFreeLogo.bannerDarkPath,
+          backgroundColorLight: initialLayout.header.basicFreeLogo.backgroundColorLight,
+          backgroundColorDark: initialLayout.header.basicFreeLogo.backgroundColorDark,
+        },
+      },
+    }),
+    [initialLayout],
+  ) satisfies CatalogLayoutOverride;
+  const initialCurrencyOverride = useMemo(
+    () => ({
+      defaultCurrency: initialCurrency.defaultCurrency,
+      label: initialCurrency.label,
+      thousandSeparator: initialCurrency.thousandSeparator,
+      decimalSeparator: initialCurrency.decimalSeparator,
+      showDecimals: initialCurrency.showDecimals,
+      labelPosition: initialCurrency.labelPosition,
+    }),
+    [initialCurrency],
+  );
+  const currentSignature = useMemo(
+    () =>
+      JSON.stringify({
+        layout: layoutOverrides,
+        currency: currencyOverrides,
+      }),
+    [layoutOverrides, currencyOverrides],
+  );
+  const initialSignature = useMemo(
+    () =>
+      JSON.stringify({
+        layout: initialLayoutOverride,
+        currency: initialCurrencyOverride,
+      }),
+    [initialLayoutOverride, initialCurrencyOverride],
+  );
+  const baselineSignature = lastSavedSignature ?? initialSignature;
+  const hasUnsavedChanges = currentSignature !== baselineSignature;
+  const showStructureControls = builderFocus === "all" || builderFocus === "structure";
+  const showCardControls = builderFocus === "all" || builderFocus === "cards";
+  const showBrandControls = builderFocus === "all" || builderFocus === "brand";
+  const showPricingControls = builderFocus === "all" || builderFocus === "pricing";
   const previewHref = useMemo(() => {
     const params = new URLSearchParams();
     params.set("preview", "1");
@@ -363,7 +476,7 @@ export function CatalogBuilderPanel({
   ]);
 
   const handleSave = async () => {
-    if (isSaving) return;
+    if (isSaving || !hasUnsavedChanges) return;
     setIsSaving(true);
 
     const settingsLayout: CatalogLayoutSettings = {
@@ -416,7 +529,8 @@ export function CatalogBuilderPanel({
       });
       void hapticError();
     } else {
-      toast.success("Layout saved");
+      setLastSavedSignature(currentSignature);
+      toast.success("Studio changes saved");
       void hapticSuccess();
     }
 
@@ -486,17 +600,152 @@ export function CatalogBuilderPanel({
   };
 
   return (
-    <div className="mt-8 grid gap-6 lg:grid-cols-[380px_1fr]">
-      <aside className="space-y-6">
-        <OptionSection
-          title="Headers"
-          description="Top branding and catalog identity."
-          options={headerOptions}
-          selected={headerVariant}
-          onSelect={setHeaderVariant}
-        />
+    <div className="mt-2 space-y-6">
+      <section className="relative overflow-hidden rounded-2xl border bg-background">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(34,197,94,0.12),transparent_42%),radial-gradient(circle_at_88%_14%,rgba(59,130,246,0.1),transparent_40%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent)]" />
+        <div className="relative p-5 md:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="rounded-full px-3 py-1">
+                  Catalog Studio
+                </Badge>
+                <Badge
+                  variant={hasUnsavedChanges ? "secondary" : "outline"}
+                  className="rounded-full px-3 py-1"
+                >
+                  {hasUnsavedChanges ? "Unsaved changes" : "All changes saved"}
+                </Badge>
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight md:text-[32px]">
+                  Shape the {catalogName} catalog experience
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  Work in focused lanes instead of one long form. Start with structure,
+                  polish card presentation, then tune brand and pricing details.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-muted-foreground">
+                  Header: {headerOptions.find((option) => option.value === headerVariant)?.label}
+                </span>
+                <span className="rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-muted-foreground">
+                  Cards: {itemCardOptions.find((option) => option.value === itemCardVariant)?.label}
+                </span>
+                <span className="rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-muted-foreground">
+                  Nav: {navOptions.find((option) => option.value === categoryNavVariant)?.label}
+                </span>
+              </div>
+            </div>
 
-        {headerVariant === "header-basic-free-logo" && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <Link
+                  href={previewHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open preview
+                  <ArrowUpRight className="size-4" />
+                </Link>
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving || !hasUnsavedChanges}
+                size="sm"
+              >
+                {isSaving ? "Saving..." : hasUnsavedChanges ? "Save changes" : "Saved"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
+      <aside className="space-y-6 lg:sticky lg:top-6 lg:h-fit">
+        <section className="rounded-xl border bg-background p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Customization flow</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Filter the controls so people design one decision area at a time.
+              </p>
+            </div>
+            <Badge variant="outline" className="rounded-full">
+              Focus mode
+            </Badge>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {BUILDER_FOCUS_OPTIONS.map((focus) => {
+              const Icon = focus.icon;
+              const isActive = builderFocus === focus.value;
+              return (
+                <button
+                  key={focus.value}
+                  type="button"
+                  onClick={() => setBuilderFocus(focus.value)}
+                  className={[
+                    "rounded-lg border p-3 text-left transition",
+                    isActive
+                      ? "border-foreground bg-foreground text-background shadow-sm"
+                      : "border-border bg-background hover:border-foreground/40",
+                  ].join(" ")}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="size-4" />
+                    <span className="text-sm font-medium">{focus.label}</span>
+                  </div>
+                  <p
+                    className={[
+                      "mt-1 text-[11px]",
+                      isActive ? "text-background/80" : "text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {focus.description}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 rounded-lg border border-dashed border-border/70 bg-muted/20 p-3">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Suggested sequence
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Structure, Cards, Brand, then Pricing. Preview updates live while you
+              work, then save once when the composition feels right.
+            </p>
+          </div>
+        </section>
+
+        {showBrandControls && (
+          <>
+            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Brand
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Define the catalog&apos;s first impression and visual identity.
+              </p>
+            </section>
+            <OptionSection
+              title="Headers"
+              description="Top branding and catalog identity."
+              options={headerOptions}
+              selected={headerVariant}
+              onSelect={setHeaderVariant}
+            />
+          </>
+        )}
+
+        {showBrandControls && headerVariant === "header-basic-free-logo" && (
           <section className="rounded-lg border bg-background p-4">
             <h2 className="text-sm font-semibold">Header: Free Logo Settings</h2>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -843,22 +1092,49 @@ export function CatalogBuilderPanel({
           </section>
         )}
 
-        <OptionSection
+        {showStructureControls && (
+          <>
+            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Structure
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Set how the catalog is organized before styling individual product cards.
+              </p>
+            </section>
+
+            <OptionSection
           title="Sections"
           description="Category grouping and spacing."
           options={sectionOptions}
           selected={sectionVariant}
           onSelect={setSectionVariant}
         />
+          </>
+        )}
 
-        <OptionSection
+        {showCardControls && (
+          <>
+            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Cards
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Tune the product browsing experience and image rhythm.
+              </p>
+            </section>
+
+            <OptionSection
           title="Item Cards"
           description="How each item is rendered."
           options={itemCardOptions}
           selected={itemCardVariant}
           onSelect={setItemCardVariant}
         />
+          </>
+        )}
 
+        {showCardControls && (
         <section className="rounded-lg border bg-background p-4">
           <h2 className="text-sm font-semibold">Item Card Layout</h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -923,15 +1199,28 @@ export function CatalogBuilderPanel({
             </div>
           </div>
         </section>
+        )}
 
-        <OptionSection
+        {showStructureControls && (
+          <OptionSection
           title="Item Detail"
           description="Full item view when a card is opened."
           options={itemDetailOptions}
           selected={itemDetailVariant}
           onSelect={setItemDetailVariant}
         />
+        )}
 
+        {showPricingControls && (
+          <>
+            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Pricing
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Control how price values read in every catalog layout.
+              </p>
+            </section>
         <section className="rounded-lg border bg-background p-4">
           <h2 className="text-sm font-semibold">Pricing</h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -1034,58 +1323,49 @@ export function CatalogBuilderPanel({
             </label>
           </div>
         </section>
+          </>
+        )}
 
-        <OptionSection
+        {showStructureControls && (
+          <OptionSection
           title="Navigation"
           description="Category navigation style."
           options={navOptions}
           selected={categoryNavVariant}
           onSelect={setCategoryNavVariant}
         />
+        )}
       </aside>
 
-      <section className="rounded-xl border bg-background p-6">
-        <div className="flex items-center justify-between">
+      <section className="rounded-2xl border bg-background p-4 md:p-6 lg:sticky lg:top-6 lg:h-fit">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold">Preview</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold">Live preview</h2>
+              <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
+                Draft canvas
+              </Badge>
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Live catalog snapshot
+              Instant snapshot of your Studio changes before publishing.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-            >
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-            >
-              <Link
-                href={previewHref}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Preview
-                <ArrowUpRight className="size-4" />
-              </Link>
-            </Button>
-            <span className="rounded-full border border-border px-3 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-              Draft
-            </span>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            {hasUnsavedChanges
+              ? "Preview includes unsaved edits"
+              : "Preview matches saved settings"}
+          </p>
         </div>
 
-        <CatalogPreviewFrame
-          catalogSlug={catalogSlug}
-          layoutOverrides={layoutOverrides}
-          currencyOverrides={currencyOverrides}
-        />
+        <div className="mt-5 rounded-xl border border-dashed border-border/70 bg-muted/15 p-1.5 md:p-2">
+          <CatalogPreviewFrame
+            catalogSlug={catalogSlug}
+            layoutOverrides={layoutOverrides}
+            currencyOverrides={currencyOverrides}
+          />
+        </div>
       </section>
+      </div>
     </div>
   );
 }
@@ -1104,36 +1384,47 @@ function OptionSection<T extends string>({
   onSelect: (value: T) => void;
 }) {
   return (
-    <section className="rounded-lg border bg-background p-4">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {description}
-      </p>
+    <section className="rounded-xl border bg-background p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
+          {options.length} options
+        </Badge>
+      </div>
       <div className="mt-4 grid gap-2">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onSelect(option.value)}
-            className={[
-              "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm",
-              option.value === selected
-                ? "border-foreground bg-foreground text-background"
-                : "border-border text-foreground hover:border-foreground",
-            ].join(" ")}
-          >
-            <span>{option.label}</span>
-            {option.value === selected ? (
-              <span className="rounded-full bg-background/10 px-2 py-0.5 text-[10px] uppercase tracking-wide">
-                Selected
-              </span>
-            ) : (
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Preview
-              </span>
-            )}
-          </button>
-        ))}
+        {options.map((option) => {
+          const isSelected = option.value === selected;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onSelect(option.value)}
+              className={[
+                "group flex items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition",
+                isSelected
+                  ? "border-foreground bg-foreground text-background shadow-sm"
+                  : "border-border bg-background hover:border-foreground/50 hover:bg-muted/30",
+              ].join(" ")}
+            >
+              <span className="font-medium">{option.label}</span>
+              {isSelected ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-background/10 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                  <Check className="size-3" />
+                  Active
+                </span>
+              ) : (
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground transition group-hover:text-foreground">
+                  Switch
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </section>
   );

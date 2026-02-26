@@ -5,9 +5,12 @@ import type { Database } from "./database.types";
 import { getUserSafely } from "./auth";
 
 const AUTH_COOKIE_MARKER = "-auth-token";
+const PKCE_CODE_VERIFIER_MARKER = "-auth-token-code-verifier";
 
 function isSupabaseAuthCookie(name: string) {
-  return name.startsWith("sb-") && name.includes(AUTH_COOKIE_MARKER);
+  if (!name.startsWith("sb-")) return false;
+  if (name.includes(PKCE_CODE_VERIFIER_MARKER)) return false;
+  return name.includes(AUTH_COOKIE_MARKER);
 }
 
 function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
