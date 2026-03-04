@@ -72,3 +72,49 @@ export function normalizeClientNext(
 
   return `${targetOrigin}${fallbackPath}`;
 }
+
+function parseOrigin(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function parseOriginList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => parseOrigin(entry.trim()))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function buildCallbackUris(origins: string[]) {
+  return origins.map((origin) => `${origin}/auth/sso/callback`);
+}
+
+export function getClientCallbackAllowlist(clientId: string, dbRedirectUris: string[]) {
+  const appOrigins = [
+    parseOrigin(process.env.KRAFTA_APP_URL),
+    parseOrigin(process.env.NEXT_PUBLIC_KRAFTA_APP_URL),
+    ...parseOriginList(process.env.KRAFTA_APP_URLS),
+    ...parseOriginList(process.env.NEXT_PUBLIC_KRAFTA_APP_URLS),
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const payOrigins = [
+    parseOrigin(process.env.KRAFTA_PAY_URL),
+    parseOrigin(process.env.NEXT_PUBLIC_KRAFTA_PAY_URL),
+    ...parseOriginList(process.env.KRAFTA_PAY_URLS),
+    ...parseOriginList(process.env.NEXT_PUBLIC_KRAFTA_PAY_URLS),
+  ].filter((entry): entry is string => Boolean(entry));
+
+  const dynamicUris =
+    clientId === "krafta-web"
+      ? buildCallbackUris(appOrigins)
+      : clientId === "krafta-pay-web"
+        ? buildCallbackUris(payOrigins)
+        : [];
+
+  return [...new Set([...dbRedirectUris, ...dynamicUris])];
+}

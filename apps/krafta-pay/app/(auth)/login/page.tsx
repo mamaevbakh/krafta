@@ -5,7 +5,7 @@ import {
   getRequestOrigin,
   normalizePayNext,
 } from "@/lib/auth-redirect";
-import { hasSsoRuntimeConfig, isSsoEnabled } from "@/lib/sso";
+import { hasSsoRuntimeConfig } from "@/lib/sso";
 
 export default async function LoginPage({
   searchParams,
@@ -17,7 +17,7 @@ export default async function LoginPage({
   const rawNext = Array.isArray(sp.next) ? sp.next[0] : sp.next;
   const origin = getRequestOrigin(await headers());
   const next = normalizePayNext(rawNext, origin);
-  if (isSsoEnabled() && hasSsoRuntimeConfig()) {
+  if (hasSsoRuntimeConfig()) {
     redirect(`/auth/sso/start?next=${encodeURIComponent(next)}`);
   }
   redirect(buildKraftaLoginUrl(next));

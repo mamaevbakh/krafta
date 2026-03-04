@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getUserSafely } from "@krafta/supabase/auth";
+import { BrandWordmark } from "@/components/brand-wordmark";
 import { LoginForm } from "@/components/login-form";
 import { normalizeNextPath, getRequestOrigin } from "@/lib/auth/redirect";
 import { createClient } from "@/lib/supabase/server";
@@ -8,13 +10,22 @@ import { createClient } from "@/lib/supabase/server";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[]; error?: string | string[] }>;
 }) {
   const sp = await searchParams;
   const headersList = await headers();
   const origin = getRequestOrigin(headersList);
   const rawNext = Array.isArray(sp.next) ? sp.next[0] : sp.next;
   const next = normalizeNextPath(rawNext, origin, "/");
+  const rawError = Array.isArray(sp.error) ? sp.error[0] : sp.error;
+  let decodedError: string | null = null;
+  if (rawError) {
+    try {
+      decodedError = decodeURIComponent(rawError);
+    } catch {
+      decodedError = rawError;
+    }
+  }
 
   const supabase = await createClient();
   const { user } = await getUserSafely(supabase);
@@ -23,8 +34,13 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-6 py-12">
-      <LoginForm next={next} />
-    </main>
+    <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <Link href="/" className="flex items-center gap-2 self-center font-medium">
+          <BrandWordmark className="text-3xl" />
+        </Link>
+        <LoginForm next={next} initialError={decodedError} />
+      </div>
+    </div>
   );
 }

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
-import { createSsoAdminClient, normalizeClientNext, sha256Hex } from "@/lib/sso";
+import {
+  createSsoAdminClient,
+  getClientCallbackAllowlist,
+  normalizeClientNext,
+  sha256Hex,
+} from "@/lib/sso";
 import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 
@@ -49,7 +54,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized_client" }, { status: 401 });
   }
 
-  const allowedRedirects = (clientRow.redirect_uris ?? []) as string[];
+  const allowedRedirects = getClientCallbackAllowlist(
+    clientId,
+    (clientRow.redirect_uris ?? []) as string[],
+  );
   if (!allowedRedirects.includes(redirectUri)) {
     return NextResponse.json({ error: "invalid_redirect_uri" }, { status: 400 });
   }

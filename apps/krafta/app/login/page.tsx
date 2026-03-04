@@ -2,7 +2,7 @@ import { LoginForm } from "@/components/login-form";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { createClient } from "@/lib/supabase/server";
 import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
-import { hasSsoRuntimeConfig, isSsoEnabled } from "@/lib/auth/sso";
+import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -27,7 +27,7 @@ export default async function LoginPage({
     redirect(next);
   }
 
-  if (isSsoEnabled() && hasSsoRuntimeConfig()) {
+  if (hasSsoRuntimeConfig()) {
     redirect(`/auth/sso/start?next=${encodeURIComponent(next)}`);
   }
 

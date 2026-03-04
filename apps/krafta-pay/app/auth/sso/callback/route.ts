@@ -8,7 +8,6 @@ import {
   getSsoClientSecret,
   getSsoStateSecret,
   hasSsoRuntimeConfig,
-  isSsoEnabled,
   SSO_CODE_VERIFIER_COOKIE,
   SSO_COOKIE_PATH,
   SSO_STATE_COOKIE,
@@ -51,7 +50,6 @@ export async function GET(request: NextRequest) {
   };
 
   if (
-    !isSsoEnabled() ||
     !hasSsoRuntimeConfig() ||
     !code ||
     !state ||

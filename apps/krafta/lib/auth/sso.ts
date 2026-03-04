@@ -2,11 +2,6 @@ export const SSO_CODE_VERIFIER_COOKIE = "krafta_sso_code_verifier";
 export const SSO_STATE_COOKIE = "krafta_sso_state";
 export const SSO_COOKIE_PATH = "/auth/sso";
 
-export function isSsoEnabled() {
-  const value = process.env.KRAFTA_SSO_ENABLED?.toLowerCase();
-  return value === "1" || value === "true";
-}
-
 export function getSsoClientId() {
   return process.env.KRAFTA_SSO_CLIENT_ID ?? "krafta-web";
 }

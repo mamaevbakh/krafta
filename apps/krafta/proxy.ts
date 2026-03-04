@@ -1,7 +1,7 @@
 import { updateSession } from "@krafta/supabase/proxy";
 import { NextResponse, type NextRequest } from "next/server";
 import { normalizeNextPath } from "@/lib/auth/redirect";
-import { hasSsoRuntimeConfig, isSsoEnabled } from "@/lib/auth/sso";
+import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 
 /**
  * Proxy to refresh auth session and protect routes.
@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
   if (isProtectedRoute && !user) {
     const returnPath = `${pathname}${request.nextUrl.search}`;
 
-    if (isSsoEnabled() && hasSsoRuntimeConfig()) {
+    if (hasSsoRuntimeConfig()) {
       const ssoStartUrl = request.nextUrl.clone();
       ssoStartUrl.pathname = "/auth/sso/start";
       ssoStartUrl.searchParams.set("next", returnPath);

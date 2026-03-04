@@ -5,7 +5,7 @@ import {
   getRequestOrigin,
   normalizePayNext,
 } from "@/lib/auth-redirect";
-import { hasSsoRuntimeConfig, isSsoEnabled } from "@/lib/sso";
+import { hasSsoRuntimeConfig } from "@/lib/sso";
 
 export async function proxy(request: NextRequest) {
   const { response: sessionResponse, user } = await updateSession(request);
@@ -19,7 +19,7 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (pathname.startsWith("/dashboard") && !user) {
-    if (isSsoEnabled() && hasSsoRuntimeConfig()) {
+    if (hasSsoRuntimeConfig()) {
       const ssoStart = request.nextUrl.clone();
       ssoStart.pathname = "/auth/sso/start";
       ssoStart.searchParams.set("next", `${pathname}${search}`);

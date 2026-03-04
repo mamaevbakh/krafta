@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
   createSsoAdminClient,
+  getClientCallbackAllowlist,
   secureCompareHex,
   secureCompareText,
   sha256Base64Url,
@@ -61,7 +62,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized_client" }, { status: 401 });
   }
 
-  const allowedRedirects = (clientRow.redirect_uris ?? []) as string[];
+  const allowedRedirects = getClientCallbackAllowlist(
+    body.client_id,
+    (clientRow.redirect_uris ?? []) as string[],
+  );
   if (!allowedRedirects.includes(body.redirect_uri)) {
     return NextResponse.json({ error: "invalid_redirect_uri" }, { status: 400 });
   }

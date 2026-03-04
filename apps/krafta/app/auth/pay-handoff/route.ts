@@ -9,7 +9,7 @@ import {
   normalizeNextPath,
   toAbsoluteRedirectUrl,
 } from "@/lib/auth/redirect";
-import { hasSsoRuntimeConfig, isSsoEnabled } from "@/lib/auth/sso";
+import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 
 function parseOrigin(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(absoluteNext);
   }
 
-  if (isSsoEnabled() && hasSsoRuntimeConfig()) {
+  if (hasSsoRuntimeConfig()) {
     const ssoStart = new URL("/auth/sso/start", target.origin);
     ssoStart.searchParams.set("next", absoluteNext);
     return NextResponse.redirect(ssoStart.toString());

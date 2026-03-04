@@ -12,7 +12,6 @@ import {
   getSsoClientId,
   getSsoStateSecret,
   hasSsoRuntimeConfig,
-  isSsoEnabled,
   SSO_CODE_VERIFIER_COOKIE,
   SSO_COOKIE_PATH,
   SSO_STATE_COOKIE,
@@ -26,7 +25,7 @@ export async function GET(request: NextRequest) {
     "/dashboard",
   );
 
-  if (!isSsoEnabled() || !hasSsoRuntimeConfig()) {
+  if (!hasSsoRuntimeConfig()) {
     const fallback = new URL("/login", requestOrigin);
     fallback.searchParams.set("next", safeNext);
     return NextResponse.redirect(fallback.toString());
