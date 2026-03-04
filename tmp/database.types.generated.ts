@@ -1359,6 +1359,7 @@ export type Database = {
           settings_i18n: Json
           settings_layout: Json
           slug: string
+          status: Database["public"]["Enums"]["catalog_status"]
           tags: string[] | null
         }
         Insert: {
@@ -1375,6 +1376,7 @@ export type Database = {
           settings_i18n?: Json
           settings_layout?: Json
           slug: string
+          status?: Database["public"]["Enums"]["catalog_status"]
           tags?: string[] | null
         }
         Update: {
@@ -1391,6 +1393,7 @@ export type Database = {
           settings_i18n?: Json
           settings_layout?: Json
           slug?: string
+          status?: Database["public"]["Enums"]["catalog_status"]
           tags?: string[] | null
         }
         Relationships: [
@@ -1402,6 +1405,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      faq: {
+        Row: {
+          answer: string
+          category: string | null
+          created_at: string
+          embedding: unknown
+          fts: unknown
+          id: string
+          is_active: boolean
+          question: string
+          updated_at: string
+        }
+        Insert: {
+          answer: string
+          category?: string | null
+          created_at?: string
+          embedding?: unknown
+          fts?: unknown
+          id?: string
+          is_active?: boolean
+          question: string
+          updated_at?: string
+        }
+        Update: {
+          answer?: string
+          category?: string | null
+          created_at?: string
+          embedding?: unknown
+          fts?: unknown
+          id?: string
+          is_active?: boolean
+          question?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       item_media: {
         Row: {
@@ -1612,6 +1651,7 @@ export type Database = {
           country_iso2: string | null
           created_at: string
           id: string
+          logo_path: string | null
           name: string
           slug: string
           updated_at: string
@@ -1620,6 +1660,7 @@ export type Database = {
           country_iso2?: string | null
           created_at?: string
           id?: string
+          logo_path?: string | null
           name: string
           slug: string
           updated_at?: string
@@ -1628,6 +1669,7 @@ export type Database = {
           country_iso2?: string | null
           created_at?: string
           id?: string
+          logo_path?: string | null
           name?: string
           slug?: string
           updated_at?: string
@@ -1691,6 +1733,8 @@ export type Database = {
     }
     Functions: {
       ack_embedding_job: { Args: { p_job_id: number }; Returns: undefined }
+      catalog_is_public: { Args: { _catalog_id: string }; Returns: boolean }
+      catalog_org_id: { Args: { _catalog_id: string }; Returns: string }
       catalog_search: {
         Args: {
           p_catalog_id?: string
@@ -1760,6 +1804,10 @@ export type Database = {
         Args: { p_item_id: string }
         Returns: undefined
       }
+      is_org_role: {
+        Args: { _org_id: string; _roles?: string[] }
+        Returns: boolean
+      }
       log_search: {
         Args: {
           p_catalog_id: string
@@ -1773,6 +1821,16 @@ export type Database = {
         Returns: undefined
       }
       search_expand_query: { Args: { q: string }; Returns: string }
+      search_faq: {
+        Args: { p_limit?: number; p_query: string; p_query_embedding?: unknown }
+        Returns: {
+          answer: string
+          category: string
+          id: string
+          question: string
+          score: number
+        }[]
+      }
       search_normalize: { Args: { q: string }; Returns: string }
       search_simple_translit: { Args: { q: string }; Returns: string }
       set_catalog_search_doc_embedding: {
@@ -1790,6 +1848,7 @@ export type Database = {
         | "DONATION"
         | "ONLINE_SERVICE"
         | "ONLINE_MEMBERSHIP"
+      catalog_status: "draft" | "published" | "suspended"
       item_media_kind: "image" | "video"
       role: "owner" | "member" | "admin"
     }
@@ -1935,6 +1994,7 @@ export const Constants = {
         "ONLINE_SERVICE",
         "ONLINE_MEMBERSHIP",
       ],
+      catalog_status: ["draft", "published", "suspended"],
       item_media_kind: ["image", "video"],
       role: ["owner", "member", "admin"],
     },

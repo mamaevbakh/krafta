@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 
-export async function getDefaultOrgSlug() {
+export async function getDefaultOrgSlug(): Promise<string | null> {
   const supabase = await createClient();
 
   const { data } = await supabase
@@ -10,11 +10,10 @@ export async function getDefaultOrgSlug() {
     .limit(1)
     .maybeSingle();
 
-  // If nothing in DB, fall back to a known slug
-  return data?.slug ?? "default-org";
+  return data?.slug ?? null;
 }
 
-export async function getDefaultCatalogSlug(orgSlug: string) {
+export async function getDefaultCatalogSlug(orgSlug: string): Promise<string | null> {
   const supabase = await createClient();
 
   const { data } = await supabase
@@ -25,6 +24,5 @@ export async function getDefaultCatalogSlug(orgSlug: string) {
     .limit(1)
     .maybeSingle();
 
-  // If no catalog for org, fall back to a known slug
-  return data?.slug ?? "default-catalog";
+  return data?.slug ?? null;
 }

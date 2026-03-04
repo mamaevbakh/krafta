@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
 import { DashboardNavbar } from "@/components/dashboard/dashboard-navbar";
 import {
   getOrgCatalogSummaries,
@@ -11,6 +12,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { CatalogSwitcherSkeleton } from "@/components/dashboard/catalog-switcher";
+import type { OrgOption } from "@/components/dashboard/org-switcher";
+import { OrgSwitcherSkeleton } from "@/components/dashboard/org-switcher";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
 
 type CatalogLayoutProps = {
@@ -44,6 +47,31 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
     .select("id")
     .eq("slug", orgSlug)
     .maybeSingle();
+  if (!orgRecord?.id) {
+    notFound();
+  }
+
+  const { data: catalogRecord } = await supabase
+    .from("catalogs")
+    .select("id")
+    .eq("org_id", orgRecord.id)
+    .eq("slug", catalogSlug)
+    .maybeSingle();
+  if (!catalogRecord?.id) {
+    notFound();
+  }
+
+  const { data: orgOptionsRaw } = await supabase
+    .from("organizations")
+    .select("id, slug, name, logo_path")
+    .order("name", { ascending: true });
+  const orgs: OrgOption[] = (orgOptionsRaw ?? []).map((org) => ({
+    id: org.id,
+    slug: org.slug,
+    name: org.name,
+    logo_path: org.logo_path,
+  }));
+
   const entitlement = orgRecord
     ? await getOrgBillingEntitlement(orgRecord.id)
     : null;
@@ -59,6 +87,7 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
       <DashboardNavbar
         orgSlug={orgSlug}
         catalogSlug={catalogSlug}
+        orgs={orgs}
         catalogs={catalogs}
         user={user}
         showUpgradeCta={!entitlement || entitlement.status === "locked"}
@@ -76,6 +105,7 @@ function CatalogLayoutFallback() {
           <h1 className="h-full flex items-center text-2xl">
             <BrandWordmark className="text-2xl" />
           </h1>
+          <OrgSwitcherSkeleton />
           <CatalogSwitcherSkeleton />
         </nav>
       </header>

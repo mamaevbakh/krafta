@@ -54,55 +54,49 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     is_primary: boolean;
   }[] = [];
   if (catalog?.id) {
-    const { data } = await supabase
-      .from("items")
-      .select(
-        "id, catalog_id, category_id, product_type, name, slug, position, price_cents, description, image_path, image_alt, metadata, is_active, created_at, updated_at",
-      )
-      .eq("catalog_id", catalog.id)
-      .order("position", { ascending: true });
+    const [itemsResponse, categoriesResponse, localesResponse] =
+      await Promise.all([
+        supabase
+          .from("items")
+          .select(
+            "id, catalog_id, category_id, product_type, name, slug, position, price_cents, description, image_path, image_alt, metadata, is_active, created_at, updated_at",
+          )
+          .eq("catalog_id", catalog.id)
+          .order("position", { ascending: true }),
+        supabase
+          .from("catalog_categories")
+          .select("id, catalog_id, name, slug, position, is_active, created_at")
+          .eq("catalog_id", catalog.id)
+          .order("position", { ascending: true }),
+        supabase
+          .from("catalog_locales")
+          .select("id, locale, is_default, is_enabled, sort_order")
+          .eq("catalog_id", catalog.id)
+          .order("sort_order", { ascending: true }),
+      ]);
 
-    items = (data ?? []) as Item[];
-
-    const { data: categoryData } = await supabase
-      .from("catalog_categories")
-      .select("id, catalog_id, name, slug, position, is_active, created_at")
-      .eq("catalog_id", catalog.id)
-      .order("position", { ascending: true });
-
-    categories = (categoryData ?? []) as CatalogCategory[];
-
-    const { data: localeData } = await supabase
-      .from("catalog_locales")
-      .select("id, locale, is_default, is_enabled, sort_order")
-      .eq("catalog_id", catalog.id)
-      .order("sort_order", { ascending: true });
-
-    locales = localeData ?? [];
+    items = (itemsResponse.data ?? []) as Item[];
+    categories = (categoriesResponse.data ?? []) as CatalogCategory[];
+    locales = localesResponse.data ?? [];
 
     if (items.length) {
-      const { data: translationData } = await supabase
-        .from("item_translations")
-        .select("id, item_id, locale, name, description, image_alt")
-        .in(
-          "item_id",
-          items.map((item) => item.id),
-        );
+      const itemIds = items.map((item) => item.id);
+      const [translationsResponse, mediaResponse] = await Promise.all([
+        supabase
+          .from("item_translations")
+          .select("id, item_id, locale, name, description, image_alt")
+          .in("item_id", itemIds),
+        supabase
+          .from("item_media")
+          .select(
+            "id, item_id, bucket, storage_path, mime_type, kind, title, alt, position, is_primary",
+          )
+          .in("item_id", itemIds)
+          .order("position", { ascending: true }),
+      ]);
 
-      translations = translationData ?? [];
-
-      const { data: mediaData } = await supabase
-        .from("item_media")
-        .select(
-          "id, item_id, bucket, storage_path, mime_type, kind, title, alt, position, is_primary",
-        )
-        .in(
-          "item_id",
-          items.map((item) => item.id),
-        )
-        .order("position", { ascending: true });
-
-      media = mediaData ?? [];
+      translations = translationsResponse.data ?? [];
+      media = mediaResponse.data ?? [];
     }
   }
 
