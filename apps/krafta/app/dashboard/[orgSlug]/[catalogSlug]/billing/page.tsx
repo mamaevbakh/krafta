@@ -362,7 +362,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
                   ].join(" ")}
                 >
                   {isCurrentPlan ? (
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 via-emerald-400 to-blue-500" />
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-linear-to-r from-emerald-500 via-emerald-400 to-blue-500" />
                   ) : null}
 
                   <div className="flex h-full flex-col gap-4">

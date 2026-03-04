@@ -9,6 +9,7 @@
     "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
     "dev:krafta": "pnpm --filter krafta dev",
     "dev:krafta-pay": "pnpm --filter krafta-pay dev",
+    "dev:krafta-auth": "pnpm --filter krafta-auth dev",
     "build": "pnpm -r build",
     "build:krafta": "pnpm --filter krafta build",
     "start:krafta": "pnpm --filter krafta start",

@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@krafta/auth-sso": "workspace:*",
     "@krafta/supabase": "workspace:*",
     "@krafta/theme": "workspace:*",
     "@radix-ui/react-aspect-ratio": "^1.1.8",

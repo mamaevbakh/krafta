@@ -5,6 +5,7 @@ import {
   getRequestOrigin,
   normalizePayNext,
 } from "@/lib/auth-redirect";
+import { hasSsoRuntimeConfig, isSsoEnabled } from "@/lib/sso";
 
 export async function proxy(request: NextRequest) {
   const { response: sessionResponse, user } = await updateSession(request);
@@ -18,11 +19,16 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (pathname.startsWith("/dashboard") && !user) {
+    if (isSsoEnabled() && hasSsoRuntimeConfig()) {
+      const ssoStart = request.nextUrl.clone();
+      ssoStart.pathname = "/auth/sso/start";
+      ssoStart.searchParams.set("next", `${pathname}${search}`);
+      return applySessionCookies(NextResponse.redirect(ssoStart));
+    }
+
     const origin = getRequestOrigin(request.headers);
     const payTarget = `${origin}${pathname}${search}`;
-    return applySessionCookies(
-      NextResponse.redirect(buildKraftaLoginUrl(payTarget)),
-    );
+    return applySessionCookies(NextResponse.redirect(buildKraftaLoginUrl(payTarget)));
   }
 
   if ((pathname.startsWith("/login") || pathname.startsWith("/signup")) && user) {
@@ -43,4 +49,3 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2)$|api).*)",
   ],
 };
-

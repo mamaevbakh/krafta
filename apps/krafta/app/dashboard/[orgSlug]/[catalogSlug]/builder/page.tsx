@@ -14,8 +14,8 @@ import type {
   SectionVariant,
 } from "@/lib/catalogs/settings/layout";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
-import { getCatalogBySlug } from "@/lib/catalogs/data";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
+import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
 const HEADER_LABELS: Record<HeaderVariant, string> = {
@@ -62,7 +62,22 @@ export default async function CatalogBuilderPage({
   params,
 }: BuilderPageProps) {
   const { catalogSlug, orgSlug } = await params;
-  const catalog = await getCatalogBySlug(catalogSlug);
+  const supabase = await createClient();
+  const { data: orgRecord } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("slug", orgSlug)
+    .maybeSingle();
+  const { data: catalog } = orgRecord?.id
+    ? await supabase
+        .from("catalogs")
+        .select(
+          "id,slug,name,description,logo_path,org_id,tags,settings_layout,settings_currency",
+        )
+        .eq("org_id", orgRecord.id)
+        .eq("slug", catalogSlug)
+        .maybeSingle()
+    : { data: null };
   if (!catalog) {
     return (
       <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
