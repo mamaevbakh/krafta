@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { GeistSans } from "geist/font/sans";
 import localFont from "next/font/local";
 import "./globals.css";
@@ -7,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
 import { HapticsProvider } from "@/components/krafta/haptics-provider";
+import { Spinner } from "@/components/ui/spinner";
 
 const KraftaBrandFont = localFont({
   src: "../public/fonts/helveticaneue-bold.woff2",
@@ -34,15 +36,22 @@ export default function RootLayout({
       >
         <SpeedInsights />
         <Analytics />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          
+        <Suspense
+          fallback={
+            <div className="min-h-svh bg-background flex items-center justify-center">
+              <Spinner className="size-6 text-muted-foreground" />
+            </div>
+          }
         >
-        <HapticsProvider />
-        {children}
-        </ThemeProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+          >
+            <HapticsProvider />
+            {children}
+          </ThemeProvider>
+        </Suspense>
         <Toaster position="top-center" />
       </body>
     </html>
