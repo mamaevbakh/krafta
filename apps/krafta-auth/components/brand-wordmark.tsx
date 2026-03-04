@@ -1,17 +1,22 @@
-import type { HTMLAttributes } from "react";
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-type BrandWordmarkProps = HTMLAttributes<HTMLSpanElement> & {
+type BrandWordmarkProps = React.HTMLAttributes<HTMLSpanElement> & {
   text?: string;
 };
 
 export function BrandWordmark({
   text = "Krafta",
-  className = "",
+  className,
   ...props
 }: BrandWordmarkProps) {
   return (
     <span
-      className={`font-semibold tracking-tight text-black dark:text-white ${className}`.trim()}
+      className={cn(
+        "font-brand font-semibold tracking-tight",
+        "text-black dark:text-white",
+        className,
+      )}
       {...props}
     >
       {text}

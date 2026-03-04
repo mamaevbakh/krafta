@@ -10,22 +10,13 @@ import { createClient } from "@/lib/supabase/server";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string | string[]; error?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[] }>;
 }) {
   const sp = await searchParams;
   const headersList = await headers();
   const origin = getRequestOrigin(headersList);
   const rawNext = Array.isArray(sp.next) ? sp.next[0] : sp.next;
   const next = normalizeNextPath(rawNext, origin, "/");
-  const rawError = Array.isArray(sp.error) ? sp.error[0] : sp.error;
-  let decodedError: string | null = null;
-  if (rawError) {
-    try {
-      decodedError = decodeURIComponent(rawError);
-    } catch {
-      decodedError = rawError;
-    }
-  }
 
   const supabase = await createClient();
   const { user } = await getUserSafely(supabase);
@@ -39,7 +30,7 @@ export default async function LoginPage({
         <Link href="/" className="flex items-center gap-2 self-center font-medium">
           <BrandWordmark className="text-3xl" />
         </Link>
-        <LoginForm next={next} initialError={decodedError} />
+        <LoginForm next={next} />
       </div>
     </div>
   );
