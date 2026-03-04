@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { getRequestOrigin } from "@/lib/auth/redirect";
+import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { createKraftaPayCustomerPortalSession } from "@/lib/billing/pay-client";
 
 function resolveAppBaseUrl(origin: string) {
@@ -31,9 +32,10 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { user: authUser, authError } = await getUserSafely(supabase);
   if (authError || !authUser) {
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("next", `/dashboard/${orgSlug}/${catalogSlug}/billing`);
-    return NextResponse.redirect(loginUrl, { status: 303 });
+    const next = `/dashboard/${orgSlug}/${catalogSlug}/billing`;
+    const entryUrl = new URL(hasSsoRuntimeConfig() ? "/auth/sso/start" : "/login", req.url);
+    entryUrl.searchParams.set("next", next);
+    return NextResponse.redirect(entryUrl, { status: 303 });
   }
 
   const { data: membership, error: membershipErr } = await supabase
@@ -78,4 +80,3 @@ export async function POST(req: Request) {
     return redirectToBilling(req, orgSlug, catalogSlug, message);
   }
 }
-

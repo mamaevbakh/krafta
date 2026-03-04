@@ -19,7 +19,13 @@ export async function HomeAuthCta() {
 
   return (
     <Button asChild variant="outline">
-      <Link href={user ? "/dashboard" : "/login"}>
+      <Link
+        href={
+          user
+            ? "/dashboard"
+            : { pathname: "/auth/sso/start", query: { next: "/dashboard" } }
+        }
+      >
         {user ? "View Dashboard" : "Sign In"}
       </Link>
     </Button>

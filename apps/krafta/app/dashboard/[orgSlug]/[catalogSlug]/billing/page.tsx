@@ -5,6 +5,7 @@ import { getUserSafely } from "@krafta/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getRequestOrigin } from "@/lib/auth/redirect";
+import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
 import {
@@ -100,7 +101,11 @@ async function startUpgradeAction(formData: FormData) {
   const supabase = await createClient();
   const { user: authUser, authError } = await getUserSafely(supabase);
   if (authError || !authUser) {
-    redirect(`/login?next=/dashboard/${orgSlug}/${catalogSlug}/billing`);
+    const next = `/dashboard/${orgSlug}/${catalogSlug}/billing`;
+    if (hasSsoRuntimeConfig()) {
+      redirect(`/auth/sso/start?next=${encodeURIComponent(next)}`);
+    }
+    redirect(`/login?next=${encodeURIComponent(next)}`);
   }
 
   const { data: membership, error: membershipErr } = await supabase
