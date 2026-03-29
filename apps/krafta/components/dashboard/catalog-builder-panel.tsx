@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -10,7 +10,6 @@ import {
   Palette,
   PanelsTopLeft,
   ReceiptText,
-  Sparkles,
 } from "lucide-react";
 import type {
   CatalogLayoutOverride,
@@ -19,13 +18,13 @@ import type {
 } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { toast } from "sonner";
 import { hapticError, hapticSuccess } from "@/lib/haptics-client";
 import { saveCatalogLayout } from "@/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions";
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { cn } from "@/lib/utils";
 
 type OptionConfig<T extends string> = {
   label: string;
@@ -37,7 +36,15 @@ type AspectPreset = {
   height: number;
 };
 
-type BuilderFocus = "all" | "structure" | "cards" | "brand" | "pricing";
+type BuilderFocus = "structure" | "cards" | "brand" | "pricing";
+
+type BrandTokenKey =
+  | "pageBackground"
+  | "cardSurface"
+  | "mutedSurface"
+  | "primaryText"
+  | "secondaryText"
+  | "border";
 
 const COMMON_ASPECT_RATIOS: AspectPreset[] = [
   { width: 1, height: 1 },
@@ -62,36 +69,110 @@ const BUILDER_FOCUS_OPTIONS: Array<{
   icon: typeof PanelsTopLeft;
 }> = [
   {
-    value: "all",
-    label: "All",
-    description: "See every control",
-    icon: Sparkles,
-  },
-  {
     value: "structure",
     label: "Structure",
-    description: "Header, sections, nav",
+    description: "Header, sections, and navigation",
     icon: PanelsTopLeft,
   },
   {
     value: "cards",
     label: "Cards",
-    description: "Grid + item presentation",
+    description: "Grid rhythm and item presentation",
     icon: Layers2,
   },
   {
     value: "brand",
     label: "Brand",
-    description: "Header media and polish",
+    description: "Visual tokens and header polish",
     icon: Palette,
   },
   {
     value: "pricing",
     label: "Pricing",
-    description: "Currency formatting",
+    description: "Currency formatting and readability",
     icon: ReceiptText,
   },
 ];
+
+const COMPACT_HEADER_LABELS: Record<string, string> = {
+  "header-basic": "Basic",
+  "header-basic-free-logo": "Free Logo",
+  "header-center": "Center",
+  "header-hero": "Hero",
+};
+
+const NAV_DESCRIPTIONS: Record<string, string> = {
+  "nav-tabs": "Classic category pills",
+  "nav-tabs-motion": "Animated active pill",
+  "nav-tabs-dashboard": "Underline treatment, closer to Studio",
+  "nav-none": "No category bar",
+};
+
+const ITEM_DETAIL_LABELS: Record<string, string> = {
+  "item-sheet": "Sheet",
+  "item-fullscreen": "Fullscreen",
+};
+
+const BRAND_TOKEN_DEFAULTS: Record<BrandTokenKey, string> = {
+  pageBackground: "#ffffff",
+  cardSurface: "#ffffff",
+  mutedSurface: "#f4f4f5",
+  primaryText: "#18181b",
+  secondaryText: "#71717a",
+  border: "#e4e4e7",
+};
+
+const BRAND_TOKEN_CONFIG: Array<{
+  key: BrandTokenKey;
+  label: string;
+  description: string;
+  mapsTo: string;
+}> = [
+  {
+    key: "pageBackground",
+    label: "Page background",
+    description: "Base catalog canvas color.",
+    mapsTo: "Maps to `background`",
+  },
+  {
+    key: "cardSurface",
+    label: "Card surface",
+    description: "Primary product card body.",
+    mapsTo: "Maps to `card`",
+  },
+  {
+    key: "mutedSurface",
+    label: "Muted surface",
+    description: "Used for quiet surfaces and image placeholders.",
+    mapsTo: "Maps to `muted`",
+  },
+  {
+    key: "primaryText",
+    label: "Primary text",
+    description: "Main reading color for titles and prices.",
+    mapsTo: "Maps to `foreground` / `card-foreground`",
+  },
+  {
+    key: "secondaryText",
+    label: "Secondary text",
+    description: "Used for helper copy and metadata.",
+    mapsTo: "Maps to `muted-foreground`",
+  },
+  {
+    key: "border",
+    label: "Border",
+    description: "Default stroke around cards and controls.",
+    mapsTo: "Maps to `border`",
+  },
+];
+
+const CARD_SURFACE_MAP: Record<string, string[]> = {
+  "card-big-photo": ["bg-card", "text-card-foreground", "bg-muted image slot", "border"],
+  "card-default": ["bg-card", "text-card-foreground", "border", "muted metadata"],
+  "card-photo-row": ["bg-card", "text-card-foreground", "wide image rail", "border"],
+  "card-minimal": ["bg-card", "text-card-foreground", "subtle border", "quiet metadata"],
+  "card-glass-blur": ["bg-card/80", "text-card-foreground", "backdrop blur", "glow edge"],
+};
 
 function getAspectInputs(
   ratio: number,
@@ -118,6 +199,25 @@ function getAspectInputs(
     width: Number(safeRatio.toFixed(2)),
     height: 1,
   };
+}
+
+function formatSamplePrice(amount: number, settings: CurrencySettings): string {
+  const precision = settings.showDecimals ? 2 : 0;
+  const fixed = Math.abs(amount).toFixed(precision);
+  const [integerPart, decimalPart] = fixed.split(".");
+  const groupedInteger = integerPart.replace(
+    /\B(?=(\d{3})+(?!\d))/g,
+    settings.thousandSeparator,
+  );
+
+  const numberText = decimalPart
+    ? `${groupedInteger}${settings.decimalSeparator}${decimalPart}`
+    : groupedInteger;
+  const signedText = amount < 0 ? `-${numberText}` : numberText;
+
+  return settings.labelPosition === "prefix"
+    ? `${settings.label}${signedText}`
+    : `${signedText} ${settings.label}`.trim();
 }
 
 type BuilderPanelProps = {
@@ -162,48 +262,28 @@ export function CatalogBuilderPanel({
     [initialLayout.header.basicFreeLogo.logoAspectRatio],
   );
 
-  const [headerVariant, setHeaderVariant] = useState(
-    initialLayout.headerVariant,
-  );
-  const [sectionVariant, setSectionVariant] = useState(
-    initialLayout.sectionVariant,
-  );
-  const [itemCardVariant, setItemCardVariant] = useState(
-    initialLayout.itemCardVariant,
-  );
+  const [headerVariant, setHeaderVariant] = useState(initialLayout.headerVariant);
+  const [sectionVariant, setSectionVariant] = useState(initialLayout.sectionVariant);
+  const [itemCardVariant, setItemCardVariant] = useState(initialLayout.itemCardVariant);
   const [categoryNavVariant, setCategoryNavVariant] = useState(
     initialLayout.categoryNavVariant,
   );
   const [itemDetailVariant, setItemDetailVariant] = useState(
     initialLayout.itemDetailVariant,
   );
-  const [itemCardColumns, setItemCardColumns] = useState(
-    initialLayout.itemCard.columns,
-  );
-  const [aspectWidth, setAspectWidth] = useState(
-    initialAspectInputs.width,
-  );
-  const [aspectHeight, setAspectHeight] = useState(
-    initialAspectInputs.height,
-  );
-  const [currencyCode, setCurrencyCode] = useState(
-    initialCurrency.defaultCurrency,
-  );
-  const [currencyLabel, setCurrencyLabel] = useState(
-    initialCurrency.label,
-  );
+  const [itemCardColumns, setItemCardColumns] = useState(initialLayout.itemCard.columns);
+  const [aspectWidth, setAspectWidth] = useState(initialAspectInputs.width);
+  const [aspectHeight, setAspectHeight] = useState(initialAspectInputs.height);
+  const [currencyCode, setCurrencyCode] = useState(initialCurrency.defaultCurrency);
+  const [currencyLabel, setCurrencyLabel] = useState(initialCurrency.label);
   const [thousandSeparator, setThousandSeparator] = useState(
     initialCurrency.thousandSeparator,
   );
   const [decimalSeparator, setDecimalSeparator] = useState(
     initialCurrency.decimalSeparator,
   );
-  const [showDecimals, setShowDecimals] = useState(
-    initialCurrency.showDecimals,
-  );
-  const [labelPosition, setLabelPosition] = useState(
-    initialCurrency.labelPosition,
-  );
+  const [showDecimals, setShowDecimals] = useState(initialCurrency.showDecimals);
+  const [labelPosition, setLabelPosition] = useState(initialCurrency.labelPosition);
   const [showHeaderLogo, setShowHeaderLogo] = useState(
     initialLayout.header.basicFreeLogo.showLogo,
   );
@@ -240,12 +320,13 @@ export function CatalogBuilderPanel({
   const [headerBackgroundColorDark, setHeaderBackgroundColorDark] = useState(
     initialLayout.header.basicFreeLogo.backgroundColorDark,
   );
+  const [brandTokens, setBrandTokens] = useState(BRAND_TOKEN_DEFAULTS);
   const [isUploadingHeaderBannerLight, setIsUploadingHeaderBannerLight] =
     useState(false);
   const [isUploadingHeaderBannerDark, setIsUploadingHeaderBannerDark] =
     useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [builderFocus, setBuilderFocus] = useState<BuilderFocus>("all");
+  const [builderFocus, setBuilderFocus] = useState<BuilderFocus>("structure");
   const [lastSavedSignature, setLastSavedSignature] = useState<string | null>(null);
   const headerBannerLightInputRef = useRef<HTMLInputElement>(null);
   const headerBannerDarkInputRef = useRef<HTMLInputElement>(null);
@@ -264,16 +345,12 @@ export function CatalogBuilderPanel({
   );
 
   const aspectRatio = useMemo(() => {
-    const safeWidth =
-      Number.isFinite(aspectWidth) && aspectWidth > 0
-        ? aspectWidth
-        : 1;
+    const safeWidth = Number.isFinite(aspectWidth) && aspectWidth > 0 ? aspectWidth : 1;
     const safeHeight =
-      Number.isFinite(aspectHeight) && aspectHeight > 0
-        ? aspectHeight
-        : 1;
+      Number.isFinite(aspectHeight) && aspectHeight > 0 ? aspectHeight : 1;
     return safeWidth / safeHeight;
   }, [aspectWidth, aspectHeight]);
+
   const headerLogoAspectRatio = useMemo(() => {
     const safeWidth =
       Number.isFinite(headerLogoAspectWidth) && headerLogoAspectWidth > 0
@@ -287,32 +364,33 @@ export function CatalogBuilderPanel({
   }, [headerLogoAspectWidth, headerLogoAspectHeight]);
 
   const layoutOverrides = useMemo(
-    () => ({
-      headerVariant,
-      sectionVariant,
-      itemCardVariant,
-      categoryNavVariant,
-      itemDetailVariant,
-      itemCard: {
-        columns: itemCardColumns,
-        aspectRatio,
-      },
-      header: {
-        basicFreeLogo: {
-          showLogo: showHeaderLogo,
-          showTitle: showHeaderTitle,
-          showDescription: showHeaderDescription,
-          showTags: showHeaderTags,
-          logoFullWidth: headerLogoFullWidth,
-          logoAspectRatio: headerLogoAspectRatio,
-          logoCornerRadius: headerLogoCornerRadius,
-          bannerLightPath: headerBannerLightPath.trim() || null,
-          bannerDarkPath: headerBannerDarkPath.trim() || null,
-          backgroundColorLight: headerBackgroundColorLight.trim() || "transparent",
-          backgroundColorDark: headerBackgroundColorDark.trim() || "transparent",
+    () =>
+      ({
+        headerVariant,
+        sectionVariant,
+        itemCardVariant,
+        categoryNavVariant,
+        itemDetailVariant,
+        itemCard: {
+          columns: itemCardColumns,
+          aspectRatio,
         },
-      },
-    }),
+        header: {
+          basicFreeLogo: {
+            showLogo: showHeaderLogo,
+            showTitle: showHeaderTitle,
+            showDescription: showHeaderDescription,
+            showTags: showHeaderTags,
+            logoFullWidth: headerLogoFullWidth,
+            logoAspectRatio: headerLogoAspectRatio,
+            logoCornerRadius: headerLogoCornerRadius,
+            bannerLightPath: headerBannerLightPath.trim() || null,
+            bannerDarkPath: headerBannerDarkPath.trim() || null,
+            backgroundColorLight: headerBackgroundColorLight.trim() || "transparent",
+            backgroundColorDark: headerBackgroundColorDark.trim() || "transparent",
+          },
+        },
+      }) satisfies CatalogLayoutOverride,
     [
       headerVariant,
       sectionVariant,
@@ -333,7 +411,8 @@ export function CatalogBuilderPanel({
       headerBackgroundColorLight,
       headerBackgroundColorDark,
     ],
-  ) satisfies CatalogLayoutOverride;
+  );
+
   const currencyOverrides = useMemo(
     () => ({
       defaultCurrency: currencyCode,
@@ -352,35 +431,39 @@ export function CatalogBuilderPanel({
       labelPosition,
     ],
   );
+
   const initialLayoutOverride = useMemo(
-    () => ({
-      headerVariant: initialLayout.headerVariant,
-      sectionVariant: initialLayout.sectionVariant,
-      itemCardVariant: initialLayout.itemCardVariant,
-      categoryNavVariant: initialLayout.categoryNavVariant,
-      itemDetailVariant: initialLayout.itemDetailVariant,
-      itemCard: {
-        columns: initialLayout.itemCard.columns,
-        aspectRatio: initialLayout.itemCard.aspectRatio,
-      },
-      header: {
-        basicFreeLogo: {
-          showLogo: initialLayout.header.basicFreeLogo.showLogo,
-          showTitle: initialLayout.header.basicFreeLogo.showTitle,
-          showDescription: initialLayout.header.basicFreeLogo.showDescription,
-          showTags: initialLayout.header.basicFreeLogo.showTags,
-          logoFullWidth: initialLayout.header.basicFreeLogo.logoFullWidth,
-          logoAspectRatio: initialLayout.header.basicFreeLogo.logoAspectRatio,
-          logoCornerRadius: initialLayout.header.basicFreeLogo.logoCornerRadius,
-          bannerLightPath: initialLayout.header.basicFreeLogo.bannerLightPath,
-          bannerDarkPath: initialLayout.header.basicFreeLogo.bannerDarkPath,
-          backgroundColorLight: initialLayout.header.basicFreeLogo.backgroundColorLight,
-          backgroundColorDark: initialLayout.header.basicFreeLogo.backgroundColorDark,
+    () =>
+      ({
+        headerVariant: initialLayout.headerVariant,
+        sectionVariant: initialLayout.sectionVariant,
+        itemCardVariant: initialLayout.itemCardVariant,
+        categoryNavVariant: initialLayout.categoryNavVariant,
+        itemDetailVariant: initialLayout.itemDetailVariant,
+        itemCard: {
+          columns: initialLayout.itemCard.columns,
+          aspectRatio: initialLayout.itemCard.aspectRatio,
         },
-      },
-    }),
+        header: {
+          basicFreeLogo: {
+            showLogo: initialLayout.header.basicFreeLogo.showLogo,
+            showTitle: initialLayout.header.basicFreeLogo.showTitle,
+            showDescription: initialLayout.header.basicFreeLogo.showDescription,
+            showTags: initialLayout.header.basicFreeLogo.showTags,
+            logoFullWidth: initialLayout.header.basicFreeLogo.logoFullWidth,
+            logoAspectRatio: initialLayout.header.basicFreeLogo.logoAspectRatio,
+            logoCornerRadius: initialLayout.header.basicFreeLogo.logoCornerRadius,
+            bannerLightPath: initialLayout.header.basicFreeLogo.bannerLightPath,
+            bannerDarkPath: initialLayout.header.basicFreeLogo.bannerDarkPath,
+            backgroundColorLight:
+              initialLayout.header.basicFreeLogo.backgroundColorLight,
+            backgroundColorDark: initialLayout.header.basicFreeLogo.backgroundColorDark,
+          },
+        },
+      }) satisfies CatalogLayoutOverride,
     [initialLayout],
-  ) satisfies CatalogLayoutOverride;
+  );
+
   const initialCurrencyOverride = useMemo(
     () => ({
       defaultCurrency: initialCurrency.defaultCurrency,
@@ -392,6 +475,7 @@ export function CatalogBuilderPanel({
     }),
     [initialCurrency],
   );
+
   const currentSignature = useMemo(
     () =>
       JSON.stringify({
@@ -408,12 +492,17 @@ export function CatalogBuilderPanel({
       }),
     [initialLayoutOverride, initialCurrencyOverride],
   );
+
   const baselineSignature = lastSavedSignature ?? initialSignature;
   const hasUnsavedChanges = currentSignature !== baselineSignature;
-  const showStructureControls = builderFocus === "all" || builderFocus === "structure";
-  const showCardControls = builderFocus === "all" || builderFocus === "cards";
-  const showBrandControls = builderFocus === "all" || builderFocus === "brand";
-  const showPricingControls = builderFocus === "all" || builderFocus === "pricing";
+  const pricingSample = useMemo(
+    () => formatSamplePrice(19900, currencyOverrides),
+    [currencyOverrides],
+  );
+  const pricingSaleSample = useMemo(
+    () => formatSamplePrice(12500, currencyOverrides),
+    [currencyOverrides],
+  );
   const previewHref = useMemo(() => {
     const params = new URLSearchParams();
     params.set("preview", "1");
@@ -439,6 +528,7 @@ export function CatalogBuilderPanel({
     params.set("hflCorner", String(headerLogoCornerRadius));
     params.set("hflBgLight", headerBackgroundColorLight || "transparent");
     params.set("hflBgDark", headerBackgroundColorDark || "transparent");
+
     if (headerBannerLightPath.trim()) {
       params.set("hflBannerLight", headerBannerLightPath.trim());
     }
@@ -537,18 +627,13 @@ export function CatalogBuilderPanel({
     setIsSaving(false);
   };
 
-  const uploadHeaderBanner = async (
-    variant: "light" | "dark",
-    file: File,
-  ) => {
+  const uploadHeaderBanner = async (variant: "light" | "dark", file: File) => {
     const setUploading =
       variant === "light"
         ? setIsUploadingHeaderBannerLight
         : setIsUploadingHeaderBannerDark;
     const setPath =
-      variant === "light"
-        ? setHeaderBannerLightPath
-        : setHeaderBannerDarkPath;
+      variant === "light" ? setHeaderBannerLightPath : setHeaderBannerDarkPath;
     const currentPath =
       variant === "light" ? headerBannerLightPath : headerBannerDarkPath;
 
@@ -577,9 +662,7 @@ export function CatalogBuilderPanel({
       }
 
       setPath(data.bannerPath);
-      toast.success(
-        `${variant === "light" ? "Light" : "Dark"} banner uploaded`,
-      );
+      toast.success(`${variant === "light" ? "Light" : "Dark"} banner uploaded`);
       void hapticSuccess();
     } catch (error) {
       toast.error("Banner upload failed", {
@@ -590,9 +673,7 @@ export function CatalogBuilderPanel({
     } finally {
       setUploading(false);
       const inputRef =
-        variant === "light"
-          ? headerBannerLightInputRef
-          : headerBannerDarkInputRef;
+        variant === "light" ? headerBannerLightInputRef : headerBannerDarkInputRef;
       if (inputRef.current) {
         inputRef.current.value = "";
       }
@@ -600,803 +681,878 @@ export function CatalogBuilderPanel({
   };
 
   return (
-    <div className="mt-2 space-y-6">
-      <section className="relative overflow-hidden rounded-2xl border bg-background">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(34,197,94,0.12),transparent_42%),radial-gradient(circle_at_88%_14%,rgba(59,130,246,0.1),transparent_40%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent)]" />
-        <div className="relative p-5 md:p-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="rounded-full px-3 py-1">
-                  Catalog Studio
-                </Badge>
-                <Badge
-                  variant={hasUnsavedChanges ? "secondary" : "outline"}
-                  className="rounded-full px-3 py-1"
-                >
-                  {hasUnsavedChanges ? "Unsaved changes" : "All changes saved"}
-                </Badge>
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight md:text-[32px]">
-                  Shape the {catalogName} catalog experience
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                  Work in focused lanes instead of one long form. Start with structure,
-                  polish card presentation, then tune brand and pricing details.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-muted-foreground">
-                  Header: {headerOptions.find((option) => option.value === headerVariant)?.label}
-                </span>
-                <span className="rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-muted-foreground">
-                  Cards: {itemCardOptions.find((option) => option.value === itemCardVariant)?.label}
-                </span>
-                <span className="rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-muted-foreground">
-                  Nav: {navOptions.find((option) => option.value === categoryNavVariant)?.label}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                asChild
-              >
-                <Link
-                  href={previewHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open preview
-                  <ArrowUpRight className="size-4" />
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSave}
-                disabled={isSaving || !hasUnsavedChanges}
-                size="sm"
-              >
-                {isSaving ? "Saving..." : hasUnsavedChanges ? "Save changes" : "Saved"}
-              </Button>
-            </div>
+    <main className="w-full">
+      <div className="w-full border-b">
+        <div className="mx-auto flex h-30 max-w-312 items-center justify-between px-6">
+          <div className="space-y-1">
+            <h1 className="text-[32px] font-semibold tracking-tight">Studio</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <Button type="button" variant="outline" asChild>
+              <Link href={previewHref} target="_blank" rel="noreferrer">
+                Open preview
+                <ArrowUpRight className="size-4" />
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving || !hasUnsavedChanges}
+            >
+              {isSaving ? "Saving..." : hasUnsavedChanges ? "Save changes" : "Saved"}
+            </Button>
           </div>
         </div>
-      </section>
+      </div>
 
-      <div className="grid gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
-      <aside className="space-y-6 lg:sticky lg:top-6 lg:h-fit">
-        <section className="rounded-xl border bg-background p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold">Customization flow</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Filter the controls so people design one decision area at a time.
-              </p>
-            </div>
-            <Badge variant="outline" className="rounded-full">
-              Focus mode
-            </Badge>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {BUILDER_FOCUS_OPTIONS.map((focus) => {
-              const Icon = focus.icon;
-              const isActive = builderFocus === focus.value;
-              return (
-                <button
-                  key={focus.value}
-                  type="button"
-                  onClick={() => setBuilderFocus(focus.value)}
-                  className={[
-                    "rounded-lg border p-3 text-left transition",
-                    isActive
-                      ? "border-foreground bg-foreground text-background shadow-sm"
-                      : "border-border bg-background hover:border-foreground/40",
-                  ].join(" ")}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="size-4" />
-                    <span className="text-sm font-medium">{focus.label}</span>
-                  </div>
-                  <p
-                    className={[
-                      "mt-1 text-[11px]",
-                      isActive ? "text-background/80" : "text-muted-foreground",
-                    ].join(" ")}
-                  >
-                    {focus.description}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-4 rounded-lg border border-dashed border-border/70 bg-muted/20 p-3">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Suggested sequence
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Structure, Cards, Brand, then Pricing. Preview updates live while you
-              work, then save once when the composition feels right.
-            </p>
-          </div>
-        </section>
+      <div className="mx-auto max-w-312 px-6 py-8">
+      <div className="grid gap-6 xl:grid-cols-[384px_minmax(0,1fr)] xl:items-start">
+        <aside className="space-y-4 xl:sticky xl:top-6 xl:h-fit">
+          <StudioSectionSwitcher
+            builderFocus={builderFocus}
+            onChange={setBuilderFocus}
+          />
 
-        {showBrandControls && (
-          <>
-            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Brand
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Define the catalog&apos;s first impression and visual identity.
-              </p>
-            </section>
-            <OptionSection
-              title="Headers"
-              description="Top branding and catalog identity."
-              options={headerOptions}
-              selected={headerVariant}
-              onSelect={setHeaderVariant}
+          {builderFocus === "structure" ? (
+            <StructureInspector
+              headerOptions={headerOptions}
+              headerVariant={headerVariant}
+              onHeaderVariantChange={setHeaderVariant}
+              sectionOptions={sectionOptions}
+              sectionVariant={sectionVariant}
+              onSectionVariantChange={setSectionVariant}
+              navOptions={navOptions}
+              categoryNavVariant={categoryNavVariant}
+              onCategoryNavVariantChange={setCategoryNavVariant}
             />
-          </>
-        )}
+          ) : null}
 
-        {showBrandControls && headerVariant === "header-basic-free-logo" && (
-          <section className="rounded-lg border bg-background p-4">
-            <h2 className="text-sm font-semibold">Header: Free Logo Settings</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Tune visibility, logo framing, and themed media for this header.
-            </p>
-            <div className="mt-4 grid gap-4">
-              <div className="grid gap-3 rounded-md border border-border/70 p-3">
-                <h3 className="text-xs font-medium text-foreground">Visibility</h3>
-                <label className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={showHeaderLogo}
-                    onChange={(event) => setShowHeaderLogo(event.target.checked)}
-                    className="h-4 w-4 rounded border-border text-foreground"
-                  />
-                  Show logo
-                </label>
-                <label className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={showHeaderDescription}
-                    onChange={(event) =>
-                      setShowHeaderDescription(event.target.checked)
-                    }
-                    className="h-4 w-4 rounded border-border text-foreground"
-                  />
-                  Show description
-                </label>
-                <label className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={showHeaderTitle}
-                    onChange={(event) => setShowHeaderTitle(event.target.checked)}
-                    className="h-4 w-4 rounded border-border text-foreground"
-                  />
-                  Show title
-                </label>
-                <label className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={showHeaderTags}
-                    onChange={(event) => setShowHeaderTags(event.target.checked)}
-                    className="h-4 w-4 rounded border-border text-foreground"
-                  />
-                  Show tags
-                </label>
-              </div>
+          {builderFocus === "cards" ? (
+            <CardsInspector
+              itemCardOptions={itemCardOptions}
+              itemCardVariant={itemCardVariant}
+              onItemCardVariantChange={setItemCardVariant}
+              itemCardColumns={itemCardColumns}
+              onItemCardColumnsChange={setItemCardColumns}
+              aspectWidth={aspectWidth}
+              onAspectWidthChange={setAspectWidth}
+              aspectHeight={aspectHeight}
+              onAspectHeightChange={setAspectHeight}
+              itemDetailOptions={itemDetailOptions}
+              itemDetailVariant={itemDetailVariant}
+              onItemDetailVariantChange={setItemDetailVariant}
+              pricingSample={pricingSample}
+            />
+          ) : null}
 
-              <div
-                className={[
-                  "grid gap-3 rounded-md border border-border/70 p-3",
-                  showHeaderLogo ? "" : "opacity-60",
-                ].join(" ")}
+          {builderFocus === "brand" ? (
+            <BrandInspector
+              brandTokens={brandTokens}
+              onBrandTokenChange={(key, value) =>
+                setBrandTokens((current) => ({
+                  ...current,
+                  [key]: value,
+                }))
+              }
+              headerBackgroundColorLight={headerBackgroundColorLight}
+              onHeaderBackgroundColorLightChange={setHeaderBackgroundColorLight}
+              headerBackgroundColorDark={headerBackgroundColorDark}
+              onHeaderBackgroundColorDarkChange={setHeaderBackgroundColorDark}
+              headerLogoCornerRadius={headerLogoCornerRadius}
+              onHeaderLogoCornerRadiusChange={setHeaderLogoCornerRadius}
+              headerLogoAspectWidth={headerLogoAspectWidth}
+              onHeaderLogoAspectWidthChange={setHeaderLogoAspectWidth}
+              headerLogoAspectHeight={headerLogoAspectHeight}
+              onHeaderLogoAspectHeightChange={setHeaderLogoAspectHeight}
+              headerBannerLightPath={headerBannerLightPath}
+              onHeaderBannerLightPathChange={setHeaderBannerLightPath}
+              headerBannerDarkPath={headerBannerDarkPath}
+              onHeaderBannerDarkPathChange={setHeaderBannerDarkPath}
+              headerBannerLightPreviewUrl={headerBannerLightPreviewUrl}
+              headerBannerDarkPreviewUrl={headerBannerDarkPreviewUrl}
+              isUploadingHeaderBannerLight={isUploadingHeaderBannerLight}
+              isUploadingHeaderBannerDark={isUploadingHeaderBannerDark}
+              onUploadBanner={uploadHeaderBanner}
+              headerBannerLightInputRef={headerBannerLightInputRef}
+              headerBannerDarkInputRef={headerBannerDarkInputRef}
+              showHeaderLogo={showHeaderLogo}
+              onShowHeaderLogoChange={setShowHeaderLogo}
+              showHeaderTitle={showHeaderTitle}
+              onShowHeaderTitleChange={setShowHeaderTitle}
+              showHeaderDescription={showHeaderDescription}
+              onShowHeaderDescriptionChange={setShowHeaderDescription}
+              showHeaderTags={showHeaderTags}
+              onShowHeaderTagsChange={setShowHeaderTags}
+              headerLogoFullWidth={headerLogoFullWidth}
+              onHeaderLogoFullWidthChange={setHeaderLogoFullWidth}
+              headerLogoAspectRatio={headerLogoAspectRatio}
+              catalogLogoFallbackUrl={catalogLogoFallbackUrl}
+              catalogName={catalogName}
+            />
+          ) : null}
+
+          {builderFocus === "pricing" ? (
+            <PricingInspector
+              currencyCode={currencyCode}
+              onCurrencyCodeChange={setCurrencyCode}
+              currencyLabel={currencyLabel}
+              onCurrencyLabelChange={setCurrencyLabel}
+              labelPosition={labelPosition}
+              onLabelPositionChange={setLabelPosition}
+              showDecimals={showDecimals}
+              onShowDecimalsChange={setShowDecimals}
+              thousandSeparator={thousandSeparator}
+              onThousandSeparatorChange={setThousandSeparator}
+              decimalSeparator={decimalSeparator}
+              onDecimalSeparatorChange={setDecimalSeparator}
+              pricingSample={pricingSample}
+              pricingSaleSample={pricingSaleSample}
+            />
+          ) : null}
+        </aside>
+
+        <CatalogPreviewFrame
+          catalogSlug={catalogSlug}
+          layoutOverrides={layoutOverrides}
+          currencyOverrides={currencyOverrides}
+        />
+      </div>
+      </div>
+    </main>
+  );
+}
+
+function StudioSectionSwitcher({
+  builderFocus,
+  onChange,
+}: {
+  builderFocus: BuilderFocus;
+  onChange: (value: BuilderFocus) => void;
+}) {
+  return (
+    <StudioCard className="p-5">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">Studio sections</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Move across structure, cards, brand, and pricing without growing the
+          page into one long form.
+        </p>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {BUILDER_FOCUS_OPTIONS.map((focus) => {
+          const Icon = focus.icon;
+          const isActive = builderFocus === focus.value;
+          return (
+            <button
+              key={focus.value}
+              type="button"
+              onClick={() => onChange(focus.value)}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition",
+                isActive
+                  ? "border-foreground bg-foreground text-background shadow-sm"
+                  : "border-border bg-background hover:border-foreground/40 hover:text-foreground",
+              )}
+            >
+              <Icon className="size-4" />
+              <span>{focus.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </StudioCard>
+  );
+}
+
+function StructureInspector({
+  headerOptions,
+  headerVariant,
+  onHeaderVariantChange,
+  sectionOptions,
+  sectionVariant,
+  onSectionVariantChange,
+  navOptions,
+  categoryNavVariant,
+  onCategoryNavVariantChange,
+}: {
+  headerOptions: OptionConfig<CatalogLayoutSettings["headerVariant"]>[];
+  headerVariant: CatalogLayoutSettings["headerVariant"];
+  onHeaderVariantChange: (value: CatalogLayoutSettings["headerVariant"]) => void;
+  sectionOptions: OptionConfig<CatalogLayoutSettings["sectionVariant"]>[];
+  sectionVariant: CatalogLayoutSettings["sectionVariant"];
+  onSectionVariantChange: (
+    value: CatalogLayoutSettings["sectionVariant"],
+  ) => void;
+  navOptions: OptionConfig<CatalogLayoutSettings["categoryNavVariant"]>[];
+  categoryNavVariant: CatalogLayoutSettings["categoryNavVariant"];
+  onCategoryNavVariantChange: (
+    value: CatalogLayoutSettings["categoryNavVariant"],
+  ) => void;
+}) {
+  return (
+    <StudioCard>
+      <InspectorIntro
+        title="Structure"
+        description="Control how the catalog is arranged before people start reading items."
+      />
+
+      <SegmentedField
+        label="Header"
+        options={headerOptions.map((option) => ({
+          ...option,
+          label: COMPACT_HEADER_LABELS[option.value] ?? option.label,
+        }))}
+        selected={headerVariant}
+        onSelect={onHeaderVariantChange}
+      />
+
+      <SegmentedField
+        label="Section style"
+        options={sectionOptions}
+        selected={sectionVariant}
+        onSelect={onSectionVariantChange}
+      />
+
+      <div className="space-y-3">
+        <FieldLabel
+          label="Navigation"
+          hint="Choose how categories appear at the top of the public catalog."
+        />
+        <div className="space-y-2">
+          {navOptions.map((option) => {
+            const isActive = option.value === categoryNavVariant;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onCategoryNavVariantChange(option.value)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition",
+                  isActive
+                    ? "border-foreground bg-foreground text-background shadow-sm"
+                    : "border-border bg-background hover:border-foreground/30",
+                )}
               >
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-medium text-foreground">Logo frame</h3>
-                  {!showHeaderLogo && (
-                    <span className="text-[11px] text-muted-foreground">Logo hidden</span>
-                  )}
-                </div>
-                <label className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={headerLogoFullWidth}
-                    onChange={(event) => setHeaderLogoFullWidth(event.target.checked)}
-                    className="h-4 w-4 rounded border-border text-foreground"
-                  />
-                  Stretch logo edge-to-edge
-                </label>
-                <p className="text-[11px] text-muted-foreground">
-                  This expands the logo across the full header width.
-                </p>
-
-                <div className="grid gap-2 text-xs text-muted-foreground">
-                  <span>Aspect ratio</span>
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={headerLogoAspectWidth}
-                      onChange={(event) => {
-                        const nextValue = Number(event.target.value);
-                        if (!Number.isFinite(nextValue)) return;
-                        setHeaderLogoAspectWidth(Math.max(1, Math.round(nextValue)));
-                      }}
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    />
-                    <span className="text-xs text-muted-foreground">/</span>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={headerLogoAspectHeight}
-                      onChange={(event) => {
-                        const nextValue = Number(event.target.value);
-                        if (!Number.isFinite(nextValue)) return;
-                        setHeaderLogoAspectHeight(Math.max(1, Math.round(nextValue)));
-                      }}
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-5 gap-2">
-                    {LOGO_ASPECT_RATIOS.map((preset) => {
-                      const presetLabel = `${preset.width}:${preset.height}`;
-                      const isSelected =
-                        headerLogoAspectWidth === preset.width &&
-                        headerLogoAspectHeight === preset.height;
-                      return (
-                        <button
-                          key={presetLabel}
-                          type="button"
-                          onClick={() => {
-                            setHeaderLogoAspectWidth(preset.width);
-                            setHeaderLogoAspectHeight(preset.height);
-                          }}
-                          className={[
-                            "rounded-md border px-2 py-1 text-xs",
-                            isSelected
-                              ? "border-foreground bg-foreground text-background"
-                              : "border-border text-foreground hover:border-foreground",
-                          ].join(" ")}
-                        >
-                          {presetLabel}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <span className="text-[11px] text-muted-foreground">
-                    Computed ratio: {headerLogoAspectRatio.toFixed(3)}
-                  </span>
-                </div>
-
-                <label className="grid gap-2 text-xs text-muted-foreground">
-                  Corner radius (px)
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={headerLogoCornerRadius}
-                    onChange={(event) => {
-                      const nextValue = Number(event.target.value);
-                      if (!Number.isFinite(nextValue)) return;
-                      setHeaderLogoCornerRadius(Math.max(0, Math.round(nextValue)));
-                    }}
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                </label>
-
-                <div className="grid gap-2 text-xs text-muted-foreground">
-                  <span>Fallback preview (original catalog logo)</span>
-                  <div className="w-full max-w-[220px] overflow-hidden rounded-md border border-border/70 bg-muted/20">
-                    <AspectRatio
-                      ratio={Math.max(0.1, headerLogoAspectRatio)}
-                      className="overflow-hidden"
-                      style={{
-                        borderRadius: `${Math.max(0, headerLogoCornerRadius)}px`,
-                      }}
-                    >
-                      {catalogLogoFallbackUrl ? (
-                        <Image
-                          src={catalogLogoFallbackUrl}
-                          alt={`${catalogName} original logo`}
-                          fill
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] text-muted-foreground">
-                          No catalog logo in Settings yet
-                        </div>
-                      )}
-                    </AspectRatio>
-                  </div>
-                  <span className="text-[11px] text-muted-foreground">
-                    This header uses the catalog logo from Settings as its base image.
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid gap-3 rounded-md border border-border/70 p-3">
-                <h3 className="text-xs font-medium text-foreground">Banner images</h3>
-                <div className="grid gap-3 rounded-md border border-border/60 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-foreground">
-                      Light theme banner
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isUploadingHeaderBannerLight}
-                        onClick={() => headerBannerLightInputRef.current?.click()}
-                      >
-                        {isUploadingHeaderBannerLight ? "Uploading..." : "Upload"}
-                      </Button>
-                      {headerBannerLightPath.trim() ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setHeaderBannerLightPath("")}
-                        >
-                          Clear
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                  <input
-                    ref={headerBannerLightInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      void uploadHeaderBanner("light", file);
-                    }}
-                  />
-                  <label className="grid gap-2 text-xs text-muted-foreground">
-                    Path or URL
-                    <input
-                      type="text"
-                      value={headerBannerLightPath}
-                      onChange={(event) => setHeaderBannerLightPath(event.target.value)}
-                      placeholder="krafta/org/.../banner-light.png or https://..."
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    />
-                  </label>
-                  <div className="relative h-20 overflow-hidden rounded-md border border-border/70 bg-muted/20">
-                    {headerBannerLightPreviewUrl ? (
-                      <Image
-                        src={headerBannerLightPreviewUrl}
-                        alt="Light banner preview"
-                        fill
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground">
-                        No light banner selected
-                      </div>
+                <div>
+                  <div className="text-sm font-medium">{option.label}</div>
+                  <div
+                    className={cn(
+                      "mt-1 text-xs",
+                      isActive ? "text-background/75" : "text-muted-foreground",
                     )}
+                  >
+                    {NAV_DESCRIPTIONS[option.value] ?? "Switch navigation behavior"}
                   </div>
                 </div>
-
-                <div className="grid gap-3 rounded-md border border-border/60 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-foreground">
-                      Dark theme banner
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isUploadingHeaderBannerDark}
-                        onClick={() => headerBannerDarkInputRef.current?.click()}
-                      >
-                        {isUploadingHeaderBannerDark ? "Uploading..." : "Upload"}
-                      </Button>
-                      {headerBannerDarkPath.trim() ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setHeaderBannerDarkPath("")}
-                        >
-                          Clear
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                  <input
-                    ref={headerBannerDarkInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      void uploadHeaderBanner("dark", file);
-                    }}
-                  />
-                  <label className="grid gap-2 text-xs text-muted-foreground">
-                    Path or URL
-                    <input
-                      type="text"
-                      value={headerBannerDarkPath}
-                      onChange={(event) => setHeaderBannerDarkPath(event.target.value)}
-                      placeholder="krafta/org/.../banner-dark.png or https://..."
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    />
-                  </label>
-                  <div className="relative h-20 overflow-hidden rounded-md border border-border/70 bg-muted/20">
-                    {headerBannerDarkPreviewUrl ? (
-                      <Image
-                        src={headerBannerDarkPreviewUrl}
-                        alt="Dark banner preview"
-                        fill
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground">
-                        No dark banner selected
-                      </div>
-                    )}
-                  </div>
+                <div className="text-xs uppercase tracking-[0.18em]">
+                  {isActive ? "Active" : "Switch"}
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Leave one side empty to reuse the other image in both themes.
-                </p>
-              </div>
-
-              <div className="grid gap-3 rounded-md border border-border/70 p-3">
-                <h3 className="text-xs font-medium text-foreground">Background colors</h3>
-                <label className="grid gap-2 text-xs text-muted-foreground">
-                  Light theme color
-                  <input
-                    type="text"
-                    value={headerBackgroundColorLight}
-                    onChange={(event) =>
-                      setHeaderBackgroundColorLight(event.target.value)
-                    }
-                    placeholder="transparent, #ffffff, rgb(...)"
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                </label>
-
-                <label className="grid gap-2 text-xs text-muted-foreground">
-                  Dark theme color
-                  <input
-                    type="text"
-                    value={headerBackgroundColorDark}
-                    onChange={(event) =>
-                      setHeaderBackgroundColorDark(event.target.value)
-                    }
-                    placeholder="transparent, #111827, rgb(...)"
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                  />
-                </label>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {showStructureControls && (
-          <>
-            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Structure
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Set how the catalog is organized before styling individual product cards.
-              </p>
-            </section>
-
-            <OptionSection
-          title="Sections"
-          description="Category grouping and spacing."
-          options={sectionOptions}
-          selected={sectionVariant}
-          onSelect={setSectionVariant}
-        />
-          </>
-        )}
-
-        {showCardControls && (
-          <>
-            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Cards
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Tune the product browsing experience and image rhythm.
-              </p>
-            </section>
-
-            <OptionSection
-          title="Item Cards"
-          description="How each item is rendered."
-          options={itemCardOptions}
-          selected={itemCardVariant}
-          onSelect={setItemCardVariant}
-        />
-          </>
-        )}
-
-        {showCardControls && (
-        <section className="rounded-lg border bg-background p-4">
-          <h2 className="text-sm font-semibold">Item Card Layout</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Columns and image aspect ratio.
-          </p>
-          <div className="mt-4 grid gap-4">
-            <label className="grid gap-2 text-xs text-muted-foreground">
-              Columns
-              <input
-                type="number"
-                min={1}
-                max={4}
-                step={1}
-                value={itemCardColumns}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  if (!Number.isFinite(nextValue)) return;
-                  const clamped = Math.min(
-                    4,
-                    Math.max(1, Math.round(nextValue)),
-                  );
-                  setItemCardColumns(clamped);
-                }}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              />
-            </label>
-
-            <div className="grid gap-2 text-xs text-muted-foreground">
-              <span>Aspect ratio</span>
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={aspectWidth}
-                  onChange={(event) => {
-                    const nextValue = Number(event.target.value);
-                    if (!Number.isFinite(nextValue)) return;
-                    setAspectWidth(Math.max(0.1, nextValue));
-                  }}
-                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                />
-                <span className="text-xs text-muted-foreground">
-                  /
-                </span>
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={aspectHeight}
-                  onChange={(event) => {
-                    const nextValue = Number(event.target.value);
-                    if (!Number.isFinite(nextValue)) return;
-                    setAspectHeight(Math.max(0.1, nextValue));
-                  }}
-                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                />
-              </div>
-              <span className="text-[11px] text-muted-foreground">
-                Computed ratio: {aspectRatio.toFixed(3)}
-              </span>
-            </div>
-          </div>
-        </section>
-        )}
-
-        {showStructureControls && (
-          <OptionSection
-          title="Item Detail"
-          description="Full item view when a card is opened."
-          options={itemDetailOptions}
-          selected={itemDetailVariant}
-          onSelect={setItemDetailVariant}
-        />
-        )}
-
-        {showPricingControls && (
-          <>
-            <section className="rounded-xl border border-dashed border-border/70 bg-muted/15 p-4">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Pricing
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Control how price values read in every catalog layout.
-              </p>
-            </section>
-        <section className="rounded-lg border bg-background p-4">
-          <h2 className="text-sm font-semibold">Pricing</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Currency label and formatting for item prices.
-          </p>
-          <div className="mt-4 grid gap-4">
-            <label className="grid gap-2 text-xs text-muted-foreground">
-              Default currency
-              <input
-                type="text"
-                value={currencyCode}
-                onChange={(event) => setCurrencyCode(event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder="USD"
-              />
-            </label>
-
-            <label className="grid gap-2 text-xs text-muted-foreground">
-              Currency label
-              <input
-                type="text"
-                value={currencyLabel}
-                onChange={(event) => setCurrencyLabel(event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                placeholder="$"
-              />
-            </label>
-
-            <div className="grid gap-2 text-xs text-muted-foreground">
-              Label position
-              <div className="grid grid-cols-2 gap-2">
-                {(["prefix", "suffix"] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setLabelPosition(value)}
-                    className={[
-                      "rounded-md border px-3 py-2 text-sm",
-                      labelPosition === value
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border text-foreground hover:border-foreground",
-                    ].join(" ")}
-                  >
-                    {value === "prefix" ? "Label first" : "Label last"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-2 text-xs text-muted-foreground">
-              Thousand separator
-              <div className="grid grid-cols-3 gap-2">
-                {([",", ".", " "] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setThousandSeparator(value)}
-                    className={[
-                      "rounded-md border px-3 py-2 text-sm",
-                      thousandSeparator === value
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border text-foreground hover:border-foreground",
-                    ].join(" ")}
-                  >
-                    {value === " " ? "Space" : value}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-2 text-xs text-muted-foreground">
-              Decimal separator
-              <div className="grid grid-cols-2 gap-2">
-                {([".", ","] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setDecimalSeparator(value)}
-                    className={[
-                      "rounded-md border px-3 py-2 text-sm",
-                      decimalSeparator === value
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border text-foreground hover:border-foreground",
-                    ].join(" ")}
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="flex items-center gap-3 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={showDecimals}
-                onChange={(event) => setShowDecimals(event.target.checked)}
-                className="h-4 w-4 rounded border-border text-foreground"
-              />
-              Show decimals
-            </label>
-          </div>
-        </section>
-          </>
-        )}
-
-        {showStructureControls && (
-          <OptionSection
-          title="Navigation"
-          description="Category navigation style."
-          options={navOptions}
-          selected={categoryNavVariant}
-          onSelect={setCategoryNavVariant}
-        />
-        )}
-      </aside>
-
-      <section className="rounded-2xl border bg-background p-4 md:p-6 lg:sticky lg:top-6 lg:h-fit">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold">Live preview</h2>
-              <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
-                Draft canvas
-              </Badge>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Instant snapshot of your Studio changes before publishing.
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {hasUnsavedChanges
-              ? "Preview includes unsaved edits"
-              : "Preview matches saved settings"}
-          </p>
+              </button>
+            );
+          })}
         </div>
+      </div>
+    </StudioCard>
+  );
+}
 
-        <div className="mt-5 rounded-xl border border-dashed border-border/70 bg-muted/15 p-1.5 md:p-2">
-          <CatalogPreviewFrame
-            catalogSlug={catalogSlug}
-            layoutOverrides={layoutOverrides}
-            currencyOverrides={currencyOverrides}
+function CardsInspector({
+  itemCardOptions,
+  itemCardVariant,
+  onItemCardVariantChange,
+  itemCardColumns,
+  onItemCardColumnsChange,
+  aspectWidth,
+  onAspectWidthChange,
+  aspectHeight,
+  onAspectHeightChange,
+  itemDetailOptions,
+  itemDetailVariant,
+  onItemDetailVariantChange,
+  pricingSample,
+}: {
+  itemCardOptions: OptionConfig<CatalogLayoutSettings["itemCardVariant"]>[];
+  itemCardVariant: CatalogLayoutSettings["itemCardVariant"];
+  onItemCardVariantChange: (
+    value: CatalogLayoutSettings["itemCardVariant"],
+  ) => void;
+  itemCardColumns: number;
+  onItemCardColumnsChange: (value: number) => void;
+  aspectWidth: number;
+  onAspectWidthChange: (value: number) => void;
+  aspectHeight: number;
+  onAspectHeightChange: (value: number) => void;
+  itemDetailOptions: OptionConfig<CatalogLayoutSettings["itemDetailVariant"]>[];
+  itemDetailVariant: CatalogLayoutSettings["itemDetailVariant"];
+  onItemDetailVariantChange: (
+    value: CatalogLayoutSettings["itemDetailVariant"],
+  ) => void;
+  pricingSample: string;
+}) {
+  const surfaceTags = CARD_SURFACE_MAP[itemCardVariant] ?? [];
+
+  return (
+    <StudioCard>
+      <InspectorIntro
+        title="Cards"
+        description="Tune layout and item presentation without opening several separate blocks."
+      />
+
+      <SegmentedField
+        label="Card family"
+        options={itemCardOptions}
+        selected={itemCardVariant}
+        onSelect={onItemCardVariantChange}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <StudioInputField
+          label="Columns"
+          value={String(itemCardColumns)}
+          onChange={(value) => {
+            const nextValue = Number(value);
+            if (!Number.isFinite(nextValue)) return;
+            onItemCardColumnsChange(Math.min(4, Math.max(1, Math.round(nextValue))));
+          }}
+          inputMode="numeric"
+        />
+        <StudioInputField
+          label="Aspect ratio"
+          value={`${aspectWidth} : ${aspectHeight}`}
+          readOnly
+        />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
+        <StudioInputField
+          label="Aspect width"
+          value={String(aspectWidth)}
+          onChange={(value) => {
+            const nextValue = Number(value);
+            if (!Number.isFinite(nextValue)) return;
+            onAspectWidthChange(Math.max(0.1, nextValue));
+          }}
+          inputMode="decimal"
+        />
+        <div className="hidden pb-3 text-center text-muted-foreground sm:block">/</div>
+        <StudioInputField
+          label="Aspect height"
+          value={String(aspectHeight)}
+          onChange={(value) => {
+            const nextValue = Number(value);
+            if (!Number.isFinite(nextValue)) return;
+            onAspectHeightChange(Math.max(0.1, nextValue));
+          }}
+          inputMode="decimal"
+        />
+      </div>
+
+      <SegmentedField
+        label="Item detail"
+        options={itemDetailOptions.map((option) => ({
+          ...option,
+          label: ITEM_DETAIL_LABELS[option.value] ?? option.label,
+        }))}
+        selected={itemDetailVariant}
+        onSelect={onItemDetailVariantChange}
+      />
+
+      <div className="rounded-xl border border-border bg-muted/20 p-4">
+        <FieldLabel label="Card preview" />
+        <div className="mt-3 grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
+          <div className="overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm">
+            <div className="h-28 rounded-md bg-[linear-gradient(180deg,#e89b59_0%,#c25b33_100%)]" />
+            <div className="mt-3 space-y-1">
+              <div className="text-sm font-medium">Медовик</div>
+              <div className="text-xs text-muted-foreground">
+                {itemCardOptions.find((option) => option.value === itemCardVariant)?.label}
+              </div>
+              <div className="pt-1 text-lg font-semibold">{pricingSample}</div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-border bg-background p-3">
+            <div className="text-sm font-medium">Current card surfaces map to:</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {surfaceTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-border bg-muted/20 px-3 py-1 text-xs text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </StudioCard>
+  );
+}
+
+function BrandInspector({
+  brandTokens,
+  onBrandTokenChange,
+  headerBackgroundColorLight,
+  onHeaderBackgroundColorLightChange,
+  headerBackgroundColorDark,
+  onHeaderBackgroundColorDarkChange,
+  headerLogoCornerRadius,
+  onHeaderLogoCornerRadiusChange,
+  headerLogoAspectWidth,
+  onHeaderLogoAspectWidthChange,
+  headerLogoAspectHeight,
+  onHeaderLogoAspectHeightChange,
+  headerBannerLightPath,
+  onHeaderBannerLightPathChange,
+  headerBannerDarkPath,
+  onHeaderBannerDarkPathChange,
+  headerBannerLightPreviewUrl,
+  headerBannerDarkPreviewUrl,
+  isUploadingHeaderBannerLight,
+  isUploadingHeaderBannerDark,
+  onUploadBanner,
+  headerBannerLightInputRef,
+  headerBannerDarkInputRef,
+  showHeaderLogo,
+  onShowHeaderLogoChange,
+  showHeaderTitle,
+  onShowHeaderTitleChange,
+  showHeaderDescription,
+  onShowHeaderDescriptionChange,
+  showHeaderTags,
+  onShowHeaderTagsChange,
+  headerLogoFullWidth,
+  onHeaderLogoFullWidthChange,
+  headerLogoAspectRatio,
+  catalogLogoFallbackUrl,
+  catalogName,
+}: {
+  brandTokens: Record<BrandTokenKey, string>;
+  onBrandTokenChange: (key: BrandTokenKey, value: string) => void;
+  headerBackgroundColorLight: string;
+  onHeaderBackgroundColorLightChange: (value: string) => void;
+  headerBackgroundColorDark: string;
+  onHeaderBackgroundColorDarkChange: (value: string) => void;
+  headerLogoCornerRadius: number;
+  onHeaderLogoCornerRadiusChange: (value: number) => void;
+  headerLogoAspectWidth: number;
+  onHeaderLogoAspectWidthChange: (value: number) => void;
+  headerLogoAspectHeight: number;
+  onHeaderLogoAspectHeightChange: (value: number) => void;
+  headerBannerLightPath: string;
+  onHeaderBannerLightPathChange: (value: string) => void;
+  headerBannerDarkPath: string;
+  onHeaderBannerDarkPathChange: (value: string) => void;
+  headerBannerLightPreviewUrl: string | null;
+  headerBannerDarkPreviewUrl: string | null;
+  isUploadingHeaderBannerLight: boolean;
+  isUploadingHeaderBannerDark: boolean;
+  onUploadBanner: (variant: "light" | "dark", file: File) => Promise<void>;
+  headerBannerLightInputRef: React.RefObject<HTMLInputElement | null>;
+  headerBannerDarkInputRef: React.RefObject<HTMLInputElement | null>;
+  showHeaderLogo: boolean;
+  onShowHeaderLogoChange: (value: boolean) => void;
+  showHeaderTitle: boolean;
+  onShowHeaderTitleChange: (value: boolean) => void;
+  showHeaderDescription: boolean;
+  onShowHeaderDescriptionChange: (value: boolean) => void;
+  showHeaderTags: boolean;
+  onShowHeaderTagsChange: (value: boolean) => void;
+  headerLogoFullWidth: boolean;
+  onHeaderLogoFullWidthChange: (value: boolean) => void;
+  headerLogoAspectRatio: number;
+  catalogLogoFallbackUrl: string | null;
+  catalogName: string;
+}) {
+  return (
+    <StudioCard>
+      <InspectorIntro
+        title="Brand"
+        description="Token-based styling for the public catalog. These controls mirror the redesign now and backend persistence can follow later."
+      />
+
+      <div className="rounded-xl border border-border bg-muted/20 p-4">
+        <FieldLabel
+          label="Core tokens"
+          hint="Frontend-only for now. These values help us stage the redesigned Brand panel before backend settings land."
+        />
+        <div className="mt-3 space-y-3">
+          {BRAND_TOKEN_CONFIG.map((token) => (
+            <div
+              key={token.key}
+              className="rounded-xl border border-border bg-background p-3"
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="color"
+                  value={brandTokens[token.key]}
+                  onChange={(event) =>
+                    onBrandTokenChange(token.key, event.target.value)
+                  }
+                  className="mt-1 h-9 w-9 rounded-full border border-border bg-background"
+                  aria-label={token.label}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">{token.label}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {token.mapsTo}
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {brandTokens[token.key]}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {token.description}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-muted/20 p-4">
+        <FieldLabel label="Header tokens" />
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <SwatchTextField
+            label="Header light background"
+            value={headerBackgroundColorLight}
+            onChange={onHeaderBackgroundColorLightChange}
+            placeholder="transparent / custom"
+          />
+          <SwatchTextField
+            label="Header dark background"
+            value={headerBackgroundColorDark}
+            onChange={onHeaderBackgroundColorDarkChange}
+            placeholder="transparent / custom"
+          />
+          <StudioInputField
+            label="Logo radius"
+            value={`${headerLogoCornerRadius}`}
+            onChange={(value) => {
+              const nextValue = Number(value);
+              if (!Number.isFinite(nextValue)) return;
+              onHeaderLogoCornerRadiusChange(Math.max(0, Math.round(nextValue)));
+            }}
+            inputMode="numeric"
+          />
+          <StudioInputField
+            label="Logo ratio"
+            value={`${headerLogoAspectWidth} : ${headerLogoAspectHeight}`}
+            readOnly
+          />
+          <StudioInputField
+            label="Logo width"
+            value={String(headerLogoAspectWidth)}
+            onChange={(value) => {
+              const nextValue = Number(value);
+              if (!Number.isFinite(nextValue)) return;
+              onHeaderLogoAspectWidthChange(Math.max(1, Math.round(nextValue)));
+            }}
+            inputMode="numeric"
+          />
+          <StudioInputField
+            label="Logo height"
+            value={String(headerLogoAspectHeight)}
+            onChange={(value) => {
+              const nextValue = Number(value);
+              if (!Number.isFinite(nextValue)) return;
+              onHeaderLogoAspectHeightChange(Math.max(1, Math.round(nextValue)));
+            }}
+            inputMode="numeric"
           />
         </div>
-      </section>
+
+        <div className="mt-4 rounded-xl border border-dashed border-border bg-background p-4">
+          <div className="text-sm font-medium">Banner media</div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Upload light and dark header banners or paste a stored path directly.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <BannerUploadField
+              label="Light banner"
+              value={headerBannerLightPath}
+              previewUrl={headerBannerLightPreviewUrl}
+              isUploading={isUploadingHeaderBannerLight}
+              inputRef={headerBannerLightInputRef}
+              onValueChange={onHeaderBannerLightPathChange}
+              onUpload={(file) => onUploadBanner("light", file)}
+              onClear={() => onHeaderBannerLightPathChange("")}
+            />
+            <BannerUploadField
+              label="Dark banner"
+              value={headerBannerDarkPath}
+              previewUrl={headerBannerDarkPreviewUrl}
+              isUploading={isUploadingHeaderBannerDark}
+              inputRef={headerBannerDarkInputRef}
+              onValueChange={onHeaderBannerDarkPathChange}
+              onUpload={(file) => onUploadBanner("dark", file)}
+              onClear={() => onHeaderBannerDarkPathChange("")}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-border bg-background p-4">
+          <div className="text-sm font-medium">Logo preview</div>
+          <div className="mt-3 max-w-[220px] overflow-hidden rounded-xl border border-border/70 bg-muted/20">
+            <AspectRatio
+              ratio={Math.max(0.1, headerLogoAspectRatio)}
+              className="overflow-hidden"
+              style={{ borderRadius: `${Math.max(0, headerLogoCornerRadius)}px` }}
+            >
+              {catalogLogoFallbackUrl ? (
+                <Image
+                  src={catalogLogoFallbackUrl}
+                  alt={`${catalogName} original logo`}
+                  fill
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] text-muted-foreground">
+                  No catalog logo in Settings yet
+                </div>
+              )}
+            </AspectRatio>
+          </div>
+        </div>
       </div>
+
+      <div className="rounded-xl border border-border bg-muted/20 p-4">
+        <FieldLabel
+          label="Header content"
+          hint="These controls are already real and continue to affect the live preview."
+        />
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <BinaryPill
+            label="Show logo"
+            active={showHeaderLogo}
+            onClick={() => onShowHeaderLogoChange(!showHeaderLogo)}
+          />
+          <BinaryPill
+            label="Show title"
+            active={showHeaderTitle}
+            onClick={() => onShowHeaderTitleChange(!showHeaderTitle)}
+          />
+          <BinaryPill
+            label="Show description"
+            active={showHeaderDescription}
+            onClick={() => onShowHeaderDescriptionChange(!showHeaderDescription)}
+          />
+          <BinaryPill
+            label="Show tags"
+            active={showHeaderTags}
+            onClick={() => onShowHeaderTagsChange(!showHeaderTags)}
+          />
+          <BinaryPill
+            label="Stretch logo"
+            active={headerLogoFullWidth}
+            onClick={() => onHeaderLogoFullWidthChange(!headerLogoFullWidth)}
+            className="sm:col-span-2"
+          />
+        </div>
+      </div>
+    </StudioCard>
+  );
+}
+
+function PricingInspector({
+  currencyCode,
+  onCurrencyCodeChange,
+  currencyLabel,
+  onCurrencyLabelChange,
+  labelPosition,
+  onLabelPositionChange,
+  showDecimals,
+  onShowDecimalsChange,
+  thousandSeparator,
+  onThousandSeparatorChange,
+  decimalSeparator,
+  onDecimalSeparatorChange,
+  pricingSample,
+  pricingSaleSample,
+}: {
+  currencyCode: string;
+  onCurrencyCodeChange: (value: string) => void;
+  currencyLabel: string;
+  onCurrencyLabelChange: (value: string) => void;
+  labelPosition: CurrencySettings["labelPosition"];
+  onLabelPositionChange: (value: CurrencySettings["labelPosition"]) => void;
+  showDecimals: boolean;
+  onShowDecimalsChange: (value: boolean) => void;
+  thousandSeparator: CurrencySettings["thousandSeparator"];
+  onThousandSeparatorChange: (value: CurrencySettings["thousandSeparator"]) => void;
+  decimalSeparator: CurrencySettings["decimalSeparator"];
+  onDecimalSeparatorChange: (value: CurrencySettings["decimalSeparator"]) => void;
+  pricingSample: string;
+  pricingSaleSample: string;
+}) {
+  return (
+    <StudioCard>
+      <InspectorIntro
+        title="Pricing"
+        description="Format item prices and see the result update immediately."
+      />
+
+      <div className="rounded-xl border border-border bg-muted/20 p-4">
+        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          Live sample
+        </div>
+        <div className="mt-3 rounded-xl border border-border bg-background p-5 shadow-sm">
+          <div className="text-[44px] font-semibold leading-none tracking-tight">
+            {pricingSample}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full border border-border bg-muted/20 px-3 py-1">
+              Regular price
+            </span>
+            <span className="rounded-full border border-border bg-muted/20 px-3 py-1">
+              {pricingSaleSample} sale
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <StudioInputField
+        label="Currency code"
+        value={currencyCode}
+        onChange={onCurrencyCodeChange}
+      />
+
+      <StudioInputField
+        label="Currency label"
+        value={currencyLabel}
+        onChange={onCurrencyLabelChange}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SegmentedField
+          label="Position"
+          options={[
+            { label: "Before", value: "prefix" },
+            { label: "After", value: "suffix" },
+          ]}
+          selected={labelPosition}
+          onSelect={onLabelPositionChange}
+          columns={2}
+        />
+        <SegmentedField
+          label="Decimals"
+          options={[
+            { label: "On", value: "on" },
+            { label: "Off", value: "off" },
+          ]}
+          selected={showDecimals ? "on" : "off"}
+          onSelect={(value) => onShowDecimalsChange(value === "on")}
+          columns={2}
+        />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SegmentedField
+          label="Thousands"
+          options={[
+            { label: "Space", value: " " },
+            { label: "Comma", value: "," },
+            { label: "Dot", value: "." },
+          ]}
+          selected={thousandSeparator}
+          onSelect={onThousandSeparatorChange}
+          columns={3}
+        />
+        <SegmentedField
+          label="Decimal"
+          options={[
+            { label: "Dot", value: "." },
+            { label: "Comma", value: "," },
+          ]}
+          selected={decimalSeparator}
+          onSelect={onDecimalSeparatorChange}
+          columns={2}
+        />
+      </div>
+
+      <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+        Changes update the catalog cards on the right in real time.
+      </div>
+    </StudioCard>
+  );
+}
+
+function StudioCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={cn(
+        "rounded-xl border border-border/70 bg-background p-5 shadow-[0_10px_30px_-22px_rgba(16,24,40,0.35)]",
+        className,
+      )}
+    >
+      <div className="space-y-5">{children}</div>
+    </section>
+  );
+}
+
+function InspectorIntro({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div>
+      <h3 className="text-[30px] font-semibold tracking-tight">{title}</h3>
+      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
 
-function OptionSection<T extends string>({
-  title,
-  description,
+function FieldLabel({
+  label,
+  hint,
+}: {
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <div className="text-sm font-medium">{label}</div>
+      {hint ? <div className="mt-1 text-xs text-muted-foreground">{hint}</div> : null}
+    </div>
+  );
+}
+
+function SegmentedField<T extends string>({
+  label,
   options,
   selected,
   onSelect,
+  columns,
 }: {
-  title: string;
-  description: string;
-  options: OptionConfig<T>[];
+  label: string;
+  options: Array<{ label: string; value: T }>;
   selected: T;
   onSelect: (value: T) => void;
+  columns?: number;
 }) {
   return (
-    <section className="rounded-xl border bg-background p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {description}
-          </p>
-        </div>
-        <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
-          {options.length} options
-        </Badge>
-      </div>
-      <div className="mt-4 grid gap-2">
+    <div className="space-y-3">
+      <FieldLabel label={label} />
+      <div
+        className={cn(
+          "flex flex-wrap gap-2",
+          columns === 2 && "grid grid-cols-2",
+          columns === 3 && "grid grid-cols-3",
+        )}
+      >
         {options.map((option) => {
           const isSelected = option.value === selected;
           return (
@@ -1404,28 +1560,195 @@ function OptionSection<T extends string>({
               key={option.value}
               type="button"
               onClick={() => onSelect(option.value)}
-              className={[
-                "group flex items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition",
+              className={cn(
+                "rounded-md border px-4 py-2 text-sm transition",
                 isSelected
                   ? "border-foreground bg-foreground text-background shadow-sm"
-                  : "border-border bg-background hover:border-foreground/50 hover:bg-muted/30",
-              ].join(" ")}
-            >
-              <span className="font-medium">{option.label}</span>
-              {isSelected ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-background/10 px-2 py-0.5 text-[10px] uppercase tracking-wide">
-                  <Check className="size-3" />
-                  Active
-                </span>
-              ) : (
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground transition group-hover:text-foreground">
-                  Switch
-                </span>
+                  : "border-border bg-background hover:border-foreground/30",
+                columns ? "w-full" : "",
               )}
+            >
+              {option.label}
             </button>
           );
         })}
       </div>
-    </section>
+    </div>
+  );
+}
+
+function StudioInputField({
+  label,
+  value,
+  onChange,
+  inputMode,
+  readOnly,
+}: {
+  label: string;
+  value: string;
+  onChange?: (value: string) => void;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  readOnly?: boolean;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-sm font-medium">{label}</div>
+      <input
+        type="text"
+        value={value}
+        inputMode={inputMode}
+        readOnly={readOnly}
+        onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+        className={cn(
+          "w-full rounded-md border border-border bg-background px-4 py-3 text-sm outline-none transition",
+          readOnly
+            ? "cursor-default text-muted-foreground"
+            : "focus:border-foreground/35 focus:ring-2 focus:ring-foreground/5",
+        )}
+      />
+    </label>
+  );
+}
+
+function SwatchTextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block rounded-xl border border-border bg-background p-3">
+      <div className="mb-2 text-sm font-medium">{label}</div>
+      <div className="flex items-center gap-3">
+        <div
+          className="h-5 w-5 rounded-full border border-border"
+          style={{ background: value || "transparent" }}
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+    </label>
+  );
+}
+
+function BannerUploadField({
+  label,
+  value,
+  previewUrl,
+  isUploading,
+  inputRef,
+  onValueChange,
+  onUpload,
+  onClear,
+}: {
+  label: string;
+  value: string;
+  previewUrl: string | null;
+  isUploading: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onValueChange: (value: string) => void;
+  onUpload: (file: File) => Promise<void>;
+  onClear: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-muted/10 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isUploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            {isUploading ? "Uploading..." : "Upload"}
+          </Button>
+          {value.trim() ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+              Clear
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          void onUpload(file);
+        }}
+      />
+
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+        placeholder="krafta/org/... or https://..."
+        className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none"
+      />
+
+      <div className="mt-3 relative h-24 overflow-hidden rounded-md border border-border bg-background">
+        {previewUrl ? (
+          <Image src={previewUrl} alt={`${label} preview`} fill className="object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+            No image selected
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BinaryPill({
+  label,
+  active,
+  onClick,
+  className,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex items-center justify-between rounded-md border px-4 py-3 text-left text-sm transition",
+        active
+          ? "border-foreground bg-foreground text-background shadow-sm"
+          : "border-border bg-background hover:border-foreground/30",
+        className,
+      )}
+    >
+      <span>{label}</span>
+      <span className="inline-flex items-center gap-1 text-xs uppercase tracking-[0.18em]">
+        {active ? (
+          <>
+            <Check className="size-3" />
+            On
+          </>
+        ) : (
+          "Off"
+        )}
+      </span>
+    </button>
   );
 }

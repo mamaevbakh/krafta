@@ -138,21 +138,19 @@ export default async function CatalogBuilderPage({
   }));
 
   return (
-    <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
-      <CatalogBuilderPanel
-        catalogId={catalog.id}
-        orgId={catalog.org_id}
-        catalogSlug={catalogSlug}
-        catalogName={catalog.name}
-        catalogLogoPath={catalog.logo_path}
-        initialLayout={layout}
-        initialCurrency={currency}
-        headerOptions={headerOptions}
-        sectionOptions={sectionOptions}
-        itemCardOptions={itemCardOptions}
-        itemDetailOptions={itemDetailOptions}
-        navOptions={navOptions}
-      />
-    </div>
+    <CatalogBuilderPanel
+      catalogId={catalog.id}
+      orgId={catalog.org_id}
+      catalogSlug={catalogSlug}
+      catalogName={catalog.name}
+      catalogLogoPath={catalog.logo_path}
+      initialLayout={layout}
+      initialCurrency={currency}
+      headerOptions={headerOptions}
+      sectionOptions={sectionOptions}
+      itemCardOptions={itemCardOptions}
+      itemDetailOptions={itemDetailOptions}
+      navOptions={navOptions}
+    />
   );
 }
