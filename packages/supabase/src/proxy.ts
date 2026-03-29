@@ -7,13 +7,21 @@ import { getUserSafely } from "./auth";
 const AUTH_COOKIE_MARKER = "-auth-token";
 const PKCE_CODE_VERIFIER_MARKER = "-auth-token-code-verifier";
 
+type ProxyRequest = {
+  cookies: {
+    getAll(): Array<{ name: string; value: string }>;
+    set(name: string, value: string): void;
+    delete(name: string): void;
+  };
+};
+
 function isSupabaseAuthCookie(name: string) {
   if (!name.startsWith("sb-")) return false;
   if (name.includes(PKCE_CODE_VERIFIER_MARKER)) return false;
   return name.includes(AUTH_COOKIE_MARKER);
 }
 
-function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
+function clearSupabaseAuthCookies(request: ProxyRequest, response: NextResponse) {
   for (const cookie of request.cookies.getAll()) {
     if (!isSupabaseAuthCookie(cookie.name)) continue;
     request.cookies.delete(cookie.name);
@@ -22,7 +30,7 @@ function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) 
 }
 
 export async function updateSession(
-  request: NextRequest,
+  request: ProxyRequest,
   params?: {
     supabaseUrl?: string;
     supabaseAnonKey?: string;
@@ -36,7 +44,7 @@ export async function updateSession(
     throw new Error("missing_supabase_env_for_proxy");
   }
 
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({ request: request as NextRequest });
   const supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -47,7 +55,7 @@ export async function updateSession(
           request.cookies.set(name, value);
         }
 
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: request as NextRequest });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }
