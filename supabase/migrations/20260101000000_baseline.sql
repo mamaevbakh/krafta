@@ -3,22 +3,24 @@
 -- Captures the production schema state as of 2026-05-05.
 --
 -- Why this exists (KRA-33):
--- The original `payments.*` and parts of `public.*` tables were created
--- via the Supabase Dashboard *before* migration tracking was set up. As a
--- result, all subsequent migrations in this directory assume those tables
--- already exist. On a fresh Supabase preview branch this caused
--- MIGRATIONS_FAILED (the first migration tried to ALTER TABLE on a table
--- that didn't exist).
+-- The original `payments.*` tables, parts of `public.*`, and `util.*` were
+-- created via the Supabase Dashboard *before* migration tracking was set up.
+-- All subsequent migrations in this directory assume those objects already
+-- exist. On a fresh Supabase preview branch this caused MIGRATIONS_FAILED.
 --
 -- This baseline reconstructs that bootstrap state via `pg_dump` of the
--- production database, so a fresh preview branch can replay all migrations
--- successfully — this baseline runs first, then the subsequent migrations
--- become no-ops or true incremental changes.
+-- production database (public + payments + util schemas), so a fresh preview
+-- branch can replay all migrations cleanly: this baseline runs first, then
+-- the subsequent migrations land as either idempotent no-ops or true
+-- incremental changes.
 --
 -- Generated via:
 --   pg_dump --schema-only --no-owner --no-privileges \
---           --schema=public --schema=payments \
+--           --schema=public --schema=payments --schema=util \
 --           "<prod-non-pooling-url>"
+--
+-- v2 (2026-05-05): added util schema (was missing — caused trigger creation
+-- to fail because public triggers reference util.clear_column).
 -- =========================================================================
 
 -- Extensions used by the dumped schema (idempotent).
@@ -28,6 +30,9 @@ create extension if not exists "vector"    with schema extensions;
 create extension if not exists "pg_trgm"   with schema extensions;
 create extension if not exists "unaccent"  with schema extensions;
 create extension if not exists "hstore"    with schema extensions;
+create extension if not exists "pg_net"    with schema extensions;
+create extension if not exists "pgmq";
+create extension if not exists "pg_cron";
 
 --
 -- PostgreSQL database dump
@@ -68,6 +73,13 @@ CREATE SCHEMA IF NOT EXISTS public;
 --
 
 COMMENT ON SCHEMA public IS 'standard public schema';
+
+
+--
+-- Name: util; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA IF NOT EXISTS util;
 
 
 --
@@ -928,6 +940,226 @@ begin
 
   perform public.catalog_search_sync_item_document(new.item_id);
   return new;
+end;
+$$;
+
+
+--
+-- Name: ack_embedding_job(bigint); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.ack_embedding_job(p_job_id bigint) RETURNS void
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+  select pgmq.archive('embedding_jobs', p_job_id);
+$$;
+
+
+--
+-- Name: clear_column(); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.clear_column() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public', 'extensions'
+    AS $$
+declare
+  colname text := tg_argv[0];
+begin
+  new := new #= hstore(colname, null);
+  return new;
+end;
+$$;
+
+
+--
+-- Name: invoke_edge_function(text, jsonb, integer); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.invoke_edge_function(name text, body jsonb, timeout_milliseconds integer DEFAULT ((5 * 60) * 1000)) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  headers_raw text;
+  auth_header text;
+  srk text;
+begin
+  headers_raw := current_setting('request.headers', true);
+
+  auth_header := case
+    when headers_raw is not null then (headers_raw::json->>'authorization')
+    else null
+  end;
+
+  if auth_header is null then
+    srk := util.service_role_key();
+    if srk is null or srk = '' then
+      raise exception 'Missing Vault secret: service_role_key';
+    end if;
+
+    -- Supabase accepts service role key as Bearer + apikey
+    auth_header := 'Bearer ' || srk;
+
+    perform net.http_post(
+      url => util.project_url() || '/functions/v1/' || name,
+      headers => jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', auth_header,
+        'apikey', srk
+      ),
+      body => body,
+      timeout_milliseconds => timeout_milliseconds
+    );
+    return;
+  end if;
+
+  -- Normal path (HTTP request context)
+  perform net.http_post(
+    url => util.project_url() || '/functions/v1/' || name,
+    headers => jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', auth_header
+    ),
+    body => body,
+    timeout_milliseconds => timeout_milliseconds
+  );
+end;
+$$;
+
+
+--
+-- Name: process_embeddings(integer, integer, integer); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.process_embeddings(batch_size integer DEFAULT 10, max_requests integer DEFAULT 10, timeout_milliseconds integer DEFAULT ((5 * 60) * 1000)) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  job_batches jsonb[];
+  batch jsonb;
+begin
+  with
+    numbered_jobs as (
+      select
+        message || jsonb_build_object('jobId', msg_id) as job_info,
+        (row_number() over (order by 1) - 1) / batch_size as batch_num
+      from pgmq.read(
+        queue_name => 'embedding_jobs',
+        vt => timeout_milliseconds / 1000,
+        qty => max_requests * batch_size
+      )
+    ),
+    batched_jobs as (
+      select
+        jsonb_agg(job_info) as batch_array,
+        batch_num
+      from numbered_jobs
+      group by batch_num
+    )
+  select array_agg(batch_array)
+    into job_batches
+  from batched_jobs;
+
+  if job_batches is null then
+    return;
+  end if;
+
+  foreach batch in array job_batches loop
+    perform util.invoke_edge_function(
+      name => 'embed',
+      body => batch,
+      timeout_milliseconds => timeout_milliseconds
+    );
+  end loop;
+end;
+$$;
+
+
+--
+-- Name: project_url(); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.project_url() RETURNS text
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  secret_value text;
+begin
+  select decrypted_secret
+    into secret_value
+  from vault.decrypted_secrets
+  where name = 'project_url';
+
+  return secret_value;
+end;
+$$;
+
+
+--
+-- Name: queue_embeddings(); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.queue_embeddings() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  content_function text := tg_argv[0];
+  embedding_column text := tg_argv[1];
+begin
+  perform pgmq.send(
+    queue_name => 'embedding_jobs',
+    msg => jsonb_build_object(
+      'id', new.id,
+      'schema', tg_table_schema,
+      'table', tg_table_name,
+      'contentFunction', content_function,
+      'embeddingColumn', embedding_column
+    )
+  );
+
+  return new;
+end;
+$$;
+
+
+--
+-- Name: service_role_key(); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.service_role_key() RETURNS text
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO ''
+    AS $$
+declare
+  secret_value text;
+begin
+  select decrypted_secret
+    into secret_value
+  from vault.decrypted_secrets
+  where name = 'service_role_key';
+
+  return secret_value;
+end;
+$$;
+
+
+--
+-- Name: set_catalog_search_doc_embedding(uuid, text); Type: FUNCTION; Schema: util; Owner: -
+--
+
+CREATE FUNCTION util.set_catalog_search_doc_embedding(p_id uuid, p_embedding_text text) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public', 'extensions'
+    AS $$
+begin
+  update public.catalog_search_documents
+  set embedding = (p_embedding_text::extensions.vector(1536))::extensions.halfvec(1536)
+  where id = p_id;
 end;
 $$;
 
