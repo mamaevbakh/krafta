@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
   const supabaseUrl =
     process.env.KRAFTA_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.KRAFTA_SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey = process.env.KRAFTA_SUPABASE_SECRET_KEY ?? process.env.KRAFTA_SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(

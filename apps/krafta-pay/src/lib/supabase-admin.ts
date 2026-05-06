@@ -4,9 +4,10 @@ import type { Database } from "@krafta/supabase/database.types";
 export function createAdminSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const secretKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_SECRET_KEY ??
+    process.env.KRAFTA_SUPABASE_SECRET_KEY ??
     process.env.KRAFTA_SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.SUPABASE_SECRET_KEY!;
+    process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
   return createClient<Database>(url, secretKey, {
     auth: {

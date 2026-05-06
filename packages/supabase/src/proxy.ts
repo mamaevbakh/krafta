@@ -38,7 +38,9 @@ export async function updateSession(
 ) {
   const supabaseUrl = params?.supabaseUrl ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey =
-    params?.supabaseAnonKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    params?.supabaseAnonKey ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("missing_supabase_env_for_proxy");
