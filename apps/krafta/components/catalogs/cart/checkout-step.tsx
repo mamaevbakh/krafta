@@ -6,6 +6,10 @@ import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
+  DrawerDescription,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
   Field,
   FieldDescription,
   FieldGroup,
@@ -139,6 +143,12 @@ export function CartCheckoutStep() {
 
   return (
     <div className="flex h-full flex-col">
+      {/* sr-only title satisfies Radix Dialog a11y; the visible UI carries
+          its own headings (Back button + per-mode field labels). */}
+      <DrawerTitle className="sr-only">Checkout</DrawerTitle>
+      <DrawerDescription className="sr-only">
+        Pick a mode and provide the details to place the order.
+      </DrawerDescription>
       <div className="flex items-center gap-2 px-4 pb-2 pt-1">
         <Button
           type="button"

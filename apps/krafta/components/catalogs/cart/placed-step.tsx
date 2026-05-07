@@ -12,6 +12,10 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DrawerDescription,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -35,6 +39,10 @@ export function CartPlacedStep({
   if (!placedOrder) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+        <DrawerTitle className="sr-only">Order placed</DrawerTitle>
+        <DrawerDescription className="sr-only">
+          Confirmation that the order has been submitted.
+        </DrawerDescription>
         <CheckCircle2 className="h-12 w-12 text-foreground" aria-hidden />
         <h2 className="text-2xl font-semibold tracking-tight">Order placed</h2>
         {placedOrderId ? (
@@ -58,6 +66,8 @@ export function CartPlacedStep({
 
   return (
     <div className="flex h-full flex-col">
+      <DrawerTitle className="sr-only">Order placed</DrawerTitle>
+      <DrawerDescription className="sr-only">{tagline}</DrawerDescription>
       <ScrollArea className="flex-1 overflow-y-auto">
         <div className="space-y-6 px-5 pb-4 pt-6">
           <div className="flex flex-col items-center gap-3 text-center">
