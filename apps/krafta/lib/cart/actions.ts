@@ -12,6 +12,11 @@ import {
   updateLineItemQuantity as updateLineItemQuantityImpl,
   type CartSummary,
 } from "./orders";
+import {
+  placeOrder as placeOrderImpl,
+  type PlaceOrderInput,
+  type PlaceOrderResult,
+} from "./checkout";
 
 export async function ensureCartIdentityAction(
   orgId: string,
@@ -74,4 +79,12 @@ export async function clearCartAction(input: {
   await clearCartImpl(draft.orderId);
   revalidatePath(input.catalogPath);
   return getCartSummaryImpl({ orgId: input.orgId, venueId: input.venueId });
+}
+
+export async function placeOrderAction(
+  input: PlaceOrderInput & { catalogPath: string },
+): Promise<PlaceOrderResult> {
+  const result = await placeOrderImpl(input);
+  revalidatePath(input.catalogPath);
+  return result;
 }
