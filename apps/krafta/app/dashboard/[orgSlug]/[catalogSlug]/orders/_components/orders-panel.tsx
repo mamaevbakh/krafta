@@ -65,6 +65,8 @@ export function OrdersPanel({
   // A new fulfillment INSERT (= a customer placed an order) also rings
   // the chime — that's the cash-flow-critical signal for staff.
   useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("[orders.realtime] mounting subscription", { catalogId });
     const supabase = createClient();
     const channel = supabase
       .channel(`orders:catalog:${catalogId}`)
@@ -78,7 +80,7 @@ export function OrdersPanel({
         },
         (payload) => {
           // eslint-disable-next-line no-console
-          console.debug("[orders.realtime] orders event", payload);
+          console.log("[orders.realtime] orders event", payload);
           router.refresh();
         },
       )
@@ -91,7 +93,7 @@ export function OrdersPanel({
         },
         (payload) => {
           // eslint-disable-next-line no-console
-          console.debug("[orders.realtime] fulfillments event", payload);
+          console.log("[orders.realtime] fulfillments event", payload);
           if (payload.eventType === "INSERT") {
             const audio = audioRef.current;
             if (audio) {
@@ -104,7 +106,7 @@ export function OrdersPanel({
       )
       .subscribe((status, err) => {
         // eslint-disable-next-line no-console
-        console.debug("[orders.realtime] subscribe status", status, err);
+        console.log("[orders.realtime] subscribe status", status, err);
       });
 
     return () => {
