@@ -77,6 +77,10 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
         line_items:order_line_items(
           id, name, variation_name, quantity, base_price_cents,
           total_price_cents
+        ),
+        payments:order_payments(
+          id, source_type, status, total_cents, currency, completed_at,
+          collected_by_user_id
         )
       `,
     )
@@ -101,6 +105,16 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
       0,
     );
     const customerLabel = formatCustomerLabel(order.customer);
+
+    const payments = (order.payments ?? []).map((payment) => ({
+      id: payment.id,
+      sourceType: payment.source_type,
+      status: payment.status,
+      totalCents: payment.total_cents,
+      currency: payment.currency,
+      completedAt: payment.completed_at,
+      collectedByUserId: payment.collected_by_user_id,
+    }));
 
     return {
       id: order.id,
@@ -135,6 +149,7 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
       customer: order.customer ?? null,
       customerLabel,
       lineItems,
+      payments,
     };
   });
 

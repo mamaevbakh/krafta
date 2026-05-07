@@ -57,6 +57,16 @@ export type OrderPickupDetails = {
   is_curbside: boolean;
 };
 
+export type OrderPayment = {
+  id: string;
+  sourceType: "cash" | "external_card_recorded" | "krafta_pay";
+  status: "pending" | "approved" | "completed" | "canceled" | "failed";
+  totalCents: number;
+  currency: string;
+  completedAt: string | null;
+  collectedByUserId: string | null;
+};
+
 export type OrderDeliveryDetails = {
   recipient_name: string;
   recipient_phone: string;
@@ -101,6 +111,7 @@ export type OrderRow = {
   customer: OrderCustomer | null;
   customerLabel: string;
   lineItems: OrderLineItem[];
+  payments: OrderPayment[];
 };
 
 type StatusTab = "all" | "open" | "completed" | "canceled";

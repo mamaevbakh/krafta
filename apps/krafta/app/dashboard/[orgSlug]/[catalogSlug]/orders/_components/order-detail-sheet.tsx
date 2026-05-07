@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import { useParams } from "next/navigation";
 import {
+  CheckCircle2,
   Clock,
+  CircleDollarSign,
   MapPin,
   Package,
   Receipt,
@@ -36,7 +38,11 @@ import {
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
-import { transitionOrderState, type OrderAction } from "./actions";
+import {
+  markCashPaymentReceived,
+  transitionOrderState,
+  type OrderAction,
+} from "./actions";
 import type {
   OrderDeliveryDetails,
   OrderDineInDetails,
@@ -94,6 +100,11 @@ export function OrderDetailSheet({
                 ) : null}
 
                 <CustomerBlock order={order} />
+
+                <PaymentBlock
+                  order={order}
+                  currencySettings={currencySettings}
+                />
 
                 <ItemsBlock
                   order={order}
@@ -375,6 +386,82 @@ function CustomerBlock({ order }: { order: OrderRow }) {
     </SectionCard>
   );
 }
+
+function PaymentBlock({
+  order,
+  currencySettings,
+}: {
+  order: OrderRow;
+  currencySettings: CurrencySettings;
+}) {
+  const params = useParams<{ catalogSlug: string }>();
+  const catalogPath = `/${params.catalogSlug}`;
+  const [isPending, startTransition] = useTransition();
+
+  const completedCash = order.payments.find(
+    (payment) =>
+      payment.sourceType === "cash" && payment.status === "completed",
+  );
+
+  const totalCents = order.totalCents;
+  const currency =
+    completedCash?.currency ??
+    (currencySettings.defaultCurrency || "UZS");
+
+  const payAt = PAY_AT_LABEL[order.mode ?? "pickup"];
+
+  const onMarkReceived = () =>
+    startTransition(async () => {
+      const result = await markCashPaymentReceived({
+        orderId: order.id,
+        totalCents,
+        currency,
+        catalogPath,
+      });
+      if (!result.ok) toast.error(result.error);
+    });
+
+  return (
+    <SectionCard title="Payment" icon={CircleDollarSign}>
+      <DetailLine
+        label="Method"
+        value={completedCash ? "Cash collected" : `Cash — pay at ${payAt}`}
+      />
+      <DetailLine
+        label="Amount"
+        value={formatPriceCents(totalCents, currencySettings)}
+      />
+      {completedCash?.completedAt ? (
+        <DetailLine
+          label="Collected"
+          value={formatLongDateTime(completedCash.completedAt)}
+        />
+      ) : null}
+      {completedCash ? (
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+          <CheckCircle2 className="h-3 w-3" aria-hidden /> Cash recorded
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          className="mt-2 w-full"
+          disabled={isPending}
+          onClick={onMarkReceived}
+        >
+          Mark cash collected
+        </Button>
+      )}
+    </SectionCard>
+  );
+}
+
+const PAY_AT_LABEL: Record<NonNullable<OrderRow["mode"]> | "pickup", string> = {
+  dine_in: "the table",
+  pickup: "the counter",
+  delivery: "delivery",
+  digital: "the counter",
+};
 
 function ItemsBlock({
   order,

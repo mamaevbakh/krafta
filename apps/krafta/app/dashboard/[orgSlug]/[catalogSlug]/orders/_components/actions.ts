@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 
+type Result = { ok: true } | { ok: false; error: string };
+
 export type OrderAction =
   | "accept"
   | "mark_ready"
@@ -18,7 +20,68 @@ type TransitionInput = {
   catalogPath: string;
 };
 
-type Result = { ok: true } | { ok: false; error: string };
+/**
+ * Records a cash payment against the order. v1 cash-only flow per KRA-32:
+ * the merchant collects cash in person, then taps "Cash collected" — we
+ * INSERT a commerce.order_payments row so the payment lifecycle has a
+ * truthful record. v2 in-app payments use the same table with
+ * source_type='krafta_pay'; no migration needed.
+ *
+ * Idempotent: if a completed cash payment already exists for the order,
+ * returns ok without duplicating.
+ */
+export async function markCashPaymentReceived(input: {
+  orderId: string;
+  totalCents: number;
+  currency: string;
+  catalogPath: string;
+}): Promise<Result> {
+  const supabase = await createClient();
+
+  const { data: existing, error: existingError } = await supabase
+    .schema("commerce")
+    .from("order_payments")
+    .select("id")
+    .eq("order_id", input.orderId)
+    .eq("source_type", "cash")
+    .eq("status", "completed")
+    .limit(1)
+    .maybeSingle();
+  if (existingError) return { ok: false, error: existingError.message };
+  if (existing) {
+    revalidatePath(input.catalogPath);
+    return { ok: true };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const collectedAt = new Date().toISOString();
+
+  const { error } = await supabase
+    .schema("commerce")
+    .from("order_payments")
+    .insert({
+      order_id: input.orderId,
+      // org_id auto-set by the order_child_sync_org_id trigger.
+      org_id: input.orderId,
+      amount_cents: input.totalCents,
+      tip_cents: 0,
+      total_cents: input.totalCents,
+      currency: input.currency.toUpperCase(),
+      status: "completed",
+      source_type: "cash",
+      source_details: { collected_at: collectedAt },
+      collected_by_user_id: user?.id ?? null,
+      autocomplete: true,
+      authorized_at: collectedAt,
+      completed_at: collectedAt,
+    });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(input.catalogPath);
+  return { ok: true };
+}
 
 /**
  * Drives the order's lifecycle from the merchant dashboard. One server
