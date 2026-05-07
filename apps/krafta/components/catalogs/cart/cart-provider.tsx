@@ -6,7 +6,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useOptimistic,
   useRef,
   useState,
   useTransition,
@@ -58,9 +57,15 @@ const EMPTY_SUMMARY: CartSummary = {
 
 const SERVER_SYNC_DEBOUNCE_MS = 250;
 
-// ---- optimistic reducer ----------------------------------------------------
+// ---- local reducer ---------------------------------------------------------
+//
+// We don't use React 19's `useOptimistic` here. With debounced server sync,
+// the surrounding transition settles long before the network round-trip; the
+// optimistic projection would revert for the gap and the user sees a flicker
+// (qty 1 → 2 → 1 → 2). Instead we treat local state as the source of truth
+// while the user is interacting and reconcile from the server response.
 
-type OptimisticAction =
+type LocalAction =
   | {
       type: "add";
       itemId: string;
@@ -78,10 +83,7 @@ function recomputeSubtotal(lineItems: CartLineItem[]): number {
   return lineItems.reduce((sum, line) => sum + line.total_price_cents, 0);
 }
 
-function applyOptimistic(
-  state: CartSummary,
-  action: OptimisticAction,
-): CartSummary {
+function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
   switch (action.type) {
     case "add": {
       const matchingIndex = state.lineItems.findIndex(
@@ -146,21 +148,55 @@ function applyOptimistic(
   }
 }
 
-// ---- debounced server sync -------------------------------------------------
+// ---- reconcile -------------------------------------------------------------
 //
-// Each rapid +/- click should not fan out into N parallel UPDATE calls — that
-// races at both the network and DB layer and can leave the persisted qty
-// behind the user's intent. We coalesce per (key) into one server call after
-// `SERVER_SYNC_DEBOUNCE_MS` of inactivity.
-//
-// updateQuantity: key=lineItemId, value=absolute target qty (last write wins).
-// addItem:        key=`${itemId}::${variationId}`, value=accumulated qty.
+// When a server response arrives, replace per-line state with canonical
+// values EXCEPT for lines the user is still touching (debounce timer
+// pending) — those keep their local view so a slow server response can't
+// undo a click that landed mid-flight.
+
+function reconcile(
+  local: CartSummary,
+  server: CartSummary,
+  pendingLineIds: Set<string>,
+  pendingAddKeys: Set<string>,
+): CartSummary {
+  const localById = new Map(local.lineItems.map((line) => [line.id, line]));
+
+  // Start from server's view but swap in local for any line the user is
+  // still touching.
+  const reconciled: CartLineItem[] = server.lineItems.map((serverLine) => {
+    if (pendingLineIds.has(serverLine.id)) {
+      return localById.get(serverLine.id) ?? serverLine;
+    }
+    return serverLine;
+  });
+
+  // Carry forward optimistic-* placeholders for adds that haven't synced.
+  // Their server-side row doesn't exist yet, so they must persist locally.
+  for (const localLine of local.lineItems) {
+    if (!localLine.id.startsWith("optimistic-")) continue;
+    const key = `${localLine.catalog_item_id ?? ""}::${
+      localLine.catalog_variation_id ?? ""
+    }`;
+    if (pendingAddKeys.has(key)) {
+      reconciled.push(localLine);
+    }
+  }
+
+  return {
+    ...server,
+    lineItems: reconciled,
+    subtotalCents: recomputeSubtotal(reconciled),
+  };
+}
+
+// ---- debounce bookkeeping --------------------------------------------------
 
 type Resolver = { resolve: () => void; reject: (err: unknown) => void };
 
-type Pending<T> = {
+type Pending = {
   timer: ReturnType<typeof setTimeout>;
-  payload: T;
   resolvers: Resolver[];
 };
 
@@ -184,27 +220,13 @@ export function CartProvider({
   const [summary, setSummary] = useState<CartSummary>(
     initialSummary ?? EMPTY_SUMMARY,
   );
-  const [optimisticSummary, addOptimistic] = useOptimistic(
-    summary,
-    applyOptimistic,
-  );
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
   const [isMutating, startMutation] = useTransition();
 
-  const pendingQtyUpdates = useRef(
-    new Map<string, Pending<{ quantity: number }>>(),
-  );
-  const pendingAdds = useRef(
-    new Map<
-      string,
-      Pending<{
-        itemId: string;
-        variationId?: string;
-        quantity: number;
-      }>
-    >(),
-  );
+  const pendingQtyUpdates = useRef(new Map<string, Pending>());
+  const pendingAddTotals = useRef(new Map<string, number>());
+  const pendingAddTimers = useRef(new Map<string, Pending>());
 
   const refresh = useCallback(async () => {
     try {
@@ -223,10 +245,6 @@ export function CartProvider({
     refresh();
   }, [initialSummary, refresh]);
 
-  // Cancel any pending debounced sync targeting a given line (called on
-  // remove/clear so we don't fire a stale UPDATE against a row that's about
-  // to disappear). Resolvers are released so the call sites' Promises don't
-  // hang forever.
   const cancelPendingForLine = useCallback((lineItemId: string) => {
     const pending = pendingQtyUpdates.current.get(lineItemId);
     if (pending) {
@@ -242,11 +260,23 @@ export function CartProvider({
       p.resolvers.forEach((r) => r.resolve());
     });
     pendingQtyUpdates.current.clear();
-    pendingAdds.current.forEach((p) => {
+    pendingAddTimers.current.forEach((p) => {
       clearTimeout(p.timer);
       p.resolvers.forEach((r) => r.resolve());
     });
-    pendingAdds.current.clear();
+    pendingAddTimers.current.clear();
+    pendingAddTotals.current.clear();
+  }, []);
+
+  const applyServerResponse = useCallback((next: CartSummary) => {
+    setSummary((prev) =>
+      reconcile(
+        prev,
+        next,
+        new Set(pendingQtyUpdates.current.keys()),
+        new Set(pendingAddTotals.current.keys()),
+      ),
+    );
   }, []);
 
   const addItem: CartContextValue["addItem"] = useCallback(
@@ -258,9 +288,9 @@ export function CartProvider({
       basePriceCents = 0,
       variationName = null,
     }) => {
-      // Optimistic update — instant. Each click pushes another optimistic +qty.
-      startMutation(async () => {
-        addOptimistic({
+      // Local update — instant.
+      setSummary((prev) =>
+        applyLocal(prev, {
           type: "add",
           itemId,
           variationId: variationId ?? null,
@@ -268,21 +298,26 @@ export function CartProvider({
           name,
           variationName,
           basePriceCents,
-        });
-      });
+        }),
+      );
 
       const key = `${itemId}::${variationId ?? ""}`;
-      return new Promise<void>((resolve, reject) => {
-        const existing = pendingAdds.current.get(key);
-        if (existing) clearTimeout(existing.timer);
+      pendingAddTotals.current.set(
+        key,
+        (pendingAddTotals.current.get(key) ?? 0) + quantity,
+      );
 
-        const accumQty = (existing?.payload.quantity ?? 0) + quantity;
+      return new Promise<void>((resolve, reject) => {
+        const existing = pendingAddTimers.current.get(key);
+        if (existing) clearTimeout(existing.timer);
         const resolvers = [...(existing?.resolvers ?? []), { resolve, reject }];
 
         const timer = setTimeout(() => {
-          pendingAdds.current.delete(key);
-          const finalQty = accumQty;
+          pendingAddTimers.current.delete(key);
+          const finalQty = pendingAddTotals.current.get(key) ?? quantity;
+          pendingAddTotals.current.delete(key);
           const waiters = resolvers;
+
           startMutation(async () => {
             try {
               const next = await addLineItemAction({
@@ -293,48 +328,43 @@ export function CartProvider({
                 quantity: finalQty,
                 catalogPath,
               });
-              setSummary(next);
+              applyServerResponse(next);
               waiters.forEach((w) => w.resolve());
             } catch (err) {
               const message =
                 err instanceof Error ? err.message : "Could not add to cart.";
               toast.error(message);
               waiters.forEach((w) => w.reject(err));
+              // Restore from server so the local placeholder is undone.
+              refresh();
             }
           });
         }, SERVER_SYNC_DEBOUNCE_MS);
 
-        pendingAdds.current.set(key, {
-          timer,
-          payload: { itemId, variationId, quantity: accumQty },
-          resolvers,
-        });
+        pendingAddTimers.current.set(key, { timer, resolvers });
       });
     },
-    [addOptimistic, catalogPath, orgId, venueId],
+    [applyServerResponse, catalogPath, orgId, refresh, venueId],
   );
 
   const updateQuantity: CartContextValue["updateQuantity"] = useCallback(
     (lineItemId, quantity) => {
-      // Optimistic update — instant.
-      startMutation(async () => {
-        addOptimistic({ type: "updateQuantity", lineItemId, quantity });
-      });
+      // Local update — instant.
+      setSummary((prev) => applyLocal(prev, { type: "updateQuantity", lineItemId, quantity }));
 
-      // Don't sync optimistic placeholders — the server-side row doesn't
-      // exist yet; the next add response will reconcile.
+      // Optimistic placeholders have no server-side row yet.
       if (lineItemId.startsWith("optimistic-")) return Promise.resolve();
 
       return new Promise<void>((resolve, reject) => {
         const existing = pendingQtyUpdates.current.get(lineItemId);
         if (existing) clearTimeout(existing.timer);
-
         const resolvers = [...(existing?.resolvers ?? []), { resolve, reject }];
 
         const timer = setTimeout(() => {
           pendingQtyUpdates.current.delete(lineItemId);
           const finalQty = quantity; // last write wins
           const waiters = resolvers;
+
           startMutation(async () => {
             try {
               const next = await updateLineItemQuantityAction({
@@ -344,7 +374,7 @@ export function CartProvider({
                 quantity: finalQty,
                 catalogPath,
               });
-              setSummary(next);
+              applyServerResponse(next);
               waiters.forEach((w) => w.resolve());
             } catch (err) {
               const message =
@@ -353,26 +383,20 @@ export function CartProvider({
                   : "Could not update item quantity.";
               toast.error(message);
               waiters.forEach((w) => w.reject(err));
+              refresh();
             }
           });
         }, SERVER_SYNC_DEBOUNCE_MS);
 
-        pendingQtyUpdates.current.set(lineItemId, {
-          timer,
-          payload: { quantity },
-          resolvers,
-        });
+        pendingQtyUpdates.current.set(lineItemId, { timer, resolvers });
       });
     },
-    [addOptimistic, catalogPath, orgId, venueId],
+    [applyServerResponse, catalogPath, orgId, refresh, venueId],
   );
 
   const removeItem: CartContextValue["removeItem"] = useCallback(
     (lineItemId) => {
-      startMutation(async () => {
-        addOptimistic({ type: "remove", lineItemId });
-      });
-
+      setSummary((prev) => applyLocal(prev, { type: "remove", lineItemId }));
       cancelPendingForLine(lineItemId);
 
       if (lineItemId.startsWith("optimistic-")) return Promise.resolve();
@@ -386,54 +410,53 @@ export function CartProvider({
               lineItemId,
               catalogPath,
             });
-            setSummary(next);
+            applyServerResponse(next);
             resolve();
           } catch (err) {
             const message =
               err instanceof Error ? err.message : "Could not remove item.";
             toast.error(message);
             reject(err);
+            refresh();
           }
         });
       });
     },
-    [addOptimistic, cancelPendingForLine, catalogPath, orgId, venueId],
+    [applyServerResponse, cancelPendingForLine, catalogPath, orgId, refresh, venueId],
   );
 
   const clear: CartContextValue["clear"] = useCallback(
     () => {
-      startMutation(async () => {
-        addOptimistic({ type: "clear" });
-      });
-
+      setSummary((prev) => applyLocal(prev, { type: "clear" }));
       cancelAllPending();
 
       return new Promise<void>((resolve, reject) => {
         startMutation(async () => {
           try {
             const next = await clearCartAction({ orgId, venueId, catalogPath });
-            setSummary(next);
+            applyServerResponse(next);
             resolve();
           } catch (err) {
             const message =
               err instanceof Error ? err.message : "Could not clear cart.";
             toast.error(message);
             reject(err);
+            refresh();
           }
         });
       });
     },
-    [addOptimistic, cancelAllPending, catalogPath, orgId, venueId],
+    [applyServerResponse, cancelAllPending, catalogPath, orgId, refresh, venueId],
   );
 
-  const itemCount = optimisticSummary.lineItems.reduce(
+  const itemCount = summary.lineItems.reduce(
     (sum, line) => sum + line.quantity,
     0,
   );
 
   const value = useMemo<CartContextValue>(
     () => ({
-      summary: optimisticSummary,
+      summary,
       itemCount,
       isHydrating,
       isMutating,
@@ -454,9 +477,9 @@ export function CartProvider({
       isMutating,
       isOpen,
       itemCount,
-      optimisticSummary,
       refresh,
       removeItem,
+      summary,
       updateQuantity,
     ],
   );
