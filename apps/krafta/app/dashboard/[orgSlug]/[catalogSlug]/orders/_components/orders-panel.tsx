@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
 import { DataTable } from "../../items/_components/data-table";
 import { createOrdersColumns } from "./columns";
 
-// Path is served from apps/krafta/public/sounds/new-order.mp3
-const NEW_ORDER_SOUND_SRC = "/sounds/new-order.mp3";
+// Path is served from apps/krafta/public/sounds/notif.mp3
+const NEW_ORDER_SOUND_SRC = "/sounds/notif.mp3";
 
 export type OrderRow = {
   id: string;
