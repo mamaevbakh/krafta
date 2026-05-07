@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useTransition } from "react";
+import { useParams } from "next/navigation";
 import {
   Clock,
   MapPin,
@@ -9,8 +11,19 @@ import {
   Utensils,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -23,6 +36,7 @@ import {
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
+import { transitionOrderState, type OrderAction } from "./actions";
 import type {
   OrderDeliveryDetails,
   OrderDineInDetails,
@@ -67,6 +81,8 @@ export function OrderDetailSheet({
               <>
                 <StatusRow order={order} />
 
+                <ActionsBlock order={order} />
+
                 {order.mode === "dine_in" && order.dineIn ? (
                   <DineInDetails details={order.dineIn} />
                 ) : null}
@@ -105,6 +121,164 @@ function StatusRow({ order }: { order: OrderRow }) {
         </Badge>
       ) : null}
     </div>
+  );
+}
+
+function ActionsBlock({ order }: { order: OrderRow }) {
+  const params = useParams<{ orgSlug: string; catalogSlug: string }>();
+  const catalogPath = `/${params.catalogSlug}`;
+  const [isPending, startTransition] = useTransition();
+  const [cancelOpen, setCancelOpen] = useState(false);
+
+  // Hide the action panel for terminal-state orders. The badges already
+  // tell the merchant the order is settled; nothing left to do here.
+  if (order.state === "completed" || order.state === "canceled") return null;
+  if (!order.fulfillmentId) return null;
+
+  const fulfillmentId = order.fulfillmentId;
+  const ff = order.fulfillmentState;
+
+  const fire = (action: OrderAction, cancelReason?: string) =>
+    startTransition(async () => {
+      const result = await transitionOrderState({
+        orderId: order.id,
+        fulfillmentId,
+        action,
+        cancelReason,
+        catalogPath,
+      });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      // Realtime will refresh router state automatically; no manual call.
+    });
+
+  // Action availability per current fulfillment state. Mirrors the
+  // server-side state machine in actions.ts.
+  const canAccept = ff === "proposed";
+  const canMarkReady = ff === "proposed" || ff === "reserved";
+  const canMarkCompleted = ff === "reserved" || ff === "prepared";
+
+  const completeLabel =
+    order.mode === "delivery"
+      ? "Mark delivered"
+      : order.mode === "pickup"
+        ? "Mark picked up"
+        : "Close bill";
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-background p-3">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+        Actions
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {canAccept ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={isPending}
+            onClick={() => fire("accept")}
+          >
+            Accept
+          </Button>
+        ) : null}
+        {canMarkReady ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={canAccept ? "outline" : "default"}
+            disabled={isPending}
+            onClick={() => fire("mark_ready")}
+          >
+            Mark ready
+          </Button>
+        ) : null}
+        {canMarkCompleted ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={isPending}
+            onClick={() => fire("mark_completed")}
+          >
+            {completeLabel}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="text-muted-foreground"
+          disabled={isPending}
+          onClick={() => setCancelOpen(true)}
+        >
+          Cancel
+        </Button>
+      </div>
+
+      <CancelDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        isPending={isPending}
+        onConfirm={(reason) => {
+          setCancelOpen(false);
+          fire("cancel", reason || undefined);
+        }}
+      />
+    </div>
+  );
+}
+
+function CancelDialog({
+  open,
+  onOpenChange,
+  isPending,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  isPending: boolean;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cancel this order?</DialogTitle>
+          <DialogDescription>
+            The customer will see the order as canceled. Optionally tell them
+            why.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Input
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Reason (optional)"
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+          >
+            Keep order
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={isPending}
+            onClick={() => onConfirm(reason.trim())}
+          >
+            Cancel order
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
