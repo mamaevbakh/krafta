@@ -68,49 +68,75 @@ export function OrdersPanel({
     // eslint-disable-next-line no-console
     console.log("[orders.realtime] mounting subscription", { catalogId });
     const supabase = createClient();
-    const channel = supabase
-      .channel(`orders:catalog:${catalogId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "commerce",
-          table: "orders",
-          filter: `catalog_id=eq.${catalogId}`,
-        },
-        (payload) => {
+    let cancelled = false;
+    let channelRef: ReturnType<typeof supabase.channel> | null = null;
+
+    (async () => {
+      // Wait for the merchant's JWT to be ready and pin it on the realtime
+      // connection. Without this, postgres_changes events evaluate RLS as
+      // anonymous and get filtered out (the orders policy requires
+      // is_org_role on the row's org_id).
+      const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
+      const token = data.session?.access_token ?? null;
+      // eslint-disable-next-line no-console
+      console.log("[orders.realtime] auth ready", { hasToken: Boolean(token) });
+      if (token) {
+        try {
+          // setAuth is sync in supabase-realtime-js; await wraps both shapes.
+          await supabase.realtime.setAuth(token);
+        } catch (err) {
           // eslint-disable-next-line no-console
-          console.log("[orders.realtime] orders event", payload);
-          router.refresh();
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "commerce",
-          table: "fulfillments",
-        },
-        (payload) => {
-          // eslint-disable-next-line no-console
-          console.log("[orders.realtime] fulfillments event", payload);
-          if (payload.eventType === "INSERT") {
-            const audio = audioRef.current;
-            if (audio) {
-              audio.currentTime = 0;
-              void audio.play().catch(() => {});
+          console.warn("[orders.realtime] setAuth failed", err);
+        }
+      }
+      if (cancelled) return;
+
+      channelRef = supabase
+        .channel(`orders:catalog:${catalogId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "commerce",
+            table: "orders",
+            filter: `catalog_id=eq.${catalogId}`,
+          },
+          (payload) => {
+            // eslint-disable-next-line no-console
+            console.log("[orders.realtime] orders event", payload);
+            router.refresh();
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "commerce",
+            table: "fulfillments",
+          },
+          (payload) => {
+            // eslint-disable-next-line no-console
+            console.log("[orders.realtime] fulfillments event", payload);
+            if (payload.eventType === "INSERT") {
+              const audio = audioRef.current;
+              if (audio) {
+                audio.currentTime = 0;
+                void audio.play().catch(() => {});
+              }
             }
-          }
-          router.refresh();
-        },
-      )
-      .subscribe((status, err) => {
-        // eslint-disable-next-line no-console
-        console.log("[orders.realtime] subscribe status", status, err);
-      });
+            router.refresh();
+          },
+        )
+        .subscribe((status, err) => {
+          // eslint-disable-next-line no-console
+          console.log("[orders.realtime] subscribe status", status, err);
+        });
+    })();
 
     return () => {
-      void supabase.removeChannel(channel);
+      cancelled = true;
+      if (channelRef) void supabase.removeChannel(channelRef);
     };
   }, [catalogId, router]);
 
