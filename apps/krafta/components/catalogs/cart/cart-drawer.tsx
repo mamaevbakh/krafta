@@ -48,7 +48,9 @@ export function CartDrawer({
           <CartListStep currencySettings={currencySettings} />
         ) : null}
         {step === "checkout" ? <CartCheckoutStep /> : null}
-        {step === "placed" ? <CartPlacedStep /> : null}
+        {step === "placed" ? (
+          <CartPlacedStep currencySettings={currencySettings} />
+        ) : null}
       </DrawerContent>
     </Drawer>
   );

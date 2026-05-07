@@ -26,6 +26,41 @@ import type { PlaceOrderInput } from "@/lib/cart/checkout";
 export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
 export type CartStep = "cart" | "checkout" | "placed";
 
+export type PlacedOrderSnapshot =
+  | {
+      orderId: string;
+      mode: "dine_in";
+      fields: { tableLabel: string };
+      lineItems: CartLineItem[];
+      subtotalCents: number;
+    }
+  | {
+      orderId: string;
+      mode: "pickup";
+      fields: {
+        scheduleType: "asap" | "scheduled";
+        pickupAt: string | null;
+        recipientName: string | null;
+        recipientPhone: string | null;
+        note: string | null;
+      };
+      lineItems: CartLineItem[];
+      subtotalCents: number;
+    }
+  | {
+      orderId: string;
+      mode: "delivery";
+      fields: {
+        address: string;
+        recipientName: string;
+        recipientPhone: string;
+        scheduledFor: string | null;
+        note: string | null;
+      };
+      lineItems: CartLineItem[];
+      subtotalCents: number;
+    };
+
 type CartContextValue = {
   summary: CartSummary;
   itemCount: number;
@@ -41,6 +76,13 @@ type CartContextValue = {
   setStep: (next: CartStep) => void;
   /** Order id stamped on the confirmation step after a successful place. */
   placedOrderId: string | null;
+  /**
+   * Frozen view of the order at the moment the customer hit Place — order
+   * id, mode, mode-specific fields, line items, totals. The placed-step
+   * renders against this so the live cart can be reset to empty without
+   * destroying the confirmation screen's content.
+   */
+  placedOrder: PlacedOrderSnapshot | null;
   isPlacingOrder: boolean;
   addItem: (input: {
     itemId: string;
@@ -232,6 +274,9 @@ export function CartProvider({
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
   const [step, setStep] = useState<CartStep>("cart");
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<PlacedOrderSnapshot | null>(
+    null,
+  );
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   const pendingQtyTimers = useRef(new Map<string, Pending>());
@@ -244,6 +289,7 @@ export function CartProvider({
     if (!isOpen && step === "placed") {
       setStep("cart");
       setPlacedOrderId(null);
+      setPlacedOrder(null);
     }
   }, [isOpen, step]);
 
@@ -481,6 +527,22 @@ export function CartProvider({
           catalogPath,
           ...input,
         } as Parameters<typeof placeOrderAction>[0]);
+
+        // Snapshot the cart at place-time so the confirmation step can
+        // render line items + totals after the local cart is cleared.
+        const snapshotBase = {
+          orderId: result.orderId,
+          lineItems: summary.lineItems,
+          subtotalCents: summary.subtotalCents,
+        };
+        const snapshot: PlacedOrderSnapshot =
+          input.mode === "dine_in"
+            ? { ...snapshotBase, mode: "dine_in", fields: input.fields }
+            : input.mode === "pickup"
+              ? { ...snapshotBase, mode: "pickup", fields: input.fields }
+              : { ...snapshotBase, mode: "delivery", fields: input.fields };
+
+        setPlacedOrder(snapshot);
         setPlacedOrderId(result.orderId);
         setStep("placed");
         // Empty the local cart now that the order is in state='open'. The
@@ -497,7 +559,7 @@ export function CartProvider({
         setIsPlacingOrder(false);
       }
     },
-    [catalogPath, flush, orgId, venueId],
+    [catalogPath, flush, orgId, summary.lineItems, summary.subtotalCents, venueId],
   );
 
   const itemCount = summary.lineItems.reduce(
@@ -518,6 +580,7 @@ export function CartProvider({
       step,
       setStep,
       placedOrderId,
+      placedOrder,
       isPlacingOrder,
       addItem,
       updateQuantity,
@@ -537,6 +600,7 @@ export function CartProvider({
       itemCount,
       modes,
       placeOrder,
+      placedOrder,
       placedOrderId,
       refresh,
       removeItem,
