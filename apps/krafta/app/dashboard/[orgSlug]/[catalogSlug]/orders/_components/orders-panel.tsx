@@ -65,29 +65,22 @@ export function OrdersPanel({
   // A new fulfillment INSERT (= a customer placed an order) also rings
   // the chime — that's the cash-flow-critical signal for staff.
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("[orders.realtime] mounting subscription", { catalogId });
     const supabase = createClient();
     let cancelled = false;
     let channelRef: ReturnType<typeof supabase.channel> | null = null;
 
     (async () => {
-      // Wait for the merchant's JWT to be ready and pin it on the realtime
-      // connection. Without this, postgres_changes events evaluate RLS as
-      // anonymous and get filtered out (the orders policy requires
-      // is_org_role on the row's org_id).
+      // Pin the merchant's JWT on the realtime connection before subscribing
+      // so postgres_changes events get RLS-evaluated against the merchant's
+      // identity (not anon, which has no commerce.orders SELECT policy).
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
       const token = data.session?.access_token ?? null;
-      // eslint-disable-next-line no-console
-      console.log("[orders.realtime] auth ready", { hasToken: Boolean(token) });
       if (token) {
         try {
-          // setAuth is sync in supabase-realtime-js; await wraps both shapes.
           await supabase.realtime.setAuth(token);
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn("[orders.realtime] setAuth failed", err);
+        } catch {
+          // Non-fatal: subscribe will surface CHANNEL_ERROR if it bites.
         }
       }
       if (cancelled) return;
@@ -102,11 +95,7 @@ export function OrdersPanel({
             table: "orders",
             filter: `catalog_id=eq.${catalogId}`,
           },
-          (payload) => {
-            // eslint-disable-next-line no-console
-            console.log("[orders.realtime] orders event", payload);
-            router.refresh();
-          },
+          () => router.refresh(),
         )
         .on(
           "postgres_changes",
@@ -116,8 +105,6 @@ export function OrdersPanel({
             table: "fulfillments",
           },
           (payload) => {
-            // eslint-disable-next-line no-console
-            console.log("[orders.realtime] fulfillments event", payload);
             if (payload.eventType === "INSERT") {
               const audio = audioRef.current;
               if (audio) {
@@ -128,10 +115,7 @@ export function OrdersPanel({
             router.refresh();
           },
         )
-        .subscribe((status, err) => {
-          // eslint-disable-next-line no-console
-          console.log("[orders.realtime] subscribe status", status, err);
-        });
+        .subscribe();
     })();
 
     return () => {
