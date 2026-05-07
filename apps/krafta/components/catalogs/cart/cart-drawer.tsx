@@ -38,18 +38,16 @@ export function CartDrawer({
   const isEmpty = summary.lineItems.length === 0;
 
   return (
-    <Drawer open={isOpen} onOpenChange={setOpen}>
-      {/*
-        Fullscreen bottom drawer: override the shadcn defaults
-        (max-h-[80vh] + mt-24) so the cart fills the viewport. Keeps the
-        bottom-direction swipe-down dismiss gesture and grabber handle.
-      */}
+    // shouldScaleBackground lets vaul transform the [vaul-drawer-wrapper]
+    // element (set in app/[...slug]/layout.tsx) — the page tucks behind
+    // the drawer with a small inset + rounded corners, iOS-card-stack feel.
+    // The drawer takes ~92dvh so the scaled page peeks above.
+    <Drawer open={isOpen} onOpenChange={setOpen} shouldScaleBackground>
       <DrawerContent
         className={cn(
-          "h-[100dvh]",
-          "data-[vaul-drawer-direction=bottom]:max-h-[100dvh]",
+          "data-[vaul-drawer-direction=bottom]:max-h-[92dvh]",
+          "data-[vaul-drawer-direction=bottom]:h-[92dvh]",
           "data-[vaul-drawer-direction=bottom]:mt-0",
-          "data-[vaul-drawer-direction=bottom]:rounded-t-none",
         )}
       >
         <DrawerHeader className="text-left">
