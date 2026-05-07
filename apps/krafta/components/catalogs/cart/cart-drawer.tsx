@@ -18,6 +18,7 @@ import {
   defaultCurrencySettings,
 } from "@/lib/catalogs/settings/currency";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
+import { cn } from "@/lib/utils";
 
 import { useCart } from "./cart-provider";
 
@@ -38,7 +39,19 @@ export function CartDrawer({
 
   return (
     <Drawer open={isOpen} onOpenChange={setOpen}>
-      <DrawerContent className="max-h-[85dvh]">
+      {/*
+        Fullscreen bottom drawer: override the shadcn defaults
+        (max-h-[80vh] + mt-24) so the cart fills the viewport. Keeps the
+        bottom-direction swipe-down dismiss gesture and grabber handle.
+      */}
+      <DrawerContent
+        className={cn(
+          "h-[100dvh]",
+          "data-[vaul-drawer-direction=bottom]:max-h-[100dvh]",
+          "data-[vaul-drawer-direction=bottom]:mt-0",
+          "data-[vaul-drawer-direction=bottom]:rounded-t-none",
+        )}
+      >
         <DrawerHeader className="text-left">
           <DrawerTitle>Your cart</DrawerTitle>
           <DrawerDescription>
@@ -46,7 +59,7 @@ export function CartDrawer({
           </DrawerDescription>
         </DrawerHeader>
 
-        <ScrollArea className="max-h-[60dvh] flex-1 overflow-y-auto px-4">
+        <ScrollArea className="flex-1 overflow-y-auto px-4">
           {isHydrating ? (
             <p className="py-12 text-center text-sm text-muted-foreground">
               Loading…
