@@ -1,7 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
 
-import { OrdersPanel, type OrderRow } from "./_components/orders-panel";
+import {
+  OrdersPanel,
+  type OrderLineItem,
+  type OrderRow,
+} from "./_components/orders-panel";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
@@ -33,9 +37,10 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
       {}) as Record<string, unknown>,
   );
 
-  // Pull orders + customer + fulfillment + line items in one round trip via
-  // PostgREST embedded selects. Drafts are excluded — they're customer
-  // carts in flight, not orders the merchant should act on yet.
+  // Pull orders + customer + fulfillment (with per-mode subtype details) +
+  // line items in a single round trip via PostgREST embedded selects. The
+  // subtype details for the modes that don't match return [] / null and
+  // get filtered out below.
   const { data: orders } = await supabase
     .schema("commerce")
     .from("orders")
@@ -50,8 +55,29 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
         closed_at,
         version,
         customer:customers(id, given_name, family_name, email, phone),
-        fulfillments(id, type, state),
-        line_items:order_line_items(id, name, quantity, total_price_cents)
+        fulfillments(
+          id, type, state,
+          dine_in_details:fulfillment_dine_in_details(
+            table_label, table_session_id, guest_session_id, party_size,
+            course_number, closed_at
+          ),
+          pickup_details:fulfillment_pickup_details(
+            schedule_type, pickup_at, pickup_window_minutes, prep_time_minutes,
+            recipient_name, recipient_phone, note,
+            placed_at, accepted_at, ready_at, picked_up_at, canceled_at,
+            cancel_reason, is_curbside
+          ),
+          delivery_details:fulfillment_delivery_details(
+            recipient_name, recipient_phone, address, scheduled_for,
+            delivery_provider, external_courier_ref, note,
+            placed_at, accepted_at, courier_assigned_at, picked_up_at,
+            delivered_at, canceled_at, cancel_reason
+          )
+        ),
+        line_items:order_line_items(
+          id, name, variation_name, quantity, base_price_cents,
+          total_price_cents
+        )
       `,
     )
     .eq("catalog_id", catalog.id)
@@ -61,12 +87,17 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
 
   const rows: OrderRow[] = (orders ?? []).map((order) => {
     const fulfillment = order.fulfillments?.[0] ?? null;
-    const itemCount = (order.line_items ?? []).reduce(
-      (sum, line) => sum + Number(line.quantity ?? 0),
-      0,
-    );
-    const totalCents = (order.line_items ?? []).reduce(
-      (sum, line) => sum + (line.total_price_cents ?? 0),
+    const lineItems: OrderLineItem[] = (order.line_items ?? []).map((line) => ({
+      id: line.id,
+      name: line.name,
+      variationName: line.variation_name,
+      quantity: Number(line.quantity ?? 0),
+      basePriceCents: line.base_price_cents,
+      totalPriceCents: line.total_price_cents,
+    }));
+    const itemCount = lineItems.reduce((sum, line) => sum + line.quantity, 0);
+    const totalCents = lineItems.reduce(
+      (sum, line) => sum + line.totalPriceCents,
       0,
     );
     const customerLabel = formatCustomerLabel(order.customer);
@@ -81,10 +112,29 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
       closedAt: order.closed_at,
       version: order.version,
       mode: fulfillment?.type ?? null,
+      fulfillmentId: fulfillment?.id ?? null,
       fulfillmentState: fulfillment?.state ?? null,
+      // The fulfillment_*_details tables have PRIMARY KEY (fulfillment_id),
+      // so PostgREST infers a one-to-one relation and Supabase typegen
+      // returns a single object (or null), not an array.
+      dineIn: fulfillment?.dine_in_details ?? null,
+      pickup: fulfillment?.pickup_details ?? null,
+      delivery:
+        fulfillment?.delivery_details
+          ? {
+              ...fulfillment.delivery_details,
+              address:
+                typeof fulfillment.delivery_details.address === "object" &&
+                fulfillment.delivery_details.address !== null
+                  ? (fulfillment.delivery_details.address as Record<string, unknown>)
+                  : null,
+            }
+          : null,
       itemCount,
       totalCents,
+      customer: order.customer ?? null,
       customerLabel,
+      lineItems,
     };
   });
 

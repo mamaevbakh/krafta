@@ -9,9 +9,70 @@ import { cn } from "@/lib/utils";
 
 import { DataTable } from "../../items/_components/data-table";
 import { createOrdersColumns } from "./columns";
+import { OrderDetailSheet } from "./order-detail-sheet";
 
 // Path is served from apps/krafta/public/sounds/notif.mp3
 const NEW_ORDER_SOUND_SRC = "/sounds/notif.mp3";
+
+export type OrderLineItem = {
+  id: string;
+  name: string;
+  variationName: string | null;
+  quantity: number;
+  basePriceCents: number;
+  totalPriceCents: number;
+};
+
+export type OrderCustomer = {
+  id: string;
+  given_name: string | null;
+  family_name: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+export type OrderDineInDetails = {
+  table_label: string;
+  table_session_id: string;
+  guest_session_id: string;
+  party_size: number | null;
+  course_number: number | null;
+  closed_at: string | null;
+};
+
+export type OrderPickupDetails = {
+  schedule_type: "asap" | "scheduled";
+  pickup_at: string | null;
+  pickup_window_minutes: number | null;
+  prep_time_minutes: number | null;
+  recipient_name: string | null;
+  recipient_phone: string | null;
+  note: string | null;
+  placed_at: string | null;
+  accepted_at: string | null;
+  ready_at: string | null;
+  picked_up_at: string | null;
+  canceled_at: string | null;
+  cancel_reason: string | null;
+  is_curbside: boolean;
+};
+
+export type OrderDeliveryDetails = {
+  recipient_name: string;
+  recipient_phone: string;
+  address: Record<string, unknown> | null;
+  scheduled_for: string | null;
+  delivery_provider: string;
+  external_courier_ref: string | null;
+  note: string | null;
+  placed_at: string | null;
+  accepted_at: string | null;
+  courier_assigned_at: string | null;
+  picked_up_at: string | null;
+  delivered_at: string | null;
+  canceled_at: string | null;
+  cancel_reason: string | null;
+};
 
 export type OrderRow = {
   id: string;
@@ -23,6 +84,7 @@ export type OrderRow = {
   closedAt: string | null;
   version: number;
   mode: "dine_in" | "pickup" | "delivery" | "digital" | null;
+  fulfillmentId: string | null;
   fulfillmentState:
     | "proposed"
     | "reserved"
@@ -31,9 +93,14 @@ export type OrderRow = {
     | "canceled"
     | "failed"
     | null;
+  dineIn: OrderDineInDetails | null;
+  pickup: OrderPickupDetails | null;
+  delivery: OrderDeliveryDetails | null;
   itemCount: number;
   totalCents: number;
+  customer: OrderCustomer | null;
   customerLabel: string;
+  lineItems: OrderLineItem[];
 };
 
 type StatusTab = "all" | "open" | "completed" | "canceled";
@@ -58,7 +125,17 @@ export function OrdersPanel({
 }: OrdersPanelProps) {
   const router = useRouter();
   const [tab, setTab] = useState<StatusTab>("open");
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Keep the sheet's content live: when realtime fires router.refresh(), the
+  // server re-renders with fresh data, and the selected row is found again
+  // by id on the next render. If the selected order vanishes (canceled
+  // elsewhere, etc.), the sheet falls back to a "no longer available" state.
+  const selectedOrder = useMemo(
+    () => rows.find((row) => row.id === selectedOrderId) ?? null,
+    [rows, selectedOrderId],
+  );
 
   // Live updates: any insert/update/delete on commerce.orders or
   // commerce.fulfillments that touches this catalog triggers a refresh.
@@ -190,8 +267,18 @@ export function OrdersPanel({
           data={filteredRows}
           searchPlaceholder="Search by order reference…"
           searchColumnId="reference"
+          onRowClick={(row) => setSelectedOrderId(row.id)}
         />
       </div>
+
+      <OrderDetailSheet
+        open={Boolean(selectedOrderId)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedOrderId(null);
+        }}
+        order={selectedOrder}
+        currencySettings={currencySettings}
+      />
     </main>
   );
 }
