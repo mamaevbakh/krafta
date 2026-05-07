@@ -27,6 +27,7 @@ export type PublicCatalog = Pick<
   | "tags"
   | "settings_layout"
   | "settings_currency"
+  | "settings_behavior"
 >;
 
 export type PublicCatalogCategory = Pick<

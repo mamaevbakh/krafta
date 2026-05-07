@@ -231,3 +231,12 @@ export function useCart(): CartContextValue {
   }
   return ctx;
 }
+
+/**
+ * Returns the cart context if available, or null. Use when a component
+ * renders both inside and outside a cart-enabled tree (e.g. item detail
+ * renders Add-to-cart when cart is enabled, plain Close otherwise).
+ */
+export function useOptionalCart(): CartContextValue | null {
+  return use(CartContext);
+}

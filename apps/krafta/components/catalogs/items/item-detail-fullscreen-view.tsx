@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { ItemDetailProps } from "@/lib/catalogs/layout-registry";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
-import { AddToCartButton } from "@/components/catalogs/cart";
+import { AddToCartButton, useOptionalCart } from "@/components/catalogs/cart";
 
 export function ItemDetailFullscreen({
   item,
@@ -20,6 +20,7 @@ export function ItemDetailFullscreen({
   currencySettings,
 }: ItemDetailProps) {
   const ratio = itemAspectRatio ?? 4 / 5;
+  const cart = useOptionalCart();
   const handleShare = async () => {
     if (typeof window === "undefined") return;
 
@@ -134,7 +135,26 @@ export function ItemDetailFullscreen({
 
       <div className="fixed inset-x-0 bottom-0 z-10 w-full border-t border-border/60 bg-background/95 backdrop-blur md:sticky">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-5 py-4">
-          <AddToCartButton itemId={item.id} itemName={item.name} />
+          {cart ? (
+            <AddToCartButton itemId={item.id} itemName={item.name} />
+          ) : onClose ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="w-full border-border/60 text-foreground hover:bg-muted/40"
+            >
+              Закрыть
+            </Button>
+          ) : (
+            <Button
+              asChild
+              variant="outline"
+              className="w-full border-border/60 text-foreground hover:bg-muted/40"
+            >
+              <Link href={backHref ?? "#"}>Закрыть</Link>
+            </Button>
+          )}
         </div>
       </div>
     </div>

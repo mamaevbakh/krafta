@@ -62,7 +62,7 @@ export function CatalogLayout({
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
-  const { layout, currency } = normalizeCatalogSettings(catalog);
+  const { layout, currency, behavior } = normalizeCatalogSettings(catalog);
   const resolvedLayout = layoutOverride
     ? normalizeLayoutSettings({
         ...layout,
@@ -192,9 +192,10 @@ export function CatalogLayout({
     </ItemSheetProvider>
   );
 
-  // Cart only renders when we have a venue (which we always do post-Migration 2,
-  // but the null path guards against catalogs created outside the normal flow).
-  if (!venue) return tree;
+  // Cart UI is opt-in per catalog via settings_behavior.enableCart, and only
+  // renders when we have a venue (always true post-Migration 2, but the null
+  // path guards against catalogs created outside the normal flow).
+  if (!venue || !behavior.enableCart) return tree;
 
   return (
     <CartProvider

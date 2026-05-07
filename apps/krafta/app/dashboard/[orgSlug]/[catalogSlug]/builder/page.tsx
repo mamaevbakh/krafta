@@ -72,7 +72,7 @@ export default async function CatalogBuilderPage({
     ? await supabase
         .from("catalogs")
         .select(
-          "id,slug,name,description,logo_path,org_id,tags,settings_layout,settings_currency",
+          "id,slug,name,description,logo_path,org_id,tags,settings_layout,settings_currency,settings_behavior",
         )
         .eq("org_id", orgRecord.id)
         .eq("slug", catalogSlug)

@@ -40,7 +40,7 @@ export async function getCatalogBySlug(
 
   const url = `${supabaseUrl}/rest/v1/catalogs?slug=eq.${encodeURIComponent(
     slug,
-  )}&select=id,slug,name,description,logo_path,org_id,tags,settings_layout,settings_currency`;
+  )}&select=id,slug,name,description,logo_path,org_id,tags,settings_layout,settings_currency,settings_behavior`;
   const response = await fetch(url, {
     headers: supabaseHeaders,
     next: {
