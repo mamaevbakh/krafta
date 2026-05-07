@@ -6,6 +6,31 @@ serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
+  // Auth: replaces verify_jwt at the gateway. The new sb_secret_ key isn't a
+  // JWT, so JWT verification rejects it. Accept any value from the auto-
+  // injected SUPABASE_SECRET_KEYS dictionary (current new-format keys), or
+  // the legacy SUPABASE_SERVICE_ROLE_KEY JWT during migration.
+  const validTokens = new Set<string>();
+  try {
+    const secretKeysRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
+    if (secretKeysRaw) {
+      const dict = JSON.parse(secretKeysRaw) as Record<string, string>;
+      for (const value of Object.values(dict)) {
+        if (typeof value === "string" && value) validTokens.add(value);
+      }
+    }
+  } catch {
+    // Malformed dictionary — fall back to legacy below.
+  }
+  const legacyServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacyServiceRoleKey) validTokens.add(legacyServiceRoleKey);
+
+  const provided = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
+                ?? req.headers.get("apikey");
+  if (!provided || !validTokens.has(provided)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   const { query } = await req.json();
 
   if (!query || typeof query !== "string") {
