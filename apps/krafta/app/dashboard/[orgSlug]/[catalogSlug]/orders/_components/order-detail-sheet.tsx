@@ -167,9 +167,16 @@ function ActionsBlock({ order }: { order: OrderRow }) {
 
   // Action availability per current fulfillment state. Mirrors the
   // server-side state machine in actions.ts.
+  // Dine-in skips the "ready" stage — there is no counter to make ready
+  // for; the server brings food straight to the table. Pickup and
+  // delivery use the full ladder.
   const canAccept = ff === "proposed";
-  const canMarkReady = ff === "proposed" || ff === "reserved";
-  const canMarkCompleted = ff === "reserved" || ff === "prepared";
+  const isDineIn = order.mode === "dine_in";
+  const canMarkReady =
+    !isDineIn && (ff === "proposed" || ff === "reserved");
+  const canMarkCompleted = ff === "reserved" || ff === "prepared" ||
+    // Dine-in can close the bill straight from accepted, no ready stage.
+    (isDineIn && ff === "proposed");
 
   const completeLabel =
     order.mode === "delivery"

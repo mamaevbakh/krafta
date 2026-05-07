@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Volume2, VolumeX } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
@@ -13,6 +15,12 @@ import { OrderDetailSheet } from "./order-detail-sheet";
 
 // Path is served from apps/krafta/public/sounds/notif.mp3
 const NEW_ORDER_SOUND_SRC = "/sounds/notif.mp3";
+
+// localStorage key for the per-browser chime mute preference. Scoped to the
+// catalog so multi-venue merchants can mute one and not the other.
+function muteStorageKey(catalogId: string) {
+  return `krafta:orders:chime-muted:${catalogId}`;
+}
 
 export type OrderLineItem = {
   id: string;
@@ -139,6 +147,28 @@ export function OrdersPanel({
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const [muted, setMuted] = useState(false);
+  // Hydrate mute state from localStorage on mount; keep a ref so the
+  // realtime callback sees the latest value without re-subscribing.
+  const mutedRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(muteStorageKey(catalogId));
+    const value = raw === "1";
+    setMuted(value);
+    mutedRef.current = value;
+  }, [catalogId]);
+  const toggleMute = useCallback(() => {
+    setMuted((current) => {
+      const next = !current;
+      mutedRef.current = next;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(muteStorageKey(catalogId), next ? "1" : "0");
+      }
+      return next;
+    });
+  }, [catalogId]);
+
   // Keep the sheet's content live: when realtime fires router.refresh(), the
   // server re-renders with fresh data, and the selected row is found again
   // by id on the next render. If the selected order vanishes (canceled
@@ -193,7 +223,7 @@ export function OrdersPanel({
             table: "fulfillments",
           },
           (payload) => {
-            if (payload.eventType === "INSERT") {
+            if (payload.eventType === "INSERT" && !mutedRef.current) {
               const audio = audioRef.current;
               if (audio) {
                 audio.currentTime = 0;
@@ -244,6 +274,25 @@ export function OrdersPanel({
               carts) are hidden.
             </p>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={toggleMute}
+            aria-pressed={muted}
+            title={
+              muted
+                ? "Sound is off — click to ring on new orders"
+                : "Sound is on — click to mute"
+            }
+          >
+            {muted ? (
+              <VolumeX className="h-4 w-4" aria-hidden />
+            ) : (
+              <Volume2 className="h-4 w-4" aria-hidden />
+            )}
+            {muted ? "Muted" : "Sound on"}
+          </Button>
         </div>
       </div>
 

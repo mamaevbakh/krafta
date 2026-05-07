@@ -110,7 +110,11 @@ export async function transitionOrderState(
     return { ok: false, error: "Fulfillment does not belong to this order." };
   }
 
-  const target = nextStateFor(fulfillment.state, input.action);
+  const target = nextStateFor(
+    fulfillment.state,
+    input.action,
+    fulfillment.type,
+  );
   if (!target) {
     return {
       ok: false,
@@ -193,10 +197,11 @@ export async function transitionOrderState(
 }
 
 // State transition table. Returns the next fulfillment state for a given
-// (current state, action) pair, or null if the transition is invalid.
+// (current state, action, mode) tuple, or null if the transition is invalid.
 function nextStateFor(
   current: string,
   action: OrderAction,
+  mode: string,
 ):
   | "reserved"
   | "prepared"
@@ -211,6 +216,9 @@ function nextStateFor(
     return current === "proposed" ? "reserved" : null;
   }
   if (action === "mark_ready") {
+    // Dine-in skips the ready stage — there's no counter to ready up. The
+    // UI hides the button; the server enforces it too.
+    if (mode === "dine_in") return null;
     if (current === "proposed") return "prepared"; // express: accept+ready
     if (current === "reserved") return "prepared";
     return null;
@@ -218,6 +226,8 @@ function nextStateFor(
   if (action === "mark_completed") {
     if (current === "prepared") return "completed";
     if (current === "reserved") return "completed"; // skip "ready"
+    // Dine-in fast path: close the bill straight from a fresh order.
+    if (mode === "dine_in" && current === "proposed") return "completed";
     return null;
   }
   return null;
