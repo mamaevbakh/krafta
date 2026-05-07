@@ -143,14 +143,18 @@ function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
   }
 }
 
-// ---- debounce bookkeeping --------------------------------------------------
+// ---- debounce + settle reconcile -------------------------------------------
 //
-// Server sync is debounced per "key" — line id for qty updates, item-variation
-// pair for adds. The local state is authoritative during the user's session;
-// we only call the server to persist for reload/checkout. Server responses
-// are NOT applied back to local state — that would just cause the slow-roundtrip
-// flicker the user reported. If a sync fails we surface a toast and refresh
-// from the server to get back in sync.
+// Server sync is debounced per "key" — line id for qty updates,
+// (item, variation) for adds. The local state stays authoritative during the
+// user's session so the UI is instant.
+//
+// When a debounced sync resolves AND no new pending timer has been queued
+// for that same key in the meantime, we apply the server response to local
+// state — that way once the user stops clicking, what they see equals what
+// is in the DB. If they DID click again during the round-trip, we skip the
+// reconcile (the next debounce will sync the fresher value and reconcile
+// then).
 
 type Pending = { timer: ReturnType<typeof setTimeout> };
 
@@ -249,7 +253,7 @@ export function CartProvider({
         const finalQty = pendingAddTotals.current.get(key) ?? quantity;
         pendingAddTotals.current.delete(key);
         try {
-          await addLineItemAction({
+          const next = await addLineItemAction({
             orgId,
             venueId,
             itemId,
@@ -257,9 +261,12 @@ export function CartProvider({
             quantity: finalQty,
             catalogPath,
           });
-          // Intentionally not applying the server response — local state
-          // already reflects the user's intent. We sync to server purely for
-          // persistence; reading it back would create flicker.
+          // Reconcile only if the user has not started a new add for this
+          // (item, variation) during the round-trip. If they have, the next
+          // debounced sync will reconcile.
+          if (!pendingAddTimers.current.has(key)) {
+            setSummary(next);
+          }
         } catch (err) {
           toast.error(
             err instanceof Error ? err.message : "Could not save cart change.",
@@ -289,13 +296,18 @@ export function CartProvider({
       const timer = setTimeout(async () => {
         pendingQtyTimers.current.delete(lineItemId);
         try {
-          await updateLineItemQuantityAction({
+          const next = await updateLineItemQuantityAction({
             orgId,
             venueId,
             lineItemId,
             quantity,
             catalogPath,
           });
+          // Reconcile only if the user has not clicked +/- on this line
+          // during the round-trip. The next debounce will handle that case.
+          if (!pendingQtyTimers.current.has(lineItemId)) {
+            setSummary(next);
+          }
         } catch (err) {
           toast.error(
             err instanceof Error ? err.message : "Could not save cart change.",
@@ -317,12 +329,13 @@ export function CartProvider({
       if (lineItemId.startsWith("local-")) return;
 
       try {
-        await removeLineItemAction({
+        const next = await removeLineItemAction({
           orgId,
           venueId,
           lineItemId,
           catalogPath,
         });
+        setSummary(next);
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Could not save cart change.",
@@ -338,7 +351,8 @@ export function CartProvider({
     cancelAllPending();
 
     try {
-      await clearCartAction({ orgId, venueId, catalogPath });
+      const next = await clearCartAction({ orgId, venueId, catalogPath });
+      setSummary(next);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not save cart change.",
