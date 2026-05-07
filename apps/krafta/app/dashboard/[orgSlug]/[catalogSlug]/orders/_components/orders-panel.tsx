@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils";
 
 import { DataTable } from "../../items/_components/data-table";
 import { createOrdersColumns } from "./columns";
+
+// Path is served from apps/krafta/public/sounds/new-order.mp3
+const NEW_ORDER_SOUND_SRC = "/sounds/new-order.mp3";
 
 export type OrderRow = {
   id: string;
@@ -55,12 +58,12 @@ export function OrdersPanel({
 }: OrdersPanelProps) {
   const router = useRouter();
   const [tab, setTab] = useState<StatusTab>("open");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Live updates: any insert/update/delete on commerce.orders or
   // commerce.fulfillments that touches this catalog triggers a refresh.
-  // We refetch the entire row set instead of patching in place — keeps
-  // joined data (customer, line items, fulfillment) consistent without
-  // a denormalised cache.
+  // A new fulfillment INSERT (= a customer placed an order) also rings
+  // the chime — that's the cash-flow-critical signal for staff.
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
@@ -82,7 +85,22 @@ export function OrdersPanel({
           schema: "commerce",
           table: "fulfillments",
         },
-        () => router.refresh(),
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            const audio = audioRef.current;
+            if (audio) {
+              // Restart from 0 in case multiple events land in quick
+              // succession; some browsers ignore a play() while already
+              // playing the same element.
+              audio.currentTime = 0;
+              // Browser autoplay policies block sound until the user has
+              // interacted with the page — swallow the rejection so we
+              // don't surface a noisy console error every reload.
+              void audio.play().catch(() => {});
+            }
+          }
+          router.refresh();
+        },
       )
       .subscribe();
 
@@ -108,6 +126,12 @@ export function OrdersPanel({
 
   return (
     <main className="w-full">
+      <audio
+        ref={audioRef}
+        src={NEW_ORDER_SOUND_SRC}
+        preload="auto"
+        aria-hidden
+      />
       <div className="w-full border-b">
         <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
           <div className="space-y-1">
