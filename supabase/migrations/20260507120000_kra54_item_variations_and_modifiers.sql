@@ -53,7 +53,7 @@ ALTER TABLE public.items
   ADD COLUMN is_sold_out boolean NOT NULL DEFAULT false;
 
 COMMENT ON COLUMN public.items.is_sold_out IS
-  'Operational "86'd" flag (out-of-stock / temporarily unavailable). Distinct from is_active (soft delete).';
+  'Operational 86 flag (out-of-stock / temporarily unavailable). Distinct from is_active (soft delete).';
 
 CREATE TRIGGER trg_items_bump_version
   BEFORE UPDATE ON public.items
