@@ -76,7 +76,11 @@ export function OrdersPanel({
           table: "orders",
           filter: `catalog_id=eq.${catalogId}`,
         },
-        () => router.refresh(),
+        (payload) => {
+          // eslint-disable-next-line no-console
+          console.debug("[orders.realtime] orders event", payload);
+          router.refresh();
+        },
       )
       .on(
         "postgres_changes",
@@ -86,23 +90,22 @@ export function OrdersPanel({
           table: "fulfillments",
         },
         (payload) => {
+          // eslint-disable-next-line no-console
+          console.debug("[orders.realtime] fulfillments event", payload);
           if (payload.eventType === "INSERT") {
             const audio = audioRef.current;
             if (audio) {
-              // Restart from 0 in case multiple events land in quick
-              // succession; some browsers ignore a play() while already
-              // playing the same element.
               audio.currentTime = 0;
-              // Browser autoplay policies block sound until the user has
-              // interacted with the page — swallow the rejection so we
-              // don't surface a noisy console error every reload.
               void audio.play().catch(() => {});
             }
           }
           router.refresh();
         },
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        // eslint-disable-next-line no-console
+        console.debug("[orders.realtime] subscribe status", status, err);
+      });
 
     return () => {
       void supabase.removeChannel(channel);
