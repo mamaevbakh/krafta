@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
@@ -26,7 +25,6 @@ type CartContextValue = {
   summary: CartSummary;
   itemCount: number;
   isHydrating: boolean;
-  isMutating: boolean;
   isOpen: boolean;
   open: () => void;
   close: () => void;
@@ -35,7 +33,7 @@ type CartContextValue = {
     itemId: string;
     variationId?: string;
     quantity?: number;
-    /** Used for optimistic placeholder when no matching line exists yet. */
+    /** Used for placeholder when no matching line exists yet. */
     name?: string;
     basePriceCents?: number;
     variationName?: string | null;
@@ -55,15 +53,12 @@ const EMPTY_SUMMARY: CartSummary = {
   subtotalCents: 0,
 };
 
-const SERVER_SYNC_DEBOUNCE_MS = 250;
+// 2.5s of inactivity before pushing to the server. The cart is the user's
+// scratchpad until they hit "Continue" — we just need persistence across
+// reloads and the right state at checkout time.
+const SERVER_SYNC_DEBOUNCE_MS = 2500;
 
 // ---- local reducer ---------------------------------------------------------
-//
-// We don't use React 19's `useOptimistic` here. With debounced server sync,
-// the surrounding transition settles long before the network round-trip; the
-// optimistic projection would revert for the gap and the user sees a flicker
-// (qty 1 → 2 → 1 → 2). Instead we treat local state as the source of truth
-// while the user is interacting and reconcile from the server response.
 
 type LocalAction =
   | {
@@ -105,7 +100,7 @@ function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
       }
 
       const placeholder: CartLineItem = {
-        id: `optimistic-${
+        id: `local-${
           typeof crypto !== "undefined" && "randomUUID" in crypto
             ? crypto.randomUUID()
             : Math.random().toString(36).slice(2)
@@ -148,57 +143,16 @@ function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
   }
 }
 
-// ---- reconcile -------------------------------------------------------------
-//
-// When a server response arrives, replace per-line state with canonical
-// values EXCEPT for lines the user is still touching (debounce timer
-// pending) — those keep their local view so a slow server response can't
-// undo a click that landed mid-flight.
-
-function reconcile(
-  local: CartSummary,
-  server: CartSummary,
-  pendingLineIds: Set<string>,
-  pendingAddKeys: Set<string>,
-): CartSummary {
-  const localById = new Map(local.lineItems.map((line) => [line.id, line]));
-
-  // Start from server's view but swap in local for any line the user is
-  // still touching.
-  const reconciled: CartLineItem[] = server.lineItems.map((serverLine) => {
-    if (pendingLineIds.has(serverLine.id)) {
-      return localById.get(serverLine.id) ?? serverLine;
-    }
-    return serverLine;
-  });
-
-  // Carry forward optimistic-* placeholders for adds that haven't synced.
-  // Their server-side row doesn't exist yet, so they must persist locally.
-  for (const localLine of local.lineItems) {
-    if (!localLine.id.startsWith("optimistic-")) continue;
-    const key = `${localLine.catalog_item_id ?? ""}::${
-      localLine.catalog_variation_id ?? ""
-    }`;
-    if (pendingAddKeys.has(key)) {
-      reconciled.push(localLine);
-    }
-  }
-
-  return {
-    ...server,
-    lineItems: reconciled,
-    subtotalCents: recomputeSubtotal(reconciled),
-  };
-}
-
 // ---- debounce bookkeeping --------------------------------------------------
+//
+// Server sync is debounced per "key" — line id for qty updates, item-variation
+// pair for adds. The local state is authoritative during the user's session;
+// we only call the server to persist for reload/checkout. Server responses
+// are NOT applied back to local state — that would just cause the slow-roundtrip
+// flicker the user reported. If a sync fails we surface a toast and refresh
+// from the server to get back in sync.
 
-type Resolver = { resolve: () => void; reject: (err: unknown) => void };
-
-type Pending = {
-  timer: ReturnType<typeof setTimeout>;
-  resolvers: Resolver[];
-};
+type Pending = { timer: ReturnType<typeof setTimeout> };
 
 // ----------------------------------------------------------------------------
 
@@ -222,11 +176,10 @@ export function CartProvider({
   );
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
-  const [isMutating, startMutation] = useTransition();
 
-  const pendingQtyUpdates = useRef(new Map<string, Pending>());
-  const pendingAddTotals = useRef(new Map<string, number>());
+  const pendingQtyTimers = useRef(new Map<string, Pending>());
   const pendingAddTimers = useRef(new Map<string, Pending>());
+  const pendingAddTotals = useRef(new Map<string, number>());
 
   const refresh = useCallback(async () => {
     try {
@@ -246,41 +199,23 @@ export function CartProvider({
   }, [initialSummary, refresh]);
 
   const cancelPendingForLine = useCallback((lineItemId: string) => {
-    const pending = pendingQtyUpdates.current.get(lineItemId);
+    const pending = pendingQtyTimers.current.get(lineItemId);
     if (pending) {
       clearTimeout(pending.timer);
-      pendingQtyUpdates.current.delete(lineItemId);
-      pending.resolvers.forEach((r) => r.resolve());
+      pendingQtyTimers.current.delete(lineItemId);
     }
   }, []);
 
   const cancelAllPending = useCallback(() => {
-    pendingQtyUpdates.current.forEach((p) => {
-      clearTimeout(p.timer);
-      p.resolvers.forEach((r) => r.resolve());
-    });
-    pendingQtyUpdates.current.clear();
-    pendingAddTimers.current.forEach((p) => {
-      clearTimeout(p.timer);
-      p.resolvers.forEach((r) => r.resolve());
-    });
+    pendingQtyTimers.current.forEach((p) => clearTimeout(p.timer));
+    pendingQtyTimers.current.clear();
+    pendingAddTimers.current.forEach((p) => clearTimeout(p.timer));
     pendingAddTimers.current.clear();
     pendingAddTotals.current.clear();
   }, []);
 
-  const applyServerResponse = useCallback((next: CartSummary) => {
-    setSummary((prev) =>
-      reconcile(
-        prev,
-        next,
-        new Set(pendingQtyUpdates.current.keys()),
-        new Set(pendingAddTotals.current.keys()),
-      ),
-    );
-  }, []);
-
   const addItem: CartContextValue["addItem"] = useCallback(
-    ({
+    async ({
       itemId,
       variationId,
       quantity = 1,
@@ -288,7 +223,6 @@ export function CartProvider({
       basePriceCents = 0,
       variationName = null,
     }) => {
-      // Local update — instant.
       setSummary((prev) =>
         applyLocal(prev, {
           type: "add",
@@ -307,147 +241,111 @@ export function CartProvider({
         (pendingAddTotals.current.get(key) ?? 0) + quantity,
       );
 
-      return new Promise<void>((resolve, reject) => {
-        const existing = pendingAddTimers.current.get(key);
-        if (existing) clearTimeout(existing.timer);
-        const resolvers = [...(existing?.resolvers ?? []), { resolve, reject }];
+      const existing = pendingAddTimers.current.get(key);
+      if (existing) clearTimeout(existing.timer);
 
-        const timer = setTimeout(() => {
-          pendingAddTimers.current.delete(key);
-          const finalQty = pendingAddTotals.current.get(key) ?? quantity;
-          pendingAddTotals.current.delete(key);
-          const waiters = resolvers;
-
-          startMutation(async () => {
-            try {
-              const next = await addLineItemAction({
-                orgId,
-                venueId,
-                itemId,
-                variationId,
-                quantity: finalQty,
-                catalogPath,
-              });
-              applyServerResponse(next);
-              waiters.forEach((w) => w.resolve());
-            } catch (err) {
-              const message =
-                err instanceof Error ? err.message : "Could not add to cart.";
-              toast.error(message);
-              waiters.forEach((w) => w.reject(err));
-              // Restore from server so the local placeholder is undone.
-              refresh();
-            }
+      const timer = setTimeout(async () => {
+        pendingAddTimers.current.delete(key);
+        const finalQty = pendingAddTotals.current.get(key) ?? quantity;
+        pendingAddTotals.current.delete(key);
+        try {
+          await addLineItemAction({
+            orgId,
+            venueId,
+            itemId,
+            variationId,
+            quantity: finalQty,
+            catalogPath,
           });
-        }, SERVER_SYNC_DEBOUNCE_MS);
+          // Intentionally not applying the server response — local state
+          // already reflects the user's intent. We sync to server purely for
+          // persistence; reading it back would create flicker.
+        } catch (err) {
+          toast.error(
+            err instanceof Error ? err.message : "Could not save cart change.",
+          );
+          refresh();
+        }
+      }, SERVER_SYNC_DEBOUNCE_MS);
 
-        pendingAddTimers.current.set(key, { timer, resolvers });
-      });
+      pendingAddTimers.current.set(key, { timer });
     },
-    [applyServerResponse, catalogPath, orgId, refresh, venueId],
+    [catalogPath, orgId, refresh, venueId],
   );
 
   const updateQuantity: CartContextValue["updateQuantity"] = useCallback(
-    (lineItemId, quantity) => {
-      // Local update — instant.
-      setSummary((prev) => applyLocal(prev, { type: "updateQuantity", lineItemId, quantity }));
+    async (lineItemId, quantity) => {
+      setSummary((prev) =>
+        applyLocal(prev, { type: "updateQuantity", lineItemId, quantity }),
+      );
 
-      // Optimistic placeholders have no server-side row yet.
-      if (lineItemId.startsWith("optimistic-")) return Promise.resolve();
+      // Local-only placeholders have no server-side row yet; the next
+      // debounced add will reconcile them.
+      if (lineItemId.startsWith("local-")) return;
 
-      return new Promise<void>((resolve, reject) => {
-        const existing = pendingQtyUpdates.current.get(lineItemId);
-        if (existing) clearTimeout(existing.timer);
-        const resolvers = [...(existing?.resolvers ?? []), { resolve, reject }];
+      const existing = pendingQtyTimers.current.get(lineItemId);
+      if (existing) clearTimeout(existing.timer);
 
-        const timer = setTimeout(() => {
-          pendingQtyUpdates.current.delete(lineItemId);
-          const finalQty = quantity; // last write wins
-          const waiters = resolvers;
-
-          startMutation(async () => {
-            try {
-              const next = await updateLineItemQuantityAction({
-                orgId,
-                venueId,
-                lineItemId,
-                quantity: finalQty,
-                catalogPath,
-              });
-              applyServerResponse(next);
-              waiters.forEach((w) => w.resolve());
-            } catch (err) {
-              const message =
-                err instanceof Error
-                  ? err.message
-                  : "Could not update item quantity.";
-              toast.error(message);
-              waiters.forEach((w) => w.reject(err));
-              refresh();
-            }
+      const timer = setTimeout(async () => {
+        pendingQtyTimers.current.delete(lineItemId);
+        try {
+          await updateLineItemQuantityAction({
+            orgId,
+            venueId,
+            lineItemId,
+            quantity,
+            catalogPath,
           });
-        }, SERVER_SYNC_DEBOUNCE_MS);
+        } catch (err) {
+          toast.error(
+            err instanceof Error ? err.message : "Could not save cart change.",
+          );
+          refresh();
+        }
+      }, SERVER_SYNC_DEBOUNCE_MS);
 
-        pendingQtyUpdates.current.set(lineItemId, { timer, resolvers });
-      });
+      pendingQtyTimers.current.set(lineItemId, { timer });
     },
-    [applyServerResponse, catalogPath, orgId, refresh, venueId],
+    [catalogPath, orgId, refresh, venueId],
   );
 
   const removeItem: CartContextValue["removeItem"] = useCallback(
-    (lineItemId) => {
+    async (lineItemId) => {
       setSummary((prev) => applyLocal(prev, { type: "remove", lineItemId }));
       cancelPendingForLine(lineItemId);
 
-      if (lineItemId.startsWith("optimistic-")) return Promise.resolve();
+      if (lineItemId.startsWith("local-")) return;
 
-      return new Promise<void>((resolve, reject) => {
-        startMutation(async () => {
-          try {
-            const next = await removeLineItemAction({
-              orgId,
-              venueId,
-              lineItemId,
-              catalogPath,
-            });
-            applyServerResponse(next);
-            resolve();
-          } catch (err) {
-            const message =
-              err instanceof Error ? err.message : "Could not remove item.";
-            toast.error(message);
-            reject(err);
-            refresh();
-          }
+      try {
+        await removeLineItemAction({
+          orgId,
+          venueId,
+          lineItemId,
+          catalogPath,
         });
-      });
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Could not save cart change.",
+        );
+        refresh();
+      }
     },
-    [applyServerResponse, cancelPendingForLine, catalogPath, orgId, refresh, venueId],
+    [cancelPendingForLine, catalogPath, orgId, refresh, venueId],
   );
 
-  const clear: CartContextValue["clear"] = useCallback(
-    () => {
-      setSummary((prev) => applyLocal(prev, { type: "clear" }));
-      cancelAllPending();
+  const clear: CartContextValue["clear"] = useCallback(async () => {
+    setSummary((prev) => applyLocal(prev, { type: "clear" }));
+    cancelAllPending();
 
-      return new Promise<void>((resolve, reject) => {
-        startMutation(async () => {
-          try {
-            const next = await clearCartAction({ orgId, venueId, catalogPath });
-            applyServerResponse(next);
-            resolve();
-          } catch (err) {
-            const message =
-              err instanceof Error ? err.message : "Could not clear cart.";
-            toast.error(message);
-            reject(err);
-            refresh();
-          }
-        });
-      });
-    },
-    [applyServerResponse, cancelAllPending, catalogPath, orgId, refresh, venueId],
-  );
+    try {
+      await clearCartAction({ orgId, venueId, catalogPath });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not save cart change.",
+      );
+      refresh();
+    }
+  }, [cancelAllPending, catalogPath, orgId, refresh, venueId]);
 
   const itemCount = summary.lineItems.reduce(
     (sum, line) => sum + line.quantity,
@@ -459,7 +357,6 @@ export function CartProvider({
       summary,
       itemCount,
       isHydrating,
-      isMutating,
       isOpen,
       open: () => setIsOpen(true),
       close: () => setIsOpen(false),
@@ -474,7 +371,6 @@ export function CartProvider({
       addItem,
       clear,
       isHydrating,
-      isMutating,
       isOpen,
       itemCount,
       refresh,

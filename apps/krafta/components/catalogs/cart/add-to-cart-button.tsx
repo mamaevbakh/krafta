@@ -25,7 +25,7 @@ export function AddToCartButton({
   variationName = null,
   className,
 }: AddToCartButtonProps) {
-  const { addItem, isMutating, open } = useCart();
+  const { addItem, open } = useCart();
 
   const handleClick = async () => {
     try {
@@ -49,7 +49,6 @@ export function AddToCartButton({
       type="button"
       size="lg"
       onClick={handleClick}
-      disabled={isMutating}
       className={cn("w-full", className)}
     >
       <ShoppingBag className="mr-2 h-4 w-4" />
