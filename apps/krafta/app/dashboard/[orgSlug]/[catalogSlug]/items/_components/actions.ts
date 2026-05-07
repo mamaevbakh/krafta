@@ -147,7 +147,6 @@ export async function createItem(params: {
       product_type: productType,
       name: baseName,
       slug,
-      price_cents: params.priceCents,
       description: params.description ?? null,
       image_alt: params.imageAlt ?? null,
       position,
@@ -157,6 +156,27 @@ export async function createItem(params: {
 
   if (itemError || !item) {
     return { ok: false, error: itemError?.message ?? "Failed to create item." };
+  }
+
+  // Price now lives on the default item_variations row (Migration 1, ADR
+  // 0001 §3.1). Every item must have exactly one default variation; the
+  // partial unique index enforces uniqueness, the app enforces existence.
+  const { error: variationError } = await supabase
+    .from("item_variations")
+    .insert({
+      item_id: item.id,
+      catalog_id: params.catalogId,
+      name: "Default",
+      price_cents: params.priceCents,
+      is_default: true,
+      ordinal: 0,
+    });
+
+  if (variationError) {
+    return {
+      ok: false,
+      error: variationError.message ?? "Failed to create default variation.",
+    };
   }
 
   const translations = params.translations
@@ -253,7 +273,6 @@ export async function updateItem(params: {
       slug,
       category_id: params.categoryId,
       product_type: productType,
-      price_cents: params.priceCents,
       description: params.description ?? null,
       image_alt: params.imageAlt ?? null,
     })
@@ -261,6 +280,19 @@ export async function updateItem(params: {
 
   if (itemError) {
     return { ok: false, error: itemError.message };
+  }
+
+  // Update price on the default item_variations row (Migration 1, ADR 0001
+  // §3.1). Items created before Migration 1 had a Default variation
+  // backfilled, so this UPDATE always finds a row.
+  const { error: variationError } = await supabase
+    .from("item_variations")
+    .update({ price_cents: params.priceCents })
+    .eq("item_id", params.itemId)
+    .eq("is_default", true);
+
+  if (variationError) {
+    return { ok: false, error: variationError.message };
   }
 
   const translations = params.translations

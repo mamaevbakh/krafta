@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.5"
   }
   payments: {
     Tables: {
@@ -1126,6 +1126,92 @@ export type Database = {
   }
   public: {
     Tables: {
+      auth_authorization_codes: {
+        Row: {
+          challenge_method: string
+          client_id: string
+          code_challenge: string
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          next_url: string | null
+          redirect_uri: string
+          scope: string
+          user_id: string
+        }
+        Insert: {
+          challenge_method?: string
+          client_id: string
+          code_challenge: string
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          next_url?: string | null
+          redirect_uri: string
+          scope?: string
+          user_id: string
+        }
+        Update: {
+          challenge_method?: string
+          client_id?: string
+          code_challenge?: string
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          next_url?: string | null
+          redirect_uri?: string
+          scope?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auth_authorization_codes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "auth_clients"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      auth_clients: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          redirect_uris: string[]
+          secret_hash: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          redirect_uris?: string[]
+          secret_hash: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          redirect_uris?: string[]
+          secret_hash?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       catalog_categories: {
         Row: {
           catalog_id: string
@@ -1504,6 +1590,67 @@ export type Database = {
           },
         ]
       }
+      item_modifier_lists: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          hidden_from_customer_override: boolean
+          is_active: boolean
+          item_id: string
+          max_selected_override: number | null
+          min_selected_override: number | null
+          modifier_list_id: string
+          ordinal: number
+          updated_at: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          hidden_from_customer_override?: boolean
+          is_active?: boolean
+          item_id: string
+          max_selected_override?: number | null
+          min_selected_override?: number | null
+          modifier_list_id: string
+          ordinal?: number
+          updated_at?: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          hidden_from_customer_override?: boolean
+          is_active?: boolean
+          item_id?: string
+          max_selected_override?: number | null
+          min_selected_override?: number | null
+          modifier_list_id?: string
+          ordinal?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_modifier_lists_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_modifier_lists_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_modifier_lists_modifier_list_id_fkey"
+            columns: ["modifier_list_id"]
+            isOneToOne: false
+            referencedRelation: "modifier_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       item_translations: {
         Row: {
           created_at: string
@@ -1545,6 +1692,107 @@ export type Database = {
           },
         ]
       }
+      item_variation_translations: {
+        Row: {
+          created_at: string
+          locale: string
+          name: string
+          updated_at: string
+          variation_id: string
+        }
+        Insert: {
+          created_at?: string
+          locale: string
+          name: string
+          updated_at?: string
+          variation_id: string
+        }
+        Update: {
+          created_at?: string
+          locale?: string
+          name?: string
+          updated_at?: string
+          variation_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_variation_translations_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "item_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      item_variations: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          is_sold_out: boolean
+          item_id: string
+          metadata: Json
+          name: string
+          ordinal: number
+          price_cents: number
+          pricing_type: Database["public"]["Enums"]["item_variation_pricing_type"]
+          sku: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          is_sold_out?: boolean
+          item_id: string
+          metadata?: Json
+          name: string
+          ordinal?: number
+          price_cents?: number
+          pricing_type?: Database["public"]["Enums"]["item_variation_pricing_type"]
+          sku?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          is_sold_out?: boolean
+          item_id?: string
+          metadata?: Json
+          name?: string
+          ordinal?: number
+          price_cents?: number
+          pricing_type?: Database["public"]["Enums"]["item_variation_pricing_type"]
+          sku?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_variations_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_variations_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       items: {
         Row: {
           catalog_id: string
@@ -1555,13 +1803,14 @@ export type Database = {
           image_alt: string | null
           image_path: string | null
           is_active: boolean
+          is_sold_out: boolean
           metadata: Json | null
           name: string
           position: number
-          price_cents: number
           product_type: Database["public"]["Enums"]["catalog_item_product_type"]
           slug: string
           updated_at: string
+          version: number
         }
         Insert: {
           catalog_id: string
@@ -1572,13 +1821,14 @@ export type Database = {
           image_alt?: string | null
           image_path?: string | null
           is_active?: boolean
+          is_sold_out?: boolean
           metadata?: Json | null
           name: string
           position?: number
-          price_cents?: number
           product_type?: Database["public"]["Enums"]["catalog_item_product_type"]
           slug: string
           updated_at?: string
+          version?: number
         }
         Update: {
           catalog_id?: string
@@ -1589,13 +1839,14 @@ export type Database = {
           image_alt?: string | null
           image_path?: string | null
           is_active?: boolean
+          is_sold_out?: boolean
           metadata?: Json | null
           name?: string
           position?: number
-          price_cents?: number
           product_type?: Database["public"]["Enums"]["catalog_item_product_type"]
           slug?: string
           updated_at?: string
+          version?: number
         }
         Relationships: [
           {
@@ -1610,6 +1861,125 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "catalog_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      modifier_lists: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          id: string
+          internal_name: string | null
+          is_active: boolean
+          max_length: number | null
+          max_selected: number | null
+          metadata: Json
+          min_selected: number
+          modifier_type: Database["public"]["Enums"]["modifier_list_kind"]
+          name: string
+          text_required: boolean
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          id?: string
+          internal_name?: string | null
+          is_active?: boolean
+          max_length?: number | null
+          max_selected?: number | null
+          metadata?: Json
+          min_selected?: number
+          modifier_type?: Database["public"]["Enums"]["modifier_list_kind"]
+          name: string
+          text_required?: boolean
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          internal_name?: string | null
+          is_active?: boolean
+          max_length?: number | null
+          max_selected?: number | null
+          metadata?: Json
+          min_selected?: number
+          modifier_type?: Database["public"]["Enums"]["modifier_list_kind"]
+          name?: string
+          text_required?: boolean
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modifier_lists_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      modifiers: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          metadata: Json
+          modifier_list_id: string
+          name: string
+          on_by_default: boolean
+          ordinal: number
+          price_cents: number
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          modifier_list_id: string
+          name: string
+          on_by_default?: boolean
+          ordinal?: number
+          price_cents?: number
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          modifier_list_id?: string
+          name?: string
+          on_by_default?: boolean
+          ordinal?: number
+          price_cents?: number
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modifiers_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "modifiers_modifier_list_id_fkey"
+            columns: ["modifier_list_id"]
+            isOneToOne: false
+            referencedRelation: "modifier_lists"
             referencedColumns: ["id"]
           },
         ]
@@ -1850,6 +2220,8 @@ export type Database = {
         | "ONLINE_MEMBERSHIP"
       catalog_status: "draft" | "published" | "suspended"
       item_media_kind: "image" | "video"
+      item_variation_pricing_type: "fixed" | "variable"
+      modifier_list_kind: "list" | "text"
       role: "owner" | "member" | "admin"
     }
     CompositeTypes: {
@@ -1996,6 +2368,8 @@ export const Constants = {
       ],
       catalog_status: ["draft", "published", "suspended"],
       item_media_kind: ["image", "video"],
+      item_variation_pricing_type: ["fixed", "variable"],
+      modifier_list_kind: ["list", "text"],
       role: ["owner", "member", "admin"],
     },
   },
