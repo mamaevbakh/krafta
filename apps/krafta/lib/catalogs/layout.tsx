@@ -197,11 +197,21 @@ export function CatalogLayout({
   // path guards against catalogs created outside the normal flow).
   if (!venue || !behavior.enableCart) return tree;
 
+  // Constrain to the modes our checkout flow understands, preserving the
+  // venue's ordering. The DB CHECK constraint on venues already restricts
+  // to this set; this filter is a defense-in-depth.
+  const allowedModes = ["dine_in", "pickup", "delivery"] as const;
+  const venueModes = venue.modes_enabled.filter(
+    (mode): mode is (typeof allowedModes)[number] =>
+      (allowedModes as readonly string[]).includes(mode),
+  );
+
   return (
     <CartProvider
       orgId={venue.org_id}
       venueId={venue.id}
       catalogPath={hrefBase}
+      modes={venueModes}
     >
       {tree}
       <CartTrigger />

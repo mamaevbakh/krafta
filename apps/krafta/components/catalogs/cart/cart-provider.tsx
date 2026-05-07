@@ -16,10 +16,15 @@ import {
   addLineItemAction,
   clearCartAction,
   getCartSummaryAction,
+  placeOrderAction,
   removeLineItemAction,
   updateLineItemQuantityAction,
 } from "@/lib/cart/actions";
 import type { CartLineItem, CartSummary } from "@/lib/cart/orders";
+import type { PlaceOrderInput } from "@/lib/cart/checkout";
+
+export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
+export type CartStep = "cart" | "checkout" | "placed";
 
 type CartContextValue = {
   summary: CartSummary;
@@ -29,11 +34,18 @@ type CartContextValue = {
   open: () => void;
   close: () => void;
   setOpen: (next: boolean) => void;
+  /** Available fulfillment modes for this venue, in display order. */
+  modes: CartFulfillmentMode[];
+  /** Current step inside the drawer: cart list, checkout fields, or confirmation. */
+  step: CartStep;
+  setStep: (next: CartStep) => void;
+  /** Order id stamped on the confirmation step after a successful place. */
+  placedOrderId: string | null;
+  isPlacingOrder: boolean;
   addItem: (input: {
     itemId: string;
     variationId?: string;
     quantity?: number;
-    /** Used for placeholder when no matching line exists yet. */
     name?: string;
     basePriceCents?: number;
     variationName?: string | null;
@@ -42,6 +54,41 @@ type CartContextValue = {
   removeItem: (lineItemId: string) => Promise<void>;
   clear: () => Promise<void>;
   refresh: () => Promise<void>;
+  /**
+   * Cancel any in-flight debounced syncs and run their pending writes
+   * synchronously, awaiting all. Call before checkout submit so the
+   * server's view matches local before placing the order.
+   */
+  flush: () => Promise<void>;
+  /**
+   * Flush pending writes, then transition the order draft → open with
+   * the chosen mode + fields. On success, sets `placedOrderId` and the
+   * step flips to 'placed' for the confirmation screen.
+   */
+  placeOrder: (
+    input:
+      | { mode: "dine_in"; fields: { tableLabel: string } }
+      | {
+          mode: "pickup";
+          fields: {
+            scheduleType: "asap" | "scheduled";
+            pickupAt: string | null;
+            recipientName: string | null;
+            recipientPhone: string | null;
+            note: string | null;
+          };
+        }
+      | {
+          mode: "delivery";
+          fields: {
+            address: string;
+            recipientName: string;
+            recipientPhone: string;
+            scheduledFor: string | null;
+            note: string | null;
+          };
+        },
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -164,6 +211,8 @@ type CartProviderProps = {
   orgId: string;
   venueId: string;
   catalogPath: string;
+  /** Filtered, in-display-order list of modes the venue offers. */
+  modes: CartFulfillmentMode[];
   initialSummary?: CartSummary;
   children: ReactNode;
 };
@@ -172,6 +221,7 @@ export function CartProvider({
   orgId,
   venueId,
   catalogPath,
+  modes,
   initialSummary,
   children,
 }: CartProviderProps) {
@@ -180,10 +230,22 @@ export function CartProvider({
   );
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
+  const [step, setStep] = useState<CartStep>("cart");
+  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   const pendingQtyTimers = useRef(new Map<string, Pending>());
   const pendingAddTimers = useRef(new Map<string, Pending>());
   const pendingAddTotals = useRef(new Map<string, number>());
+
+  // Closing the drawer should reset the step so the next open starts at the
+  // cart list, not lingering on a stale confirmation.
+  useEffect(() => {
+    if (!isOpen && step === "placed") {
+      setStep("cart");
+      setPlacedOrderId(null);
+    }
+  }, [isOpen, step]);
 
   const refresh = useCallback(async () => {
     try {
@@ -361,6 +423,83 @@ export function CartProvider({
     }
   }, [cancelAllPending, catalogPath, orgId, refresh, venueId]);
 
+  // Fire pending debounced writes immediately. Used before checkout to make
+  // sure the server has the latest cart contents before we transition the
+  // order from draft to open.
+  const flush: CartContextValue["flush"] = useCallback(async () => {
+    const pendingPromises: Promise<unknown>[] = [];
+
+    // Fire pending qty updates immediately. Each line carries the absolute
+    // target quantity from local state.
+    for (const [lineItemId, pending] of pendingQtyTimers.current.entries()) {
+      clearTimeout(pending.timer);
+      const localLine = summary.lineItems.find((line) => line.id === lineItemId);
+      const quantity = localLine?.quantity ?? 0;
+      pendingPromises.push(
+        updateLineItemQuantityAction({
+          orgId,
+          venueId,
+          lineItemId,
+          quantity,
+          catalogPath,
+        }),
+      );
+    }
+    pendingQtyTimers.current.clear();
+
+    // Fire pending adds immediately with the accumulated quantity.
+    for (const [key, pending] of pendingAddTimers.current.entries()) {
+      clearTimeout(pending.timer);
+      const [itemId, variationId] = key.split("::");
+      const accumQty = pendingAddTotals.current.get(key) ?? 1;
+      pendingPromises.push(
+        addLineItemAction({
+          orgId,
+          venueId,
+          itemId,
+          variationId: variationId || undefined,
+          quantity: accumQty,
+          catalogPath,
+        }),
+      );
+    }
+    pendingAddTimers.current.clear();
+    pendingAddTotals.current.clear();
+
+    if (pendingPromises.length === 0) return;
+    await Promise.allSettled(pendingPromises);
+  }, [catalogPath, orgId, summary.lineItems, venueId]);
+
+  const placeOrder: CartContextValue["placeOrder"] = useCallback(
+    async (input) => {
+      setIsPlacingOrder(true);
+      try {
+        await flush();
+        const result = await placeOrderAction({
+          orgId,
+          venueId,
+          catalogPath,
+          ...input,
+        } as Parameters<typeof placeOrderAction>[0]);
+        setPlacedOrderId(result.orderId);
+        setStep("placed");
+        // Empty the local cart now that the order is in state='open'. The
+        // server has already created the new fulfillment; the existing
+        // draft order is gone.
+        setSummary(EMPTY_SUMMARY);
+        return { ok: true } as const;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Could not place order.";
+        toast.error(message);
+        return { ok: false, error: message } as const;
+      } finally {
+        setIsPlacingOrder(false);
+      }
+    },
+    [catalogPath, flush, orgId, venueId],
+  );
+
   const itemCount = summary.lineItems.reduce(
     (sum, line) => sum + line.quantity,
     0,
@@ -375,20 +514,33 @@ export function CartProvider({
       open: () => setIsOpen(true),
       close: () => setIsOpen(false),
       setOpen: setIsOpen,
+      modes,
+      step,
+      setStep,
+      placedOrderId,
+      isPlacingOrder,
       addItem,
       updateQuantity,
       removeItem,
       clear,
       refresh,
+      flush,
+      placeOrder,
     }),
     [
       addItem,
       clear,
+      flush,
       isHydrating,
       isOpen,
+      isPlacingOrder,
       itemCount,
+      modes,
+      placeOrder,
+      placedOrderId,
       refresh,
       removeItem,
+      step,
       summary,
       updateQuantity,
     ],
