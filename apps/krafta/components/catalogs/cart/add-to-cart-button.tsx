@@ -11,21 +11,31 @@ import { useCart } from "./cart-provider";
 type AddToCartButtonProps = {
   itemId: string;
   itemName: string;
+  basePriceCents: number;
   variationId?: string;
+  variationName?: string | null;
   className?: string;
 };
 
 export function AddToCartButton({
   itemId,
   itemName,
+  basePriceCents,
   variationId,
+  variationName = null,
   className,
 }: AddToCartButtonProps) {
   const { addItem, isMutating, open } = useCart();
 
   const handleClick = async () => {
     try {
-      await addItem({ itemId, variationId });
+      await addItem({
+        itemId,
+        variationId,
+        name: itemName,
+        basePriceCents,
+        variationName,
+      });
       toast.success(`${itemName} added to cart`, {
         action: { label: "View", onClick: () => open() },
       });

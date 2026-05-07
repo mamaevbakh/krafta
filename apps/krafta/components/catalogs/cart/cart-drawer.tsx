@@ -28,15 +28,11 @@ type CartDrawerProps = {
 export function CartDrawer({
   currencySettings = defaultCurrencySettings,
 }: CartDrawerProps) {
-  const {
-    summary,
-    isOpen,
-    setOpen,
-    isMutating,
-    isHydrating,
-    updateQuantity,
-    removeItem,
-  } = useCart();
+  // Optimistic UI: no `isMutating` gate on the +/- / Remove controls — each
+  // click updates state immediately, the server action runs in the
+  // background via the cart provider's transition.
+  const { summary, isOpen, setOpen, isHydrating, updateQuantity, removeItem } =
+    useCart();
 
   const isEmpty = summary.lineItems.length === 0;
 
@@ -95,7 +91,6 @@ export function CartDrawer({
                         size="icon"
                         variant="outline"
                         className="h-8 w-8"
-                        disabled={isMutating}
                         onClick={() =>
                           updateQuantity(line.id, line.quantity - 1)
                         }
@@ -111,7 +106,6 @@ export function CartDrawer({
                         size="icon"
                         variant="outline"
                         className="h-8 w-8"
-                        disabled={isMutating}
                         onClick={() =>
                           updateQuantity(line.id, line.quantity + 1)
                         }
@@ -125,7 +119,6 @@ export function CartDrawer({
                       size="sm"
                       variant="ghost"
                       className="text-muted-foreground"
-                      disabled={isMutating}
                       onClick={() => removeItem(line.id)}
                       aria-label="Remove item"
                     >
@@ -153,7 +146,6 @@ export function CartDrawer({
                 type="button"
                 size="lg"
                 className="w-full"
-                disabled={isMutating}
                 // Checkout flow lands in commit #5; placeholder for now.
                 onClick={() => setOpen(false)}
               >

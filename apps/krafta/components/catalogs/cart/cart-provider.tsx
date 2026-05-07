@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useOptimistic,
   useState,
   useTransition,
   type ReactNode,
@@ -19,7 +20,7 @@ import {
   removeLineItemAction,
   updateLineItemQuantityAction,
 } from "@/lib/cart/actions";
-import type { CartSummary } from "@/lib/cart/orders";
+import type { CartLineItem, CartSummary } from "@/lib/cart/orders";
 
 type CartContextValue = {
   summary: CartSummary;
@@ -34,6 +35,10 @@ type CartContextValue = {
     itemId: string;
     variationId?: string;
     quantity?: number;
+    /** Used for optimistic placeholder when no matching line exists yet. */
+    name?: string;
+    basePriceCents?: number;
+    variationName?: string | null;
   }) => Promise<void>;
   updateQuantity: (lineItemId: string, quantity: number) => Promise<void>;
   removeItem: (lineItemId: string) => Promise<void>;
@@ -49,6 +54,99 @@ const EMPTY_SUMMARY: CartSummary = {
   lineItems: [],
   subtotalCents: 0,
 };
+
+// ---- optimistic reducer ----------------------------------------------------
+
+type OptimisticAction =
+  | {
+      type: "add";
+      itemId: string;
+      variationId: string | null;
+      quantity: number;
+      name: string;
+      variationName: string | null;
+      basePriceCents: number;
+    }
+  | { type: "updateQuantity"; lineItemId: string; quantity: number }
+  | { type: "remove"; lineItemId: string }
+  | { type: "clear" };
+
+function recomputeSubtotal(lineItems: CartLineItem[]): number {
+  return lineItems.reduce((sum, line) => sum + line.total_price_cents, 0);
+}
+
+function applyOptimistic(
+  state: CartSummary,
+  action: OptimisticAction,
+): CartSummary {
+  switch (action.type) {
+    case "add": {
+      const matchingIndex = state.lineItems.findIndex(
+        (line) =>
+          line.catalog_item_id === action.itemId &&
+          line.catalog_variation_id === action.variationId,
+      );
+
+      if (matchingIndex >= 0) {
+        const next = [...state.lineItems];
+        const existing = next[matchingIndex];
+        const nextQty = existing.quantity + action.quantity;
+        next[matchingIndex] = {
+          ...existing,
+          quantity: nextQty,
+          total_price_cents: existing.base_price_cents * nextQty,
+        };
+        return { ...state, lineItems: next, subtotalCents: recomputeSubtotal(next) };
+      }
+
+      // No matching line yet — synthesize a placeholder. The id is prefixed
+      // so we can recognize and skip server mutations against it (a user
+      // who clicks +/- before the action returns hits the optimistic row).
+      const placeholder: CartLineItem = {
+        id: `optimistic-${
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : Math.random().toString(36).slice(2)
+        }`,
+        uid: "",
+        catalog_item_id: action.itemId,
+        catalog_variation_id: action.variationId,
+        name: action.name,
+        variation_name: action.variationName,
+        quantity: action.quantity,
+        base_price_cents: action.basePriceCents,
+        total_price_cents: action.basePriceCents * action.quantity,
+      };
+      const next = [...state.lineItems, placeholder];
+      return { ...state, lineItems: next, subtotalCents: recomputeSubtotal(next) };
+    }
+    case "updateQuantity": {
+      if (action.quantity <= 0) {
+        const next = state.lineItems.filter((line) => line.id !== action.lineItemId);
+        return { ...state, lineItems: next, subtotalCents: recomputeSubtotal(next) };
+      }
+      const next = state.lineItems.map((line) =>
+        line.id === action.lineItemId
+          ? {
+              ...line,
+              quantity: action.quantity,
+              total_price_cents: line.base_price_cents * action.quantity,
+            }
+          : line,
+      );
+      return { ...state, lineItems: next, subtotalCents: recomputeSubtotal(next) };
+    }
+    case "remove": {
+      const next = state.lineItems.filter((line) => line.id !== action.lineItemId);
+      return { ...state, lineItems: next, subtotalCents: recomputeSubtotal(next) };
+    }
+    case "clear": {
+      return { ...state, lineItems: [], subtotalCents: 0 };
+    }
+  }
+}
+
+// ----------------------------------------------------------------------------
 
 type CartProviderProps = {
   orgId: string;
@@ -68,6 +166,12 @@ export function CartProvider({
   const [summary, setSummary] = useState<CartSummary>(
     initialSummary ?? EMPTY_SUMMARY,
   );
+  // Optimistic projection: shows pending changes during a transition,
+  // automatically reverts to `summary` when the transition resolves.
+  const [optimisticSummary, addOptimistic] = useOptimistic(
+    summary,
+    applyOptimistic,
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
   const [isMutating, startMutation] = useTransition();
@@ -81,8 +185,7 @@ export function CartProvider({
     }
   }, [orgId, venueId]);
 
-  // Hydrate on mount. We deliberately defer this past the first paint so the
-  // catalog itself is visible immediately even on slow networks.
+  // Hydrate on mount.
   useEffect(() => {
     if (initialSummary) {
       setIsHydrating(false);
@@ -91,109 +194,139 @@ export function CartProvider({
     refresh();
   }, [initialSummary, refresh]);
 
-  const runMutation = useCallback(
-    async (work: () => Promise<CartSummary>, errorMessage: string) => {
-      try {
-        const next = await work();
-        setSummary(next);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : errorMessage;
-        toast.error(message);
-        throw err;
-      }
-    },
-    [],
-  );
-
   const addItem: CartContextValue["addItem"] = useCallback(
-    ({ itemId, variationId, quantity }) =>
+    ({
+      itemId,
+      variationId,
+      quantity = 1,
+      name = "Adding…",
+      basePriceCents = 0,
+      variationName = null,
+    }) =>
       new Promise<void>((resolve, reject) => {
-        startMutation(() => {
-          runMutation(
-            () =>
-              addLineItemAction({
-                orgId,
-                venueId,
-                itemId,
-                variationId,
-                quantity,
-                catalogPath,
-              }),
-            "Could not add to cart.",
-          )
-            .then(resolve)
-            .catch(reject);
+        startMutation(async () => {
+          addOptimistic({
+            type: "add",
+            itemId,
+            variationId: variationId ?? null,
+            quantity,
+            name,
+            variationName,
+            basePriceCents,
+          });
+          try {
+            const next = await addLineItemAction({
+              orgId,
+              venueId,
+              itemId,
+              variationId,
+              quantity,
+              catalogPath,
+            });
+            setSummary(next);
+            resolve();
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Could not add to cart.";
+            toast.error(message);
+            reject(err);
+          }
         });
       }),
-    [catalogPath, orgId, runMutation, venueId],
+    [addOptimistic, catalogPath, orgId, venueId],
   );
 
   const updateQuantity: CartContextValue["updateQuantity"] = useCallback(
     (lineItemId, quantity) =>
       new Promise<void>((resolve, reject) => {
-        startMutation(() => {
-          runMutation(
-            () =>
-              updateLineItemQuantityAction({
-                orgId,
-                venueId,
-                lineItemId,
-                quantity,
-                catalogPath,
-              }),
-            "Could not update item quantity.",
-          )
-            .then(resolve)
-            .catch(reject);
+        // Don't drive a server call against an optimistic placeholder — the
+        // real id doesn't exist yet. The next add/refresh will reconcile.
+        if (lineItemId.startsWith("optimistic-")) {
+          resolve();
+          return;
+        }
+        startMutation(async () => {
+          addOptimistic({ type: "updateQuantity", lineItemId, quantity });
+          try {
+            const next = await updateLineItemQuantityAction({
+              orgId,
+              venueId,
+              lineItemId,
+              quantity,
+              catalogPath,
+            });
+            setSummary(next);
+            resolve();
+          } catch (err) {
+            const message =
+              err instanceof Error
+                ? err.message
+                : "Could not update item quantity.";
+            toast.error(message);
+            reject(err);
+          }
         });
       }),
-    [catalogPath, orgId, runMutation, venueId],
+    [addOptimistic, catalogPath, orgId, venueId],
   );
 
   const removeItem: CartContextValue["removeItem"] = useCallback(
     (lineItemId) =>
       new Promise<void>((resolve, reject) => {
-        startMutation(() => {
-          runMutation(
-            () =>
-              removeLineItemAction({
-                orgId,
-                venueId,
-                lineItemId,
-                catalogPath,
-              }),
-            "Could not remove item.",
-          )
-            .then(resolve)
-            .catch(reject);
+        if (lineItemId.startsWith("optimistic-")) {
+          resolve();
+          return;
+        }
+        startMutation(async () => {
+          addOptimistic({ type: "remove", lineItemId });
+          try {
+            const next = await removeLineItemAction({
+              orgId,
+              venueId,
+              lineItemId,
+              catalogPath,
+            });
+            setSummary(next);
+            resolve();
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Could not remove item.";
+            toast.error(message);
+            reject(err);
+          }
         });
       }),
-    [catalogPath, orgId, runMutation, venueId],
+    [addOptimistic, catalogPath, orgId, venueId],
   );
 
   const clear: CartContextValue["clear"] = useCallback(
     () =>
       new Promise<void>((resolve, reject) => {
-        startMutation(() => {
-          runMutation(
-            () => clearCartAction({ orgId, venueId, catalogPath }),
-            "Could not clear cart.",
-          )
-            .then(resolve)
-            .catch(reject);
+        startMutation(async () => {
+          addOptimistic({ type: "clear" });
+          try {
+            const next = await clearCartAction({ orgId, venueId, catalogPath });
+            setSummary(next);
+            resolve();
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Could not clear cart.";
+            toast.error(message);
+            reject(err);
+          }
         });
       }),
-    [catalogPath, orgId, runMutation, venueId],
+    [addOptimistic, catalogPath, orgId, venueId],
   );
 
-  const itemCount = summary.lineItems.reduce(
+  const itemCount = optimisticSummary.lineItems.reduce(
     (sum, line) => sum + line.quantity,
     0,
   );
 
   const value = useMemo<CartContextValue>(
     () => ({
-      summary,
+      summary: optimisticSummary,
       itemCount,
       isHydrating,
       isMutating,
@@ -214,9 +347,9 @@ export function CartProvider({
       isMutating,
       isOpen,
       itemCount,
+      optimisticSummary,
       refresh,
       removeItem,
-      summary,
       updateQuantity,
     ],
   );
