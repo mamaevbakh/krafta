@@ -89,7 +89,11 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
   });
 
   return (
-    <OrdersPanel rows={rows} currencySettings={currencySettings} />
+    <OrdersPanel
+      catalogId={catalog.id}
+      rows={rows}
+      currencySettings={currencySettings}
+    />
   );
 }
 

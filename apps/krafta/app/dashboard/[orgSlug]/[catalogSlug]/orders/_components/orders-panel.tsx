@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
+import { createClient } from "@/lib/supabase/client";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
@@ -41,12 +43,53 @@ const TABS: Array<{ id: StatusTab; label: string }> = [
 ];
 
 type OrdersPanelProps = {
+  catalogId: string;
   rows: OrderRow[];
   currencySettings: CurrencySettings;
 };
 
-export function OrdersPanel({ rows, currencySettings }: OrdersPanelProps) {
+export function OrdersPanel({
+  catalogId,
+  rows,
+  currencySettings,
+}: OrdersPanelProps) {
+  const router = useRouter();
   const [tab, setTab] = useState<StatusTab>("open");
+
+  // Live updates: any insert/update/delete on commerce.orders or
+  // commerce.fulfillments that touches this catalog triggers a refresh.
+  // We refetch the entire row set instead of patching in place — keeps
+  // joined data (customer, line items, fulfillment) consistent without
+  // a denormalised cache.
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`orders:catalog:${catalogId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "commerce",
+          table: "orders",
+          filter: `catalog_id=eq.${catalogId}`,
+        },
+        () => router.refresh(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "commerce",
+          table: "fulfillments",
+        },
+        () => router.refresh(),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [catalogId, router]);
 
   const counts = useMemo(() => {
     const acc = { all: rows.length, open: 0, completed: 0, canceled: 0 };
