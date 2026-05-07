@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Package, Truck, Utensils } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,17 +27,35 @@ const MODE_LABELS: Record<CartFulfillmentMode, string> = {
   delivery: "Delivery",
 };
 
-const MODE_DESCRIPTIONS: Record<CartFulfillmentMode, string> = {
-  dine_in: "Order to your table.",
-  pickup: "Pick up from the counter.",
-  delivery: "Bring it to me.",
+const MODE_ICONS: Record<CartFulfillmentMode, LucideIcon> = {
+  dine_in: Utensils,
+  pickup: Package,
+  delivery: Truck,
 };
+
+// In-picker mode order. dine_in is excluded — that intent always comes from
+// a QR scan (or future URL param), so a customer who needs the picker is
+// choosing between pickup and delivery. Ranked by general popularity for
+// non-dine-in restaurant flows: pickup is simpler (no address) so we lead
+// with it; users who want delivery tap the second option.
+const PICKER_MODE_ORDER: CartFulfillmentMode[] = ["pickup", "delivery"];
 
 export function CartCheckoutStep() {
   const { modes, isPlacingOrder, placeOrder, setStep } = useCart();
 
-  const initialMode = modes[0] ?? "dine_in";
-  const [mode, setMode] = useState<CartFulfillmentMode>(initialMode);
+  // Picker shows pickup/delivery in popularity order. dine_in is excluded
+  // here on purpose — it's QR-only (intent inferred from the scan, no
+  // need to ask). If the venue happens to enable only dine_in, fall back
+  // to it so the form still renders.
+  const pickerOptions = useMemo<CartFulfillmentMode[]>(() => {
+    const ordered = PICKER_MODE_ORDER.filter((m) => modes.includes(m));
+    if (ordered.length > 0) return ordered;
+    return modes;
+  }, [modes]);
+
+  const [mode, setMode] = useState<CartFulfillmentMode>(
+    () => pickerOptions[0] ?? "pickup",
+  );
 
   // Per-mode form state. We keep one slot per mode so switching tabs
   // preserves what the user typed.
@@ -133,46 +152,36 @@ export function CartCheckoutStep() {
       </div>
 
       <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-4">
-        <FieldSet>
-          <FieldLabel className="text-base font-semibold">
-            How would you like it?
-          </FieldLabel>
-          <div className="mt-3 grid grid-cols-1 gap-2">
-            {modes.map((option) => {
+        {pickerOptions.length > 1 ? (
+          <div
+            role="radiogroup"
+            aria-label="Order method"
+            className="flex gap-2"
+          >
+            {pickerOptions.map((option) => {
+              const Icon = MODE_ICONS[option];
               const isActive = option === mode;
               return (
                 <button
                   key={option}
                   type="button"
+                  role="radio"
+                  aria-checked={isActive}
                   onClick={() => setMode(option)}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition",
+                    "inline-flex flex-1 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition",
                     isActive
                       ? "border-foreground bg-foreground text-background"
-                      : "border-border bg-background hover:border-foreground/30",
+                      : "border-border bg-background text-foreground hover:border-foreground/30",
                   )}
-                  aria-pressed={isActive}
                 >
-                  <div>
-                    <div className="text-sm font-medium">
-                      {MODE_LABELS[option]}
-                    </div>
-                    <div
-                      className={cn(
-                        "mt-0.5 text-xs",
-                        isActive
-                          ? "text-background/75"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {MODE_DESCRIPTIONS[option]}
-                    </div>
-                  </div>
+                  <Icon className="h-4 w-4" aria-hidden />
+                  {MODE_LABELS[option]}
                 </button>
               );
             })}
           </div>
-        </FieldSet>
+        ) : null}
 
         {mode === "dine_in" ? (
           <FieldSet>
