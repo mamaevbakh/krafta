@@ -1,6 +1,7 @@
 // lib/catalogs/layout.tsx
 
 import type { PublicCatalog, PublicCategoryWithItems } from "@/lib/catalogs/types";
+import type { PublicVenue } from "@/lib/catalogs/data";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import {
   normalizeLayoutSettings,
@@ -17,10 +18,16 @@ import {
   ItemSheetTrigger,
 } from "@/components/catalogs/items/item-detail-controller";
 import { CatalogSearchLazy } from "@/components/catalogs/search/catalog-search-lazy";
+import {
+  CartDrawer,
+  CartProvider,
+  CartTrigger,
+} from "@/components/catalogs/cart";
 
 type Props = {
   catalog: PublicCatalog;
   categoriesWithItems: PublicCategoryWithItems[];
+  venue?: PublicVenue | null;
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref?: string;
@@ -46,6 +53,7 @@ function getItemGridColsClass(columns: number): string {
 export function CatalogLayout({
   catalog,
   categoriesWithItems,
+  venue = null,
   activeCategorySlug = null,
   activeItemSlug = null,
   baseHref,
@@ -101,7 +109,7 @@ export function CatalogLayout({
   const activeCategoryId = activeCategory?.id ?? null;
   const activeCategorySlugResolved = activeCategory?.slug ?? null;
 
-  return (
+  const tree = (
     <ItemSheetProvider
       key={`${activeCategorySlugResolved ?? "none"}:${activeItemSlug ?? "none"}`}
       categoriesWithItems={categoriesWithItems}
@@ -182,5 +190,21 @@ export function CatalogLayout({
         currencySettings={resolvedCurrency}
       />
     </ItemSheetProvider>
+  );
+
+  // Cart only renders when we have a venue (which we always do post-Migration 2,
+  // but the null path guards against catalogs created outside the normal flow).
+  if (!venue) return tree;
+
+  return (
+    <CartProvider
+      orgId={venue.org_id}
+      venueId={venue.id}
+      catalogPath={hrefBase}
+    >
+      {tree}
+      <CartTrigger />
+      <CartDrawer currencySettings={resolvedCurrency} />
+    </CartProvider>
   );
 }

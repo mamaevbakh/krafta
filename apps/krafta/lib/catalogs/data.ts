@@ -7,6 +7,17 @@ import type {
   PublicItem,
 } from "./types";
 
+export type PublicVenue = {
+  id: string;
+  catalog_id: string;
+  org_id: string;
+  modes_enabled: string[];
+  currency: string;
+  timezone: string;
+  language_code: string;
+  status: "active" | "paused" | "archived";
+};
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabasePublishableKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
@@ -45,6 +56,27 @@ export async function getCatalogBySlug(
     cacheTag(`catalog:${catalog.id}`);
   }
   return catalog;
+}
+
+export async function getVenueByCatalogId(
+  catalogId: string,
+): Promise<PublicVenue | null> {
+  "use cache";
+  cacheTag(`catalog:${catalogId}`, `venue:catalog:${catalogId}`);
+
+  const url = `${supabaseUrl}/rest/v1/venues?catalog_id=eq.${encodeURIComponent(
+    catalogId,
+  )}&select=id,catalog_id,org_id,modes_enabled,currency,timezone,language_code,status&limit=1`;
+
+  const response = await fetch(url, {
+    headers: supabaseHeaders,
+    next: { tags: [`catalog:${catalogId}`, `venue:catalog:${catalogId}`] },
+    cache: "force-cache",
+  });
+
+  if (!response.ok) return null;
+  const rows = (await response.json()) as PublicVenue[];
+  return rows[0] ?? null;
 }
 
 export async function getCatalogStructure(
