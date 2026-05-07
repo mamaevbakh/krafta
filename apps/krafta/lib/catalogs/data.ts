@@ -59,9 +59,12 @@ export async function getCatalogStructure(
   const categoriesUrl = `${supabaseUrl}/rest/v1/catalog_categories?catalog_id=eq.${encodeURIComponent(
     catalogId,
   )}&is_active=eq.true&select=id,slug,name,position&order=position.asc`;
+  // Price is now sourced from the default item_variations row (Migration 1,
+  // ADR 0001 §3.1). Embed it filtered to is_default=true; PostgREST returns
+  // it as an array, we flatten below.
   const itemsUrl = `${supabaseUrl}/rest/v1/items?catalog_id=eq.${encodeURIComponent(
     catalogId,
-  )}&is_active=eq.true&select=id,slug,category_id,name,description,price_cents,image_path,image_alt,position&order=position.asc`;
+  )}&is_active=eq.true&select=id,slug,category_id,name,description,image_path,image_alt,position,item_variations(price_cents)&item_variations.is_default=eq.true&item_variations.is_active=eq.true&order=position.asc`;
 
   const [localesResponse, categoriesResponse, itemsResponse] = await Promise.all([
     fetch(localesUrl, {
@@ -96,7 +99,15 @@ export async function getCatalogStructure(
       items: [],
     }));
   }
-  const items = (await itemsResponse.json()) as PublicItem[];
+  const itemsRaw = (await itemsResponse.json()) as Array<
+    Omit<PublicItem, "price_cents"> & {
+      item_variations: Array<{ price_cents: number }>;
+    }
+  >;
+  const items: PublicItem[] = itemsRaw.map(({ item_variations, ...rest }) => ({
+    ...rest,
+    price_cents: item_variations[0]?.price_cents ?? 0,
+  }));
 
   const locales = localesResponse.ok
     ? ((await localesResponse.json()) as Array<{
