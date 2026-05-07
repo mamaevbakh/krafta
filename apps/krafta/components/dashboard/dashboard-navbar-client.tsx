@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 
 const DASHBOARD_LINKS = [
   { segment: "", label: "Overview" },
+  { segment: "orders", label: "Orders" },
   { segment: "categories", label: "Categories" },
   { segment: "items", label: "Items" },
   { segment: "builder", label: "Studio" },
