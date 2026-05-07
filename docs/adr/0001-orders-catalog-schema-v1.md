@@ -33,7 +33,7 @@ Square's Catalog + Locations + Orders + Payments + Customers APIs are the most m
 Patterns to **not** clone:
 
 - The polymorphic `CatalogObject` + `<type>_data` blob. REST artefact; in Postgres, distinct tables with FKs are far better.
-- Service Charges as a third tax-shaped primitive. Consolidate fees into a uniform model.
+- Service Charges as a third tax-shaped primitive. Consolidate fees into a uniform model — service fees ship in v1 as a `kind` discriminator on `taxes` / `order_taxes`.
 - Tender-vs-Payment duality on the order. Use one concept (Payment), let order have many.
 
 Square has **no native dine-in fulfillment type** — they suggest `PICKUP` with table number stuffed in `ticket_name`. Krafta will introduce `DINE_IN` as a first-class fulfillment type. That's the gap we fill that Square never closed.
@@ -47,7 +47,7 @@ Square has **no native dine-in fulfillment type** — they suggest `PICKUP` with
 - **Cart** — draft items the guest has added but not yet submitted.
 - **Order (kitchen batch)** — submitted items that accumulate across the table; immutable after submission.
 
-Submission boundary: `Send to kitchen` is the moment cart → batch becomes immutable. Guests cannot edit their own batches after that. Each guest pays for what they sent (with optional "pay full table" path).
+Submission boundary: `Make an order` (the customer-facing button) is the moment cart → batch becomes immutable. Guests cannot edit their own batches after that. Each guest pays for what they sent (with optional "pay full table" path).
 
 This concept doesn't exist in Square. The schema needs to support it cleanly.
 
@@ -119,9 +119,10 @@ Variations and modifiers, although catalog concepts, also go in `public` next to
 ### 3.1 Catalog refactor (in `public`)
 
 ```
-public.venues                         -- new (formerly merchant address / hours / mode lived nowhere)
+public.venues                         -- new (1:1 with catalog; opening a new location = clone a catalog)
   id (uuid)                              PK
   org_id (uuid)                          FK → organizations
+  catalog_id (uuid, UNIQUE)              FK → catalogs   (1:1 — one catalog ≡ one venue)
   slug (text, unique within org)
   name (text)
   address (jsonb)
@@ -147,13 +148,6 @@ public.item_variations                -- new
   metadata (jsonb)
   created_at, updated_at
   UNIQUE(item_id, name)
-
-public.item_variation_venue_overrides -- new (per-venue price/availability)
-  variation_id (uuid)                    FK → item_variations
-  venue_id (uuid)                        FK → venues
-  price_cents (int, nullable)            null = use variation default
-  is_available (bool, default true)
-  PRIMARY KEY (variation_id, venue_id)
 
 public.modifier_lists                 -- new
   id (uuid)                              PK
@@ -193,15 +187,21 @@ public.modifier_list_translations     -- new (i18n)
 public.modifier_translations          -- new (i18n)
 public.item_variation_translations    -- new (i18n)
 
-public.taxes                          -- new (catalog-level taxes)
+public.taxes                          -- new (catalog-level taxes & service fees)
   id (uuid)                              PK
   catalog_id (uuid)                      FK → catalogs
-  name (text)                            'VAT 12%'
+  kind (enum: tax | service_fee)         'service_fee' for the 10–20% UZ-style restaurant fee
+  name (text)                            'VAT 12%' / 'Service 15%'
   calculation_phase (enum: subtotal | total)
   inclusion_type (enum: included | additive)
   percentage (numeric(5,4))              0.1200 = 12.00%
-  applies_to (enum: all_items | tagged_items)
+  applies_to (enum: all_items | by_category)
   is_active (bool)
+
+public.tax_categories                 -- new; only present rows when applies_to = 'by_category'
+  tax_id (uuid)                          FK → taxes
+  category_id (uuid)                     FK → catalog_categories
+  PRIMARY KEY (tax_id, category_id)
 
 public.discounts                      -- new (catalog-level discounts)
   id (uuid)                              PK
@@ -302,11 +302,12 @@ commerce.order_line_item_modifiers
   quantity (int, default 1)
   ordinal (int)
 
-commerce.order_taxes                  -- order-level definitions
+commerce.order_taxes                  -- order-level definitions (taxes + service fees)
   id (uuid)                              PK
   uid (text)                             stable ID within order
   order_id (uuid)                        FK → commerce.orders
   catalog_tax_id (uuid, nullable)        FK → public.taxes
+  kind (enum: tax | service_fee)         snapshotted from catalog row
   name (text)                            snapshotted
   type (enum: percentage | fixed)
   percentage (numeric(5,4), nullable)
@@ -471,8 +472,8 @@ Used for: audit trail (who marked the order ready), realtime subscriptions for [
 | Polymorphic `CatalogObject` / `<type>_data` blob | Postgres relational tables are dramatically better here. |
 | Money-totals as persisted columns (gross_sales, net_due, applied_money) | Compute on read. Square persists because of REST contract; we don't have that constraint. |
 | `Tender` separate from `Payment` on order | Vestigial. One concept (`order_payments`), order has many. |
-| Service Charge as a 3rd tax-shaped primitive | Fold into discounts/taxes for v1; revisit if any market needs it. |
-| Square's `present_at_all_locations + absent_at_location_ids` exception list | We use `item_variation_venue_overrides` directly — explicit row per (variation, venue) override. |
+| Service Charge as a 3rd tax-shaped primitive | Folded into `taxes` via `kind = 'service_fee'`. Ships day 1 (UZ restaurants charge 10–20%). |
+| Square's `present_at_all_locations + absent_at_location_ids` exception list | Not needed: 1 catalog ≡ 1 venue. Multi-location merchants clone the catalog per venue. |
 | `returns[]` array on Order (Square's in-store return model) | Refunds-as-separate-records (`commerce.order_refunds`) is cleaner. |
 | Per-customer `tax_ids` (EU VAT) baked into `customers` | Add as optional extension if a market requires it. |
 | Phone/SMS OTP customer auth | Out of scope; Telegram + Email + Google handle our customer base. |
@@ -490,10 +491,9 @@ Phased migrations to land in [KRA-33](https://linear.app/krafta/issue/KRA-33) im
 6. Add `public.modifier_lists`, `public.modifiers`, `public.item_modifier_lists`.
 7. Add per-variation translation table.
 
-**Migration 2 — Venues:**
-1. Add `public.venues`.
-2. Default-populate one venue per `catalog` (treating the existing implicit catalog as a single venue with `modes_enabled = ['pickup','dine_in','delivery']`).
-3. Add `public.item_variation_venue_overrides` (initially empty — variation default applies).
+**Migration 2 — Venues (1:1 with catalog):**
+1. Add `public.venues` with `catalog_id UNIQUE` FK → `catalogs`.
+2. Default-populate one venue per existing `catalog` row (`modes_enabled = ['pickup','dine_in','delivery']`).
 
 **Migration 3 — Catalog taxes / discounts:**
 1. Add `public.taxes`, `public.discounts`. Empty by default.
@@ -524,16 +524,16 @@ Each migration ships independently, behind feature flags where customer-visible.
 - `commerce.order_payments` — org members only.
 - `commerce.order_events` — append-only (no DELETE/UPDATE policies); SELECT scoped same as orders.
 
-## 7. Open questions (to resolve during implementation)
+## 7. Resolved questions
 
-1. **Per-venue menu vs global menu.** Do we let merchants have a different menu per venue, or one menu with per-venue availability? **Proposal:** one menu per catalog; per-venue availability through `item_variation_venue_overrides`. Merchants who want truly different menus create separate catalogs (and link them via the same `org_id`).
-2. **Tip handling.** Tips on `order_payments.tip_cents` is fine, but UX-wise: percentage of subtotal? Fixed amounts? Custom? Decide in implementation; schema covers all three.
-3. **Service charges.** Defer ("not cloning Square here") — but a single `is_service_charge` flag on `order_taxes` could work as a v1.5 hack if we absolutely need to ship one before re-modeling. Don't ship it in v1.
-4. **Multi-payment on one order (split tender).** Schema supports it (N `order_payments` per order). UX deferred to v2 — v1 just collects one cash payment per order.
-5. **Catalog versioning.** The `catalog_version` column on snapshots needs a counter strategy. **Proposal:** add a `version bigint` column to `public.items`, `item_variations`, `modifier_lists`, `modifiers`, `taxes`, `discounts`. Increment on every UPDATE via trigger. Snapshot writes capture the value at write time. Trade-off: noisier writes vs. ability to reconstruct historical menus.
-6. **Cart persistence.** Where does the customer's cart live before `Send to kitchen` / `Confirm`? **Proposal:** an `orders` row with `state='draft'`, `commerce.order_line_items` filled in, owned by the customer's anon Supabase session ([KRA-41](https://linear.app/krafta/issue/KRA-41)). The Square pattern.
-7. **Dine-in batched submission.** When a guest taps `Send to kitchen`, do we transition the existing `state='draft'` order to `state='open'` and immediately create a new draft for the next batch? Or do we model "kitchen batches" as a separate concept (sub-orders)? **Proposal:** each "Send to kitchen" creates a new `commerce.orders` row in `state='open'`, scoped to the same `table_session_id` and `guest_session_id`. Multiple orders per guest session per table session is fine. The merchant dashboard shows them grouped by table session.
-8. **Naming confusion to resolve.** Three separate payment concerns means three distinct customer concepts: `commerce.customers` (end-customers of merchants), `payments.customers` (Krafta Pay's customers — merchants using KP as processor), and a future `billing.customers` (Krafta's own paying merchants). Document this distinction prominently in `AGENTS.md` so future contributors don't conflate them.
+1. **Per-venue menu vs global menu.** **Resolved: one catalog ≡ one venue.** A new venue is opened by cloning an existing catalog. Access control hangs off the catalog: org members can be granted access to specific catalogs (basis for future team/role functionality). Per-venue availability overrides on a single catalog are out — multi-venue merchants get multi-catalog. `item_variation_venue_overrides` is dropped from v1 scope; `venue_id` on relevant rows is sufficient.
+2. **Tip handling.** **Resolved: ship percentage + fixed, switchable in UI.** Schema (`order_payments.tip_cents`) covers all three modes. UX: a single tip control that toggles between % (of subtotal) and fixed amount, with live computed total preview. Custom amount falls under "fixed".
+3. **Service charges / service fees.** **Resolved: ships day 1.** Uzbek restaurants commonly charge 10–20% service fee, so this is non-negotiable for launch. Modeled as `kind = 'service_fee'` on `public.taxes` and `commerce.order_taxes` — same shape as a tax, different `kind`. Avoids a third tax-shaped primitive while letting reporting/exports separate the two.
+4. **Multi-payment on one order (split tender).** **Resolved: schema in v1, UX in v2.** Schema supports N `order_payments` per order. v1 collects one cash payment per order; the UX for split tender lands later without migration.
+5. **Catalog versioning.** **Resolved: per-row `version bigint` + trigger.** Add to `public.items`, `item_variations`, `modifier_lists`, `modifiers`, `taxes`, `discounts`. Increment on UPDATE via trigger; snapshot writes capture the value at the moment of order. DB-only for now; reconstruction tooling can come later when actually needed.
+6. **Cart persistence.** **Resolved: cart is an `orders` row in `state='draft'`.** Owned by the customer's anon Supabase session ([KRA-41](https://linear.app/krafta/issue/KRA-41)) with line items filled in. Standard ecommerce pattern (also Square's). No separate `cart` table.
+7. **Dine-in batched submission.** **Resolved: each `Make an order` tap creates a new `commerce.orders` row in `state='open'`,** scoped to the same `table_session_id` and `guest_session_id`. Multiple orders per guest session per table session is expected. The merchant dashboard groups them by table session. (Note: "Make an order" replaces the earlier "Send to kitchen" placeholder as the customer-facing button label.)
+8. **Naming: three distinct "customer" concepts.** **Resolved: document prominently.** `commerce.customers` = end-customers of merchants; `payments.customers` = Krafta Pay's customers (merchants using KP as a processor); future `billing.customers` = Krafta's own paying merchants (SaaS subscribers). To be called out at the top of `AGENTS.md` and in each schema's preamble so contributors don't conflate them.
 
 ## 8. Consequences
 
@@ -544,7 +544,7 @@ Each migration ships independently, behind feature flags where customer-visible.
 - **First-class dine-in** with shared `table_session` and per-guest `guest_session`. Square doesn't have this.
 - **Multi-venue merchants** — the bakery chain in 3 locations works from day 1 even if v1 has only one venue per merchant in practice.
 - **Catalog edits don't retroactively break orders** because of snapshot fields + `catalog_version`.
-- **Per-venue price overrides** without a migration — the `item_variation_venue_overrides` table is a row-level extension.
+- **Per-venue pricing differences** are handled by separate catalogs (one per venue), not row-level overrides — simpler model, fits the 1 catalog ≡ 1 venue rule.
 - **Future: takeout-from-multiple-kitchens / catering / scheduled orders / split tender** all fit into the existing schema. Catering is a new fulfillment subtype + fulfillment_catering_details. Multi-kitchen is `entry_list` line-item application across multiple fulfillments. Scheduled orders are `scheduled_for` on existing fulfillment-type details. Split tender is N rows in `order_payments`.
 
 ### Constrains
@@ -565,7 +565,7 @@ Each migration ships independently, behind feature flags where customer-visible.
 - Update [KRA-34](https://linear.app/krafta/issue/KRA-34) (venue config) to reflect this schema.
 - Update [KRA-35](https://linear.app/krafta/issue/KRA-35) (menu builder) — UI now must edit variations + modifier lists + item-modifier links.
 - Update [KRA-36](https://linear.app/krafta/issue/KRA-36) (customer order page) — reads variations, applies mode-encoded QR params from [KRA-27](https://linear.app/krafta/issue/KRA-27).
-- Update [KRA-37](https://linear.app/krafta/issue/KRA-37) (cart + checkout) — writes to `commerce.orders` in `draft` state, transitions to `open` at "Send to kitchen" / "Confirm".
+- Update [KRA-37](https://linear.app/krafta/issue/KRA-37) (cart + checkout) — writes to `commerce.orders` in `draft` state, transitions to `open` when the customer taps `Make an order`.
 - Update [KRA-32](https://linear.app/krafta/issue/KRA-32) (merchant dashboard) — subscribe to `commerce.orders` realtime; render the per-venue queue.
 - Open question for the implementer: rename `payments` schema to `billing` (Open Q #8)? Low cost; high clarity.
 
