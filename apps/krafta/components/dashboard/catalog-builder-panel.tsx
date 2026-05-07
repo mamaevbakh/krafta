@@ -10,6 +10,7 @@ import {
   Palette,
   PanelsTopLeft,
   ReceiptText,
+  ShoppingBag,
 } from "lucide-react";
 import type {
   CatalogLayoutOverride,
@@ -17,6 +18,7 @@ import type {
   HeaderBasicFreeLogoSettings,
 } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import type { CatalogBehaviorSettings } from "@/lib/catalogs/settings/behavior";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
 import { Button } from "@/components/ui/button";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -36,7 +38,7 @@ type AspectPreset = {
   height: number;
 };
 
-type BuilderFocus = "structure" | "cards" | "brand" | "pricing";
+type BuilderFocus = "structure" | "cards" | "brand" | "pricing" | "cart";
 
 type BrandTokenKey =
   | "pageBackground"
@@ -91,6 +93,12 @@ const BUILDER_FOCUS_OPTIONS: Array<{
     label: "Pricing",
     description: "Currency formatting and readability",
     icon: ReceiptText,
+  },
+  {
+    value: "cart",
+    label: "Cart",
+    description: "Cart and checkout entry points",
+    icon: ShoppingBag,
   },
 ];
 
@@ -228,6 +236,7 @@ type BuilderPanelProps = {
   catalogLogoPath: string | null;
   initialLayout: CatalogLayoutSettings;
   initialCurrency: CurrencySettings;
+  initialBehavior: CatalogBehaviorSettings;
   headerOptions: OptionConfig<CatalogLayoutSettings["headerVariant"]>[];
   sectionOptions: OptionConfig<CatalogLayoutSettings["sectionVariant"]>[];
   itemCardOptions: OptionConfig<CatalogLayoutSettings["itemCardVariant"]>[];
@@ -243,6 +252,7 @@ export function CatalogBuilderPanel({
   catalogLogoPath,
   initialLayout,
   initialCurrency,
+  initialBehavior,
   headerOptions,
   sectionOptions,
   itemCardOptions,
@@ -284,6 +294,7 @@ export function CatalogBuilderPanel({
   );
   const [showDecimals, setShowDecimals] = useState(initialCurrency.showDecimals);
   const [labelPosition, setLabelPosition] = useState(initialCurrency.labelPosition);
+  const [cartEnabled, setCartEnabled] = useState(initialBehavior.enableCart);
   const [showHeaderLogo, setShowHeaderLogo] = useState(
     initialLayout.header.basicFreeLogo.showLogo,
   );
@@ -476,21 +487,32 @@ export function CatalogBuilderPanel({
     [initialCurrency],
   );
 
+  const behaviorOverrides = useMemo<CatalogBehaviorSettings>(
+    () => ({ enableCart: cartEnabled }),
+    [cartEnabled],
+  );
+  const initialBehaviorOverride = useMemo<CatalogBehaviorSettings>(
+    () => ({ enableCart: initialBehavior.enableCart }),
+    [initialBehavior.enableCart],
+  );
+
   const currentSignature = useMemo(
     () =>
       JSON.stringify({
         layout: layoutOverrides,
         currency: currencyOverrides,
+        behavior: behaviorOverrides,
       }),
-    [layoutOverrides, currencyOverrides],
+    [layoutOverrides, currencyOverrides, behaviorOverrides],
   );
   const initialSignature = useMemo(
     () =>
       JSON.stringify({
         layout: initialLayoutOverride,
         currency: initialCurrencyOverride,
+        behavior: initialBehaviorOverride,
       }),
-    [initialLayoutOverride, initialCurrencyOverride],
+    [initialLayoutOverride, initialCurrencyOverride, initialBehaviorOverride],
   );
 
   const baselineSignature = lastSavedSignature ?? initialSignature;
@@ -606,11 +628,17 @@ export function CatalogBuilderPanel({
       labelPosition,
     };
 
+    const settingsBehavior: CatalogBehaviorSettings = {
+      ...initialBehavior,
+      enableCart: cartEnabled,
+    };
+
     const result = await saveCatalogLayout({
       catalogId,
       catalogSlug,
       settingsLayout,
       settingsCurrency,
+      settingsBehavior,
     });
 
     if (!result.ok) {
@@ -807,6 +835,13 @@ export function CatalogBuilderPanel({
               onDecimalSeparatorChange={setDecimalSeparator}
               pricingSample={pricingSample}
               pricingSaleSample={pricingSaleSample}
+            />
+          ) : null}
+
+          {builderFocus === "cart" ? (
+            <CartInspector
+              cartEnabled={cartEnabled}
+              onCartEnabledChange={setCartEnabled}
             />
           ) : null}
         </aside>
@@ -1476,6 +1511,56 @@ function PricingInspector({
 
       <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
         Changes update the catalog cards on the right in real time.
+      </div>
+    </StudioCard>
+  );
+}
+
+function CartInspector({
+  cartEnabled,
+  onCartEnabledChange,
+}: {
+  cartEnabled: boolean;
+  onCartEnabledChange: (value: boolean) => void;
+}) {
+  return (
+    <StudioCard>
+      <InspectorIntro
+        title="Cart"
+        description="Turn ordering on for this catalog."
+      />
+
+      <button
+        type="button"
+        onClick={() => onCartEnabledChange(!cartEnabled)}
+        className={cn(
+          "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition",
+          cartEnabled
+            ? "border-foreground bg-foreground text-background shadow-sm"
+            : "border-border bg-background hover:border-foreground/30",
+        )}
+        aria-pressed={cartEnabled}
+      >
+        <div>
+          <div className="text-sm font-medium">Enable cart</div>
+          <div
+            className={cn(
+              "mt-1 text-xs",
+              cartEnabled ? "text-background/75" : "text-muted-foreground",
+            )}
+          >
+            Floating cart button + Add-to-cart CTA on item details.
+          </div>
+        </div>
+        <div className="text-xs uppercase tracking-[0.18em]">
+          {cartEnabled ? "On" : "Switch"}
+        </div>
+      </button>
+
+      <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+        Checkout flow (modes, scheduling, payment) lands in upcoming
+        commits — toggling this on now exposes cart UX so you can poke it
+        on the public catalog.
       </div>
     </StudioCard>
   );

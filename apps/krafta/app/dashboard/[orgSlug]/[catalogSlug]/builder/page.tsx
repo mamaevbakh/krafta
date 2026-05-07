@@ -88,7 +88,7 @@ export default async function CatalogBuilderPage({
     );
   }
 
-  const { layout, currency } = normalizeCatalogSettings(catalog);
+  const { layout, currency, behavior } = normalizeCatalogSettings(catalog);
 
   const headerOptions = headerVariants.map((variant) => ({
     value: variant,
@@ -120,6 +120,7 @@ export default async function CatalogBuilderPage({
       catalogLogoPath={catalog.logo_path}
       initialLayout={layout}
       initialCurrency={currency}
+      initialBehavior={behavior}
       headerOptions={headerOptions}
       sectionOptions={sectionOptions}
       itemCardOptions={itemCardOptions}

@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { normalizeBehaviorSettings } from "@/lib/catalogs/settings/behavior";
 import { SettingsPanel } from "./_components/settings-panel";
 
 type PageProps = {
@@ -12,9 +11,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
 
   const { data: catalog } = await supabase
     .from("catalogs")
-    .select(
-      "id, org_id, name, description, tags, logo_path, settings_behavior",
-    )
+    .select("id, org_id, name, description, tags, logo_path")
     .eq("slug", catalogSlug)
     .maybeSingle();
 
@@ -30,13 +27,6 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
     );
   }
 
-  const behavior = normalizeBehaviorSettings(
-    typeof catalog.settings_behavior === "object" &&
-      catalog.settings_behavior !== null
-      ? (catalog.settings_behavior as Record<string, unknown>)
-      : {},
-  );
-
   return (
     <SettingsPanel
       catalogId={catalog.id}
@@ -46,7 +36,6 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       description={catalog.description ?? ""}
       tags={catalog.tags ?? []}
       logoPath={catalog.logo_path ?? ""}
-      enableCart={behavior.enableCart}
     />
   );
 }

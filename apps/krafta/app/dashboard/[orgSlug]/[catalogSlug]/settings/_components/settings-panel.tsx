@@ -5,7 +5,6 @@ import Image from "next/image";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +29,6 @@ type SettingsPanelProps = {
   description: string;
   tags: string[];
   logoPath: string;
-  enableCart: boolean;
 };
 
 function normalizeTag(value: string) {
@@ -62,7 +60,6 @@ export function SettingsPanel({
   description,
   tags,
   logoPath,
-  enableCart,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("catalog");
   const [catalogName, setCatalogName] = React.useState(name);
@@ -71,7 +68,6 @@ export function SettingsPanel({
   const [catalogTags, setCatalogTags] = React.useState(tags);
   const [tagInput, setTagInput] = React.useState("");
   const [currentLogoPath, setCurrentLogoPath] = React.useState(logoPath);
-  const [cartEnabled, setCartEnabled] = React.useState(enableCart);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [isUploading, setIsUploading] = React.useState(false);
   const [isPending, startTransition] = React.useTransition();
@@ -103,7 +99,6 @@ export function SettingsPanel({
           name: catalogName,
           description: catalogDescription,
           tags: catalogTags,
-          enableCart: cartEnabled,
         });
 
         if (!result.ok) {
@@ -114,14 +109,7 @@ export function SettingsPanel({
         setStatusMessage("Settings saved.");
       });
     },
-    [
-      catalogId,
-      catalogSlug,
-      catalogName,
-      catalogDescription,
-      catalogTags,
-      cartEnabled,
-    ],
+    [catalogId, catalogSlug, catalogName, catalogDescription, catalogTags],
   );
 
   const handleLogoChange = React.useCallback(
@@ -382,34 +370,6 @@ export function SettingsPanel({
                             ))}
                           </div>
                         ) : null}
-                      </Field>
-                    </FieldGroup>
-                  </FieldSet>
-
-                  <FieldSet>
-                    <FieldLegend>Cart & checkout</FieldLegend>
-                    <FieldDescription>
-                      Let visitors add items to a cart and place orders from
-                      this catalog.
-                    </FieldDescription>
-                    <FieldGroup className="mt-6 gap-6">
-                      <Field orientation="horizontal">
-                        <Checkbox
-                          id="enable-cart"
-                          checked={cartEnabled}
-                          onCheckedChange={(checked) =>
-                            setCartEnabled(checked === true)
-                          }
-                        />
-                        <div className="grid gap-1">
-                          <FieldLabel htmlFor="enable-cart">
-                            Enable cart
-                          </FieldLabel>
-                          <FieldDescription>
-                            Adds a floating cart button and an
-                            &ldquo;Add to cart&rdquo; CTA on item details.
-                          </FieldDescription>
-                        </div>
                       </Field>
                     </FieldGroup>
                   </FieldSet>
