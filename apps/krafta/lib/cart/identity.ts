@@ -17,10 +17,10 @@ export type CartIdentity = {
  * to a real account via `linkIdentity()` without losing data — the customer
  * row's `user_id` doesn't change.
  *
- * Idempotent: existing customer is returned. A unique constraint on
- * (org_id, user_id) is not yet in place — see follow-up — so concurrent first
- * calls could in theory create two rows. Worth tightening when traffic
- * justifies it.
+ * Idempotent: existing customer is returned. A partial UNIQUE index on
+ * (org_id, user_id) WHERE user_id IS NOT NULL (KRA-77) guarantees one row
+ * per (org, auth user) at the DB level; concurrent first calls converge on
+ * the winner via the 23505 catch below.
  */
 export async function ensureCartIdentity(orgId: string): Promise<CartIdentity> {
   const supabase = await createClient();
@@ -66,10 +66,25 @@ export async function ensureCartIdentity(orgId: string): Promise<CartIdentity> {
     .select("id")
     .single();
 
-  if (insertError || !created) {
-    throw new Error(
-      insertError?.message ?? "Failed to create commerce.customers row.",
-    );
+  if (insertError) {
+    // 23505 = unique_violation. A concurrent call created the row after our
+    // initial SELECT; re-read and adopt it. The partial UNIQUE index on
+    // (org_id, user_id) makes this race deterministic instead of producing
+    // two rows.
+    if ((insertError as { code?: string }).code === "23505") {
+      const { data: raced } = await supabase
+        .schema("commerce")
+        .from("customers")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("user_id", userId)
+        .single();
+      if (raced?.id) return { userId, customerId: raced.id };
+    }
+    throw new Error(insertError.message);
+  }
+  if (!created) {
+    throw new Error("Failed to create commerce.customers row.");
   }
 
   return { userId, customerId: created.id };
