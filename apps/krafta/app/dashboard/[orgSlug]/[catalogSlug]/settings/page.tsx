@@ -27,6 +27,16 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
     );
   }
 
+  // Venue is 1:1 with catalog and is backfilled by the migration, so the row
+  // is expected to exist. Treat missing as a soft error rather than crashing.
+  const { data: venue } = await supabase
+    .from("venues")
+    .select(
+      "name, status, modes_enabled, business_hours, currency, timezone, language_code, address",
+    )
+    .eq("catalog_id", catalog.id)
+    .maybeSingle();
+
   return (
     <SettingsPanel
       catalogId={catalog.id}
@@ -36,6 +46,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       description={catalog.description ?? ""}
       tags={catalog.tags ?? []}
       logoPath={catalog.logo_path ?? ""}
+      venue={venue}
     />
   );
 }
