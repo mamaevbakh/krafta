@@ -6,6 +6,7 @@ import { Volume2, VolumeX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { pinRealtimeAuth } from "@/lib/supabase/realtime";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
@@ -188,19 +189,9 @@ export function OrdersPanel({
     let channelRef: ReturnType<typeof supabase.channel> | null = null;
 
     (async () => {
-      // Pin the merchant's JWT on the realtime connection before subscribing
-      // so postgres_changes events get RLS-evaluated against the merchant's
-      // identity (not anon, which has no commerce.orders SELECT policy).
-      const { data } = await supabase.auth.getSession();
-      if (cancelled) return;
-      const token = data.session?.access_token ?? null;
-      if (token) {
-        try {
-          await supabase.realtime.setAuth(token);
-        } catch {
-          // Non-fatal: subscribe will surface CHANNEL_ERROR if it bites.
-        }
-      }
+      // Pin the merchant's JWT on realtime before subscribing — otherwise
+      // RLS evaluates as anon and we never see commerce.orders events.
+      await pinRealtimeAuth(supabase);
       if (cancelled) return;
 
       channelRef = supabase
