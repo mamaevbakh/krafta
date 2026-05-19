@@ -83,8 +83,11 @@ export async function getVenueByCatalogId(
 }
 
 // Active taxes + service fees for the catalog, scoped to the v1-supported
-// shape (additive on subtotal, applies to all items). Hidden behind the same
-// cache tag as the catalog so a merchant edit invalidates the customer view.
+// shape (applies_to='all_items', calculation_phase='subtotal'). Both
+// inclusion_types are returned: 'additive' fees add to the customer's total,
+// 'included' fees are recorded informationally (e.g., UZ VAT baked into menu
+// price). Hidden behind the same cache tag as the catalog so merchant edits
+// invalidate the customer view.
 export async function getCatalogTaxes(
   catalogId: string,
 ): Promise<PublicTax[]> {
@@ -95,9 +98,8 @@ export async function getCatalogTaxes(
     `${supabaseUrl}/rest/v1/taxes?catalog_id=eq.${encodeURIComponent(catalogId)}` +
     `&is_active=eq.true` +
     `&applies_to=eq.all_items` +
-    `&inclusion_type=eq.additive` +
     `&calculation_phase=eq.subtotal` +
-    `&select=id,name,kind,percentage,version`;
+    `&select=id,name,kind,inclusion_type,percentage,version`;
   const response = await fetch(url, {
     headers: supabaseHeaders,
     next: { tags: [`catalog:${catalogId}`, `catalog-taxes:${catalogId}`] },
@@ -108,6 +110,7 @@ export async function getCatalogTaxes(
     id: string;
     name: string;
     kind: "tax" | "service_fee";
+    inclusion_type: "additive" | "included";
     percentage: string | number;
     version: number;
   }>;
@@ -116,6 +119,7 @@ export async function getCatalogTaxes(
     id: row.id,
     name: row.name,
     kind: row.kind,
+    inclusion_type: row.inclusion_type,
     percentage: typeof row.percentage === "string" ? Number(row.percentage) : row.percentage,
     version: row.version,
   }));

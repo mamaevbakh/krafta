@@ -78,14 +78,19 @@ export type PublicCategoryWithItems = PublicCatalogCategory & {
   items: PublicItem[];
 };
 
-// Active taxes/service fees for a catalog, filtered to the v1-supported shape:
-// applies_to='all_items', inclusion_type='additive', calculation_phase='subtotal'.
-// The `kind` discriminator lets the UI label them distinctly ('Tax' vs
-// 'Service fee') and lets reporting split the two.
+// Active taxes/service fees for a catalog. v1 supports applies_to='all_items'
+// + calculation_phase='subtotal'; the `inclusion_type` discriminator drives
+// math + UI:
+//   - additive: amount = subtotal * pct, added to the customer's total
+//   - included: amount = subtotal * pct / (1 + pct), informational only
+//     (the menu price already includes the tax — common for UZ VAT)
+// The `kind` discriminator labels them ('Tax' / 'Service fee') and lets
+// reporting split the two.
 export type PublicTax = {
   id: string;
   name: string;
   kind: "tax" | "service_fee";
+  inclusion_type: "additive" | "included";
   // Stored as a fraction (0.1200 = 12.00%). UI converts to display percentage.
   percentage: number;
   version: number;

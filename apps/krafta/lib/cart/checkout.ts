@@ -265,13 +265,15 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // trust client-side totals. Filter to the v1-supported shape so the
   // pricing util can stay branch-free.
 
+  // Both inclusion_types: 'additive' contributes to the amount charged;
+  // 'included' (UZ VAT pattern) is recorded for compliance but the menu
+  // price already bakes it in, so it doesn't add to the customer's total.
   const { data: taxRows, error: taxRowsError } = await supabase
     .from("taxes")
-    .select("id, name, kind, percentage, version")
+    .select("id, name, kind, inclusion_type, percentage, version")
     .eq("catalog_id", venue.catalog_id)
     .eq("is_active", true)
     .eq("applies_to", "all_items")
-    .eq("inclusion_type", "additive")
     .eq("calculation_phase", "subtotal");
   if (taxRowsError) throw new Error(taxRowsError.message);
 
@@ -279,6 +281,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     id: row.id,
     name: row.name,
     kind: row.kind as "tax" | "service_fee",
+    inclusion_type: row.inclusion_type as "additive" | "included",
     percentage:
       typeof row.percentage === "string" ? Number(row.percentage) : row.percentage,
     version: row.version,
@@ -298,6 +301,12 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // Insert order_taxes (one per active tax). uid pattern keeps applied-tax
   // references stable: "<tax_id>" is sufficient within an order since each
   // tax appears at most once per order.
+  //
+  // commerce.order_taxes has no inclusion_type column (schema gap — see
+  // KRA-63 follow-up), so we stash it in `metadata.inclusion_type`. That
+  // preserves the distinction for reporting: a row with
+  // metadata.inclusion_type='included' means the customer was NOT charged
+  // applied_money_cents on top; the price already baked it in.
   if (pricing.feeLines.length > 0) {
     const orderTaxRows = pricing.feeLines.map((fee) => ({
       // org_id auto-set by order_taxes_sync_org_id trigger.
@@ -313,6 +322,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       scope: "order" as const,
       auto_applied: true,
       applied_money_cents: fee.appliedMoneyCents,
+      metadata: { inclusion_type: fee.inclusionType },
     }));
     const { error: orderTaxError } = await supabase
       .schema("commerce")
@@ -360,8 +370,10 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
 
   // Payments row: cash-only v1, status='pending', customer's tip captured.
   // Merchant flips status to 'completed' from the orders dashboard when
-  // cash is collected.
-  const amountCents = subtotalCents + pricing.totalFeesCents;
+  // cash is collected. amount_cents = subtotal + additive fees only;
+  // 'included' fees are already baked into the subtotal so adding them
+  // again would double-charge.
+  const amountCents = subtotalCents + pricing.additiveFeesCents;
   const { error: paymentError } = await supabase
     .schema("commerce")
     .from("order_payments")

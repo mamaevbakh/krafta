@@ -18,9 +18,13 @@ type Props = {
   compact?: boolean;
 };
 
-// Renders the subtotal -> fees/taxes -> tip -> total stack. Same component
-// is used at the cart-list step (no tip yet) and at the checkout step
-// (with the customer's chosen tip).
+// Renders the subtotal -> fees -> tip -> total stack.
+//
+// Two fee shapes:
+//   - additive: shown as a normal row, contributes to total.
+//   - included (e.g., UZ VAT baked into the menu price): shown muted with
+//     "(N% included)" label, recorded for compliance, NOT added to total.
+//     The customer sees the breakdown but isn't charged twice.
 export function PricingBreakdown({
   subtotalCents,
   taxes,
@@ -43,9 +47,12 @@ export function PricingBreakdown({
       {pricing.feeLines.map((fee) => (
         <Row
           key={fee.taxId}
-          label={`${fee.name}${formatPctLabel(fee.percentage)}`}
+          label={`${fee.name}${formatPctLabel(fee.percentage, fee.inclusionType)}`}
           valueCents={fee.appliedMoneyCents}
           currencySettings={currencySettings}
+          // Included fees are informational — render in muted text and
+          // skip the additive sign so the customer reads them as "of which",
+          // not "plus".
           muted
         />
       ))}
@@ -90,10 +97,14 @@ function Row({
   );
 }
 
-function formatPctLabel(fraction: number): string {
-  // 0.12 → " (12%)" — drop trailing zeros so 0.105 shows as "(10.5%)".
+function formatPctLabel(
+  fraction: number,
+  inclusionType: "additive" | "included",
+): string {
+  // 0.12 → " (12%)" for additive; " (12% included)" for included.
   const pct = fraction * 100;
   const rounded = Math.round(pct * 100) / 100;
   if (rounded === 0) return "";
+  if (inclusionType === "included") return ` (${rounded}% included)`;
   return ` (${rounded}%)`;
 }
