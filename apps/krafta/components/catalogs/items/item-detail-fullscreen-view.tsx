@@ -84,6 +84,7 @@ export function ItemDetailFullscreen({
               src={imageUrl}
               alt={item.image_alt ?? item.name}
               fill
+              sizes="(max-width: 640px) 100vw, 480px"
               className="h-full w-full object-cover"
             />
           </AspectRatio>

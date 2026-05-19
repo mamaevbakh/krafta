@@ -1343,6 +1343,7 @@ function BrandInspector({
                   src={catalogLogoFallbackUrl}
                   alt={`${catalogName} original logo`}
                   fill
+                  sizes="120px"
                   className="object-cover"
                 />
               ) : (
@@ -1789,7 +1790,7 @@ function BannerUploadField({
 
       <div className="mt-3 relative h-24 overflow-hidden rounded-md border border-border bg-background">
         {previewUrl ? (
-          <Image src={previewUrl} alt={`${label} preview`} fill className="object-cover" />
+          <Image src={previewUrl} alt={`${label} preview`} fill sizes="(max-width: 768px) 100vw, 400px" className="object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
             No image selected

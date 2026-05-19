@@ -11,6 +11,7 @@ export function PhotoRowCard({ item, imageUrl }: ItemCardProps) {
             src={imageUrl}
             alt={item.image_alt ?? item.name}
             fill
+            sizes="96px"
             className="object-cover"
           />
         </div>

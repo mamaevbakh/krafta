@@ -62,6 +62,8 @@ export function CatalogHeaderBasicFreeLogo({
               src={resolvedBannerLightUrl}
               alt=""
               fill
+              sizes="(max-width: 768px) 100vw, 768px"
+              priority
               className="object-cover dark:hidden"
               aria-hidden="true"
             />
@@ -73,6 +75,8 @@ export function CatalogHeaderBasicFreeLogo({
               src={resolvedBannerDarkUrl}
               alt=""
               fill
+              sizes="(max-width: 768px) 100vw, 768px"
+              priority
               className="hidden object-cover dark:block"
               aria-hidden="true"
             />
@@ -84,6 +88,8 @@ export function CatalogHeaderBasicFreeLogo({
               src={resolvedBannerLightUrl}
               alt=""
               fill
+              sizes="(max-width: 768px) 100vw, 768px"
+              priority
               className="object-cover"
               aria-hidden="true"
             />
@@ -109,6 +115,8 @@ export function CatalogHeaderBasicFreeLogo({
               src={logoUrl}
               alt={`${catalogName} logo`}
               fill
+              sizes="(max-width: 768px) 100vw, 360px"
+              priority
               className="object-cover"
             />
           </AspectRatio>

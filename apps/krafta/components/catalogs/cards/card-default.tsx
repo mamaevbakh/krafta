@@ -16,6 +16,7 @@ export function CatalogItemCard({
             src={imageUrl}
             alt={item.image_alt ?? item.name}
             fill
+            sizes="64px"
             className="object-cover"
           />
         </div>
