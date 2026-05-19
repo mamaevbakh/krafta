@@ -3130,6 +3130,70 @@ export type Database = {
         }
         Relationships: []
       }
+      qr_codes: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          kind: Database["public"]["Enums"]["qr_kind"]
+          metadata: Json
+          org_id: string
+          shortcode: string
+          table_label: string | null
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind: Database["public"]["Enums"]["qr_kind"]
+          metadata?: Json
+          org_id?: string
+          shortcode?: string
+          table_label?: string | null
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kind?: Database["public"]["Enums"]["qr_kind"]
+          metadata?: Json
+          org_id?: string
+          shortcode?: string
+          table_label?: string | null
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qr_codes_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_codes_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_codes_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       search_logs: {
         Row: {
           catalog_id: string | null
@@ -3490,6 +3554,7 @@ export type Database = {
       tax_applies_to: "all_items" | "by_category"
       tax_calculation_phase: "subtotal" | "total"
       tax_inclusion_type: "included" | "additive"
+      qr_kind: "main" | "table" | "pickup" | "delivery"
       tax_kind: "tax" | "service_fee"
       venue_status: "active" | "paused" | "archived"
     }
@@ -3692,6 +3757,7 @@ export const Constants = {
       tax_applies_to: ["all_items", "by_category"],
       tax_calculation_phase: ["subtotal", "total"],
       tax_inclusion_type: ["included", "additive"],
+      qr_kind: ["main", "table", "pickup", "delivery"],
       tax_kind: ["tax", "service_fee"],
       venue_status: ["active", "paused", "archived"],
     },
