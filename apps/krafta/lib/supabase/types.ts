@@ -3360,6 +3360,10 @@ export type Database = {
       ack_embedding_job: { Args: { p_job_id: number }; Returns: undefined }
       catalog_is_public: { Args: { _catalog_id: string }; Returns: boolean }
       catalog_org_id: { Args: { _catalog_id: string }; Returns: string }
+      create_draft_shop: {
+        Args: { p_slug: string }
+        Returns: { org_id: string; catalog_id: string }[]
+      }
       catalog_search: {
         Args: {
           p_catalog_id?: string
