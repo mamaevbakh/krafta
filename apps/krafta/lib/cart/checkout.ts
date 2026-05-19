@@ -45,6 +45,24 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   const supabase = await createClient();
   const { customerId, userId } = await ensureCartIdentity(input.orgId);
 
+  // Preflight: the venue must be accepting orders AND the requested mode
+  // must be enabled on it. The customer-side UI gates these via
+  // CartProvider/mode-picker, but we re-check here because server actions
+  // are reachable directly and the venue can be edited mid-session.
+  const { data: venue, error: venueError } = await supabase
+    .from("venues")
+    .select("status, modes_enabled")
+    .eq("id", input.venueId)
+    .maybeSingle();
+  if (venueError) throw new Error(venueError.message);
+  if (!venue) throw new Error("Venue not found.");
+  if (venue.status !== "active") {
+    throw new Error("This venue is not accepting orders right now.");
+  }
+  if (!venue.modes_enabled.includes(input.mode)) {
+    throw new Error("This order type is not available.");
+  }
+
   // Pull the customer's current draft order. If none exists, the caller
   // tried to checkout an empty cart.
   const { data: order, error: orderError } = await supabase

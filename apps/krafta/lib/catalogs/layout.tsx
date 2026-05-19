@@ -197,6 +197,18 @@ export function CatalogLayout({
   // path guards against catalogs created outside the normal flow).
   if (!venue || !behavior.enableCart) return tree;
 
+  // Paused / archived venues: customer can still browse the menu, but no
+  // cart UI renders. Surface a banner so the missing Add-to-cart buttons
+  // are not mysterious.
+  if (venue.status !== "active") {
+    return (
+      <>
+        <NotAcceptingOrdersBanner />
+        {tree}
+      </>
+    );
+  }
+
   // Constrain to the modes our checkout flow understands, preserving the
   // venue's ordering. The DB CHECK constraint on venues already restricts
   // to this set; this filter is a defense-in-depth.
@@ -217,5 +229,13 @@ export function CatalogLayout({
       <CartTrigger />
       <CartDrawer currencySettings={resolvedCurrency} />
     </CartProvider>
+  );
+}
+
+function NotAcceptingOrdersBanner() {
+  return (
+    <div className="sticky top-0 z-40 border-b border-border bg-muted/80 px-4 py-2 text-center text-xs font-medium text-muted-foreground backdrop-blur">
+      Not accepting orders right now
+    </div>
   );
 }
