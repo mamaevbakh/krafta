@@ -2,6 +2,10 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { ensureCartIdentity } from "./identity";
+import {
+  computePricing,
+  distributeProRata,
+} from "./pricing";
 
 export type DineInFields = {
   tableLabel: string;
@@ -23,10 +27,16 @@ export type DeliveryFields = {
   note: string | null;
 };
 
+// Tip is a customer-side choice captured at place-time and persisted on the
+// payments row that's created in the same transaction (KRA-63 D2). 0 = no
+// tip. Value is the absolute cents the customer agreed to (whatever the UI
+// computed from percentage / fixed; server doesn't re-derive).
+type CommonFields = { tipCents?: number };
+
 export type PlaceOrderInput =
-  | { orgId: string; venueId: string; mode: "dine_in"; fields: DineInFields }
-  | { orgId: string; venueId: string; mode: "pickup"; fields: PickupFields }
-  | { orgId: string; venueId: string; mode: "delivery"; fields: DeliveryFields };
+  | ({ orgId: string; venueId: string; mode: "dine_in"; fields: DineInFields } & CommonFields)
+  | ({ orgId: string; venueId: string; mode: "pickup"; fields: PickupFields } & CommonFields)
+  | ({ orgId: string; venueId: string; mode: "delivery"; fields: DeliveryFields } & CommonFields);
 
 export type PlaceOrderResult = {
   orderId: string;
@@ -49,9 +59,11 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // must be enabled on it. The customer-side UI gates these via
   // CartProvider/mode-picker, but we re-check here because server actions
   // are reachable directly and the venue can be edited mid-session.
+  // We also grab catalog_id + currency here because we'll need them when
+  // writing order_taxes / order_payments below — saves a second roundtrip.
   const { data: venue, error: venueError } = await supabase
     .from("venues")
-    .select("status, modes_enabled")
+    .select("status, modes_enabled, catalog_id, currency")
     .eq("id", input.venueId)
     .maybeSingle();
   if (venueError) throw new Error(venueError.message);
@@ -79,12 +91,15 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   if (orderError) throw new Error(orderError.message);
   if (!order) throw new Error("No draft order to place. Add items first.");
 
+  // Fetch the line totals up front — we'll use them again below for the
+  // tax / payment writes, ordered by created_at so the "remainder goes to
+  // last line" pro-rata pattern is deterministic.
   const { data: lines, error: linesError } = await supabase
     .schema("commerce")
     .from("order_line_items")
-    .select("id")
+    .select("id, total_price_cents")
     .eq("order_id", order.id)
-    .limit(1);
+    .order("created_at", { ascending: true });
   if (linesError) throw new Error(linesError.message);
   if (!lines || lines.length === 0) {
     throw new Error("Cart is empty.");
@@ -244,6 +259,125 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       });
     if (error) throw new Error(error.message);
   }
+
+  // ---- Taxes / service fees + payments (KRA-63) ---------------------------
+  // Server is the source of truth: re-read active catalog taxes fresh, never
+  // trust client-side totals. Filter to the v1-supported shape so the
+  // pricing util can stay branch-free.
+
+  const { data: taxRows, error: taxRowsError } = await supabase
+    .from("taxes")
+    .select("id, name, kind, percentage, version")
+    .eq("catalog_id", venue.catalog_id)
+    .eq("is_active", true)
+    .eq("applies_to", "all_items")
+    .eq("inclusion_type", "additive")
+    .eq("calculation_phase", "subtotal");
+  if (taxRowsError) throw new Error(taxRowsError.message);
+
+  const taxes = (taxRows ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: row.kind as "tax" | "service_fee",
+    percentage:
+      typeof row.percentage === "string" ? Number(row.percentage) : row.percentage,
+    version: row.version,
+  }));
+
+  const subtotalCents = lines.reduce(
+    (sum, line) => sum + line.total_price_cents,
+    0,
+  );
+  const tipCents = Math.max(0, Math.floor(input.tipCents ?? 0));
+  const pricing = computePricing({
+    subtotalCents,
+    taxes,
+    tipCents,
+  });
+
+  // Insert order_taxes (one per active tax). uid pattern keeps applied-tax
+  // references stable: "<tax_id>" is sufficient within an order since each
+  // tax appears at most once per order.
+  if (pricing.feeLines.length > 0) {
+    const orderTaxRows = pricing.feeLines.map((fee) => ({
+      // org_id auto-set by order_taxes_sync_org_id trigger.
+      org_id: input.orgId,
+      uid: fee.taxId,
+      order_id: order.id,
+      catalog_tax_id: fee.taxId,
+      kind: fee.kind,
+      name: fee.name,
+      type: "percentage" as const,
+      percentage: fee.percentage,
+      amount_cents: null,
+      scope: "order" as const,
+      auto_applied: true,
+      applied_money_cents: fee.appliedMoneyCents,
+    }));
+    const { error: orderTaxError } = await supabase
+      .schema("commerce")
+      .from("order_taxes")
+      .insert(orderTaxRows);
+    if (orderTaxError) throw new Error(orderTaxError.message);
+
+    // Per-line breakdown (KRA-63 D3): distribute each tax's appliedMoney
+    // across lines proportional to line.total / subtotal. The pricing util's
+    // distributeProRata handles the floor + last-line-remainder math so each
+    // tax's sum exactly equals appliedMoneyCents.
+    const appliedRows: Array<{
+      line_item_id: string;
+      order_tax_uid: string;
+      order_id: string;
+      org_id: string;
+      applied_money_cents: number;
+    }> = [];
+    for (const fee of pricing.feeLines) {
+      const distribution = distributeProRata({
+        lines,
+        totalCents: fee.appliedMoneyCents,
+        subtotalCents,
+      });
+      for (const line of lines) {
+        appliedRows.push({
+          line_item_id: line.id,
+          order_tax_uid: fee.taxId,
+          order_id: order.id,
+          // applied_tax_validate trigger overwrites order_id + org_id from
+          // the parent line item; this value is a placeholder.
+          org_id: input.orgId,
+          applied_money_cents: distribution.get(line.id) ?? 0,
+        });
+      }
+    }
+    if (appliedRows.length > 0) {
+      const { error: appliedError } = await supabase
+        .schema("commerce")
+        .from("line_item_applied_taxes")
+        .insert(appliedRows);
+      if (appliedError) throw new Error(appliedError.message);
+    }
+  }
+
+  // Payments row: cash-only v1, status='pending', customer's tip captured.
+  // Merchant flips status to 'completed' from the orders dashboard when
+  // cash is collected.
+  const amountCents = subtotalCents + pricing.totalFeesCents;
+  const { error: paymentError } = await supabase
+    .schema("commerce")
+    .from("order_payments")
+    .insert({
+      // org_id set by order_payments_sync_org_id trigger.
+      org_id: input.orgId,
+      order_id: order.id,
+      amount_cents: amountCents,
+      tip_cents: tipCents,
+      total_cents: amountCents + tipCents,
+      currency: venue.currency,
+      status: "pending",
+      source_type: "cash",
+      autocomplete: true,
+    });
+  if (paymentError) throw new Error(paymentError.message);
 
   return { orderId: order.id, state: "open" };
 }

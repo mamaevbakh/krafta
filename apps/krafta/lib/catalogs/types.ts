@@ -77,3 +77,16 @@ export type PublicItem = Pick<
 export type PublicCategoryWithItems = PublicCatalogCategory & {
   items: PublicItem[];
 };
+
+// Active taxes/service fees for a catalog, filtered to the v1-supported shape:
+// applies_to='all_items', inclusion_type='additive', calculation_phase='subtotal'.
+// The `kind` discriminator lets the UI label them distinctly ('Tax' vs
+// 'Service fee') and lets reporting split the two.
+export type PublicTax = {
+  id: string;
+  name: string;
+  kind: "tax" | "service_fee";
+  // Stored as a fraction (0.1200 = 12.00%). UI converts to display percentage.
+  percentage: number;
+  version: number;
+};

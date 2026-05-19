@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { useCart } from "./cart-provider";
 import { CartCheckoutStep } from "./checkout-step";
 import { CartPlacedStep } from "./placed-step";
+import { PricingBreakdown } from "./pricing-breakdown";
 
 type CartDrawerProps = {
   currencySettings?: CurrencySettings;
@@ -47,7 +48,9 @@ export function CartDrawer({
         {step === "cart" ? (
           <CartListStep currencySettings={currencySettings} />
         ) : null}
-        {step === "checkout" ? <CartCheckoutStep /> : null}
+        {step === "checkout" ? (
+          <CartCheckoutStep currencySettings={currencySettings} />
+        ) : null}
         {step === "placed" ? (
           <CartPlacedStep currencySettings={currencySettings} />
         ) : null}
@@ -67,6 +70,7 @@ function CartListStep({
     updateQuantity,
     removeItem,
     setStep,
+    taxes,
   } = useCart();
 
   const isEmpty = summary.lineItems.length === 0;
@@ -185,12 +189,11 @@ function CartListStep({
         <>
           <Separator />
           <div className="flex flex-col gap-3 px-4 pb-6 pt-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span className="text-base font-semibold text-foreground tabular-nums">
-                {formatPriceCents(summary.subtotalCents, currencySettings)}
-              </span>
-            </div>
+            <PricingBreakdown
+              subtotalCents={summary.subtotalCents}
+              taxes={taxes}
+              currencySettings={currencySettings}
+            />
             <Button
               type="button"
               size="lg"

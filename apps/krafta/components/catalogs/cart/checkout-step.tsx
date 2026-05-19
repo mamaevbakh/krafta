@@ -18,12 +18,17 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  type CurrencySettings,
+  defaultCurrencySettings,
+} from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
 import {
   useCart,
   type CartFulfillmentMode,
 } from "./cart-provider";
+import { PricingBreakdown } from "./pricing-breakdown";
 
 const MODE_LABELS: Record<CartFulfillmentMode, string> = {
   dine_in: "Dine-in",
@@ -44,8 +49,23 @@ const MODE_ICONS: Record<CartFulfillmentMode, LucideIcon> = {
 // with it; users who want delivery tap the second option.
 const PICKER_MODE_ORDER: CartFulfillmentMode[] = ["pickup", "delivery"];
 
-export function CartCheckoutStep() {
-  const { modes, isPlacingOrder, placeOrder, setStep } = useCart();
+type CartCheckoutStepProps = {
+  currencySettings?: CurrencySettings;
+};
+
+export function CartCheckoutStep({
+  currencySettings = defaultCurrencySettings,
+}: CartCheckoutStepProps = {}) {
+  const {
+    modes,
+    isPlacingOrder,
+    placeOrder,
+    setStep,
+    taxes,
+    summary,
+    tipCents,
+    setTipCents,
+  } = useCart();
 
   // Picker shows pickup/delivery in popularity order. dine_in is excluded
   // here on purpose — it's QR-only (intent inferred from the scan, no
@@ -347,6 +367,20 @@ export function CartCheckoutStep() {
             </FieldGroup>
           </FieldSet>
         ) : null}
+
+        <TipControl
+          subtotalCents={summary.subtotalCents}
+          tipCents={tipCents}
+          setTipCents={setTipCents}
+          currencySettings={currencySettings}
+        />
+
+        <PricingBreakdown
+          subtotalCents={summary.subtotalCents}
+          taxes={taxes}
+          tipCents={tipCents}
+          currencySettings={currencySettings}
+        />
       </div>
 
       <div className="border-t border-border/60 px-4 pb-6 pt-4">
@@ -360,6 +394,114 @@ export function CartCheckoutStep() {
           {isPlacingOrder ? "Placing…" : "Place order"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Inline tip picker. Four percentage chips for quick choices; "Custom"
+// expands a number input in the catalog's currency major unit (e.g., dollars
+// for USD, the customer's intuitive unit). Source of truth is `tipCents`;
+// percentage chips compute cents from current subtotal so the value stays
+// correct if the customer re-adds items before submitting.
+const TIP_PRESET_PERCENTAGES = [0, 0.1, 0.15, 0.2] as const;
+
+function TipControl({
+  subtotalCents,
+  tipCents,
+  setTipCents,
+  currencySettings,
+}: {
+  subtotalCents: number;
+  tipCents: number;
+  setTipCents: (next: number) => void;
+  currencySettings: CurrencySettings;
+}) {
+  const [mode, setModeState] = useState<"preset" | "custom">("preset");
+  // Preset percentage that the tip matches, if any. Computed defensively each
+  // render so a re-add that changes subtotal doesn't strand the chip
+  // highlight on a stale value.
+  const matchingPreset = useMemo(() => {
+    for (const pct of TIP_PRESET_PERCENTAGES) {
+      if (Math.round(subtotalCents * pct) === tipCents) return pct;
+    }
+    return null;
+  }, [subtotalCents, tipCents]);
+
+  // Custom field state: held as the major-unit decimal string so the input
+  // accepts partial typing. Cents conversion happens on each change.
+  // Catalogs with showDecimals=false (e.g., whole-unit UZS) skip cents.
+  const decimals = currencySettings.showDecimals ? 2 : 0;
+  const factor = 10 ** decimals;
+  const [customStr, setCustomStr] = useState<string>(
+    tipCents > 0 && matchingPreset === null
+      ? (tipCents / factor).toFixed(decimals)
+      : "",
+  );
+
+  const handlePreset = (pct: number) => {
+    setModeState("preset");
+    setTipCents(Math.round(subtotalCents * pct));
+  };
+
+  const handleCustomChange = (value: string) => {
+    setCustomStr(value);
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setTipCents(0);
+      return;
+    }
+    setTipCents(Math.round(parsed * factor));
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-foreground">Tip</p>
+      <div className="grid grid-cols-5 gap-2">
+        {TIP_PRESET_PERCENTAGES.map((pct) => {
+          const isActive = mode === "preset" && matchingPreset === pct;
+          const label = pct === 0 ? "No tip" : `${Math.round(pct * 100)}%`;
+          return (
+            <button
+              key={pct}
+              type="button"
+              onClick={() => handlePreset(pct)}
+              className={cn(
+                "rounded-full border px-2 py-2 text-xs font-medium transition",
+                isActive
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border bg-background text-foreground hover:border-foreground/30",
+              )}
+              aria-pressed={isActive}
+            >
+              {label}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setModeState("custom")}
+          className={cn(
+            "rounded-full border px-2 py-2 text-xs font-medium transition",
+            mode === "custom"
+              ? "border-foreground bg-foreground text-background"
+              : "border-border bg-background text-foreground hover:border-foreground/30",
+          )}
+          aria-pressed={mode === "custom"}
+        >
+          Custom
+        </button>
+      </div>
+      {mode === "custom" ? (
+        <Input
+          type="number"
+          min="0"
+          step={decimals === 0 ? "1" : `0.${"0".repeat(decimals - 1)}1`}
+          inputMode="decimal"
+          value={customStr}
+          onChange={(event) => handleCustomChange(event.target.value)}
+          placeholder="Enter tip amount"
+        />
+      ) : null}
     </div>
   );
 }

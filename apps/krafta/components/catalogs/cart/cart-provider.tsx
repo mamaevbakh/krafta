@@ -29,6 +29,7 @@ import {
   modifierSignature,
   type ModifierSelection,
 } from "@/lib/cart/modifier-signature";
+import type { PublicTax } from "@/lib/catalogs/types";
 import type { PlaceOrderInput } from "@/lib/cart/checkout";
 
 export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
@@ -79,6 +80,18 @@ type CartContextValue = {
   setOpen: (next: boolean) => void;
   /** Available fulfillment modes for this venue, in display order. */
   modes: CartFulfillmentMode[];
+  /**
+   * Active taxes + service fees for the catalog (filtered to the v1-supported
+   * shape on the server side). Used to render the breakdown above totals on
+   * both the cart-list and checkout steps.
+   */
+  taxes: PublicTax[];
+  /**
+   * Customer's chosen tip in cents. Updated via setTipCents from the
+   * checkout step; sent to the server on placeOrder.
+   */
+  tipCents: number;
+  setTipCents: (next: number) => void;
   /** Current step inside the drawer: cart list, checkout fields, or confirmation. */
   step: CartStep;
   setStep: (next: CartStep) => void;
@@ -303,6 +316,12 @@ type CartProviderProps = {
   catalogPath: string;
   /** Filtered, in-display-order list of modes the venue offers. */
   modes: CartFulfillmentMode[];
+  /**
+   * Active catalog taxes/service fees, fetched at the page level so the
+   * cart drawer + checkout breakdown render without a roundtrip. Empty
+   * array is fine: pricing util short-circuits with no fee lines.
+   */
+  taxes?: PublicTax[];
   initialSummary?: CartSummary;
   children: ReactNode;
 };
@@ -312,6 +331,7 @@ export function CartProvider({
   venueId,
   catalogPath,
   modes,
+  taxes = [],
   initialSummary,
   children,
 }: CartProviderProps) {
@@ -326,6 +346,13 @@ export function CartProvider({
     null,
   );
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [tipCents, setTipCents] = useState<number>(0);
+
+  // Reset tip when the cart empties to zero — prevents a leftover tip from a
+  // previous order applying to a fresh cart the customer just started.
+  useEffect(() => {
+    if (summary.lineItems.length === 0) setTipCents(0);
+  }, [summary.lineItems.length]);
 
   const pendingQtyTimers = useRef(new Map<string, Pending>());
   const pendingAddTimers = useRef(new Map<string, Pending>());
@@ -608,6 +635,7 @@ export function CartProvider({
           orgId,
           venueId,
           catalogPath,
+          tipCents,
           ...input,
         } as Parameters<typeof placeOrderAction>[0]);
 
@@ -642,7 +670,7 @@ export function CartProvider({
         setIsPlacingOrder(false);
       }
     },
-    [catalogPath, flush, orgId, summary.lineItems, summary.subtotalCents, venueId],
+    [catalogPath, flush, orgId, summary.lineItems, summary.subtotalCents, tipCents, venueId],
   );
 
   const itemCount = summary.lineItems.reduce(
@@ -660,6 +688,9 @@ export function CartProvider({
       close: () => setIsOpen(false),
       setOpen: setIsOpen,
       modes,
+      taxes,
+      tipCents,
+      setTipCents,
       step,
       setStep,
       placedOrderId,
@@ -689,6 +720,8 @@ export function CartProvider({
       removeItem,
       step,
       summary,
+      taxes,
+      tipCents,
       updateQuantity,
     ],
   );

@@ -1,6 +1,10 @@
 // lib/catalogs/layout.tsx
 
-import type { PublicCatalog, PublicCategoryWithItems } from "@/lib/catalogs/types";
+import type {
+  PublicCatalog,
+  PublicCategoryWithItems,
+  PublicTax,
+} from "@/lib/catalogs/types";
 import type { PublicVenue } from "@/lib/catalogs/data";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import {
@@ -28,6 +32,7 @@ type Props = {
   catalog: PublicCatalog;
   categoriesWithItems: PublicCategoryWithItems[];
   venue?: PublicVenue | null;
+  taxes?: PublicTax[];
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref?: string;
@@ -54,6 +59,7 @@ export function CatalogLayout({
   catalog,
   categoriesWithItems,
   venue = null,
+  taxes = [],
   activeCategorySlug = null,
   activeItemSlug = null,
   baseHref,
@@ -224,6 +230,7 @@ export function CatalogLayout({
       venueId={venue.id}
       catalogPath={hrefBase}
       modes={venueModes}
+      taxes={taxes}
     >
       {tree}
       <CartTrigger />

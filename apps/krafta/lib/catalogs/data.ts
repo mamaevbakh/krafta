@@ -7,6 +7,7 @@ import type {
   PublicItem,
   PublicModifier,
   PublicModifierList,
+  PublicTax,
 } from "./types";
 
 export type PublicVenue = {
@@ -79,6 +80,45 @@ export async function getVenueByCatalogId(
   if (!response.ok) return null;
   const rows = (await response.json()) as PublicVenue[];
   return rows[0] ?? null;
+}
+
+// Active taxes + service fees for the catalog, scoped to the v1-supported
+// shape (additive on subtotal, applies to all items). Hidden behind the same
+// cache tag as the catalog so a merchant edit invalidates the customer view.
+export async function getCatalogTaxes(
+  catalogId: string,
+): Promise<PublicTax[]> {
+  "use cache";
+  cacheTag(`catalog:${catalogId}`, `catalog-taxes:${catalogId}`);
+
+  const url =
+    `${supabaseUrl}/rest/v1/taxes?catalog_id=eq.${encodeURIComponent(catalogId)}` +
+    `&is_active=eq.true` +
+    `&applies_to=eq.all_items` +
+    `&inclusion_type=eq.additive` +
+    `&calculation_phase=eq.subtotal` +
+    `&select=id,name,kind,percentage,version`;
+  const response = await fetch(url, {
+    headers: supabaseHeaders,
+    next: { tags: [`catalog:${catalogId}`, `catalog-taxes:${catalogId}`] },
+    cache: "force-cache",
+  });
+  if (!response.ok) return [];
+  const rows = (await response.json()) as Array<{
+    id: string;
+    name: string;
+    kind: "tax" | "service_fee";
+    percentage: string | number;
+    version: number;
+  }>;
+  // PostgREST returns numeric as string; normalize to number.
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    percentage: typeof row.percentage === "string" ? Number(row.percentage) : row.percentage,
+    version: row.version,
+  }));
 }
 
 export async function getCatalogStructure(

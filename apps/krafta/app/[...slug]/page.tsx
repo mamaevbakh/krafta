@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import {
   getCatalogBySlug,
   getCatalogStructure,
+  getCatalogTaxes,
   getVenueByCatalogId,
 } from "@/lib/catalogs/data";
 import { CatalogLayout } from "@/lib/catalogs/layout";
@@ -40,9 +41,10 @@ async function CatalogPageContent({
   const catalog = await getCatalogBySlug(catalogSlug);
   if (!catalog) notFound();
 
-  const [categoriesWithItems, venue] = await Promise.all([
+  const [categoriesWithItems, venue, taxes] = await Promise.all([
     getCatalogStructure(catalog.id),
     getVenueByCatalogId(catalog.id),
+    getCatalogTaxes(catalog.id),
   ]);
 
   return (
@@ -50,6 +52,7 @@ async function CatalogPageContent({
       catalog={catalog}
       categoriesWithItems={categoriesWithItems}
       venue={venue}
+      taxes={taxes}
       activeCategorySlug={activeCategorySlug}
       activeItemSlug={activeItemSlug}
       baseHref={`/${catalog.slug}`}
