@@ -12,6 +12,7 @@ import {
   updateLineItemQuantity as updateLineItemQuantityImpl,
   type CartSummary,
 } from "./orders";
+import type { ModifierSelection } from "./modifier-signature";
 import {
   placeOrder as placeOrderImpl,
   type PlaceOrderInput,
@@ -37,6 +38,7 @@ export async function addLineItemAction(input: {
   itemId: string;
   variationId?: string;
   quantity?: number;
+  modifiers?: ModifierSelection[];
   catalogPath: string;
 }): Promise<CartSummary> {
   await addLineItemImpl(input);

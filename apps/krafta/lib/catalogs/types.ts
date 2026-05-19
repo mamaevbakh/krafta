@@ -35,6 +35,30 @@ export type PublicCatalogCategory = Pick<
   "id" | "slug" | "name" | "position"
 >;
 
+export type PublicModifier = {
+  id: string;
+  name: string;
+  price_cents: number;
+  ordinal: number;
+  on_by_default: boolean;
+  version: number;
+};
+
+// Per-item view of a modifier_list, with overrides resolved against defaults.
+// The `hidden_from_customer` flag lets the picker skip rendering while the
+// server still applies on_by_default modifiers from the same list.
+export type PublicModifierList = {
+  id: string;
+  name: string;
+  modifier_type: "list" | "text";
+  min_selected: number;
+  max_selected: number | null;
+  hidden_from_customer: boolean;
+  ordinal: number;
+  version: number;
+  modifiers: PublicModifier[];
+};
+
 export type PublicItem = Pick<
   ItemRow,
   | "id"
@@ -47,6 +71,7 @@ export type PublicItem = Pick<
   | "position"
 > & {
   price_cents: number;
+  modifier_lists: PublicModifierList[];
 };
 
 export type PublicCategoryWithItems = PublicCatalogCategory & {

@@ -20,7 +20,15 @@ import {
   removeLineItemAction,
   updateLineItemQuantityAction,
 } from "@/lib/cart/actions";
-import type { CartLineItem, CartSummary } from "@/lib/cart/orders";
+import type {
+  CartLineItem,
+  CartLineItemModifier,
+  CartSummary,
+} from "@/lib/cart/orders";
+import {
+  modifierSignature,
+  type ModifierSelection,
+} from "@/lib/cart/modifier-signature";
 import type { PlaceOrderInput } from "@/lib/cart/checkout";
 
 export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
@@ -91,6 +99,17 @@ type CartContextValue = {
     name?: string;
     basePriceCents?: number;
     variationName?: string | null;
+    /**
+     * Selected modifiers for this add. Optional — items with no modifier
+     * lists or items where the customer made no picks send an empty/missing
+     * array. Combined with item+variation, this drives cart-line dedup.
+     */
+    modifiers?: Array<{
+      modifierId: string;
+      quantity: number;
+      name: string;
+      basePriceCentsDelta: number;
+    }>;
   }) => Promise<void>;
   updateQuantity: (lineItemId: string, quantity: number) => Promise<void>;
   removeItem: (lineItemId: string) => Promise<void>;
@@ -158,6 +177,8 @@ type LocalAction =
       name: string;
       variationName: string | null;
       basePriceCents: number;
+      modifiers: CartLineItemModifier[];
+      modifierSig: string;
     }
   | { type: "updateQuantity"; lineItemId: string; quantity: number }
   | { type: "remove"; lineItemId: string }
@@ -167,13 +188,35 @@ function recomputeSubtotal(lineItems: CartLineItem[]): number {
   return lineItems.reduce((sum, line) => sum + line.total_price_cents, 0);
 }
 
+function lineModifierSig(line: CartLineItem): string {
+  return modifierSignature(
+    line.modifiers.map((m) => ({
+      modifierId: m.catalog_modifier_id ?? "",
+      quantity: m.quantity,
+    })),
+  );
+}
+
+function perUnitCents(line: { base_price_cents: number; modifiers: CartLineItemModifier[] }): number {
+  const delta = line.modifiers.reduce(
+    (sum, m) => sum + m.base_price_cents_delta * m.quantity,
+    0,
+  );
+  return line.base_price_cents + delta;
+}
+
 function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
   switch (action.type) {
     case "add": {
+      // Dedup key: (item, variation, modifier_signature). Two adds with the
+      // same item+variation but different modifier picks must NOT merge —
+      // they're different orders to the kitchen. Matches server-side
+      // resolveModifierSelections + signature logic in lib/cart/orders.ts.
       const matchingIndex = state.lineItems.findIndex(
         (line) =>
           line.catalog_item_id === action.itemId &&
-          line.catalog_variation_id === action.variationId,
+          line.catalog_variation_id === action.variationId &&
+          lineModifierSig(line) === action.modifierSig,
       );
 
       if (matchingIndex >= 0) {
@@ -183,7 +226,7 @@ function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
         next[matchingIndex] = {
           ...existing,
           quantity: nextQty,
-          total_price_cents: existing.base_price_cents * nextQty,
+          total_price_cents: perUnitCents(existing) * nextQty,
         };
         return { ...state, lineItems: next, subtotalCents: recomputeSubtotal(next) };
       }
@@ -201,7 +244,12 @@ function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
         variation_name: action.variationName,
         quantity: action.quantity,
         base_price_cents: action.basePriceCents,
-        total_price_cents: action.basePriceCents * action.quantity,
+        total_price_cents:
+          perUnitCents({
+            base_price_cents: action.basePriceCents,
+            modifiers: action.modifiers,
+          }) * action.quantity,
+        modifiers: action.modifiers,
       };
       const next = [...state.lineItems, placeholder];
       return { ...state, lineItems: next, subtotalCents: recomputeSubtotal(next) };
@@ -216,7 +264,7 @@ function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
           ? {
               ...line,
               quantity: action.quantity,
-              total_price_cents: line.base_price_cents * action.quantity,
+              total_price_cents: perUnitCents(line) * action.quantity,
             }
           : line,
       );
@@ -282,6 +330,11 @@ export function CartProvider({
   const pendingQtyTimers = useRef(new Map<string, Pending>());
   const pendingAddTimers = useRef(new Map<string, Pending>());
   const pendingAddTotals = useRef(new Map<string, number>());
+  // Modifier selections we'll send when the debounced add fires. Identical
+  // signatures imply identical selections — same key in this map always maps
+  // to the same payload. We just need somewhere to stash it across timer
+  // closures so the fire-time action call can include it.
+  const pendingAddModifiers = useRef(new Map<string, ModifierSelection[]>());
 
   // Closing the drawer should reset the step so the next open starts at the
   // cart list, not lingering on a stale confirmation.
@@ -324,6 +377,7 @@ export function CartProvider({
     pendingAddTimers.current.forEach((p) => clearTimeout(p.timer));
     pendingAddTimers.current.clear();
     pendingAddTotals.current.clear();
+    pendingAddModifiers.current.clear();
   }, []);
 
   const addItem: CartContextValue["addItem"] = useCallback(
@@ -334,7 +388,22 @@ export function CartProvider({
       name = "Adding…",
       basePriceCents = 0,
       variationName = null,
+      modifiers: inputModifiers,
     }) => {
+      const modifierSelections: ModifierSelection[] = (inputModifiers ?? []).map(
+        (m) => ({ modifierId: m.modifierId, quantity: m.quantity }),
+      );
+      const lineModifiers: CartLineItemModifier[] = (inputModifiers ?? []).map(
+        (m) => ({
+          id: `local-mod-${m.modifierId}`,
+          catalog_modifier_id: m.modifierId,
+          name: m.name,
+          base_price_cents_delta: m.basePriceCentsDelta,
+          quantity: m.quantity,
+        }),
+      );
+      const sig = modifierSignature(modifierSelections);
+
       setSummary((prev) =>
         applyLocal(prev, {
           type: "add",
@@ -344,14 +413,20 @@ export function CartProvider({
           name,
           variationName,
           basePriceCents,
+          modifiers: lineModifiers,
+          modifierSig: sig,
         }),
       );
 
-      const key = `${itemId}::${variationId ?? ""}`;
+      // Debounce key includes the modifier signature so two adds of the
+      // same item+variation with different modifier picks debounce
+      // separately (and become separate cart lines on the server).
+      const key = `${itemId}::${variationId ?? ""}::${sig}`;
       pendingAddTotals.current.set(
         key,
         (pendingAddTotals.current.get(key) ?? 0) + quantity,
       );
+      pendingAddModifiers.current.set(key, modifierSelections);
 
       const existing = pendingAddTimers.current.get(key);
       if (existing) clearTimeout(existing.timer);
@@ -359,7 +434,9 @@ export function CartProvider({
       const timer = setTimeout(async () => {
         pendingAddTimers.current.delete(key);
         const finalQty = pendingAddTotals.current.get(key) ?? quantity;
+        const finalMods = pendingAddModifiers.current.get(key) ?? [];
         pendingAddTotals.current.delete(key);
+        pendingAddModifiers.current.delete(key);
         try {
           const next = await addLineItemAction({
             orgId,
@@ -367,6 +444,7 @@ export function CartProvider({
             itemId,
             variationId,
             quantity: finalQty,
+            modifiers: finalMods,
             catalogPath,
           });
           // Reconcile only if the user has not started a new add for this
@@ -493,11 +571,14 @@ export function CartProvider({
     }
     pendingQtyTimers.current.clear();
 
-    // Fire pending adds immediately with the accumulated quantity.
+    // Fire pending adds immediately with the accumulated quantity. Key format
+    // is `itemId::variationId::modifierSig`; signatures can be empty (no
+    // modifiers) but the segment count stays at 3.
     for (const [key, pending] of pendingAddTimers.current.entries()) {
       clearTimeout(pending.timer);
       const [itemId, variationId] = key.split("::");
       const accumQty = pendingAddTotals.current.get(key) ?? 1;
+      const mods = pendingAddModifiers.current.get(key) ?? [];
       pendingPromises.push(
         addLineItemAction({
           orgId,
@@ -505,12 +586,14 @@ export function CartProvider({
           itemId,
           variationId: variationId || undefined,
           quantity: accumQty,
+          modifiers: mods,
           catalogPath,
         }),
       );
     }
     pendingAddTimers.current.clear();
     pendingAddTotals.current.clear();
+    pendingAddModifiers.current.clear();
 
     if (pendingPromises.length === 0) return;
     await Promise.allSettled(pendingPromises);

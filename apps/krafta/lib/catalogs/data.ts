@@ -5,6 +5,8 @@ import type {
   PublicCatalogCategory,
   PublicCategoryWithItems,
   PublicItem,
+  PublicModifier,
+  PublicModifierList,
 } from "./types";
 
 export type PublicVenue = {
@@ -97,8 +99,27 @@ export async function getCatalogStructure(
   const itemsUrl = `${supabaseUrl}/rest/v1/items?catalog_id=eq.${encodeURIComponent(
     catalogId,
   )}&is_active=eq.true&select=id,slug,category_id,name,description,image_path,image_alt,position,item_variations(price_cents)&item_variations.is_default=eq.true&item_variations.is_active=eq.true&order=position.asc`;
+  // Modifier data: three tables, all denormalize catalog_id so we can fetch
+  // each scoped to the active catalog in parallel with the rest of the
+  // catalog structure. Assembly into PublicItem.modifier_lists happens below.
+  const modifierListsUrl = `${supabaseUrl}/rest/v1/modifier_lists?catalog_id=eq.${encodeURIComponent(
+    catalogId,
+  )}&is_active=eq.true&modifier_type=eq.list&select=id,name,modifier_type,min_selected,max_selected,version`;
+  const modifiersUrl = `${supabaseUrl}/rest/v1/modifiers?catalog_id=eq.${encodeURIComponent(
+    catalogId,
+  )}&is_active=eq.true&select=id,modifier_list_id,name,price_cents,ordinal,on_by_default,version&order=ordinal.asc`;
+  const itemModifierListsUrl = `${supabaseUrl}/rest/v1/item_modifier_lists?catalog_id=eq.${encodeURIComponent(
+    catalogId,
+  )}&is_active=eq.true&select=item_id,modifier_list_id,ordinal,min_selected_override,max_selected_override,hidden_from_customer_override&order=ordinal.asc`;
 
-  const [localesResponse, categoriesResponse, itemsResponse] = await Promise.all([
+  const [
+    localesResponse,
+    categoriesResponse,
+    itemsResponse,
+    modifierListsResponse,
+    modifiersResponse,
+    itemModifierListsResponse,
+  ] = await Promise.all([
     fetch(localesUrl, {
       headers: supabaseHeaders,
       next: {
@@ -120,6 +141,27 @@ export async function getCatalogStructure(
       },
       cache: "force-cache",
     }),
+    fetch(modifierListsUrl, {
+      headers: supabaseHeaders,
+      next: {
+        tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+      },
+      cache: "force-cache",
+    }),
+    fetch(modifiersUrl, {
+      headers: supabaseHeaders,
+      next: {
+        tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+      },
+      cache: "force-cache",
+    }),
+    fetch(itemModifierListsUrl, {
+      headers: supabaseHeaders,
+      next: {
+        tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+      },
+      cache: "force-cache",
+    }),
   ]);
 
   if (!categoriesResponse.ok) return [];
@@ -132,14 +174,17 @@ export async function getCatalogStructure(
     }));
   }
   const itemsRaw = (await itemsResponse.json()) as Array<
-    Omit<PublicItem, "price_cents"> & {
+    Omit<PublicItem, "price_cents" | "modifier_lists"> & {
       item_variations: Array<{ price_cents: number }>;
     }
   >;
-  const items: PublicItem[] = itemsRaw.map(({ item_variations, ...rest }) => ({
-    ...rest,
-    price_cents: item_variations[0]?.price_cents ?? 0,
-  }));
+  // modifier_lists is filled in below during item-by-item assembly.
+  const items: Array<Omit<PublicItem, "modifier_lists">> = itemsRaw.map(
+    ({ item_variations, ...rest }) => ({
+      ...rest,
+      price_cents: item_variations[0]?.price_cents ?? 0,
+    }),
+  );
 
   const locales = localesResponse.ok
     ? ((await localesResponse.json()) as Array<{
@@ -251,16 +296,102 @@ export async function getCatalogStructure(
     }
   });
 
+  // ---- Modifier assembly ----------------------------------------------------
+  // Three flat lists (modifier_lists, modifiers, item_modifier_lists) become a
+  // per-item array of PublicModifierList. Overrides on the IML row win over
+  // modifier_list defaults; hidden_from_customer_override surfaces to the
+  // client as `hidden_from_customer` so the picker can skip rendering while
+  // the server still applies on_by_default modifiers from the same list.
+  type ModifierListRow = {
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    version: number;
+  };
+  type ModifierRow = {
+    id: string;
+    modifier_list_id: string;
+    name: string;
+    price_cents: number;
+    ordinal: number;
+    on_by_default: boolean;
+    version: number;
+  };
+  type ItemModifierListRow = {
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  };
+
+  const modifierListRows = modifierListsResponse.ok
+    ? ((await modifierListsResponse.json()) as ModifierListRow[])
+    : [];
+  const modifierRows = modifiersResponse.ok
+    ? ((await modifiersResponse.json()) as ModifierRow[])
+    : [];
+  const itemModifierListRows = itemModifierListsResponse.ok
+    ? ((await itemModifierListsResponse.json()) as ItemModifierListRow[])
+    : [];
+
+  const modifierListById = new Map(modifierListRows.map((row) => [row.id, row]));
+  const modifiersByListId = new Map<string, PublicModifier[]>();
+  for (const row of modifierRows) {
+    const list = modifiersByListId.get(row.modifier_list_id) ?? [];
+    list.push({
+      id: row.id,
+      name: row.name,
+      price_cents: row.price_cents,
+      ordinal: row.ordinal,
+      on_by_default: row.on_by_default,
+      version: row.version,
+    });
+    modifiersByListId.set(row.modifier_list_id, list);
+  }
+  const imlsByItemId = new Map<string, ItemModifierListRow[]>();
+  for (const row of itemModifierListRows) {
+    const list = imlsByItemId.get(row.item_id) ?? [];
+    list.push(row);
+    imlsByItemId.set(row.item_id, list);
+  }
+
+  function buildItemModifierLists(itemId: string): PublicModifierList[] {
+    const imls = imlsByItemId.get(itemId);
+    if (!imls) return [];
+    const result: PublicModifierList[] = [];
+    for (const iml of imls) {
+      const list = modifierListById.get(iml.modifier_list_id);
+      if (!list) continue;
+      result.push({
+        id: list.id,
+        name: list.name,
+        modifier_type: list.modifier_type,
+        min_selected: iml.min_selected_override ?? list.min_selected,
+        max_selected: iml.max_selected_override ?? list.max_selected,
+        hidden_from_customer: iml.hidden_from_customer_override,
+        ordinal: iml.ordinal,
+        version: list.version,
+        modifiers: modifiersByListId.get(list.id) ?? [],
+      });
+    }
+    return result;
+  }
+
   const itemsByCategory = new Map<string, PublicItem[]>();
   for (const item of items) {
     const translation = itemTranslationById.get(item.id);
     const mediaPath = item.image_path || mediaByItemId.get(item.id) || null;
-    const mergedItem = {
+    const mergedItem: PublicItem = {
       ...item,
       name: translation?.name ?? item.name,
       description: translation?.description ?? item.description,
       image_alt: translation?.image_alt ?? item.image_alt,
       image_path: mediaPath,
+      modifier_lists: buildItemModifierLists(item.id),
     };
     const list = itemsByCategory.get(item.category_id) ?? [];
     list.push(mergedItem);
