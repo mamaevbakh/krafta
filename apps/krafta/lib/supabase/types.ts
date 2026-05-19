@@ -869,6 +869,7 @@ export type Database = {
           catalog_id: string
           closed_at: string | null
           created_at: string
+          currency: string
           customer_id: string | null
           guest_session_id: string | null
           id: string
@@ -880,6 +881,7 @@ export type Database = {
           state: Database["commerce"]["Enums"]["order_state"]
           table_session_id: string | null
           ticket_name: string | null
+          timezone: string
           updated_at: string
           venue_id: string
           version: number
@@ -888,6 +890,7 @@ export type Database = {
           catalog_id: string
           closed_at?: string | null
           created_at?: string
+          currency: string
           customer_id?: string | null
           guest_session_id?: string | null
           id?: string
@@ -899,6 +902,7 @@ export type Database = {
           state?: Database["commerce"]["Enums"]["order_state"]
           table_session_id?: string | null
           ticket_name?: string | null
+          timezone: string
           updated_at?: string
           venue_id: string
           version?: number
@@ -907,6 +911,7 @@ export type Database = {
           catalog_id?: string
           closed_at?: string | null
           created_at?: string
+          currency?: string
           customer_id?: string | null
           guest_session_id?: string | null
           id?: string
@@ -918,6 +923,7 @@ export type Database = {
           state?: Database["commerce"]["Enums"]["order_state"]
           table_session_id?: string | null
           ticket_name?: string | null
+          timezone?: string
           updated_at?: string
           venue_id?: string
           version?: number

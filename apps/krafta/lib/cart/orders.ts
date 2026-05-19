@@ -71,15 +71,18 @@ export async function getOrCreateDraftOrder(
     };
   }
 
-  // orders.catalog_id is NOT NULL but the BEFORE-INSERT trigger
-  // `orders_sync_from_venue` overwrites it from the venue. We pass the org_id
-  // we know and a placeholder catalog_id; the trigger sets both correctly.
+  // The BEFORE-INSERT trigger `orders_sync_from_venue` overwrites the NOT
+  // NULL fields below from the venue row: org_id, catalog_id, currency,
+  // timezone. We pass placeholders to satisfy the type system; the trigger
+  // sets the correct values (KRA-80).
   const { data: created, error: insertError } = await supabase
     .schema("commerce")
     .from("orders")
     .insert({
       org_id: input.orgId,
       catalog_id: input.orgId,
+      currency: "USD",
+      timezone: "UTC",
       venue_id: input.venueId,
       customer_id: customerId,
       state: "draft",

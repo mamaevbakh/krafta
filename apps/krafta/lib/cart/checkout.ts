@@ -80,7 +80,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   const { data: order, error: orderError } = await supabase
     .schema("commerce")
     .from("orders")
-    .select("id, state, version")
+    .select("id, state, version, currency")
     .eq("customer_id", customerId)
     .eq("venue_id", input.venueId)
     .eq("state", "draft")
@@ -373,6 +373,12 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // cash is collected. amount_cents = subtotal + additive fees only;
   // 'included' fees are already baked into the subtotal so adding them
   // again would double-charge.
+  //
+  // Currency comes from the snapshot on commerce.orders (set by the
+  // orders_sync_from_venue trigger at draft creation, frozen ever since)
+  // rather than venue.currency. The two are usually equal but diverge
+  // if the merchant edits venue.currency between draft creation and
+  // place-order; the order's snapshot is the source of truth (KRA-80).
   const amountCents = subtotalCents + pricing.additiveFeesCents;
   const { error: paymentError } = await supabase
     .schema("commerce")
@@ -384,7 +390,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       amount_cents: amountCents,
       tip_cents: tipCents,
       total_cents: amountCents + tipCents,
-      currency: venue.currency,
+      currency: order.currency,
       status: "pending",
       source_type: "cash",
       autocomplete: true,
