@@ -302,11 +302,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // references stable: "<tax_id>" is sufficient within an order since each
   // tax appears at most once per order.
   //
-  // commerce.order_taxes has no inclusion_type column (schema gap — see
-  // KRA-63 follow-up), so we stash it in `metadata.inclusion_type`. That
-  // preserves the distinction for reporting: a row with
-  // metadata.inclusion_type='included' means the customer was NOT charged
-  // applied_money_cents on top; the price already baked it in.
+  // inclusion_type lives on its own column (KRA-81). additive = added to
+  // amount_cents on order_payments; included = informational, the implicit
+  // portion baked into the subtotal (UZ VAT pattern).
   if (pricing.feeLines.length > 0) {
     const orderTaxRows = pricing.feeLines.map((fee) => ({
       // org_id auto-set by order_taxes_sync_org_id trigger.
@@ -315,6 +313,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       order_id: order.id,
       catalog_tax_id: fee.taxId,
       kind: fee.kind,
+      inclusion_type: fee.inclusionType,
       name: fee.name,
       type: "percentage" as const,
       percentage: fee.percentage,
@@ -322,7 +321,6 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       scope: "order" as const,
       auto_applied: true,
       applied_money_cents: fee.appliedMoneyCents,
-      metadata: { inclusion_type: fee.inclusionType },
     }));
     const { error: orderTaxError } = await supabase
       .schema("commerce")

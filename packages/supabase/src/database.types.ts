@@ -807,6 +807,7 @@ export type Database = {
           catalog_tax_id: string | null
           created_at: string
           id: string
+          inclusion_type: Database["public"]["Enums"]["tax_inclusion_type"]
           kind: Database["public"]["Enums"]["tax_kind"]
           metadata: Json
           name: string
@@ -825,6 +826,7 @@ export type Database = {
           catalog_tax_id?: string | null
           created_at?: string
           id?: string
+          inclusion_type?: Database["public"]["Enums"]["tax_inclusion_type"]
           kind?: Database["public"]["Enums"]["tax_kind"]
           metadata?: Json
           name: string
@@ -843,6 +845,7 @@ export type Database = {
           catalog_tax_id?: string | null
           created_at?: string
           id?: string
+          inclusion_type?: Database["public"]["Enums"]["tax_inclusion_type"]
           kind?: Database["public"]["Enums"]["tax_kind"]
           metadata?: Json
           name?: string
