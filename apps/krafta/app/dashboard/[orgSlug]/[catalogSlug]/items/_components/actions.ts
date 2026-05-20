@@ -653,6 +653,49 @@ export async function reorderItems(params: {
 }
 
 /**
+ * KRA-91 — atomic category reorder.
+ *
+ * Calls public.reorder_categories(p_catalog_id, p_changes). Same atomic
+ * semantics as reorderItems: all category positions update in a single
+ * transaction so a half-applied reorder can't leave duplicate / gapped
+ * positions. RLS gates which rows the caller can touch.
+ */
+export type ReorderCategoriesChange = {
+  /** Category id to update. */
+  id: string;
+  /** New position in the catalog-wide ordering. */
+  position: number;
+};
+
+export async function reorderCategories(params: {
+  catalogId: string;
+  catalogSlug: string;
+  changes: ReorderCategoriesChange[];
+}) {
+  if (!params.changes.length) {
+    return { ok: true } as const;
+  }
+
+  const supabase = await createClient();
+
+  const { error } = await supabase.rpc("reorder_categories", {
+    p_catalog_id: params.catalogId,
+    p_changes: params.changes as unknown as Database["public"]["Functions"]["reorder_categories"]["Args"]["p_changes"],
+  });
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+
+/**
  * duplicateItem — atomic deep clone of an item.
  *
  * Calls the `public.duplicate_item(p_catalog_id, p_item_id)` RPC. The
