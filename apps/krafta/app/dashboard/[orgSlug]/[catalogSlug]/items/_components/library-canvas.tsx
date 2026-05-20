@@ -173,8 +173,6 @@ export function LibraryCanvas({
                       category={category}
                       items={itemsByCategory.map.get(category.id) ?? []}
                       translations={translations}
-                      catalogId={catalogId}
-                      catalogSlug={catalogSlug}
                       currencySettings={currencySettings}
                     />
                   ))}
@@ -192,8 +190,6 @@ export function LibraryCanvas({
                       }}
                       items={itemsByCategory.orphans}
                       translations={translations}
-                      catalogId={catalogId}
-                      catalogSlug={catalogSlug}
                       currencySettings={currencySettings}
                     />
                   )}
