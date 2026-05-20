@@ -725,13 +725,28 @@ export async function deleteItem(params: {
     return { ok: false, error: deleteTranslationsError.message };
   }
 
-  const { error: deleteItemError } = await supabase
+  // .select() to surface the deleted row back. Without it,
+  // .delete() returns no error AND no data when RLS silently denies
+  // the statement (Postgres' default RLS-deny behavior for missing
+  // policies: 0 rows affected, no error). Checking deletedRows.length
+  // catches that case + future missing-RLS-policy regressions; we
+  // raise a clear error instead of silently toasting "deleted" while
+  // the row stays.
+  const { data: deletedRows, error: deleteItemError } = await supabase
     .from("items")
     .delete()
-    .eq("id", item.id);
+    .eq("id", item.id)
+    .select("id");
 
   if (deleteItemError) {
     return { ok: false, error: deleteItemError.message };
+  }
+  if (!deletedRows || deletedRows.length === 0) {
+    return {
+      ok: false,
+      error:
+        "Delete blocked: no row deleted. Likely a missing RLS policy or insufficient role.",
+    };
   }
 
   await updateCatalogByIdAndSlug({
