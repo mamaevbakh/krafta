@@ -35,6 +35,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
 import { LibraryRow } from "./library-row";
+import { useCanvasSelection } from "./canvas-with-selection";
 
 type ItemTranslation = {
   id: string;
@@ -134,6 +135,13 @@ export function CategorySection({
     disabled: !sortable,
   });
 
+  // KRA-91 UX — collapse every section while ANY category is being
+  // dragged. The merchant sees just the header rows during the drag, so
+  // it's clear where to drop. On dragEnd / dragCancel, isDraggingCategory
+  // resets and each section re-expands to its own persisted state via
+  // the grid-rows transition below.
+  const { isDraggingCategory } = useCanvasSelection();
+
   const sortableStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -157,6 +165,12 @@ export function CategorySection({
       return next;
     });
   }, [catalogId, category.id]);
+
+  // What the section actually renders as collapsed/expanded. The user's
+  // own collapse toggle drives `collapsed`; an active category drag
+  // overrides every section to collapsed regardless. Both the chevron
+  // icon and aria-expanded reflect this so the visual matches a11y.
+  const effectiveCollapsed = collapsed || isDraggingCategory;
 
   const sortedItems = React.useMemo(
     () => [...items].sort((a, b) => a.position - b.position),
@@ -193,8 +207,11 @@ export function CategorySection({
             2. Collapse toggle (chevron + name + count, click to toggle)
           Nesting two buttons is not allowed in HTML; they're siblings inside
           a flex row instead. The drag handle is only rendered when
-          `sortable=true` so the orphans bucket header reads as static. */}
-      <div className="mb-3 flex w-full items-stretch gap-1">
+          `sortable=true` so the orphans bucket header reads as static.
+          No mb-3 — the spacing below the header now lives INSIDE the
+          collapsible content (pt-3) so it collapses with the content
+          when the section closes. */}
+      <div className="flex w-full items-stretch gap-1">
         {sortable && (
           <button
             type="button"
@@ -215,7 +232,7 @@ export function CategorySection({
         <button
           type="button"
           onClick={toggleCollapsed}
-          aria-expanded={!collapsed}
+          aria-expanded={!effectiveCollapsed}
           aria-controls={`category-${category.id}-content`}
           className={cn(
             "flex flex-1 items-baseline justify-between gap-2 rounded-md py-1 px-2",
@@ -224,14 +241,14 @@ export function CategorySection({
           )}
         >
           <div className="flex items-baseline gap-2 min-w-0">
-            {collapsed ? (
+            {effectiveCollapsed ? (
               <ChevronRight
-                className="size-4 shrink-0 text-muted-foreground transition-colors"
+                className="size-4 shrink-0 text-muted-foreground transition-transform"
                 aria-hidden="true"
               />
             ) : (
               <ChevronDown
-                className="size-4 shrink-0 text-muted-foreground transition-colors"
+                className="size-4 shrink-0 text-muted-foreground transition-transform"
                 aria-hidden="true"
               />
             )}
@@ -245,32 +262,47 @@ export function CategorySection({
         </button>
       </div>
 
-      {/* Content — items list. Collapsed sections hide everything (including
-          the empty hint), per plan D4.1: collapsed reads as "I don't care
-          about this category right now," not "this category is empty." */}
-      {!collapsed && (
-        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          <div
-            id={`category-${category.id}-content`}
-            className="flex flex-col gap-2"
+      {/* Content — items list. Smooth collapse via the CSS grid-rows
+          trick: animate `grid-template-rows` between 1fr (full height)
+          and 0fr (zero height) with `overflow-hidden` on the inner cell
+          clipping content during the transition. No JS height
+          measurement, no primitive needed, GPU-accelerated.
+          Per DESIGN.md motion budget: 200ms ease-out for collapse-style
+          state changes. The pt-3 padding lives INSIDE the collapsible
+          area so the spacing collapses with the content (header sits
+          flush against the next section when collapsed). */}
+      <div
+        id={`category-${category.id}-content`}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out",
+          effectiveCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
+        )}
+        aria-hidden={effectiveCollapsed}
+      >
+        <div className="overflow-hidden">
+          <SortableContext
+            items={itemIds}
+            strategy={verticalListSortingStrategy}
           >
-            {sortedItems.length === 0 ? (
-              <div className="rounded-xs border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-                No items in {category.name} yet
-              </div>
-            ) : (
-              sortedItems.map((item) => (
-                <LibraryRow
-                  key={item.id}
-                  item={item}
-                  translations={translations}
-                  currencySettings={currencySettings}
-                />
-              ))
-            )}
-          </div>
-        </SortableContext>
-      )}
+            <div className="flex flex-col gap-2 pt-3">
+              {sortedItems.length === 0 ? (
+                <div className="rounded-xs border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+                  No items in {category.name} yet
+                </div>
+              ) : (
+                sortedItems.map((item) => (
+                  <LibraryRow
+                    key={item.id}
+                    item={item}
+                    translations={translations}
+                    currencySettings={currencySettings}
+                  />
+                ))
+              )}
+            </div>
+          </SortableContext>
+        </div>
+      </div>
     </section>
   );
 }

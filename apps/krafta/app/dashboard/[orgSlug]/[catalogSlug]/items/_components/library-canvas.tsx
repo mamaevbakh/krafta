@@ -261,7 +261,13 @@ export function LibraryCanvas({
               {optimisticItems.length === 0 ? (
                 <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
               ) : (
-                <div className="flex flex-col gap-8">
+                // gap-3 between sections (12px) — tight enough that the
+                // all-collapsed view reads as a compact list of headers,
+                // loose enough that expanded sections still have visual
+                // breathing room (their internal pt-3 + items' gap-2 give
+                // the lower spacing). Earlier gap-8 felt cavernous when
+                // all categories were collapsed.
+                <div className="flex flex-col gap-3">
                   {/* SortableContext for category headers (KRA-91 drag-
                       reorder). Only real categories are in the items[]
                       list — the orphans bucket below is rendered as a
