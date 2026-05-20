@@ -141,12 +141,36 @@ export function LibraryCanvas({
     (state: Item[], action: OptimisticReorderAction): Item[] => {
       const sorted = [...state].sort((a, b) => a.position - b.position);
       const activeIdx = sorted.findIndex((i) => i.id === action.activeId);
+      if (activeIdx < 0) return state;
+
+      // Case A — drop on a category section root (over.id is
+      // `category-<uuid>`, e.g. dropping into a collapsed section). Place
+      // the active at the END of that category. Section stays in
+      // whatever collapse state it was; a toast on dragEnd confirms the
+      // move so the merchant doesn't need to expand to verify.
+      if (action.overId.startsWith("category-")) {
+        const targetCategoryId = action.overId.slice("category-".length);
+        const [moved] = sorted.splice(activeIdx, 1);
+        // Find the index just AFTER the last item belonging to the
+        // target category. If the target has no items yet, insert at end.
+        let insertAt = sorted.length;
+        for (let i = sorted.length - 1; i >= 0; i--) {
+          if (sorted[i].category_id === targetCategoryId) {
+            insertAt = i + 1;
+            break;
+          }
+        }
+        sorted.splice(insertAt, 0, { ...moved, category_id: targetCategoryId });
+        return sorted.map((item, idx) => ({ ...item, position: idx }));
+      }
+
+      // Case B — drop on another item. arrayMove semantics: place active
+      // at `overIdx` in the resulting array, all other items shift to
+      // compensate. Cross-category sets the active's new category_id.
       const overIdx = sorted.findIndex((i) => i.id === action.overId);
-      if (activeIdx < 0 || overIdx < 0) return state;
+      if (overIdx < 0) return state;
       const [moved] = sorted.splice(activeIdx, 1);
       sorted.splice(overIdx, 0, moved);
-      // Re-stamp positions to match what reorderItems will write to the DB.
-      // Cross-category: only the dragged item gets its category_id changed.
       return sorted.map((item, idx) => ({
         ...item,
         position: idx,
@@ -244,6 +268,8 @@ export function LibraryCanvas({
           catalogSlug={catalogSlug}
           items={optimisticItems}
           categories={sortedCategories}
+          translations={translations}
+          currencySettings={currencySettings}
           onOptimisticReorder={applyOptimisticReorder}
           onOptimisticCategoryReorder={applyOptimisticCategoryReorder}
         >
