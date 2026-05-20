@@ -38,14 +38,11 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
 import { toast } from "sonner";
 
 import {
   reorderCategories,
-  reorderItems,
   type ReorderCategoriesChange,
-  type ReorderItemsChange,
 } from "@/app/dashboard/[orgSlug]/[catalogSlug]/items/_components/actions";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
@@ -156,12 +153,13 @@ export type CanvasWithSelectionProps = {
   /** Optional callback to subscribe to selection changes (e.g. to scroll
    *  the selected card into view). */
   onSelectionChange?: (id: string | null) => void;
-  /** Called from inside startTransition before the reorderItems server
-   *  action so the canvas re-renders synchronously with the moved item
-   *  in its new slot. Wired to the parent's useOptimistic dispatcher.
-   *  If omitted, drag-drop falls back to the legacy "wait for refresh"
-   *  flow with the visible snap-back. */
-  onOptimisticReorder?: (action: OptimisticReorderAction) => void;
+  /** Called once on dragEnd's items branch with the finalized action.
+   *  library-canvas owns the commit flow (compute changes from items
+   *  props + the action's reducer, dispatch optimistic, call server)
+   *  so the optimistic state and the server payload are computed from
+   *  the same source. canvas-with-selection just builds the action;
+   *  it doesn't touch the algorithm. */
+  onCommitReorder?: (action: OptimisticReorderAction) => void;
   /** Same idea, but for category-section drags. KRA-91 — wired to
    *  applyOptimisticCategoryReorder in library-canvas.tsx. */
   onOptimisticCategoryReorder?: (action: OptimisticCategoryReorderAction) => void;
@@ -199,7 +197,7 @@ export function CanvasWithSelection({
   translations,
   currencySettings,
   onSelectionChange,
-  onOptimisticReorder,
+  onCommitReorder,
   onOptimisticCategoryReorder,
   onDragPreview,
   onDragPreviewClear,
@@ -474,126 +472,33 @@ export function CanvasWithSelection({
         return;
       }
 
-      // Items branch — active is an item uuid (we attach useSortable to
-      // each row with `item.id` as the sortable id).
+      // Items branch — active is an item uuid. We build the canonical
+      // reorder action and hand it to library-canvas's onCommitReorder.
+      // library-canvas owns the algorithm + server call: it applies the
+      // SAME reducer to the items props for both the optimistic state
+      // AND the changes payload, so they stay consistent.
       const activeItem = items.find((i) => i.id === active.id);
       if (!activeItem) return;
 
-      const sortedItems = [...items].sort((a, b) => a.position - b.position);
-      const activeIdx = sortedItems.findIndex((item) => item.id === active.id);
-      if (activeIdx < 0) return;
-
-      // Two over-target shapes:
-      //  A. Another item — move active to that item's slot.
-      //  B. A category section root (over.id starts with `category-`) —
-      //     typically dropping into a collapsed section. Append active
-      //     to the end of that category.
-      let reorderedItems: Item[];
-      let crossCategory: string | undefined;
-
-      if (overIdStr.startsWith(CATEGORY_ID_PREFIX)) {
-        const targetCategoryId = overIdStr.slice(CATEGORY_ID_PREFIX.length);
-        // If we're already in this category (e.g. dropped on own section
-        // root after a no-op move), bail.
-        if (activeItem.category_id === targetCategoryId) return;
-        crossCategory = targetCategoryId;
-        // Splice out active, then insert just after the last item in target.
-        const withoutActive = [...sortedItems];
-        withoutActive.splice(activeIdx, 1);
-        let insertAt = withoutActive.length;
-        for (let i = withoutActive.length - 1; i >= 0; i--) {
-          if (withoutActive[i].category_id === targetCategoryId) {
-            insertAt = i + 1;
-            break;
-          }
-        }
-        const movedWithNewCategory: Item = {
-          ...activeItem,
-          category_id: targetCategoryId,
-        };
-        withoutActive.splice(insertAt, 0, movedWithNewCategory);
-        reorderedItems = withoutActive;
-      } else {
-        const overIdx = sortedItems.findIndex((item) => item.id === over.id);
-        if (overIdx < 0) return;
-        const overItem = sortedItems[overIdx];
-        crossCategory =
-          activeItem.category_id !== overItem.category_id
-            ? overItem.category_id
-            : undefined;
-        // arrayMove is dnd-kit's canonical move helper — equivalent to
-        // splice(activeIdx, 1) + splice(overIdx, 0, moved) but more
-        // explicit about intent and consistent with the rest of the
-        // library's semantics.
-        reorderedItems = arrayMove(sortedItems, activeIdx, overIdx);
-      }
-
-      // Build the changes payload from the reordered list. We send all
-      // items with their new positions — for a 30-item menu that's 30
-      // UPDATEs vs maybe 5; both fast. The RPC's COALESCE on category_id
-      // preserves it when omitted.
-      const changes: ReorderItemsChange[] = reorderedItems.map((item, idx) => ({
-        id: item.id,
-        position: idx,
-        ...(item.id === active.id && crossCategory
-          ? { category_id: crossCategory }
-          : {}),
-      }));
-
+      // newCategoryId comes from the EFFECTIVE active's category — i.e.
+      // where the preview placed it. For same-category drags the value
+      // equals the original; the reducer applies it as a no-op. For
+      // cross-category drags this carries the target through.
       const action: OptimisticReorderAction = {
         activeId: String(active.id),
-        overId: String(over.id),
-        newCategoryId: crossCategory,
+        overId: overIdStr,
+        newCategoryId: activeItem.category_id,
       };
 
-      // Wrap the optimistic dispatch + async server call in a single
-      // transition:
-      //   1. Clear the during-drag preview (parent's previewItems = null).
-      //      effective falls back to optimisticItems for the rest of the
-      //      roundtrip.
-      //   2. Apply optimistic — keeps the new layout visible during the
-      //      await reorderItems.
-      //   3. await the server call.
-      //   4. Success: router.refresh syncs items prop → optimistic syncs
-      //      → effective syncs. Failure: transition completes without a
-      //      matching prop change → optimistic auto-reverts to items →
-      //      effective falls back to items → row snaps back to original.
-      // All three setState calls inside startTransition's callback are
-      // batched into one render, so the merchant doesn't see a flash
-      // between "preview cleared" and "optimistic applied".
-      React.startTransition(async () => {
-        onDragPreviewClear?.();
-        onOptimisticReorder?.(action);
-
-        const result = await reorderItems({
-          catalogId,
-          catalogSlug,
-          changes,
-        });
-
-        if (!result.ok) {
-          console.error(
-            "[CanvasWithSelection] reorderItems failed:",
-            result.error,
-          );
-          toast.error(result.error ?? "Couldn't save the new order.");
-          return;
-        }
-
-        // Refresh RSC so the items prop catches up with the canonical
-        // (now persisted) order. useOptimistic resolves the transition
-        // against the new prop value seamlessly.
-        router.refresh();
-      });
+      onCommitReorder?.(action);
     },
     [
       items,
       categories,
       catalogId,
       catalogSlug,
-      onOptimisticReorder,
+      onCommitReorder,
       onOptimisticCategoryReorder,
-      onDragPreviewClear,
       router,
     ],
   );
