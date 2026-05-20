@@ -3447,6 +3447,18 @@ export type Database = {
         Args: { p_catalog_id: string; p_item_id: string }
         Returns: string
       }
+      update_item_with_variations: {
+        // KRA-86 — migration 20260520200000.
+        // Atomic item + variations Save. Hand-added; regen will preserve
+        // once applied + types regen'd. See the migration file for the
+        // p_item_fields + p_variation_changes payload shape.
+        Args: {
+          p_item_id: string
+          p_item_fields: Json
+          p_variation_changes: Json
+        }
+        Returns: undefined
+      }
       catalog_search: {
         Args: {
           p_catalog_id?: string

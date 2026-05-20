@@ -86,6 +86,81 @@ async function cleanupMediaStorage(rows: StorageMediaRow[]) {
   );
 }
 
+/**
+ * ItemVariationChange — KRA-86 super-RPC payload element.
+ *
+ * Two ops:
+ *   - "upsert" — INSERT (id omitted) or UPDATE (id present). Name +
+ *     price_cents + ordinal + is_default + is_sold_out required.
+ *   - "delete" — DELETE by id.
+ *
+ * The RPC runs deletes first, then a demote-pass on `is_default`, then
+ * upserts. See migration 20260520200000_kra86_update_item_with_variations_rpc.sql
+ * for the full semantics + partial-unique-index handling.
+ */
+export type ItemVariationChange =
+  | {
+      op: "upsert";
+      id?: string;
+      name: string;
+      price_cents: number;
+      ordinal: number;
+      is_default: boolean;
+      is_sold_out: boolean;
+    }
+  | {
+      op: "delete";
+      id: string;
+    };
+
+/**
+ * synthesizeDefaultVariationUpdate — back-compat helper for `updateItem`
+ * callers that don't (yet) supply a `variationChanges` payload.
+ *
+ * Pre-KRA-86, `updateItem` did two writes: (1) UPDATE items, (2) UPDATE
+ * item_variations.price_cents WHERE is_default. The new super-RPC takes a
+ * full variation-changes array. To preserve the legacy contract for the
+ * existing EditorSheet "edit price + name" flow without rewriting the
+ * caller, we look up the default variation's row and synthesize a single
+ * `op: 'upsert'` change that re-states it with the new price.
+ *
+ * Once the KRA-86 UI ships (Slice 2) and the EditorSheet passes a real
+ * variationChanges payload, this helper is bypassed. The helper exists
+ * solely so updateItem stays usable from any caller during the migration
+ * window.
+ */
+async function synthesizeDefaultVariationUpdate(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  itemId: string;
+  priceCents: number;
+}): Promise<ItemVariationChange[]> {
+  const { data: defaultRow } = await args.supabase
+    .from("item_variations")
+    .select("id, name, ordinal, is_sold_out")
+    .eq("item_id", args.itemId)
+    .eq("is_default", true)
+    .maybeSingle();
+
+  // If no default variation exists (data bug — KRA-54 migration backfilled
+  // them for every item), the super-RPC's min-row guard will surface it.
+  // Return an empty array; the RPC will skip the variations branch entirely.
+  if (!defaultRow) {
+    return [];
+  }
+
+  return [
+    {
+      op: "upsert",
+      id: defaultRow.id,
+      name: defaultRow.name,
+      price_cents: args.priceCents,
+      ordinal: defaultRow.ordinal,
+      is_default: true,
+      is_sold_out: defaultRow.is_sold_out,
+    },
+  ];
+}
+
 export async function createItem(params: {
   catalogId: string;
   catalogSlug: string;
@@ -231,10 +306,17 @@ export async function updateItem(params: {
   productType?: CatalogItemProductType;
   name: string;
   slug?: string;
+  /** Price for the DEFAULT variation when no variationChanges payload is
+   *  provided (legacy code path). When variationChanges is non-empty, the
+   *  caller is responsible for including the default row's price_cents in
+   *  the upsert payload — priceCents is then ignored. */
   priceCents: number;
   description?: string | null;
   imageAlt?: string | null;
   translations: ItemTranslationInput[];
+  /** KRA-86 — atomic variations changes. Optional. When present, dispatched
+   *  inside the same super-RPC call as the item field UPDATE. */
+  variationChanges?: ItemVariationChange[];
 }) {
   const supabase = await createClient();
 
@@ -254,6 +336,10 @@ export async function updateItem(params: {
     return { ok: false, error: "Item slug could not be generated." };
   }
 
+  // Slug uniqueness check stays in the server action (RPC is narrowly scoped
+  // to items + item_variations; cross-table uniqueness is a server-action
+  // concern). The .neq() filter excludes this item's current row so editing
+  // an unchanged slug doesn't false-flag.
   const { data: existingItem } = await supabase
     .from("items")
     .select("id")
@@ -266,33 +352,38 @@ export async function updateItem(params: {
     return { ok: false, error: "This slug is already used in this catalog." };
   }
 
-  const { error: itemError } = await supabase
-    .from("items")
-    .update({
-      name: baseName,
-      slug,
-      category_id: params.categoryId,
-      product_type: productType,
-      description: params.description ?? null,
-      image_alt: params.imageAlt ?? null,
-    })
-    .eq("id", params.itemId);
+  // KRA-86 — single atomic super-RPC for items row + item_variations changes.
+  // If no variationChanges payload was supplied (legacy callers without the
+  // variations editor), synthesize a single-default-row update to keep the
+  // priceCents semantics from the old code path (one UPDATE of the default
+  // variation's price_cents). The RPC's demote-pass + min-row guard handle
+  // the partial-unique index on is_default correctly either way.
+  const variationChanges: ItemVariationChange[] =
+    params.variationChanges && params.variationChanges.length > 0
+      ? params.variationChanges
+      : await synthesizeDefaultVariationUpdate({
+          supabase,
+          itemId: params.itemId,
+          priceCents: params.priceCents,
+        });
 
-  if (itemError) {
-    return { ok: false, error: itemError.message };
-  }
+  const itemFields: Record<string, unknown> = {
+    name: baseName,
+    slug,
+    category_id: params.categoryId,
+    product_type: productType,
+    description: params.description ?? null,
+    image_alt: params.imageAlt ?? null,
+  };
 
-  // Update price on the default item_variations row (Migration 1, ADR 0001
-  // §3.1). Items created before Migration 1 had a Default variation
-  // backfilled, so this UPDATE always finds a row.
-  const { error: variationError } = await supabase
-    .from("item_variations")
-    .update({ price_cents: params.priceCents })
-    .eq("item_id", params.itemId)
-    .eq("is_default", true);
+  const { error: rpcError } = await supabase.rpc("update_item_with_variations", {
+    p_item_id: params.itemId,
+    p_item_fields: itemFields as unknown as Database["public"]["Functions"]["update_item_with_variations"]["Args"]["p_item_fields"],
+    p_variation_changes: variationChanges as unknown as Database["public"]["Functions"]["update_item_with_variations"]["Args"]["p_variation_changes"],
+  });
 
-  if (variationError) {
-    return { ok: false, error: variationError.message };
+  if (rpcError) {
+    return { ok: false, error: rpcError.message };
   }
 
   const translations = params.translations
@@ -806,7 +897,8 @@ export async function setItemActive(params: {
 //
 // For `price_cents` the router doesn't apply — price always lives on the
 // default item_variations row regardless of locale (UZS values are not
-// translated). A separate updateDefaultVariationPrice handler stays simple.
+// translated). Price edits dispatch through `updateItem` with a
+// `variationChanges` payload (KRA-86 — atomic super-RPC).
 
 import {
   routeLocaleWrite,
@@ -900,30 +992,8 @@ export async function updateItemField(params: {
   return { ok: true } as const;
 }
 
-export async function updateDefaultVariationPrice(params: {
-  catalogId: string;
-  catalogSlug: string;
-  itemId: string;
-  priceCents: number;
-}) {
-  const supabase = await createClient();
+// KRA-86 — `updateDefaultVariationPrice` was removed. Use `updateItem(...)`
+// with a `variationChanges` payload instead (single atomic super-RPC). The
+// helper had zero non-internal callers at removal time; grep confirmed.
 
-  const { error } = await supabase
-    .from("item_variations")
-    .update({ price_cents: params.priceCents })
-    .eq("item_id", params.itemId)
-    .eq("catalog_id", params.catalogId)
-    .eq("is_default", true);
-
-  if (error) {
-    return { ok: false, error: error.message } as const;
-  }
-
-  await updateCatalogByIdAndSlug({
-    catalogId: params.catalogId,
-    catalogSlug: params.catalogSlug,
-  });
-
-  return { ok: true } as const;
-}
 
