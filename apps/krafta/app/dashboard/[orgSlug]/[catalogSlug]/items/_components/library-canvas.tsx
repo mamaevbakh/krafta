@@ -239,10 +239,13 @@ export function LibraryCanvas({
  * sentence of context so it doesn't feel like a 404.
  */
 function EmptyCatalog({ onAddItem }: { onAddItem: () => void }) {
+  // Left-aligned per DESIGN.md rule 10 (no `text-center` on body copy).
+  // Heading + paragraph + CTA stack left so the body text reads naturally;
+  // the dashed border + generous `py-16` carry the "empty state" weight.
   return (
-    <div className="rounded-md border border-dashed py-16 px-6 text-center">
+    <div className="rounded-md border border-dashed py-16 px-6">
       <h2 className="text-lg font-semibold">No items yet</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className="mt-2 max-w-prose text-sm text-muted-foreground">
         Build your menu by adding items to a category. Each item appears
         in the customer-facing catalog as soon as it&rsquo;s active.
       </p>

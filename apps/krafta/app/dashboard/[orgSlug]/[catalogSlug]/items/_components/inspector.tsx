@@ -294,7 +294,10 @@ function InspectorBody({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                // Mobile-first touch target ≥ 44px per DESIGN.md Forms rule.
+                // Desktop chrome stays compact at 32px since pointer precision
+                // is finer there.
+                className="size-11 md:size-8"
                 aria-label="More actions"
               >
                 <MoreHorizontal className="size-4" />
@@ -346,7 +349,9 @@ function InspectorBody({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            // Same mobile ≥ 44px / desktop 32px split as the actions trigger
+            // above — see comment there for rationale.
+            className="size-11 md:size-8"
             onClick={onClose}
             aria-label="Close inspector"
           >
