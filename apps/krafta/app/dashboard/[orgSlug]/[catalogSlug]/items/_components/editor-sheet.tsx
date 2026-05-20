@@ -113,6 +113,7 @@ import {
 import { ItemTypeSelect } from "./item-type-select";
 import { PhotoUploader } from "./photo-uploader";
 import { DraftEditorForm } from "./draft-editor-form";
+import { AdvancedSection } from "./advanced-section";
 import {
   isCatalogItemProductType,
   type CatalogItemProductType,
@@ -908,41 +909,6 @@ function EditorForm({
               )}
             </div>
 
-            {/* Web link (slug) — Field + plain-language description so
-                merchants understand what the field controls without
-                needing to know the word "slug". Description explains it
-                appears in the link customers see and that we'll make one
-                automatically if they leave it empty. Slug is global, not
-                locale-aware — disabled on non-default locale tabs. */}
-            <Field
-              data-disabled={!isDefaultLocaleEditable ? true : undefined}
-            >
-              <FieldLabel htmlFor="editor-slug">Web link</FieldLabel>
-              <Input
-                id="editor-slug"
-                value={slug}
-                onChange={(event) => setSlug(event.target.value)}
-                onBlur={() => {
-                  // Normalize on blur — let the merchant type freely
-                  // (uppercase, spaces, etc.) and clean it up only when
-                  // they leave the field. Empty input is allowed; the
-                  // server regenerates from the name on Save.
-                  const trimmed = slug.trim();
-                  if (trimmed) setSlug(slugify(trimmed));
-                }}
-                placeholder="auto-generated-from-name"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={!isDefaultLocaleEditable}
-              />
-              <FieldDescription>
-                This is the short text at the end of the link your
-                customers will see and share. We make one for you from
-                the item&apos;s name — change it if you want a shorter
-                or easier-to-remember link.
-              </FieldDescription>
-            </Field>
-
             {/* Primary Price field — Krafta mirror of Square's pattern.
                 When the item has only the default variation, this IS the
                 price input (the variations editor below stays collapsed
@@ -1049,6 +1015,17 @@ function EditorForm({
                 it ships (KRA-85).
               </span>
             </div>
+
+            {/* Advanced — collapsible power-user knobs. Currently just
+                the Slug field; future ones (custom metadata, SKU when
+                that ships, etc.) belong here too. Default collapsed —
+                most merchants never touch slug. */}
+            <AdvancedSection
+              slug={slug}
+              onSlugChange={setSlug}
+              disabled={!isDefaultLocaleEditable}
+              idPrefix="editor"
+            />
           </div>
 
           {/* Right column — metadata cards. lg+: fixed 320px sidebar.

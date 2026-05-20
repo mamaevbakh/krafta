@@ -69,7 +69,6 @@ import {
 } from "@/components/ui/field";
 
 import { cn } from "@/lib/utils";
-import { slugify } from "@/lib/catalogs/slug";
 import type { CatalogCategory } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
@@ -77,6 +76,7 @@ import { useCanvasSelection } from "./canvas-with-selection";
 import { useCanvasLocale } from "./locale-context";
 import { createItem, setItemActive } from "./actions";
 import { ItemTypeSelect } from "./item-type-select";
+import { AdvancedSection } from "./advanced-section";
 import {
   PhotoUploader,
   type PhotoUploaderMedia,
@@ -410,29 +410,6 @@ export function DraftEditorForm({
                 />
               </div>
 
-              <Field data-disabled={!isDefaultLocaleEditable ? true : undefined}>
-                <FieldLabel htmlFor="draft-slug">Web link</FieldLabel>
-                <Input
-                  id="draft-slug"
-                  value={slug}
-                  onChange={(event) => setSlug(event.target.value)}
-                  onBlur={() => {
-                    const trimmed = slug.trim();
-                    if (trimmed) setSlug(slugify(trimmed));
-                  }}
-                  placeholder="auto-generated-from-name"
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={!isDefaultLocaleEditable}
-                />
-                <FieldDescription>
-                  This is the short text at the end of the link your
-                  customers will see and share. We make one for you from
-                  the item&apos;s name — change it if you want a shorter
-                  or easier-to-remember link.
-                </FieldDescription>
-              </Field>
-
               <Field
                 data-disabled={
                   hasMultipleVariations ||
@@ -501,6 +478,13 @@ export function DraftEditorForm({
                   isLocaleEditable={isDefaultLocaleEditable}
                 />
               </div>
+
+              <AdvancedSection
+                slug={slug}
+                onSlugChange={setSlug}
+                disabled={!isDefaultLocaleEditable}
+                idPrefix="draft"
+              />
             </div>
 
             {/* Right column — Category, Status */}
