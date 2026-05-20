@@ -30,6 +30,7 @@ import { useRouter } from "next/navigation";
 import {
   DndContext,
   type DragEndEvent,
+  type DragStartEvent,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -88,6 +89,12 @@ type CanvasSelectionValue = {
    *  scroll the matching row into view. Called by EditorSheet's
    *  handleDuplicate after duplicate_item succeeds. */
   pulseItem: (id: string) => void;
+  /** True while any category section is being dragged (KRA-91 UX
+   *  enhancement). CategorySection reads this to force-collapse every
+   *  section during the drag — gives the merchant a compact bird's-eye
+   *  view of the catalog structure to drop into. Restores to per-
+   *  section collapse state on dragEnd / dragCancel. */
+  isDraggingCategory: boolean;
 };
 
 const CanvasSelectionContext =
@@ -225,6 +232,23 @@ export function CanvasWithSelection({
     };
   }, []);
 
+  // KRA-91 UX — auto-collapse all category sections during a category
+  // drag. Toggled by onDragStart / onDragEnd / onDragCancel below;
+  // CategorySection reads this via useCanvasSelection() and renders
+  // collapsed regardless of its own state for the duration of the drag.
+  const [isDraggingCategory, setIsDraggingCategory] = React.useState(false);
+
+  const handleDragStart = React.useCallback((event: DragStartEvent) => {
+    const activeIdStr = String(event.active.id);
+    if (activeIdStr.startsWith(CATEGORY_ID_PREFIX)) {
+      setIsDraggingCategory(true);
+    }
+  }, []);
+
+  const handleDragCancel = React.useCallback(() => {
+    setIsDraggingCategory(false);
+  }, []);
+
   // Sensor tuning (KRA-35 Iter 2 / Pass 6 D4B: whole-row drag, single tap
   // opens editor):
   //
@@ -272,6 +296,11 @@ export function CanvasWithSelection({
   // "wait for refresh" flow (used in tests or non-canvas contexts).
   const handleDragEnd = React.useCallback(
     (event: DragEndEvent) => {
+      // Reset the "every category collapsed" UX state immediately so the
+      // re-expand animation starts the moment the merchant releases.
+      // Async work (server call + refresh) runs in parallel below.
+      setIsDraggingCategory(false);
+
       const { active, over } = event;
       if (!over || active.id === over.id) {
         // Dropped on itself or outside any droppable. No-op.
@@ -422,13 +451,30 @@ export function CanvasWithSelection({
   );
 
   const selectionValue = React.useMemo(
-    () => ({ selectedItemId, setSelectedItemId, pulsingItemId, pulseItem }),
-    [selectedItemId, setSelectedItemId, pulsingItemId, pulseItem],
+    () => ({
+      selectedItemId,
+      setSelectedItemId,
+      pulsingItemId,
+      pulseItem,
+      isDraggingCategory,
+    }),
+    [
+      selectedItemId,
+      setSelectedItemId,
+      pulsingItemId,
+      pulseItem,
+      isDraggingCategory,
+    ],
   );
 
   return (
     <CanvasSelectionContext.Provider value={selectionValue}>
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         {children}
       </DndContext>
     </CanvasSelectionContext.Provider>
