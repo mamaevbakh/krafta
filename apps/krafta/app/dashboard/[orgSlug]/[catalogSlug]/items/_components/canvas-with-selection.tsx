@@ -29,13 +29,16 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
+  DragOverlay,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
   PointerSensor,
   TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 import { toast } from "sonner";
 
 import {
@@ -45,6 +48,20 @@ import {
   type ReorderItemsChange,
 } from "@/app/dashboard/[orgSlug]/[catalogSlug]/items/_components/actions";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+
+import { LibraryRowDragPreview } from "./library-row";
+
+// Shape for the LibraryRowDragPreview's translations array. Kept inline to
+// avoid an extra import from one of the consumer files.
+type ItemTranslationRow = {
+  id: string;
+  item_id: string;
+  locale: string;
+  name: string;
+  description: string | null;
+  image_alt: string | null;
+};
 
 /**
  * Action passed to the parent's useOptimistic reducer. Kept here in
@@ -130,6 +147,12 @@ export type CanvasWithSelectionProps = {
    *  ends to compute new positions. Required even if reorder isn't
    *  wired so the handler doesn't crash on a category drag. */
   categories?: CatalogCategory[];
+  /** All item_translations rows — forwarded to the DragOverlay preview
+   *  so the floating clone resolves the correct active locale's name. */
+  translations?: ItemTranslationRow[];
+  /** Currency settings — forwarded to the DragOverlay preview so the
+   *  floating clone formats the price identically to the in-place row. */
+  currencySettings?: CurrencySettings;
   /** Optional callback to subscribe to selection changes (e.g. to scroll
    *  the selected card into view). */
   onSelectionChange?: (id: string | null) => void;
@@ -164,6 +187,8 @@ export function CanvasWithSelection({
   catalogSlug,
   items,
   categories,
+  translations,
+  currencySettings,
   onSelectionChange,
   onOptimisticReorder,
   onOptimisticCategoryReorder,
@@ -238,8 +263,14 @@ export function CanvasWithSelection({
   // collapsed regardless of its own state for the duration of the drag.
   const [isDraggingCategory, setIsDraggingCategory] = React.useState(false);
 
+  // Active drag tracking — feeds the DragOverlay (renders the floating
+  // clone) and the cross-category preview logic. null when no drag is
+  // in progress.
+  const [activeDragId, setActiveDragId] = React.useState<string | null>(null);
+
   const handleDragStart = React.useCallback((event: DragStartEvent) => {
     const activeIdStr = String(event.active.id);
+    setActiveDragId(activeIdStr);
     if (activeIdStr.startsWith(CATEGORY_ID_PREFIX)) {
       setIsDraggingCategory(true);
     }
@@ -247,7 +278,63 @@ export function CanvasWithSelection({
 
   const handleDragCancel = React.useCallback(() => {
     setIsDraggingCategory(false);
+    setActiveDragId(null);
   }, []);
+
+  // Live cross-category preview. Fires every time the over target
+  // changes (NOT every pointer move) — so as the merchant drags an item
+  // across a category boundary, we dispatch a single optimistic move
+  // that re-buckets the active item into the target category.
+  // Same-category moves are handled by the inner SortableContext's
+  // verticalListSortingStrategy without a dispatch (would be O(n)
+  // thrash per item-to-item transition for no gain).
+  const handleDragOver = React.useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+
+      const activeIdStr = String(active.id);
+      const overIdStr = String(over.id);
+
+      // Skip category-section drags entirely — those reorder categories,
+      // not items, so cross-list reflow doesn't apply.
+      if (activeIdStr.startsWith(CATEGORY_ID_PREFIX)) return;
+
+      const activeItem = items.find((i) => i.id === activeIdStr);
+      if (!activeItem) return;
+
+      // Where is `over`? Two cases:
+      //   1. over is another item — read its category_id directly.
+      //   2. over is a section root (collapsed or just the empty area
+      //      below the last item) — strip the `category-` prefix.
+      let targetCategoryId: string | null = null;
+      if (overIdStr.startsWith(CATEGORY_ID_PREFIX)) {
+        targetCategoryId = overIdStr.slice(CATEGORY_ID_PREFIX.length);
+      } else {
+        const overItem = items.find((i) => i.id === overIdStr);
+        if (overItem) targetCategoryId = overItem.category_id;
+      }
+      if (!targetCategoryId) return;
+
+      // Skip when active is already in the target category — the inner
+      // SortableContext handles in-category visual reflow natively.
+      if (activeItem.category_id === targetCategoryId) return;
+
+      // Cross-category transition: dispatch a single optimistic move so
+      // the target section's SortableContext re-renders with the active
+      // item now in its items list. dnd-kit picks up the new layout on
+      // the next frame and continues tracking the drag in the new
+      // context.
+      React.startTransition(() => {
+        onOptimisticReorder?.({
+          activeId: activeIdStr,
+          overId: overIdStr,
+          newCategoryId: targetCategoryId,
+        });
+      });
+    },
+    [items, onOptimisticReorder],
+  );
 
   // Sensor tuning (KRA-35 Iter 2 / Pass 6 D4B: whole-row drag, single tap
   // opens editor):
@@ -296,10 +383,13 @@ export function CanvasWithSelection({
   // "wait for refresh" flow (used in tests or non-canvas contexts).
   const handleDragEnd = React.useCallback(
     (event: DragEndEvent) => {
-      // Reset the "every category collapsed" UX state immediately so the
-      // re-expand animation starts the moment the merchant releases.
+      // Reset all transient drag state immediately so:
+      //  - the DragOverlay clone disappears,
+      //  - the category re-expand animation starts the moment the
+      //    merchant releases.
       // Async work (server call + refresh) runs in parallel below.
       setIsDraggingCategory(false);
+      setActiveDragId(null);
 
       const { active, over } = event;
       if (!over || active.id === over.id) {
@@ -364,41 +454,67 @@ export function CanvasWithSelection({
         return;
       }
 
-      // Items branch — original behavior. Both ids are item uuids; we
-      // attach useSortable to each item card with `item.id` as the
-      // sortable id. Compute new positions: insert active just before/
-      // after over in the canonical sort order.
+      // Items branch — active is an item uuid (we attach useSortable to
+      // each row with `item.id` as the sortable id).
+      const activeItem = items.find((i) => i.id === active.id);
+      if (!activeItem) return;
+
       const sortedItems = [...items].sort((a, b) => a.position - b.position);
       const activeIdx = sortedItems.findIndex((item) => item.id === active.id);
-      const overIdx = sortedItems.findIndex((item) => item.id === over.id);
-      if (activeIdx < 0 || overIdx < 0) return;
+      if (activeIdx < 0) return;
 
-      // Remove active and re-insert at overIdx.
-      const [moved] = sortedItems.splice(activeIdx, 1);
-      sortedItems.splice(overIdx, 0, moved);
+      // Two over-target shapes:
+      //  A. Another item — move active to that item's slot.
+      //  B. A category section root (over.id starts with `category-`) —
+      //     typically dropping into a collapsed section. Append active
+      //     to the end of that category.
+      let reorderedItems: Item[];
+      let crossCategory: string | undefined;
 
-      // Determine cross-category drag: if the over item's category differs
-      // from the active item's, we also update category_id.
-      const activeItem = items.find((i) => i.id === active.id);
-      const overItem = items.find((i) => i.id === over.id);
-      const crossCategory =
-        activeItem &&
-        overItem &&
-        activeItem.category_id !== overItem.category_id
-          ? overItem.category_id
-          : undefined;
+      if (overIdStr.startsWith(CATEGORY_ID_PREFIX)) {
+        const targetCategoryId = overIdStr.slice(CATEGORY_ID_PREFIX.length);
+        // If we're already in this category (e.g. dropped on own section
+        // root after a no-op move), bail.
+        if (activeItem.category_id === targetCategoryId) return;
+        crossCategory = targetCategoryId;
+        // Splice out active, then insert just after the last item in target.
+        const withoutActive = [...sortedItems];
+        withoutActive.splice(activeIdx, 1);
+        let insertAt = withoutActive.length;
+        for (let i = withoutActive.length - 1; i >= 0; i--) {
+          if (withoutActive[i].category_id === targetCategoryId) {
+            insertAt = i + 1;
+            break;
+          }
+        }
+        const movedWithNewCategory: Item = {
+          ...activeItem,
+          category_id: targetCategoryId,
+        };
+        withoutActive.splice(insertAt, 0, movedWithNewCategory);
+        reorderedItems = withoutActive;
+      } else {
+        const overIdx = sortedItems.findIndex((item) => item.id === over.id);
+        if (overIdx < 0) return;
+        const overItem = sortedItems[overIdx];
+        crossCategory =
+          activeItem.category_id !== overItem.category_id
+            ? overItem.category_id
+            : undefined;
+        // arrayMove is dnd-kit's canonical move helper — equivalent to
+        // splice(activeIdx, 1) + splice(overIdx, 0, moved) but more
+        // explicit about intent and consistent with the rest of the
+        // library's semantics.
+        reorderedItems = arrayMove(sortedItems, activeIdx, overIdx);
+      }
 
-      // Build the changes payload. We only include items whose position
-      // changed to keep the payload small — but easier and equally correct
-      // to send all of them with their new positions; the server will UPDATE
-      // them with values they already have (no-op for unchanged rows). For
-      // a 30-item menu that's 30 UPDATEs vs maybe 5; both fast.
-      const changes: ReorderItemsChange[] = sortedItems.map((item, idx) => ({
+      // Build the changes payload from the reordered list. We send all
+      // items with their new positions — for a 30-item menu that's 30
+      // UPDATEs vs maybe 5; both fast. The RPC's COALESCE on category_id
+      // preserves it when omitted.
+      const changes: ReorderItemsChange[] = reorderedItems.map((item, idx) => ({
         id: item.id,
         position: idx,
-        // Only set category_id on the moved item for cross-category drag.
-        // Other items keep their existing category — leaving category_id
-        // omitted means the RPC preserves it (COALESCE in the function).
         ...(item.id === active.id && crossCategory
           ? { category_id: crossCategory }
           : {}),
@@ -467,16 +583,66 @@ export function CanvasWithSelection({
     ],
   );
 
+  // Compute the active row's data for the DragOverlay clone. Looking up
+  // by id rather than threading state — items[] is the source of truth
+  // and matches what the in-place row would render.
+  const activeItemForOverlay = React.useMemo(() => {
+    if (!activeDragId) return null;
+    if (activeDragId.startsWith(CATEGORY_ID_PREFIX)) return null;
+    return items.find((i) => i.id === activeDragId) ?? null;
+  }, [activeDragId, items]);
+
+  const activeCategoryForOverlay = React.useMemo(() => {
+    if (!activeDragId) return null;
+    if (!activeDragId.startsWith(CATEGORY_ID_PREFIX)) return null;
+    const categoryId = activeDragId.slice(CATEGORY_ID_PREFIX.length);
+    return categories?.find((c) => c.id === categoryId) ?? null;
+  }, [activeDragId, categories]);
+
   return (
     <CanvasSelectionContext.Provider value={selectionValue}>
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
         {children}
+
+        {/* DragOverlay renders a free-floating clone that follows the
+            cursor at full opacity (the in-place row has opacity:0 while
+            dragging, leaving an empty slot). This is the standard
+            "lifted card" pattern in dnd-kit and feels far more natural
+            than the prior 50%-opacity in-place ghost. */}
+        <DragOverlay dropAnimation={null}>
+          {activeItemForOverlay && translations && currencySettings ? (
+            <LibraryRowDragPreview
+              item={activeItemForOverlay}
+              translations={translations}
+              currencySettings={currencySettings}
+            />
+          ) : activeCategoryForOverlay ? (
+            <CategoryHeaderDragPreview
+              name={activeCategoryForOverlay.name}
+            />
+          ) : null}
+        </DragOverlay>
       </DndContext>
     </CanvasSelectionContext.Provider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CategoryHeaderDragPreview — minimal floating clone of a category header
+// for the DragOverlay. Just the grip + name + a hint that this is a
+// category being moved. Mirrors the in-place header chrome enough that
+// the merchant recognizes what they're carrying.
+// ---------------------------------------------------------------------------
+function CategoryHeaderDragPreview({ name }: { name: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 shadow-lg ring-1 ring-ring/30">
+      <span className="text-base font-semibold tracking-tight">{name}</span>
+    </div>
   );
 }

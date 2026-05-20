@@ -1,32 +1,33 @@
 "use client";
 
 /**
- * library-row.tsx — KRA-35 Iter 2 / T1: compact 56px row component for the Library canvas.
+ * library-row.tsx — KRA-35 Iter 2 / T1 (revised): compact row + DragOverlay preview.
  *
- * Replaces EditableItemCard's role on the canvas. Per Iter 2 design decisions:
+ * Two exported components:
+ *   - LibraryRow       — the normal sortable row that lives inside a
+ *                        SortableContext. Uses useSortable + click-to-select.
+ *   - LibraryRowDragPreview — a hook-free presentation-only clone for
+ *                             dnd-kit's <DragOverlay>. Same visual layout,
+ *                             no useSortable / useCanvasSelection.
  *
+ * Both render the same `LibraryRowMarkup` so the visual stays in lockstep —
+ * if you change the row chrome (thumbnail size, font, layout) you change
+ * it once.
+ *
+ * Per Iter 2 design decisions:
  *   - D2 (compact rows): 56px tall, 40px thumbnail, name + price only.
  *     No description in row. No inline editing.
  *   - D3 (visible drag affordance): GripVertical icon on the left signals
  *     draggability. NOT exclusive drag target — whole row carries dnd-kit
  *     listeners per Pass 6 D4B below.
- *   - Pass 6 D4B (mobile drag/tap): the whole row is the drag target. dnd-kit's
- *     PointerSensor (desktop) gates via 8px activation distance; TouchSensor
- *     (mobile) gates via 250ms delay. Quick taps → onClick fires → opens editor.
- *     Long-press / move → drag.
+ *   - Pass 6 D4B (mobile drag/tap): the whole row is the drag target.
+ *     dnd-kit's PointerSensor gates via 8px activation; TouchSensor gates
+ *     via 250ms long-press. Quick taps → onClick → opens editor.
  *
- * Selection vs drag is handled entirely by dnd-kit's sensor activation
- * constraints — see `canvas-with-selection.tsx`. We don't add a separate
- * click handler that competes with drag; we attach both `listeners` and
- * `onClick` and trust the sensors.
- *
- * Locale-aware name display goes through `pickLocalizedField`. When the
- * active locale lacks a translation, falls back to the default-locale value
- * and renders it italic + muted (per DESIGN.md i18n section).
- *
- * The editor that opens when a row is clicked is still the legacy `Inspector`
- * (right-side 360px panel) for now. Iter 2 T2 swaps it for the EditorSheet.
- * Selection state lives in `useCanvasSelection`; this row is read/write.
+ *   - touchAction "pan-y" lets mobile browsers handle vertical scroll
+ *     while the long-press delay is running. Earlier "none" disabled
+ *     scrolling on rows entirely — merchants couldn't scroll the canvas
+ *     by touching items on phones.
  */
 
 import * as React from "react";
@@ -56,32 +57,18 @@ type ItemTranslation = {
 
 export type LibraryRowProps = {
   item: Item;
-  /** All item_translations rows loaded at the page level. Filtered per-item
-   *  inside this component so the locale-aware resolver can pick the right
-   *  row + per-field fallback. */
   translations: ItemTranslation[];
   currencySettings: CurrencySettings;
 };
 
-export function LibraryRow({
-  item,
-  translations,
-  currencySettings,
-}: LibraryRowProps) {
-  const { selectedItemId, setSelectedItemId, pulsingItemId } =
-    useCanvasSelection();
+// ---------------------------------------------------------------------------
+// Shared data hook — locale-aware name resolution + image URL.
+// Both the sortable row and the drag-overlay preview need this; extracting
+// it keeps the two consumers from drifting.
+// ---------------------------------------------------------------------------
+function useLibraryRowData(item: Item, translations: ItemTranslation[]) {
   const { activeLocale, defaultLocale } = useCanvasLocale();
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
 
-  // Use the legacy `items.image_path` for the canvas thumbnail. Multi-image
-  // upload lives in the inspector / future EditorSheet (T2).
   const imageUrl = React.useMemo(() => getItemImageUrl(item), [item]);
 
   const itemTranslations = React.useMemo(
@@ -89,9 +76,6 @@ export function LibraryRow({
     [translations, item.id],
   );
 
-  // Locale-aware name resolution. EditableItemCard used pickLocalizedField
-  // for the same purpose; we keep parity so a non-default-locale tab shows
-  // the translated value (or the italic muted fallback when missing).
   const nameField = pickLocalizedField({
     translations: itemTranslations,
     defaults: {
@@ -104,17 +88,132 @@ export function LibraryRow({
     field: "name",
   });
 
+  return { imageUrl, nameField };
+}
+
+// ---------------------------------------------------------------------------
+// LibraryRowMarkup — pure presentational; no hooks, no dnd-kit.
+// Receives already-resolved values from the caller (the wrapper component
+// or the drag preview). This is the single source of truth for what a
+// row looks like visually.
+// ---------------------------------------------------------------------------
+type LibraryRowMarkupProps = {
+  imageUrl: string | null;
+  imageAlt: string | null;
+  nameValue: string;
+  isFallback: boolean;
+  priceCents: number;
+  currencySettings: CurrencySettings;
+  isSelected?: boolean;
+  isPulsing?: boolean;
+  isDragging?: boolean;
+  /** When true, the row renders as a free-floating overlay clone (used by
+   *  dnd-kit's <DragOverlay>): a slight scale-up + shadow gives the
+   *  "lifted card" feel. */
+  isOverlay?: boolean;
+};
+
+function LibraryRowMarkup({
+  imageUrl,
+  imageAlt,
+  nameValue,
+  isFallback,
+  priceCents,
+  currencySettings,
+  isSelected,
+  isPulsing,
+  isDragging,
+  isOverlay,
+}: LibraryRowMarkupProps) {
+  return (
+    <div
+      className={cn(
+        "group flex h-14 items-center gap-3 rounded-xs border bg-card px-3",
+        "cursor-pointer transition-colors",
+        !isOverlay && "hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        isSelected && "ring-1 ring-ring ring-offset-2",
+        isDragging && !isOverlay && "shadow-md",
+        // DragOverlay clone styling: slight lift via shadow + opacity-95
+        // to suggest it's the "real one" the cursor is carrying.
+        isOverlay && "shadow-lg ring-1 ring-ring/30 cursor-grabbing",
+        isPulsing && "animate-row-flash",
+      )}
+    >
+      <GripVertical
+        className={cn(
+          "size-5 shrink-0 text-muted-foreground transition-colors",
+          !isOverlay && "group-hover:text-foreground",
+          isOverlay && "text-foreground",
+        )}
+        aria-hidden="true"
+      />
+
+      <div className="relative size-10 shrink-0 overflow-hidden rounded-xs bg-muted">
+        {imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt={imageAlt ?? ""}
+            fill
+            sizes="40px"
+            className="object-cover"
+          />
+        ) : null}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <span
+          className={cn(
+            "block truncate text-sm font-medium",
+            isFallback && "italic text-muted-foreground",
+          )}
+        >
+          {nameValue || "Untitled item"}
+        </span>
+      </div>
+
+      <span className="shrink-0 font-mono text-sm font-semibold tabular-nums">
+        {formatPriceCents(priceCents, currencySettings)}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LibraryRow — the sortable row. Uses useSortable + click-to-select.
+// ---------------------------------------------------------------------------
+export function LibraryRow({
+  item,
+  translations,
+  currencySettings,
+}: LibraryRowProps) {
+  const { selectedItemId, setSelectedItemId, pulsingItemId } =
+    useCanvasSelection();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const { imageUrl, nameField } = useLibraryRowData(item, translations);
+
   const isSelected = selectedItemId === item.id;
   const isPulsing = pulsingItemId === item.id;
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
-    // touchAction: "none" is CRITICAL for the mobile long-press pattern.
-    // Without it, the browser's native touch-scrolling fights with dnd-kit's
-    // TouchSensor delay detection and the long-press never registers.
-    touchAction: "none",
+    // While the OVERLAY is showing this row's clone, hide the in-place
+    // copy so it doesn't compete visually. dnd-kit's `isDragging` flag is
+    // true on the source row; DragOverlay renders the clone. Hiding here
+    // gives the conventional "empty slot" preview.
+    opacity: isDragging ? 0 : 1,
+    // `touchAction: "pan-y"` lets mobile vertical scroll work while the
+    // TouchSensor's 250ms long-press delay is running. Without this the
+    // browser would prevent scrolling on rows entirely.
+    touchAction: "pan-y",
   };
 
   return (
@@ -127,75 +226,44 @@ export function LibraryRow({
       data-slot="library-row"
       data-row-item-id={item.id}
       data-selected={isSelected || undefined}
-      // The whole row is the draggable + the clickable. Sensors gate which
-      // one fires (clicks under 8px on desktop / quick taps on mobile = onClick;
-      // 8px+ drag on desktop / 250ms+ press on mobile = drag).
       aria-label={`${nameField.value || "Untitled item"} — click to edit, drag to reorder`}
-      className={cn(
-        "group flex h-14 items-center gap-3 rounded-xs border bg-card px-3",
-        "cursor-pointer transition-colors",
-        "hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        // Selection indicator — same ring pattern EditableItemCard used.
-        isSelected && "ring-1 ring-ring ring-offset-2",
-        // Functional shadow during drag only (lifts the row off the canvas
-        // so the merchant sees what's moving). NOT a decorative shadow per
-        // DESIGN.md anti-slop rule 9.
-        isDragging && "shadow-md",
-        // Post-duplicate pulse (Iter 2 T4 / Pass 3 D3A): single-iteration
-        // bg-accent flash fading to transparent over 1.2s. The animation
-        // keyframe is defined in globals.css (`animate-row-flash`). Fires
-        // when CanvasSelectionContext.pulsingItemId matches this row id.
-        isPulsing && "animate-row-flash",
-      )}
     >
-      {/* Drag handle — visual affordance cue only. The dnd-kit listeners are
-          on the parent (whole row) per Pass 6 D4B. This icon just tells the
-          eye "this row can be dragged"; the actual gesture is sensor-gated. */}
-      <GripVertical
-        className="size-5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
-        aria-hidden="true"
+      <LibraryRowMarkup
+        imageUrl={imageUrl}
+        imageAlt={item.image_alt}
+        nameValue={nameField.value}
+        isFallback={nameField.isFallback}
+        priceCents={item.price_cents}
+        currencySettings={currencySettings}
+        isSelected={isSelected}
+        isPulsing={isPulsing}
+        isDragging={false}
       />
-
-      {/* Thumbnail — 40px square, rounded-xs per DESIGN.md spec line 178.
-          Uses next/image with the Supabase image-loader so the request
-          hits /storage/v1/render/image/public/ with width=40 — server-
-          side resize delivers ~2 KB instead of the full-size original
-          (which can be 1-5 MB for merchant-uploaded photos). Fallback
-          to muted box when no image. */}
-      <div className="relative size-10 shrink-0 overflow-hidden rounded-xs bg-muted">
-        {imageUrl ? (
-          <Image
-            src={imageUrl}
-            alt={item.image_alt ?? ""}
-            fill
-            // 40px = the row's thumbnail size on every viewport. No
-            // responsive variants needed for a fixed-size cell.
-            sizes="40px"
-            className="object-cover"
-          />
-        ) : null}
-      </div>
-
-      {/* Name — flex-1 so it consumes remaining width, truncate to single
-          line. Italic + muted when the active locale falls back to the
-          default locale's value (per DESIGN.md i18n: "render the default-
-          locale value in italics as a visible hint"). */}
-      <div className="min-w-0 flex-1">
-        <span
-          className={cn(
-            "block truncate text-sm font-medium",
-            nameField.isFallback && "italic text-muted-foreground",
-          )}
-        >
-          {nameField.value || "Untitled item"}
-        </span>
-      </div>
-
-      {/* Price — right-aligned, mono tabular-nums per DESIGN.md. Geist Mono
-          keeps wide UZS values aligned across rows in dense lists. */}
-      <span className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-        {formatPriceCents(item.price_cents, currencySettings)}
-      </span>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LibraryRowDragPreview — for dnd-kit's <DragOverlay>.
+// Renders the same markup with the "lifted card" overlay styling. No
+// useSortable (overlay is rendered outside any SortableContext anyway).
+// ---------------------------------------------------------------------------
+export function LibraryRowDragPreview({
+  item,
+  translations,
+  currencySettings,
+}: LibraryRowProps) {
+  const { imageUrl, nameField } = useLibraryRowData(item, translations);
+
+  return (
+    <LibraryRowMarkup
+      imageUrl={imageUrl}
+      imageAlt={item.image_alt}
+      nameValue={nameField.value}
+      isFallback={nameField.isFallback}
+      priceCents={item.price_cents}
+      currencySettings={currencySettings}
+      isOverlay
+    />
   );
 }
