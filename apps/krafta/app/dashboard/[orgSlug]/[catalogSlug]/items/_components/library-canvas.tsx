@@ -127,17 +127,13 @@ export function LibraryCanvas({
 }: LibraryCanvasProps) {
   const [itemDialogOpen, setItemDialogOpen] = React.useState(false);
 
-  // Optimistic reorder state (React 19 useOptimistic + startTransition).
-  // Why: dnd-kit's onDragEnd previously did `reorderItems` server action +
-  // `router.refresh()`. The visual snap-back during the round-trip felt
-  // janky (~400-800ms of delay). With useOptimistic, the local state
-  // updates synchronously when the drag completes; if the server call
-  // succeeds the optimistic order matches the refreshed RSC data, if it
-  // fails React auto-reverts to `items` (the prop). See
-  // canvas-with-selection.tsx for the dispatcher call inside the drag-end
-  // handler.
-  const [optimisticItems, applyOptimisticReorder] = React.useOptimistic(
-    items,
+  // Pure reducer for an item reorder action. Used by BOTH:
+  //   - the during-drag `previewItems` state (plain useState, mutated
+  //     synchronously on each onDragOver — see below), and
+  //   - useOptimistic for the dragEnd → server roundtrip.
+  // Why share: both consumers compute the same end-state from an action;
+  // duplicating the logic risks drift.
+  const applyReorderAction = React.useCallback(
     (state: Item[], action: OptimisticReorderAction): Item[] => {
       const sorted = [...state].sort((a, b) => a.position - b.position);
       const activeIdx = sorted.findIndex((i) => i.id === action.activeId);
@@ -180,7 +176,55 @@ export function LibraryCanvas({
             : item.category_id,
       }));
     },
+    [],
   );
+
+  // Optimistic reorder for the dragEnd → server roundtrip. Persists
+  // during the async transition wrapping reorderItems(); auto-reverts
+  // on failure.
+  const [optimisticItems, applyOptimisticReorder] = React.useOptimistic(
+    items,
+    applyReorderAction,
+  );
+
+  // During-drag preview state. Plain React state so it persists for the
+  // WHOLE drag (not just one transition tick). canvas-with-selection's
+  // onDragOver mutates this on each cross-category transition; cleared
+  // on dragEnd / dragCancel. effectiveItems = preview ?? optimistic ?? items.
+  //
+  // Why a separate state from useOptimistic: useOptimistic only persists
+  // optimistic state DURING an open transition. onDragOver dispatches
+  // are sync transitions that complete immediately, so the optimistic
+  // state would revert before the next paint — the merchant would see
+  // no preview at all. Plain useState bypasses that.
+  const [previewItems, setPreviewItems] = React.useState<Item[] | null>(null);
+
+  // Clear the preview whenever the items prop changes (i.e. after a
+  // successful server refresh): the canonical items are now what the
+  // preview was showing, no need to override anymore.
+  React.useEffect(() => {
+    setPreviewItems(null);
+  }, [items]);
+
+  // Effective rendering source.
+  const effectiveItems = previewItems ?? optimisticItems;
+
+  // Dispatcher passed to CanvasWithSelection's handleDragOver. Mutates
+  // the preview state by applying the action on top of the current
+  // effective layout.
+  const handleDragPreview = React.useCallback(
+    (action: OptimisticReorderAction) => {
+      setPreviewItems((current) => {
+        const base = current ?? optimisticItems;
+        return applyReorderAction(base, action);
+      });
+    },
+    [optimisticItems, applyReorderAction],
+  );
+
+  const handleDragPreviewClear = React.useCallback(() => {
+    setPreviewItems(null);
+  }, []);
 
   // Optimistic category reorder (mirror of the items optimistic state).
   // When the merchant drags a category section header, the dnd-kit handler
@@ -218,16 +262,18 @@ export function LibraryCanvas({
     [optimisticCategories],
   );
 
-  // NOTE: bucketing uses `optimisticItems`, NOT the raw `items` prop. This
-  // is the key piece that makes drag feedback feel instant — the rendered
-  // category sections see the moved item in its new bucket synchronously.
+  // NOTE: bucketing uses `effectiveItems`, NOT the raw `items` prop.
+  // This is the key piece that makes drag feedback feel instant — the
+  // rendered category sections see the moved item in its new bucket
+  // synchronously (during drag via `previewItems`, during server
+  // roundtrip via `optimisticItems`).
   const itemsByCategory = React.useMemo(() => {
     const map = new Map<string, Item[]>();
     for (const cat of sortedCategories) {
       map.set(cat.id, []);
     }
     const orphans: Item[] = [];
-    for (const item of optimisticItems) {
+    for (const item of effectiveItems) {
       const bucket = map.get(item.category_id);
       if (bucket) {
         bucket.push(item);
@@ -236,7 +282,7 @@ export function LibraryCanvas({
       }
     }
     return { map, orphans };
-  }, [optimisticItems, sortedCategories]);
+  }, [effectiveItems, sortedCategories]);
 
   // Header: page title + "Add item" button. Same chrome the legacy
   // ItemsPanel shipped (`items-panel.tsx:113-127` for reference) —
@@ -266,12 +312,14 @@ export function LibraryCanvas({
         <CanvasWithSelection
           catalogId={catalogId}
           catalogSlug={catalogSlug}
-          items={optimisticItems}
+          items={effectiveItems}
           categories={sortedCategories}
           translations={translations}
           currencySettings={currencySettings}
           onOptimisticReorder={applyOptimisticReorder}
           onOptimisticCategoryReorder={applyOptimisticCategoryReorder}
+          onDragPreview={handleDragPreview}
+          onDragPreviewClear={handleDragPreviewClear}
         >
           <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
             {/* Category rail (KRA-35 Iter 2 / T3). Subordinate inset, no
@@ -284,7 +332,7 @@ export function LibraryCanvas({
             {/* Canvas column. flex-1 so it expands. EditorSheet portals
                 via shadcn Sheet/Drawer — doesn't live in this flex row. */}
             <div className="flex-1 min-w-0">
-              {optimisticItems.length === 0 ? (
+              {effectiveItems.length === 0 ? (
                 <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
               ) : (
                 // gap-3 between sections (12px) — tight enough that the
@@ -348,7 +396,7 @@ export function LibraryCanvas({
               item's selection reflects its new category_id without
               waiting for router.refresh. */}
           <EditorSheet
-            items={optimisticItems}
+            items={effectiveItems}
             categories={sortedCategories}
             media={media}
             translations={translations}

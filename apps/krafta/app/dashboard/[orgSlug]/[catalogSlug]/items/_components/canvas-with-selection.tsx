@@ -165,6 +165,15 @@ export type CanvasWithSelectionProps = {
   /** Same idea, but for category-section drags. KRA-91 — wired to
    *  applyOptimisticCategoryReorder in library-canvas.tsx. */
   onOptimisticCategoryReorder?: (action: OptimisticCategoryReorderAction) => void;
+  /** During-drag preview dispatcher. Called from onDragOver each time the
+   *  over target changes such that a cross-category move is needed.
+   *  library-canvas mutates a plain useState — persists through the
+   *  whole drag (unlike useOptimistic's sync transitions which revert
+   *  immediately). */
+  onDragPreview?: (action: OptimisticReorderAction) => void;
+  /** Clears the during-drag preview. Called on dragEnd/dragCancel before
+   *  the useOptimistic dispatch takes over for the server roundtrip. */
+  onDragPreviewClear?: () => void;
   children: React.ReactNode;
 };
 
@@ -192,6 +201,8 @@ export function CanvasWithSelection({
   onSelectionChange,
   onOptimisticReorder,
   onOptimisticCategoryReorder,
+  onDragPreview,
+  onDragPreviewClear,
   children,
 }: CanvasWithSelectionProps) {
   const router = useRouter();
@@ -279,15 +290,25 @@ export function CanvasWithSelection({
   const handleDragCancel = React.useCallback(() => {
     setIsDraggingCategory(false);
     setActiveDragId(null);
-  }, []);
+    onDragPreviewClear?.();
+  }, [onDragPreviewClear]);
 
   // Live cross-category preview. Fires every time the over target
-  // changes (NOT every pointer move) — so as the merchant drags an item
-  // across a category boundary, we dispatch a single optimistic move
-  // that re-buckets the active item into the target category.
-  // Same-category moves are handled by the inner SortableContext's
-  // verticalListSortingStrategy without a dispatch (would be O(n)
-  // thrash per item-to-item transition for no gain).
+  // changes — when the merchant drags an item across a category
+  // boundary, we mutate the parent's `previewItems` state via
+  // onDragPreview so the target section's SortableContext immediately
+  // re-renders with the active item appended to it.
+  //
+  // Same-category moves are skipped here — the inner SortableContext
+  // handles those natively via verticalListSortingStrategy. Dispatching
+  // on every same-category over-target change would be O(n) thrash per
+  // item-to-item transition for no visual gain.
+  //
+  // Why we don't use useOptimistic here: useOptimistic only persists
+  // optimistic state DURING an open transition. A sync startTransition
+  // (one tick) reverts the state immediately on next render — merchant
+  // sees zero preview effect. The parent uses plain useState for the
+  // during-drag preview, which persists for the whole drag.
   const handleDragOver = React.useCallback(
     (event: DragOverEvent) => {
       const { active, over } = event;
@@ -316,24 +337,23 @@ export function CanvasWithSelection({
       }
       if (!targetCategoryId) return;
 
-      // Skip when active is already in the target category — the inner
-      // SortableContext handles in-category visual reflow natively.
+      // Skip when active is already in the target category (`items` here
+      // is the parent's effectiveItems, so this reflects the preview-
+      // applied layout). Inner SortableContext handles within-category
+      // reflow from here.
       if (activeItem.category_id === targetCategoryId) return;
 
-      // Cross-category transition: dispatch a single optimistic move so
-      // the target section's SortableContext re-renders with the active
-      // item now in its items list. dnd-kit picks up the new layout on
-      // the next frame and continues tracking the drag in the new
-      // context.
-      React.startTransition(() => {
-        onOptimisticReorder?.({
-          activeId: activeIdStr,
-          overId: overIdStr,
-          newCategoryId: targetCategoryId,
-        });
+      // Cross-category transition: persist the preview move in the
+      // parent's previewItems state. The visual update happens on the
+      // next render; dnd-kit picks up the new layout and continues
+      // tracking the drag against the active in its new category.
+      onDragPreview?.({
+        activeId: activeIdStr,
+        overId: overIdStr,
+        newCategoryId: targetCategoryId,
       });
     },
-    [items, onOptimisticReorder],
+    [items, onDragPreview],
   );
 
   // Sensor tuning (KRA-35 Iter 2 / Pass 6 D4B: whole-row drag, single tap
@@ -527,11 +547,22 @@ export function CanvasWithSelection({
       };
 
       // Wrap the optimistic dispatch + async server call in a single
-      // transition. React renders the optimistic state for the entire
-      // duration; once the transition resolves the optimistic state
-      // syncs to the latest props (success: refreshed RSC data; failure:
-      // unchanged original items).
+      // transition:
+      //   1. Clear the during-drag preview (parent's previewItems = null).
+      //      effective falls back to optimisticItems for the rest of the
+      //      roundtrip.
+      //   2. Apply optimistic — keeps the new layout visible during the
+      //      await reorderItems.
+      //   3. await the server call.
+      //   4. Success: router.refresh syncs items prop → optimistic syncs
+      //      → effective syncs. Failure: transition completes without a
+      //      matching prop change → optimistic auto-reverts to items →
+      //      effective falls back to items → row snaps back to original.
+      // All three setState calls inside startTransition's callback are
+      // batched into one render, so the merchant doesn't see a flash
+      // between "preview cleared" and "optimistic applied".
       React.startTransition(async () => {
+        onDragPreviewClear?.();
         onOptimisticReorder?.(action);
 
         const result = await reorderItems({
@@ -562,6 +593,7 @@ export function CanvasWithSelection({
       catalogSlug,
       onOptimisticReorder,
       onOptimisticCategoryReorder,
+      onDragPreviewClear,
       router,
     ],
   );
