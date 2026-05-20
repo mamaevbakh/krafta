@@ -173,13 +173,30 @@ export type PhotoUploaderMedia = {
   bucket: string;
   storage_path: string;
   is_primary: boolean;
+  /** Optional metadata captured during upload. Required when the parent
+   *  is in CREATE mode (the metadata gets bundled into createItem's
+   *  photoUploads payload). Edit mode reads these from server rows. */
+  kind?: "image" | "video";
+  mime_type?: string | null;
+  bytes?: number | null;
+  alt?: string | null;
 };
 
 export type PhotoUploaderProps = {
+  /** For edit mode: existing item id. For create mode: pre-generated
+   *  UUID the client will pass to createItem on Save (storage paths
+   *  use this id; the items row doesn't exist yet). */
   itemId: string;
   orgId: string;
   catalogId: string;
   media: PhotoUploaderMedia[];
+  /** CREATE MODE — when provided, the component skips all API calls
+   *  (no register/delete/reorder/primary fetches) and bubbles mutations
+   *  through this callback. The parent owns the media state. Upload to
+   *  Storage still happens (signed URLs work without an existing
+   *  items row), but the item_media row insert is deferred to the
+   *  parent's createItem dispatch on Save. */
+  onLocalMediaChange?: (media: PhotoUploaderMedia[]) => void;
 };
 
 export function PhotoUploader({
@@ -187,7 +204,9 @@ export function PhotoUploader({
   orgId,
   catalogId,
   media,
+  onLocalMediaChange,
 }: PhotoUploaderProps) {
+  const isCreateMode = Boolean(onLocalMediaChange);
   const router = useRouter();
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   /** In-flight upload count → render that many placeholder tiles. */
@@ -314,24 +333,47 @@ export function PhotoUploader({
 
         if (successful.length === 0) return;
 
-        // 5. Register the successful uploads in item_media.
-        const registerResp = await fetch("/api/items/media", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ itemId, uploads: successful }),
-        });
+        // 5. Either register on the server (edit mode) OR push to
+        //    parent's local state (create mode — items row doesn't exist
+        //    yet; registration is deferred to the parent's createItem
+        //    dispatch on Save).
+        if (isCreateMode && onLocalMediaChange) {
+          const newEntries: PhotoUploaderMedia[] = successful.map((u, idx) => ({
+            id: u.id,
+            bucket: u.bucket,
+            storage_path: u.storage_path,
+            // Primary: first uploaded photo if there were no existing ones.
+            is_primary: media.length === 0 && idx === 0,
+            kind: u.kind,
+            mime_type: u.mime_type,
+            bytes: u.bytes,
+            alt: null,
+          }));
+          onLocalMediaChange([...media, ...newEntries]);
+          toast.success(
+            newEntries.length === 1
+              ? "Photo added"
+              : `${newEntries.length} photos added`,
+          );
+        } else {
+          const registerResp = await fetch("/api/items/media", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ itemId, uploads: successful }),
+          });
 
-        if (!registerResp.ok) {
-          const body = await registerResp.json().catch(() => null);
-          throw new Error(body?.error ?? "Failed to save photos.");
+          if (!registerResp.ok) {
+            const body = await registerResp.json().catch(() => null);
+            throw new Error(body?.error ?? "Failed to save photos.");
+          }
+
+          toast.success(
+            successful.length === 1
+              ? "Photo added"
+              : `${successful.length} photos added`,
+          );
+          router.refresh();
         }
-
-        toast.success(
-          successful.length === 1
-            ? "Photo added"
-            : `${successful.length} photos added`,
-        );
-        router.refresh();
       } catch (err) {
         const message = err instanceof Error ? err.message : "Upload failed.";
         toast.error(message);
@@ -345,6 +387,17 @@ export function PhotoUploader({
 
   const handleDelete = React.useCallback(
     async (mediaId: string) => {
+      // Create mode: remove from local state. Storage file becomes an
+      // orphan, picked up later by /api/items/media/cleanup.
+      if (isCreateMode && onLocalMediaChange) {
+        const next = media.filter((m) => m.id !== mediaId);
+        // If we removed the primary, promote the new first.
+        if (next.length > 0 && !next.some((m) => m.is_primary)) {
+          next[0] = { ...next[0], is_primary: true };
+        }
+        onLocalMediaChange(next);
+        return;
+      }
       try {
         const resp = await fetch("/api/items/media", {
           method: "DELETE",
@@ -362,11 +415,18 @@ export function PhotoUploader({
         toast.error(message);
       }
     },
-    [itemId, router],
+    [itemId, router, isCreateMode, onLocalMediaChange, media],
   );
 
   const handleSetPrimary = React.useCallback(
     async (mediaId: string) => {
+      // Create mode: flip is_primary in local state.
+      if (isCreateMode && onLocalMediaChange) {
+        onLocalMediaChange(
+          media.map((m) => ({ ...m, is_primary: m.id === mediaId })),
+        );
+        return;
+      }
       try {
         const resp = await fetch("/api/items/media", {
           method: "PATCH",
@@ -385,7 +445,7 @@ export function PhotoUploader({
         toast.error(message);
       }
     },
-    [itemId, router],
+    [itemId, router, isCreateMode, onLocalMediaChange, media],
   );
 
   /** Local optimistic order — set on dragEnd so the grid doesn't snap
@@ -407,6 +467,18 @@ export function PhotoUploader({
 
   const handleReorder = React.useCallback(
     async (newOrder: string[]) => {
+      // Create mode: rebuild local media in the new order. Optimistic
+      // order state is irrelevant since the rendered grid reads from
+      // parent's media prop directly post-callback.
+      if (isCreateMode && onLocalMediaChange) {
+        const byId = new Map(media.map((m) => [m.id, m]));
+        const reordered = newOrder
+          .map((id) => byId.get(id))
+          .filter((m): m is PhotoUploaderMedia => Boolean(m));
+        onLocalMediaChange(reordered);
+        setOptimisticOrder(null);
+        return;
+      }
       const positions = newOrder.map((id, index) => ({ id, position: index }));
       try {
         const resp = await fetch("/api/items/media", {

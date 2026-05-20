@@ -165,6 +165,29 @@ export async function createItem(params: {
   description?: string | null;
   imageAlt?: string | null;
   translations: ItemTranslationInput[];
+  /** KRA-88 all-enabled create flow — variations created during the
+   *  create gesture (instead of the default-only insert). When omitted
+   *  or empty, the legacy default-only behavior runs with priceCents. */
+  variations?: Array<{
+    name: string;
+    price_cents: number;
+    ordinal: number;
+    is_default: boolean;
+    is_sold_out: boolean;
+  }>;
+  /** KRA-88 all-enabled create flow — photos uploaded to Storage during
+   *  the create gesture (paths use the pre-gen itemId). Server registers
+   *  these in item_media after the items row is inserted, then mirrors
+   *  the primary's storage_path onto items.image_path. */
+  photoUploads?: Array<{
+    id: string;
+    bucket: string;
+    storage_path: string;
+    kind: Database["public"]["Enums"]["item_media_kind"];
+    mime_type?: string | null;
+    bytes?: number | null;
+    alt?: string | null;
+  }>;
 }) {
   const supabase = await createClient();
 
@@ -225,25 +248,87 @@ export async function createItem(params: {
     return { ok: false, error: itemError?.message ?? "Failed to create item." };
   }
 
-  // Price now lives on the default item_variations row (Migration 1, ADR
-  // 0001 §3.1). Every item must have exactly one default variation; the
-  // partial unique index enforces uniqueness, the app enforces existence.
+  // KRA-88 all-enabled create flow: when the caller provides a full
+  // variations array, insert exactly those rows. Otherwise fall back to
+  // the legacy default-only insert seeded with priceCents.
+  const variationRows = params.variations && params.variations.length > 0
+    ? params.variations.map((v) => ({
+        item_id: item.id,
+        catalog_id: params.catalogId,
+        name: v.name,
+        price_cents: v.price_cents,
+        ordinal: v.ordinal,
+        is_default: v.is_default,
+        is_sold_out: v.is_sold_out,
+      }))
+    : [
+        {
+          item_id: item.id,
+          catalog_id: params.catalogId,
+          name: "Default",
+          price_cents: params.priceCents,
+          is_default: true,
+          ordinal: 0,
+        },
+      ];
+
   const { error: variationError } = await supabase
     .from("item_variations")
-    .insert({
-      item_id: item.id,
-      catalog_id: params.catalogId,
-      name: "Default",
-      price_cents: params.priceCents,
-      is_default: true,
-      ordinal: 0,
-    });
+    .insert(variationRows);
 
   if (variationError) {
     return {
       ok: false,
-      error: variationError.message ?? "Failed to create default variation.",
+      error: variationError.message ?? "Failed to create item variations.",
     };
+  }
+
+  // KRA-88 all-enabled create flow: photos already uploaded to Storage
+  // during the create gesture (the client pre-generated itemId for the
+  // storage paths). Register them in item_media now that the items row
+  // exists, set primary = first row, mirror its path onto items.image_path.
+  if (params.photoUploads && params.photoUploads.length > 0) {
+    const insertRows = params.photoUploads.map((upload, index) => ({
+      id: upload.id,
+      item_id: item.id,
+      bucket: upload.bucket,
+      storage_path: upload.storage_path,
+      kind: upload.kind,
+      mime_type: upload.mime_type ?? null,
+      bytes: upload.bytes ?? null,
+      alt: upload.alt ?? null,
+      title: null,
+      is_primary: index === 0,
+      position: index + 1,
+    }));
+
+    const { error: mediaError } = await supabase
+      .from("item_media")
+      .insert(insertRows);
+
+    if (mediaError) {
+      return {
+        ok: false,
+        error: mediaError.message ?? "Failed to attach photos.",
+      };
+    }
+
+    const primary = insertRows[0];
+    if (primary) {
+      const { error: imageError } = await supabase
+        .from("items")
+        .update({
+          image_path: primary.storage_path,
+          image_alt: primary.alt,
+        })
+        .eq("id", item.id);
+      if (imageError) {
+        return {
+          ok: false,
+          error: imageError.message ?? "Failed to set primary photo on item.",
+        };
+      }
+    }
   }
 
   const translations = params.translations
