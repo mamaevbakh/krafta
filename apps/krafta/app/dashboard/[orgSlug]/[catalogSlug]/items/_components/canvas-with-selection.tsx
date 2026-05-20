@@ -26,6 +26,7 @@
  */
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   type DragEndEvent,
@@ -34,11 +35,25 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { toast } from "sonner";
+
 import {
   reorderItems,
   type ReorderItemsChange,
 } from "@/app/dashboard/[orgSlug]/[catalogSlug]/items/_components/actions";
 import type { Item } from "@/lib/catalogs/types";
+
+/**
+ * Action passed to the parent's useOptimistic reducer. Kept here in
+ * sync with `OptimisticReorderAction` in library-canvas.tsx — they're
+ * structurally identical and the prop type uses `(action: ...) => void`
+ * so TypeScript will catch any drift.
+ */
+type OptimisticReorderAction = {
+  activeId: string;
+  overId: string;
+  newCategoryId?: string;
+};
 
 // =======================================================================
 // Selection context
@@ -83,11 +98,20 @@ export type CanvasWithSelectionProps = {
   /** Catalog slug — required for revalidation after reorder. */
   catalogSlug: string;
   /** Flat list of items rendered in the canvas. The drag-drop handler
-   *  reads this to compute the new positions after a drop. */
+   *  reads this to compute the new positions after a drop.
+   *  Note: with optimistic UI (KRA-35 Iter 2 follow-up), this is the
+   *  parent's `optimisticItems` — so the handler computes new positions
+   *  from the latest visible state, not stale RSC data. */
   items: Item[];
   /** Optional callback to subscribe to selection changes (e.g. to scroll
    *  the selected card into view). */
   onSelectionChange?: (id: string | null) => void;
+  /** Called from inside startTransition before the reorderItems server
+   *  action so the canvas re-renders synchronously with the moved item
+   *  in its new slot. Wired to the parent's useOptimistic dispatcher.
+   *  If omitted, drag-drop falls back to the legacy "wait for refresh"
+   *  flow with the visible snap-back. */
+  onOptimisticReorder?: (action: OptimisticReorderAction) => void;
   children: React.ReactNode;
 };
 
@@ -110,8 +134,10 @@ export function CanvasWithSelection({
   catalogSlug,
   items,
   onSelectionChange,
+  onOptimisticReorder,
   children,
 }: CanvasWithSelectionProps) {
+  const router = useRouter();
   const [selectedItemId, setSelectedItemIdState] = React.useState<
     string | null
   >(null);
@@ -200,9 +226,27 @@ export function CanvasWithSelection({
   );
 
   // Drag-end handler. dnd-kit fires this with the over-target's data on
-  // a successful drop. We translate that into a reorderItems RPC call.
+  // a successful drop.
+  //
+  // Optimistic flow (KRA-35 Iter 2 follow-up):
+  //   1. Compute new positions + cross-category target from the drop.
+  //   2. Inside startTransition: dispatch onOptimisticReorder so the parent's
+  //      useOptimistic state immediately reflects the new order. UI re-
+  //      renders synchronously — no snap-back.
+  //   3. Inside the same transition: await reorderItems server action.
+  //      React keeps the optimistic state visible for the duration.
+  //   4. On success: router.refresh() re-fetches the RSC data with the new
+  //      canonical order. The optimistic state syncs to the refreshed prop
+  //      seamlessly (same order, no visual change).
+  //   5. On failure: toast.error + return. The transition completes without
+  //      a parent prop change, so React auto-reverts the optimistic state
+  //      to the original `items` prop. Merchant sees the row snap back +
+  //      a clear error.
+  //
+  // If no onOptimisticReorder is provided we fall back to the legacy
+  // "wait for refresh" flow (used in tests or non-canvas contexts).
   const handleDragEnd = React.useCallback(
-    async (event: DragEndEvent) => {
+    (event: DragEndEvent) => {
       const { active, over } = event;
       if (!over || active.id === over.id) {
         // Dropped on itself or outside any droppable. No-op.
@@ -249,19 +293,42 @@ export function CanvasWithSelection({
           : {}),
       }));
 
-      const result = await reorderItems({
-        catalogId,
-        catalogSlug,
-        changes,
-      });
+      const action: OptimisticReorderAction = {
+        activeId: String(active.id),
+        overId: String(over.id),
+        newCategoryId: crossCategory,
+      };
 
-      if (!result.ok) {
-        // Surface error via console for now — PR 3 will wire to Sonner toast
-        // alongside the rest of the autosave UX.
-        console.error("[CanvasWithSelection] reorderItems failed:", result.error);
-      }
+      // Wrap the optimistic dispatch + async server call in a single
+      // transition. React renders the optimistic state for the entire
+      // duration; once the transition resolves the optimistic state
+      // syncs to the latest props (success: refreshed RSC data; failure:
+      // unchanged original items).
+      React.startTransition(async () => {
+        onOptimisticReorder?.(action);
+
+        const result = await reorderItems({
+          catalogId,
+          catalogSlug,
+          changes,
+        });
+
+        if (!result.ok) {
+          console.error(
+            "[CanvasWithSelection] reorderItems failed:",
+            result.error,
+          );
+          toast.error(result.error ?? "Couldn't save the new order.");
+          return;
+        }
+
+        // Refresh RSC so the items prop catches up with the canonical
+        // (now persisted) order. useOptimistic resolves the transition
+        // against the new prop value seamlessly.
+        router.refresh();
+      });
     },
-    [items, catalogId, catalogSlug],
+    [items, catalogId, catalogSlug, onOptimisticReorder, router],
   );
 
   const selectionValue = React.useMemo(

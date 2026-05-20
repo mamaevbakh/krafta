@@ -74,6 +74,17 @@ type ItemMedia = {
   is_primary: boolean;
 };
 
+/** Optimistic reorder action shape. Used by useOptimistic in this file
+ *  and by CanvasWithSelection's drag-end handler. Kept here to avoid a
+ *  shared types file for a single 3-field type. */
+export type OptimisticReorderAction = {
+  activeId: string;
+  overId: string;
+  /** Set when the drag crosses a category boundary. Undefined for
+   *  intra-category reorders. */
+  newCategoryId?: string;
+};
+
 export type LibraryCanvasProps = {
   catalogId: string;
   catalogSlug: string;
@@ -103,6 +114,37 @@ export function LibraryCanvas({
 }: LibraryCanvasProps) {
   const [itemDialogOpen, setItemDialogOpen] = React.useState(false);
 
+  // Optimistic reorder state (React 19 useOptimistic + startTransition).
+  // Why: dnd-kit's onDragEnd previously did `reorderItems` server action +
+  // `router.refresh()`. The visual snap-back during the round-trip felt
+  // janky (~400-800ms of delay). With useOptimistic, the local state
+  // updates synchronously when the drag completes; if the server call
+  // succeeds the optimistic order matches the refreshed RSC data, if it
+  // fails React auto-reverts to `items` (the prop). See
+  // canvas-with-selection.tsx for the dispatcher call inside the drag-end
+  // handler.
+  const [optimisticItems, applyOptimisticReorder] = React.useOptimistic(
+    items,
+    (state: Item[], action: OptimisticReorderAction): Item[] => {
+      const sorted = [...state].sort((a, b) => a.position - b.position);
+      const activeIdx = sorted.findIndex((i) => i.id === action.activeId);
+      const overIdx = sorted.findIndex((i) => i.id === action.overId);
+      if (activeIdx < 0 || overIdx < 0) return state;
+      const [moved] = sorted.splice(activeIdx, 1);
+      sorted.splice(overIdx, 0, moved);
+      // Re-stamp positions to match what reorderItems will write to the DB.
+      // Cross-category: only the dragged item gets its category_id changed.
+      return sorted.map((item, idx) => ({
+        ...item,
+        position: idx,
+        category_id:
+          item.id === action.activeId && action.newCategoryId
+            ? action.newCategoryId
+            : item.category_id,
+      }));
+    },
+  );
+
   // Group items by category id for per-section rendering. Categories
   // without items still render (their inline empty hint shows). Items
   // whose category_id is missing or no longer matches a category are
@@ -113,13 +155,16 @@ export function LibraryCanvas({
     [categories],
   );
 
+  // NOTE: bucketing uses `optimisticItems`, NOT the raw `items` prop. This
+  // is the key piece that makes drag feedback feel instant — the rendered
+  // category sections see the moved item in its new bucket synchronously.
   const itemsByCategory = React.useMemo(() => {
     const map = new Map<string, Item[]>();
     for (const cat of sortedCategories) {
       map.set(cat.id, []);
     }
     const orphans: Item[] = [];
-    for (const item of items) {
+    for (const item of optimisticItems) {
       const bucket = map.get(item.category_id);
       if (bucket) {
         bucket.push(item);
@@ -128,7 +173,7 @@ export function LibraryCanvas({
       }
     }
     return { map, orphans };
-  }, [items, sortedCategories]);
+  }, [optimisticItems, sortedCategories]);
 
   // Header: page title + "Add item" button. Same chrome the legacy
   // ItemsPanel shipped (`items-panel.tsx:113-127` for reference) —
@@ -158,7 +203,8 @@ export function LibraryCanvas({
         <CanvasWithSelection
           catalogId={catalogId}
           catalogSlug={catalogSlug}
-          items={items}
+          items={optimisticItems}
+          onOptimisticReorder={applyOptimisticReorder}
         >
           <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
             {/* Category rail (KRA-35 Iter 2 / T3). Subordinate inset, no
@@ -171,7 +217,7 @@ export function LibraryCanvas({
             {/* Canvas column. flex-1 so it expands. EditorSheet portals
                 via shadcn Sheet/Drawer — doesn't live in this flex row. */}
             <div className="flex-1 min-w-0">
-              {items.length === 0 ? (
+              {optimisticItems.length === 0 ? (
                 <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
               ) : (
                 <div className="flex flex-col gap-8">
@@ -214,9 +260,11 @@ export function LibraryCanvas({
               calls useCanvasSelection (selectedItemId + pulseItem). Sheet
               portals to <body> for actual DOM rendering — placement
               inside the provider only affects context lookup, not the
-              visual stacking. */}
+              visual stacking. Receives optimisticItems so a just-dragged
+              item's selection reflects its new category_id without
+              waiting for router.refresh. */}
           <EditorSheet
-            items={items}
+            items={optimisticItems}
             categories={sortedCategories}
             media={media}
             translations={translations}
