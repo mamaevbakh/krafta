@@ -23,6 +23,8 @@ export function CatalogHeaderCenter({
             src={logoUrl}
             alt={`${catalogName} logo`}
             fill
+            sizes="48px"
+            priority
             className="object-cover"
           />
         </div>

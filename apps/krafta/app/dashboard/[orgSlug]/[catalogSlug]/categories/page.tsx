@@ -1,86 +1,27 @@
-import { createClient } from "@/lib/supabase/server";
-import type { CatalogCategory } from "@/lib/catalogs/types";
-import { CategoriesPanel } from "./_components/categories-panel";
+// app/dashboard/[orgSlug]/[catalogSlug]/categories/page.tsx
+//
+// 308 permanent redirect to /dashboard/[org]/[catalog]/items/categories
+// per ADR 0002 §4.2 (Categories migrates under Items). The Categories page
+// itself — UI, server actions, components — moved unchanged to
+// `../items/categories/`. This redirect preserves merchants' existing
+// bookmarks and the in-app top-nav for one release while the rest of the
+// dashboard catches up.
+//
+// Per the ADR's "Old URLs redirect, no 404s" acceptance criterion.
+//
+// Lives only in PR 1 of KRA-35; can be deleted in a future release once
+// the redirect's expected lifetime (one release) has passed and metrics
+// confirm no remaining traffic. Not tied to a feature flag.
+
+import { permanentRedirect } from "next/navigation";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
 };
 
-export default async function DashboardCategoriesPage({ params }: PageProps) {
-  const { catalogSlug } = await params;
-
-  const supabase = await createClient();
-
-  const { data: catalog } = await supabase
-    .from("catalogs")
-    .select("id")
-    .eq("slug", catalogSlug)
-    .maybeSingle();
-
-  let categories: CatalogCategory[] = [];
-  let locales: {
-    id: string;
-    locale: string;
-    is_default: boolean;
-    is_enabled: boolean;
-    sort_order: number;
-  }[] = [];
-  let translations: {
-    id: string;
-    category_id: string;
-    locale: string;
-    name: string;
-    description: string | null;
-  }[] = [];
-  if (catalog?.id) {
-    const { data } = await supabase
-      .from("catalog_categories")
-      .select("id, catalog_id, name, slug, position, is_active, created_at")
-      .eq("catalog_id", catalog.id)
-      .order("position", { ascending: true });
-
-    categories = (data ?? []) as CatalogCategory[];
-
-    const { data: localeData } = await supabase
-      .from("catalog_locales")
-      .select("id, locale, is_default, is_enabled, sort_order")
-      .eq("catalog_id", catalog.id)
-      .order("sort_order", { ascending: true });
-
-    locales = localeData ?? [];
-
-    if (categories.length) {
-      const { data: translationData } = await supabase
-        .from("catalog_category_translations")
-        .select("id, category_id, locale, name, description")
-        .in(
-          "category_id",
-          categories.map((category) => category.id),
-        );
-
-      translations = translationData ?? [];
-    }
-  }
-
-  if (!catalog?.id) {
-    return (
-      <main className="w-full">
-        <div className="mx-auto max-w-312 px-6 py-8">
-          <p className="text-sm text-muted-foreground">
-            Catalog not found.
-          </p>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <CategoriesPanel
-      catalogId={catalog.id}
-      catalogSlug={catalogSlug}
-      categories={categories}
-      locales={locales}
-      translations={translations}
-    />
-  );
+export default async function CategoriesLegacyRedirectPage({
+  params,
+}: PageProps) {
+  const { orgSlug, catalogSlug } = await params;
+  permanentRedirect(`/dashboard/${orgSlug}/${catalogSlug}/items/categories`);
 }

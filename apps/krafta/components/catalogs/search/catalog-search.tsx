@@ -483,6 +483,7 @@ export function CatalogSearch({
                               src={imageUrl}
                               alt={match.item.image_alt ?? match.item.name}
                               fill
+                              sizes="48px"
                               className="object-cover"
                             />
                           ) : null}

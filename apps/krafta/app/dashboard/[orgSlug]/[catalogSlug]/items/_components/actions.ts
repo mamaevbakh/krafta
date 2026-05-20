@@ -147,7 +147,6 @@ export async function createItem(params: {
       product_type: productType,
       name: baseName,
       slug,
-      price_cents: params.priceCents,
       description: params.description ?? null,
       image_alt: params.imageAlt ?? null,
       position,
@@ -157,6 +156,27 @@ export async function createItem(params: {
 
   if (itemError || !item) {
     return { ok: false, error: itemError?.message ?? "Failed to create item." };
+  }
+
+  // Price now lives on the default item_variations row (Migration 1, ADR
+  // 0001 §3.1). Every item must have exactly one default variation; the
+  // partial unique index enforces uniqueness, the app enforces existence.
+  const { error: variationError } = await supabase
+    .from("item_variations")
+    .insert({
+      item_id: item.id,
+      catalog_id: params.catalogId,
+      name: "Default",
+      price_cents: params.priceCents,
+      is_default: true,
+      ordinal: 0,
+    });
+
+  if (variationError) {
+    return {
+      ok: false,
+      error: variationError.message ?? "Failed to create default variation.",
+    };
   }
 
   const translations = params.translations
@@ -253,7 +273,6 @@ export async function updateItem(params: {
       slug,
       category_id: params.categoryId,
       product_type: productType,
-      price_cents: params.priceCents,
       description: params.description ?? null,
       image_alt: params.imageAlt ?? null,
     })
@@ -261,6 +280,19 @@ export async function updateItem(params: {
 
   if (itemError) {
     return { ok: false, error: itemError.message };
+  }
+
+  // Update price on the default item_variations row (Migration 1, ADR 0001
+  // §3.1). Items created before Migration 1 had a Default variation
+  // backfilled, so this UPDATE always finds a row.
+  const { error: variationError } = await supabase
+    .from("item_variations")
+    .update({ price_cents: params.priceCents })
+    .eq("item_id", params.itemId)
+    .eq("is_default", true);
+
+  if (variationError) {
+    return { ok: false, error: variationError.message };
   }
 
   const translations = params.translations
@@ -541,3 +573,314 @@ export async function deleteItem(params: {
 
   return { ok: true };
 }
+
+// ============================================================================
+// KRA-35 PR1 — Library Foundation: reorder + duplicate
+// ============================================================================
+//
+// Thin wrappers around two Postgres RPCs introduced by migration
+// 20260520040000_kra35_items_reorder_duplicate_rpcs.sql. Both functions are
+// SECURITY INVOKER (default), so RLS gates which catalogs the caller can
+// touch — these wrappers don't add a separate membership check.
+//
+// Why RPC and not a Promise.all of .update() calls: PostgREST has no
+// cross-request transaction surface. A half-applied reorder leaves
+// positions inconsistent (two items at position 3, gaps elsewhere) with
+// no clean recovery — exactly the irreversible bug class D11 carves out
+// safety against. Going through a function buys atomic semantics for
+// effectively free (no test infra needed; one Postgres trip vs N).
+//
+// These actions ship in PR 1 (Foundation) with NO consumer — the Library
+// Canvas (PR 2) wires drag-drop → reorderItems, and the Inspector (PR 2)
+// wires duplicate → duplicateItem. Landing the actions isolated lets the
+// migration get reviewed on its own merit before the canvas stacks on top.
+
+export type ReorderItemsChange = {
+  /** Item id to update. */
+  id: string;
+  /** New position within the (possibly new) category. */
+  position: number;
+  /** Set ONLY on cross-category drag. Omitted means category_id is
+   *  unchanged. */
+  category_id?: string;
+};
+
+/**
+ * reorderItems — atomic batched reorder of items within a catalog.
+ *
+ * Calls the `public.reorder_items(p_catalog_id, p_changes)` RPC. The
+ * function runs each UPDATE inside a single Postgres transaction; if
+ * any row fails RLS, the whole call rolls back. The `bump_version`
+ * trigger fires per row (BEFORE UPDATE FOR EACH ROW per KRA-54 §1) —
+ * a 30-item batch produces 30 version bumps, which is the schema's
+ * intentional behavior.
+ *
+ * Used by the Library Canvas's dnd-kit drop handler (desktop) and the
+ * mobile long-press + arrow-button reorder UI (PR 2). Cross-category
+ * drag passes the new category_id; same-category reorder omits it.
+ */
+export async function reorderItems(params: {
+  catalogId: string;
+  catalogSlug: string;
+  changes: ReorderItemsChange[];
+}) {
+  if (!params.changes.length) {
+    // No-op: nothing to reorder. Caller may filter empties before
+    // calling; this is defensive.
+    return { ok: true } as const;
+  }
+
+  const supabase = await createClient();
+
+  // The RPC accepts jsonb; we pass the array as-is and Postgres validates
+  // the shape per element ({ id, position, category_id? }). The Json
+  // serializer accepts our ReorderItemsChange[] structurally.
+  const { error } = await supabase.rpc("reorder_items", {
+    p_catalog_id: params.catalogId,
+    p_changes: params.changes as unknown as Database["public"]["Functions"]["reorder_items"]["Args"]["p_changes"],
+  });
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+
+/**
+ * duplicateItem — atomic deep clone of an item.
+ *
+ * Calls the `public.duplicate_item(p_catalog_id, p_item_id)` RPC. The
+ * function clones the items row + item_variations + item_modifier_lists
+ * + item_translations + item_media rows in a single transaction. Default-
+ * locale name gets a " (copy)" suffix; non-default translations clone
+ * verbatim. Slug is uniquified with "-copy", "-copy-2", … to avoid
+ * collisions with prior duplicates. Returns the new item_id so the
+ * caller can scroll-to / select the clone in the Library Canvas.
+ *
+ * Media storage_path is SHARED between source and clone — no actual
+ * file duplication, the Supabase Storage object is referenced by both
+ * item_media rows. The existing `cleanupMediaStorage` helper removes
+ * the file only when no remaining row references it (current behavior;
+ * deletion of one item leaves files alone if other items still
+ * reference them).
+ */
+export async function duplicateItem(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+}) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("duplicate_item", {
+    p_catalog_id: params.catalogId,
+    p_item_id: params.itemId,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  // The RPC returns the new item's uuid as a string (Supabase serializes
+  // uuid as string).
+  const newItemId = typeof data === "string" ? data : null;
+  if (!newItemId) {
+    return {
+      ok: false,
+      error: "duplicate_item returned no new item id",
+    } as const;
+  }
+
+  // Sync search docs for the clone so it appears in search immediately.
+  // The RPC clones translations but search indexing happens app-side
+  // (syncItemSearchDocuments reads items + translations and upserts the
+  // search row).
+  await syncItemSearchDocuments({ itemId: newItemId, client: supabase });
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true, itemId: newItemId } as const;
+}
+
+// ============================================================================
+// KRA-35 PR3 — Inspector status toggle
+// ============================================================================
+//
+// Lightweight wrapper updating ONLY `items.is_active`. Used by the Inspector's
+// Status section to flip active/archived without paying the full updateItem
+// round-trip (which insists on a complete payload of name, slug, category,
+// price, translations, etc.). The Switch primitive's onCheckedChange callback
+// can call this directly.
+//
+// RLS gates writes the same way updateItem does. No new policy needed.
+
+export async function setItemActive(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+  isActive: boolean;
+}) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("items")
+    .update({ is_active: params.isActive })
+    .eq("id", params.itemId)
+    .eq("catalog_id", params.catalogId);
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+
+// ============================================================================
+// KRA-35 PR3 — Inline field update (locale-aware)
+// ============================================================================
+//
+// Lightweight per-field update that flows through the routeLocaleWrite()
+// router from lib/catalogs/i18n.ts. Used by InlineText / InlineCurrency
+// inside EditableItemCard so a single-field edit (name in UZ, price, etc.)
+// doesn't have to reconstruct the full updateItem payload.
+//
+// The caller passes the active locale + the catalog's default locale. The
+// router decides whether to write `items.<column>` (default locale) or
+// `item_translations.<column>` for that (item_id, locale).
+//
+// For `price_cents` the router doesn't apply — price always lives on the
+// default item_variations row regardless of locale (UZS values are not
+// translated). A separate updateDefaultVariationPrice handler stays simple.
+
+import {
+  routeLocaleWrite,
+  type LocaleWriteTarget,
+} from "@/lib/catalogs/i18n";
+
+export async function updateItemField(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+  activeLocale: string;
+  defaultLocale: string;
+  field: "name" | "description" | "image_alt";
+  value: string | null;
+  /** The item's CURRENT canonical name (from items.name) — needed when
+   *  upserting to item_translations because that table requires `name`
+   *  NOT NULL and the merchant may be editing description/image_alt in
+   *  a non-default locale that doesn't have a translation row yet. We
+   *  use this as the fallback name on first insert so a description-only
+   *  edit doesn't fail the NOT NULL constraint. */
+  fallbackName: string;
+}) {
+  const target: LocaleWriteTarget = routeLocaleWrite({
+    activeLocale: params.activeLocale,
+    defaultLocale: params.defaultLocale,
+    field: params.field,
+    value: params.value,
+  });
+
+  const supabase = await createClient();
+
+  if (target.kind === "items") {
+    const { error } = await supabase
+      .from("items")
+      .update({ [target.column]: target.value })
+      .eq("id", params.itemId)
+      .eq("catalog_id", params.catalogId);
+
+    if (error) {
+      return { ok: false, error: error.message } as const;
+    }
+  } else {
+    // Upsert into item_translations on (item_id, locale) conflict.
+    // Build the payload: always include name (NOT NULL constraint),
+    // and the target column with its new value. If the merchant is
+    // editing name itself, the target column IS name and overrides
+    // the fallback.
+    const payload: {
+      item_id: string;
+      locale: string;
+      name: string;
+      description?: string | null;
+      image_alt?: string | null;
+    } = {
+      item_id: params.itemId,
+      locale: target.locale,
+      name: params.fallbackName,
+    };
+
+    if (target.column === "name") {
+      payload.name = params.value ?? params.fallbackName;
+    } else if (target.column === "description") {
+      payload.description = params.value;
+    } else if (target.column === "image_alt") {
+      payload.image_alt = params.value;
+    }
+
+    const { error } = await supabase
+      .from("item_translations")
+      .upsert(payload, { onConflict: "item_id,locale" });
+
+    if (error) {
+      return { ok: false, error: error.message } as const;
+    }
+  }
+
+  // Search index needs a refresh on name/description changes regardless of
+  // which table the write landed in.
+  if (params.field === "name" || params.field === "description") {
+    await syncItemSearchDocuments({
+      itemId: params.itemId,
+      client: supabase,
+    });
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+
+export async function updateDefaultVariationPrice(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+  priceCents: number;
+}) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("item_variations")
+    .update({ price_cents: params.priceCents })
+    .eq("item_id", params.itemId)
+    .eq("catalog_id", params.catalogId)
+    .eq("is_default", true);
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+

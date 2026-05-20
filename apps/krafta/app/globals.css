@@ -156,3 +156,25 @@
   background: oklch(1 0 0);
   color: oklch(0% 0 0);
 }
+
+/*
+ * KRA-35 Iter 2 / T4 — post-duplicate row pulse animation.
+ *
+ * Single-iteration flash that fades from bg-accent down to transparent
+ * over 1.2s ease-out. Applied to a LibraryRow when CanvasSelectionContext's
+ * pulsingItemId matches the row's item id. Per DESIGN.md motion budget:
+ * functional motion (orient the eye to where the new clone landed), not
+ * decorative loop.
+ */
+@keyframes krafta-row-flash {
+  0% {
+    background-color: var(--accent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-row-flash {
+  animation: krafta-row-flash 1200ms ease-out;
+}

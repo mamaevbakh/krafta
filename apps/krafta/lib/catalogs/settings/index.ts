@@ -9,16 +9,22 @@ import {
   defaultCurrencySettings,
   normalizeCurrencySettings,
 } from "./currency";
+import {
+  type CatalogBehaviorSettings,
+  defaultBehaviorSettings,
+  normalizeBehaviorSettings,
+} from "./behavior";
 
 export type CatalogSettingsSource = Pick<
   Tables<"catalogs">,
-  "settings_layout" | "settings_currency"
+  "settings_layout" | "settings_currency" | "settings_behavior"
 >;
 
 export type CatalogSettings = {
   layout: CatalogLayoutSettings;
   currency: CurrencySettings;
-  // later: branding, i18n, behavior
+  behavior: CatalogBehaviorSettings;
+  // later: branding, i18n
 };
 
 export function normalizeCatalogSettings(
@@ -34,6 +40,11 @@ export function normalizeCatalogSettings(
     catalog.settings_currency !== null
       ? (catalog.settings_currency as Record<string, unknown>)
       : {};
+  const rawBehavior =
+    typeof catalog.settings_behavior === "object" &&
+    catalog.settings_behavior !== null
+      ? (catalog.settings_behavior as Record<string, unknown>)
+      : {};
 
   return {
     layout: normalizeLayoutSettings({
@@ -43,6 +54,10 @@ export function normalizeCatalogSettings(
     currency: normalizeCurrencySettings({
       ...defaultCurrencySettings,
       ...rawCurrency,
+    }),
+    behavior: normalizeBehaviorSettings({
+      ...defaultBehaviorSettings,
+      ...rawBehavior,
     }),
   };
 }

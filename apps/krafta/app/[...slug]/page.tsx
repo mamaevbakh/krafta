@@ -2,7 +2,12 @@
 import type { JSX } from "react";
 import { notFound } from "next/navigation";
 
-import { getCatalogBySlug, getCatalogStructure } from "@/lib/catalogs/data";
+import {
+  getCatalogBySlug,
+  getCatalogStructure,
+  getCatalogTaxes,
+  getVenueByCatalogId,
+} from "@/lib/catalogs/data";
 import { CatalogLayout } from "@/lib/catalogs/layout";
 
 type CatalogRouteParams = {
@@ -36,12 +41,18 @@ async function CatalogPageContent({
   const catalog = await getCatalogBySlug(catalogSlug);
   if (!catalog) notFound();
 
-  const categoriesWithItems = await getCatalogStructure(catalog.id);
+  const [categoriesWithItems, venue, taxes] = await Promise.all([
+    getCatalogStructure(catalog.id),
+    getVenueByCatalogId(catalog.id),
+    getCatalogTaxes(catalog.id),
+  ]);
 
   return (
     <CatalogLayout
       catalog={catalog}
       categoriesWithItems={categoriesWithItems}
+      venue={venue}
+      taxes={taxes}
       activeCategorySlug={activeCategorySlug}
       activeItemSlug={activeItemSlug}
       baseHref={`/${catalog.slug}`}

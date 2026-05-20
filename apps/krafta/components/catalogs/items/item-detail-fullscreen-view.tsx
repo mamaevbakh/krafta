@@ -3,11 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Share2, XIcon } from "lucide-react";
+import { useCallback, useState } from "react";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { ItemDetailProps } from "@/lib/catalogs/layout-registry";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
+import { AddToCartButton, useOptionalCart } from "@/components/catalogs/cart";
+import {
+  ModifierPicker,
+  type ModifierPickerChange,
+} from "@/components/catalogs/items/modifier-picker";
 
 export function ItemDetailFullscreen({
   item,
@@ -19,6 +25,21 @@ export function ItemDetailFullscreen({
   currencySettings,
 }: ItemDetailProps) {
   const ratio = itemAspectRatio ?? 4 / 5;
+  const cart = useOptionalCart();
+  // Picker state is owned here so AddToCartButton can read selections +
+  // validity. Items with no visible modifier lists short-circuit to
+  // isValid=true and no selections — the picker won't render either.
+  const hasVisibleModifierLists = item.modifier_lists.some(
+    (list) => !list.hidden_from_customer,
+  );
+  const [pickerState, setPickerState] = useState<ModifierPickerChange>({
+    selections: [],
+    isValid: !hasVisibleModifierLists,
+  });
+  const handlePickerChange = useCallback(
+    (change: ModifierPickerChange) => setPickerState(change),
+    [],
+  );
   const handleShare = async () => {
     if (typeof window === "undefined") return;
 
@@ -63,6 +84,7 @@ export function ItemDetailFullscreen({
               src={imageUrl}
               alt={item.image_alt ?? item.name}
               fill
+              sizes="(max-width: 640px) 100vw, 480px"
               className="h-full w-full object-cover"
             />
           </AspectRatio>
@@ -129,11 +151,29 @@ export function ItemDetailFullscreen({
           </p>
         </div>
 
+        {cart && hasVisibleModifierLists ? (
+          <div className="mt-6">
+            <ModifierPicker
+              modifierLists={item.modifier_lists}
+              onChange={handlePickerChange}
+              formatPrice={(cents) => formatPriceCents(cents, currencySettings)}
+            />
+          </div>
+        ) : null}
+
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-10 w-full border-t border-border/60 bg-background/95 backdrop-blur md:sticky">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-5 py-4">
-          {onClose ? (
+          {cart ? (
+            <AddToCartButton
+              itemId={item.id}
+              itemName={item.name}
+              basePriceCents={item.price_cents}
+              modifiers={pickerState.selections}
+              disabled={!pickerState.isValid}
+            />
+          ) : onClose ? (
             <Button
               type="button"
               variant="outline"

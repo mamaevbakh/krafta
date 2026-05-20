@@ -20,6 +20,18 @@ import {
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
 import { cn } from "@/lib/utils";
 import { updateCatalogSettings } from "./actions";
+import { VenueForm } from "./venue-form";
+
+type VenueRow = {
+  name: string;
+  status: "active" | "paused" | "archived";
+  modes_enabled: string[];
+  business_hours: unknown;
+  currency: string;
+  timezone: string;
+  language_code: string;
+  address: unknown;
+};
 
 type SettingsPanelProps = {
   catalogId: string;
@@ -29,6 +41,7 @@ type SettingsPanelProps = {
   description: string;
   tags: string[];
   logoPath: string;
+  venue: VenueRow | null;
 };
 
 function normalizeTag(value: string) {
@@ -60,8 +73,9 @@ export function SettingsPanel({
   description,
   tags,
   logoPath,
+  venue,
 }: SettingsPanelProps) {
-  const [activeTab, setActiveTab] = React.useState("catalog");
+  const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
   const [catalogDescription, setCatalogDescription] =
     React.useState(description);
@@ -211,6 +225,7 @@ export function SettingsPanel({
           <aside className="lg:w-56">
             <div className="space-y-1">
               {[
+                { id: "venue", label: "Venue" },
                 { id: "catalog", label: "Catalog" },
                 { id: "account", label: "Account" },
                 { id: "organization", label: "Organization" },
@@ -234,7 +249,19 @@ export function SettingsPanel({
 
           <section className="flex-1">
             <div className="rounded-xl border border-border bg-card p-6">
-              {activeTab !== "catalog" ? (
+              {activeTab === "venue" ? (
+                venue ? (
+                  <VenueForm
+                    catalogId={catalogId}
+                    catalogSlug={catalogSlug}
+                    venue={venue}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                    Venue row not found for this catalog. Contact support.
+                  </div>
+                )
+              ) : activeTab !== "catalog" ? (
                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                   {activeTab === "account"
                     ? "Account settings are coming soon."

@@ -20,6 +20,7 @@ export function GlassBlurCard({
               src={imageUrl}
               alt={item.image_alt ?? item.name}
               fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
               className="h-full w-full object-cover"
             />
           </AspectRatio>

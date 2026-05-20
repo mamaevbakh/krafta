@@ -1,6 +1,11 @@
 // lib/catalogs/layout.tsx
 
-import type { PublicCatalog, PublicCategoryWithItems } from "@/lib/catalogs/types";
+import type {
+  PublicCatalog,
+  PublicCategoryWithItems,
+  PublicTax,
+} from "@/lib/catalogs/types";
+import type { PublicVenue } from "@/lib/catalogs/data";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import {
   normalizeLayoutSettings,
@@ -17,10 +22,17 @@ import {
   ItemSheetTrigger,
 } from "@/components/catalogs/items/item-detail-controller";
 import { CatalogSearchLazy } from "@/components/catalogs/search/catalog-search-lazy";
+import {
+  CartDrawer,
+  CartProvider,
+  CartTrigger,
+} from "@/components/catalogs/cart";
 
 type Props = {
   catalog: PublicCatalog;
   categoriesWithItems: PublicCategoryWithItems[];
+  venue?: PublicVenue | null;
+  taxes?: PublicTax[];
   activeCategorySlug?: string | null;
   activeItemSlug?: string | null;
   baseHref?: string;
@@ -46,6 +58,8 @@ function getItemGridColsClass(columns: number): string {
 export function CatalogLayout({
   catalog,
   categoriesWithItems,
+  venue = null,
+  taxes = [],
   activeCategorySlug = null,
   activeItemSlug = null,
   baseHref,
@@ -54,7 +68,7 @@ export function CatalogLayout({
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
-  const { layout, currency } = normalizeCatalogSettings(catalog);
+  const { layout, currency, behavior } = normalizeCatalogSettings(catalog);
   const resolvedLayout = layoutOverride
     ? normalizeLayoutSettings({
         ...layout,
@@ -101,7 +115,7 @@ export function CatalogLayout({
   const activeCategoryId = activeCategory?.id ?? null;
   const activeCategorySlugResolved = activeCategory?.slug ?? null;
 
-  return (
+  const tree = (
     <ItemSheetProvider
       key={`${activeCategorySlugResolved ?? "none"}:${activeItemSlug ?? "none"}`}
       categoriesWithItems={categoriesWithItems}
@@ -182,5 +196,53 @@ export function CatalogLayout({
         currencySettings={resolvedCurrency}
       />
     </ItemSheetProvider>
+  );
+
+  // Cart UI is opt-in per catalog via settings_behavior.enableCart, and only
+  // renders when we have a venue (always true post-Migration 2, but the null
+  // path guards against catalogs created outside the normal flow).
+  if (!venue || !behavior.enableCart) return tree;
+
+  // Paused / archived venues: customer can still browse the menu, but no
+  // cart UI renders. Surface a banner so the missing Add-to-cart buttons
+  // are not mysterious.
+  if (venue.status !== "active") {
+    return (
+      <>
+        <NotAcceptingOrdersBanner />
+        {tree}
+      </>
+    );
+  }
+
+  // Constrain to the modes our checkout flow understands, preserving the
+  // venue's ordering. The DB CHECK constraint on venues already restricts
+  // to this set; this filter is a defense-in-depth.
+  const allowedModes = ["dine_in", "pickup", "delivery"] as const;
+  const venueModes = venue.modes_enabled.filter(
+    (mode): mode is (typeof allowedModes)[number] =>
+      (allowedModes as readonly string[]).includes(mode),
+  );
+
+  return (
+    <CartProvider
+      orgId={venue.org_id}
+      venueId={venue.id}
+      catalogPath={hrefBase}
+      modes={venueModes}
+      taxes={taxes}
+    >
+      {tree}
+      <CartTrigger />
+      <CartDrawer currencySettings={resolvedCurrency} />
+    </CartProvider>
+  );
+}
+
+function NotAcceptingOrdersBanner() {
+  return (
+    <div className="sticky top-0 z-40 border-b border-border bg-muted/80 px-4 py-2 text-center text-xs font-medium text-muted-foreground backdrop-blur">
+      Not accepting orders right now
+    </div>
   );
 }

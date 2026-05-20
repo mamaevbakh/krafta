@@ -57,6 +57,7 @@ export function DataTable<TData, TValue>({
   enableStatusTabs = false,
   statusColumnId = "is_active",
   searchPlaceholder = "Search...",
+  searchColumnId = "name",
   onRowClick,
 }: {
   columns: ColumnDef<TData, TValue>[]
@@ -65,6 +66,8 @@ export function DataTable<TData, TValue>({
   enableStatusTabs?: boolean
   statusColumnId?: string
   searchPlaceholder?: string
+  /** Column the search input filters against. Pass `null` to hide the search box. */
+  searchColumnId?: string | null
   onRowClick?: (row: TData) => void
 }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -159,19 +162,25 @@ export function DataTable<TData, TValue>({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder={searchPlaceholder}
-              value={
-                (table.getColumn("name")?.getFilterValue() as string) ?? ""
-              }
-              onChange={(event) =>
-                table.getColumn("name")?.setFilterValue(event.target.value)
-              }
-              className="w-[220px] pl-9"
-            />
-          </div>
+          {searchColumnId ? (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={searchPlaceholder}
+                value={
+                  (table.getColumn(searchColumnId)?.getFilterValue() as
+                    | string
+                    | undefined) ?? ""
+                }
+                onChange={(event) =>
+                  table
+                    .getColumn(searchColumnId)
+                    ?.setFilterValue(event.target.value)
+                }
+                className="w-[220px] pl-9"
+              />
+            </div>
+          ) : null}
           <div className="text-xs text-muted-foreground">
             {selectedCount > 0
               ? `${selectedCount} selected`
