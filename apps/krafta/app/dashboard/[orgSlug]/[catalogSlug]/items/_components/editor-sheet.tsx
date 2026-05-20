@@ -360,8 +360,7 @@ function EditorForm({
     useVariationsState(item.variations);
 
   const isDefaultLocaleEditable = activeLocale === defaultLocale;
-  const survivingVariationsCount = variationsState.survivingRows.length;
-  const hasMultipleVariations = survivingVariationsCount >= 2;
+  const hasMultipleVariations = variationsState.local.length >= 2;
 
   // Dirty = any field changed from its initial value.
   const isDirty =
