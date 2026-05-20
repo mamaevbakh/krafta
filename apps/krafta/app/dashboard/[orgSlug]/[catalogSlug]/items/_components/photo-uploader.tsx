@@ -1,39 +1,54 @@
 "use client";
 
 /**
- * photo-uploader.tsx — KRA-88 Slice 1.
+ * photo-uploader.tsx — KRA-88 Slice 1 (polished per Supabase docs review).
  *
- * Replaces the read-only Photos grid in the EditorSheet with an
- * editable uploader. Two states:
+ * Replaces the read-only Photos grid in the EditorSheet with an editable
+ * uploader. Two states:
  *
- *   - EMPTY (no photos yet): shadcn Empty component with an ImagePlus
- *     icon, brief copy, and a "Upload photos" button. Click the button
- *     (or the dropzone) → opens the file picker.
+ *   - EMPTY (no photos yet): shadcn Empty + drop-aware dropzone.
+ *   - POPULATED (1+ photos): 3-column grid + trailing "+ Add photo"
+ *     tile. The whole grid container is drop-aware.
  *
- *   - POPULATED (1+ photos): 3-column grid of thumbnails + a trailing
- *     "+ Add photo" tile (dashed border, same aspect ratio) that opens
- *     the same picker. Each tile has a hover overlay with a Delete
- *     action (3-dot menu).
+ * Drag-and-drop (HTML5 native, no library):
+ *   - onDragEnter / onDragOver / onDragLeave / onDrop on the wrapper.
+ *   - preventDefault on dragover (otherwise drop never fires).
+ *   - Drag counter ref counters spurious child-enter/leave events that
+ *     toggle the highlight on every nested element traversal.
  *
- * Upload flow:
- *   1. POST /api/items/media/upload-url with { itemId, orgId, catalogId,
- *      files: [{name, type, size}] }
- *      Returns: signed upload URLs + media ids + storage paths.
- *   2. For each upload, fetch(signedUrl, { method: PUT, body: file }).
- *      Track per-file status (uploading / success / error).
- *   3. POST /api/items/media to register the rows in item_media.
- *   4. router.refresh() to surface the new media in the page-level fetch.
+ * Client-side validation (saves a roundtrip when a file is obviously
+ * bad — invalid MIME or > 10 MB):
+ *   - MIME must be in ACCEPTED_MIME_TYPES.
+ *   - Per-file size ≤ MAX_BYTES (10 MB — Supabase recommends TUS
+ *     resumable upload above 6 MB; we keep the limit comfortable since
+ *     menu photos are small and we don't want to ship the TUS client
+ *     yet).
+ *   - Batch ≤ MAX_FILES_PER_BATCH (10).
  *
- * Slice 2 (separate PR): drag-reorder + primary toggle + per-image alt
- * text. This slice ships upload + display + delete only.
+ * Upload flow (per Supabase Storage docs — signed-upload-url pattern):
+ *   1. POST /api/items/media/upload-url  →  signed PUT URLs + media ids.
+ *   2. PUT each file to its signed URL in parallel. Pass Content-Type
+ *      and a long Cache-Control (menu photos are content-addressed via
+ *      UUID storage paths, so they're effectively immutable; safe to
+ *      cache hard).
+ *   3. POST /api/items/media to register the successful rows.
+ *   4. router.refresh() to surface the new media on the canvas.
+ *
+ * Placeholder tiles: while uploads are in flight, we render greyed
+ * tiles with a spinner inline alongside the existing photos so the
+ * merchant sees per-file progress instead of a single global "Uploading"
+ * spinner. The tiles vanish when router.refresh re-renders with the
+ * new media rows.
  *
  * Failure modes:
- *   - upload-url 4xx/5xx → toast.error, no rows registered
- *   - Storage PUT failure (network) → toast.error per-file, skip
- *     registration for failed uploads
- *   - register POST failure → toast.error, orphan upload exists in
- *     Storage (cleanup via /api/items/media/cleanup periodic job —
- *     out of scope here)
+ *   - upload-url 4xx/5xx → toast.error, no rows registered.
+ *   - Storage PUT failure → toast.error per-file, skip registration for
+ *     failed uploads (successful peers in the same batch still register).
+ *   - register POST failure → toast.error, orphans exist in Storage
+ *     (cleanup via /api/items/media/cleanup periodic job — out of scope).
+ *
+ * Slice 2 (separate PR): dnd-kit drag-reorder + primary toggle in the
+ * 3-dot menu + per-image alt text.
  */
 
 import * as React from "react";
@@ -59,7 +74,76 @@ import {
 } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
 
-const ACCEPTED_MIME = "image/png,image/jpeg,image/webp,image/avif,image/heic,image/heif";
+// ---------------------------------------------------------------------------
+// Validation constants
+// ---------------------------------------------------------------------------
+
+const ACCEPTED_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/avif",
+  "image/heic",
+  "image/heif",
+  "image/gif",
+]);
+
+const ACCEPTED_MIME_ATTR = Array.from(ACCEPTED_MIME_TYPES).join(",");
+
+/** Per-file size ceiling (10 MB). Supabase standard uploads target
+ *  ≤ 6 MB; we allow some headroom but flag anything bigger client-side
+ *  before requesting a signed URL. */
+const MAX_BYTES = 10 * 1024 * 1024;
+
+/** Max files in one drop / select operation. Prevents accidental
+ *  100-file dumps that would saturate the merchant's upstream. */
+const MAX_FILES_PER_BATCH = 10;
+
+/** Cache-Control header sent on the Storage PUT. Storage paths are
+ *  content-addressed via UUID (per upload-url route), so files are
+ *  effectively immutable — a long cache is safe and slashes egress. */
+const CACHE_CONTROL_HEADER = "public, max-age=31536000, immutable";
+
+function humanizeMB(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * validateFiles — splits the dropped/selected list into accepted + a
+ * list of rejection reasons. Rejections fire as individual toasts so
+ * the merchant knows exactly which file failed and why.
+ */
+function validateFiles(input: File[]): {
+  accepted: File[];
+  rejections: Array<{ file: File; reason: string }>;
+} {
+  const accepted: File[] = [];
+  const rejections: Array<{ file: File; reason: string }> = [];
+
+  for (const file of input) {
+    if (!ACCEPTED_MIME_TYPES.has(file.type)) {
+      rejections.push({
+        file,
+        reason: file.type ? `${file.type} isn't supported` : "Unknown file type",
+      });
+      continue;
+    }
+    if (file.size > MAX_BYTES) {
+      rejections.push({
+        file,
+        reason: `Too large (${humanizeMB(file.size)} > ${humanizeMB(MAX_BYTES)})`,
+      });
+      continue;
+    }
+    accepted.push(file);
+  }
+
+  return { accepted, rejections };
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 export type PhotoUploaderMedia = {
   id: string;
@@ -83,7 +167,14 @@ export function PhotoUploader({
 }: PhotoUploaderProps) {
   const router = useRouter();
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-  const [uploading, setUploading] = React.useState(false);
+  /** In-flight upload count → render that many placeholder tiles. */
+  const [uploadingCount, setUploadingCount] = React.useState(0);
+  /** Drag-over highlight state. */
+  const [dragging, setDragging] = React.useState(false);
+  /** Drag counter for nested element traversal. dragenter / dragleave
+   *  fire on every child element transition; counting tells us when
+   *  we've truly left the root. */
+  const dragCounterRef = React.useRef(0);
 
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const mediaWithUrls = React.useMemo(
@@ -97,18 +188,32 @@ export function PhotoUploader({
     [media, baseUrl],
   );
 
-  const openPicker = React.useCallback(() => {
-    if (uploading) return;
-    fileInputRef.current?.click();
-  }, [uploading]);
+  // -----------------------------------------------------------------------
+  // Upload pipeline
+  // -----------------------------------------------------------------------
 
   const handleFiles = React.useCallback(
-    async (fileList: FileList | null) => {
-      if (!fileList || fileList.length === 0) return;
-      const files = Array.from(fileList);
-      setUploading(true);
+    async (incoming: File[]) => {
+      if (incoming.length === 0) return;
+
+      // 1. Client-side validation (saves a roundtrip on obvious rejects).
+      const { accepted, rejections } = validateFiles(incoming);
+      rejections.forEach((r) =>
+        toast.error(`${r.file.name}: ${r.reason}`),
+      );
+      if (accepted.length === 0) return;
+
+      // 2. Batch cap.
+      const files = accepted.slice(0, MAX_FILES_PER_BATCH);
+      if (accepted.length > MAX_FILES_PER_BATCH) {
+        toast.error(
+          `Only the first ${MAX_FILES_PER_BATCH} files were uploaded. Try a smaller batch.`,
+        );
+      }
+
+      setUploadingCount((n) => n + files.length);
       try {
-        // 1. Request signed upload URLs.
+        // 3. Request signed upload URLs.
         const urlResp = await fetch("/api/items/media/upload-url", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -141,17 +246,21 @@ export function PhotoUploader({
           }>;
         };
 
-        // 2. PUT each file to its signed URL. Run in parallel; any
-        //    individual failure becomes a toast — we still register the
-        //    successful ones so the merchant doesn't lose successful
-        //    uploads on a single bad file.
+        // 4. PUT each file to its signed URL. Parallel; individual
+        //    failures toast and don't block successful peers.
+        //    Cache-Control: long-lived (UUID-addressed paths are
+        //    effectively immutable).
         const results = await Promise.all(
           uploads.map(async (upload, idx) => {
             try {
               const file = files[idx];
+              const headers: Record<string, string> = {
+                "cache-control": CACHE_CONTROL_HEADER,
+              };
+              if (file.type) headers["content-type"] = file.type;
               const putResp = await fetch(upload.signedUrl, {
                 method: "PUT",
-                headers: file.type ? { "content-type": file.type } : undefined,
+                headers,
                 body: file,
               });
               if (!putResp.ok) {
@@ -159,7 +268,8 @@ export function PhotoUploader({
               }
               return { ok: true as const, upload };
             } catch (err) {
-              const message = err instanceof Error ? err.message : "Upload failed.";
+              const message =
+                err instanceof Error ? err.message : "Upload failed.";
               toast.error(`${files[idx].name}: ${message}`);
               return { ok: false as const };
             }
@@ -179,11 +289,9 @@ export function PhotoUploader({
             bytes: r.upload.bytes,
           }));
 
-        if (successful.length === 0) {
-          return; // every file failed; per-file toasts already fired
-        }
+        if (successful.length === 0) return;
 
-        // 3. Register the successful uploads in item_media.
+        // 5. Register the successful uploads in item_media.
         const registerResp = await fetch("/api/items/media", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -205,11 +313,8 @@ export function PhotoUploader({
         const message = err instanceof Error ? err.message : "Upload failed.";
         toast.error(message);
       } finally {
-        setUploading(false);
-        // Reset the file input so the same file can be re-selected.
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+        setUploadingCount((n) => Math.max(0, n - files.length));
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
     [itemId, orgId, catalogId, router],
@@ -237,30 +342,98 @@ export function PhotoUploader({
     [itemId, router],
   );
 
-  // Hidden file input — reused by both empty-state and add-tile triggers.
+  // -----------------------------------------------------------------------
+  // Drag-and-drop handlers
+  //
+  // Counter pattern: dragenter on a parent fires when entering ANY child;
+  // dragleave fires when leaving. Naïve toggling flickers. Track a
+  // counter so the highlight goes off only when we've fully left the
+  // root element.
+  // -----------------------------------------------------------------------
+
+  const handleDragEnter = React.useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setDragging(true);
+  }, []);
+
+  const handleDragOver = React.useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    // preventDefault on dragover is what enables drop. Without it,
+    // browsers refuse to fire onDrop on the element.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleDragLeave = React.useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setDragging(false);
+  }, []);
+
+  const handleDrop = React.useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setDragging(false);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) void handleFiles(files);
+    },
+    [handleFiles],
+  );
+
+  const openPicker = React.useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleInputChange = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files ? Array.from(e.target.files) : [];
+      if (files.length > 0) void handleFiles(files);
+    },
+    [handleFiles],
+  );
+
+  // -----------------------------------------------------------------------
+  // Render — hidden input is shared between empty + populated states.
+  // -----------------------------------------------------------------------
+
   const hiddenInput = (
     <input
       ref={fileInputRef}
       type="file"
-      accept={ACCEPTED_MIME}
+      accept={ACCEPTED_MIME_ATTR}
       multiple
       className="hidden"
-      onChange={(e) => void handleFiles(e.target.files)}
+      onChange={handleInputChange}
     />
   );
 
-  if (mediaWithUrls.length === 0) {
+  if (mediaWithUrls.length === 0 && uploadingCount === 0) {
     return (
-      <>
+      <div
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         {hiddenInput}
-        <Empty className="border border-b p-0">
+        <Empty
+          className={cn(
+            "border border-dashed p-6 transition-colors",
+            dragging && "border-primary bg-primary/5",
+          )}
+        >
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ImagePlus />
             </EmptyMedia>
             <EmptyTitle>No photos yet</EmptyTitle>
             <EmptyDescription>
-              Upload photos so customers can see what they're ordering.
+              {dragging
+                ? "Drop to upload"
+                : "Drag photos here, or click to upload. Max 10 files, 10 MB each."}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
@@ -269,21 +442,26 @@ export function PhotoUploader({
               variant="outline"
               size="sm"
               onClick={openPicker}
-              disabled={uploading}
             >
-              {uploading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
-              {uploading ? "Uploading…" : "Upload photos"}
+              Upload photos
             </Button>
           </EmptyContent>
         </Empty>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={cn(
+        "rounded-md transition-colors",
+        dragging && "bg-primary/5 ring-1 ring-primary",
+      )}
+    >
       {hiddenInput}
       <div className="grid grid-cols-3 gap-2">
         {mediaWithUrls.map((m) => (
@@ -294,35 +472,30 @@ export function PhotoUploader({
             onDelete={() => handleDelete(m.id)}
           />
         ))}
+        {Array.from({ length: uploadingCount }).map((_, i) => (
+          <UploadingTile key={`uploading-${i}`} />
+        ))}
         <button
           type="button"
           onClick={openPicker}
-          disabled={uploading}
           aria-label="Add photo"
           className={cn(
             "flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-sm",
             "border border-dashed bg-muted/30 text-muted-foreground transition-colors",
             "hover:bg-muted/50 hover:text-foreground",
             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            "disabled:cursor-not-allowed disabled:opacity-60",
           )}
         >
-          {uploading ? (
-            <Loader2 className="size-5 animate-spin" />
-          ) : (
-            <Plus className="size-5" />
-          )}
-          <span className="text-xs">
-            {uploading ? "Uploading…" : "Add photo"}
-          </span>
+          <Plus className="size-5" />
+          <span className="text-xs">Add photo</span>
         </button>
       </div>
-    </>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// PhotoTile — single image with hover overlay + 3-dot menu.
+// PhotoTile — single existing image with hover overlay + 3-dot menu.
 // ---------------------------------------------------------------------------
 
 type PhotoTileProps = {
@@ -372,6 +545,27 @@ function PhotoTile({ url, isPrimary, onDelete }: PhotoTileProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// UploadingTile — placeholder rendered while an upload is in flight.
+// One tile per in-flight file (uploadingCount). Replaces the global
+// "Uploading..." spinner so the merchant sees per-file progress.
+// ---------------------------------------------------------------------------
+
+function UploadingTile() {
+  return (
+    <div
+      className={cn(
+        "flex aspect-square w-full items-center justify-center rounded-sm",
+        "border border-dashed bg-muted/30 text-muted-foreground",
+      )}
+      aria-label="Uploading photo"
+      aria-busy="true"
+    >
+      <Loader2 className="size-5 animate-spin" />
     </div>
   );
 }
