@@ -38,6 +38,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { CanvasWithSelection } from "./canvas-with-selection";
 import { CategorySection } from "./category-section";
+import { CategoryRail } from "./category-rail";
 import { EditorSheet } from "./editor-sheet";
 import { CreateItemFlowDialog } from "./create-item-flow-dialog";
 import { CanvasLocaleProvider } from "./locale-context";
@@ -160,8 +161,15 @@ export function LibraryCanvas({
           items={items}
         >
           <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
-            {/* Canvas column. flex-1 so it expands; inspector pulls 360px
-                on the right at md+. */}
+            {/* Category rail (KRA-35 Iter 2 / T3). Subordinate inset, no
+                border per Pass 1 D1A. Hidden ≤xl (1280px) and on mobile. */}
+            <CategoryRail
+              categories={sortedCategories}
+              hasOrphans={itemsByCategory.orphans.length > 0}
+            />
+
+            {/* Canvas column. flex-1 so it expands. EditorSheet portals
+                via shadcn Sheet/Drawer — doesn't live in this flex row. */}
             <div className="flex-1 min-w-0">
               {items.length === 0 ? (
                 <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
@@ -174,6 +182,7 @@ export function LibraryCanvas({
                       items={itemsByCategory.map.get(category.id) ?? []}
                       translations={translations}
                       currencySettings={currencySettings}
+                      catalogId={catalogId}
                     />
                   ))}
 
@@ -191,12 +200,12 @@ export function LibraryCanvas({
                       items={itemsByCategory.orphans}
                       translations={translations}
                       currencySettings={currencySettings}
+                      catalogId={catalogId}
                     />
                   )}
                 </div>
               )}
             </div>
-
           </div>
         </CanvasWithSelection>
 
