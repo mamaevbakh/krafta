@@ -109,6 +109,15 @@ type CanvasSelectionValue = {
    *  view of the catalog structure to drop into. Restores to per-
    *  section collapse state on dragEnd / dragCancel. */
   isDraggingCategory: boolean;
+  /** When non-null, the unified EditorSheet renders in CREATE mode for
+   *  this category (vs EDIT mode when selectedItemId is set). The "Add
+   *  item" button calls startCreating(categoryId) — defaults to the
+   *  first category when invoked from a top-level button. Mutually
+   *  exclusive with selectedItemId: setting one clears the other so the
+   *  sheet only ever shows one form at a time. */
+  creatingForCategoryId: string | null;
+  startCreating: (categoryId: string) => void;
+  cancelCreating: () => void;
 };
 
 const CanvasSelectionContext =
@@ -207,14 +216,34 @@ export function CanvasWithSelection({
   const [selectedItemId, setSelectedItemIdState] = React.useState<
     string | null
   >(null);
+  /** Mutually exclusive with selectedItemId — setting one clears the
+   *  other so the EditorSheet only ever shows one form. */
+  const [creatingForCategoryId, setCreatingForCategoryIdState] =
+    React.useState<string | null>(null);
 
   const setSelectedItemId = React.useCallback(
     (id: string | null) => {
       setSelectedItemIdState(id);
+      // If selecting an existing item, clear any in-flight create state
+      // (rare edge but cheap).
+      if (id !== null) setCreatingForCategoryIdState(null);
       onSelectionChange?.(id);
     },
     [onSelectionChange],
   );
+
+  const startCreating = React.useCallback(
+    (categoryId: string) => {
+      setSelectedItemIdState(null);
+      setCreatingForCategoryIdState(categoryId);
+      onSelectionChange?.(null);
+    },
+    [onSelectionChange],
+  );
+
+  const cancelCreating = React.useCallback(() => {
+    setCreatingForCategoryIdState(null);
+  }, []);
 
   // Iter 2 T4: post-duplicate pulse coordination. EditorSheet's
   // handleDuplicate calls pulseItem(newId) after duplicate_item resolves.
@@ -510,6 +539,9 @@ export function CanvasWithSelection({
       pulsingItemId,
       pulseItem,
       isDraggingCategory,
+      creatingForCategoryId,
+      startCreating,
+      cancelCreating,
     }),
     [
       selectedItemId,
@@ -517,6 +549,9 @@ export function CanvasWithSelection({
       pulsingItemId,
       pulseItem,
       isDraggingCategory,
+      creatingForCategoryId,
+      startCreating,
+      cancelCreating,
     ],
   );
 
