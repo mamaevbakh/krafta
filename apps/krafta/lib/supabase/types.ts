@@ -3428,6 +3428,19 @@ export type Database = {
         Args: { p_slug: string }
         Returns: { org_id: string; catalog_id: string }[]
       }
+      reorder_items: {
+        // KRA-35 PR1 — migration 20260520040000.
+        // Hand-added to unblock callers; regen will preserve once the
+        // migration is applied + types are regenerated.
+        Args: { p_catalog_id: string; p_changes: Json }
+        Returns: undefined
+      }
+      duplicate_item: {
+        // KRA-35 PR1 — migration 20260520040000.
+        // Returns the new item's uuid as a string.
+        Args: { p_catalog_id: string; p_item_id: string }
+        Returns: string
+      }
       catalog_search: {
         Args: {
           p_catalog_id?: string

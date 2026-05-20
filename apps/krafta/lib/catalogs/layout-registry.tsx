@@ -17,7 +17,7 @@ import { CatalogHeaderHero } from "@/components/catalogs/headers/header-hero";
 // Item cards
 import { MinimalCard } from "@/components/catalogs/cards/card-minimal";
 import { BigPhotoCard } from "@/components/catalogs/cards/card-photo-big";
-import { CatalogItemCard } from "@/components/catalogs/cards/card-default";
+import { CustomerItemCard } from "@/components/catalogs/cards/card-default";
 import { PhotoRowCard } from "@/components/catalogs/cards/card-photo-row";
 import { GlassBlurCard } from "@/components/catalogs/cards/card-glass-blur";
 
@@ -110,7 +110,7 @@ const itemCardRegistry: Record<
   "card-big-photo": BigPhotoCard,
   "card-minimal": MinimalCard,
   "card-photo-row": PhotoRowCard,
-  "card-default": CatalogItemCard,
+  "card-default": CustomerItemCard,
   "card-glass-blur": GlassBlurCard,
 };
 
