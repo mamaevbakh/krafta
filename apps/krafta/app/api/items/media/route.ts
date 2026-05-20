@@ -100,13 +100,29 @@ export async function POST(request: Request) {
   }
 
   if (insertRows[0]) {
-    await supabase
+    // Check the error explicitly — previously this awaited the result
+    // and dropped any failure on the floor, which is how an entire
+    // upload could return ok:true while items.image_path stayed NULL
+    // (see KRA-88 search_sync trigger fix migration). Now: surface a
+    // 500 so the client toasts the failure instead of believing the
+    // upload "succeeded."
+    const { error: itemUpdateError } = await supabase
       .from("items")
       .update({
         image_path: insertRows[0].storage_path,
         image_alt: insertRows[0].alt ?? null,
       })
       .eq("id", itemId);
+    if (itemUpdateError) {
+      return NextResponse.json(
+        {
+          error:
+            itemUpdateError.message ??
+            "Failed to update item with new photo.",
+        },
+        { status: 500 },
+      );
+    }
   }
 
   // Bust the catalog cache so the dashboard items page re-fetches with
