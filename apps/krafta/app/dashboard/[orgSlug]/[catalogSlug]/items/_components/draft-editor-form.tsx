@@ -36,7 +36,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Drawer as DrawerPrimitive } from "vaul";
-import { Check, Loader2, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -319,6 +319,9 @@ export function DraftEditorForm({
   // Render
   // -------------------------------------------------------------------
   const renderSaveButton = (className?: string) => {
+    // Default Button color across all states — success signalling is
+    // the toast, sheet auto-closes after create so "Created" state is
+    // never visible. Error state stays as a plain Retry button.
     if (saveStatus === "saving") {
       return (
         <Button disabled className={className}>
@@ -327,17 +330,9 @@ export function DraftEditorForm({
         </Button>
       );
     }
-    if (saveStatus === "saved") {
-      return (
-        <Button disabled className={cn("bg-emerald-600 text-white hover:bg-emerald-600", className)}>
-          <Check className="size-4" />
-          Created
-        </Button>
-      );
-    }
     if (saveStatus === "error") {
       return (
-        <Button onClick={handleSave} variant="destructive" className={className}>
+        <Button onClick={handleSave} className={className}>
           Failed — Retry
         </Button>
       );
@@ -547,10 +542,7 @@ export function DraftEditorForm({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDiscard}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={confirmDiscard}>
               Discard
             </AlertDialogAction>
           </AlertDialogFooter>

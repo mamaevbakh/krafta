@@ -46,7 +46,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Drawer as DrawerPrimitive } from "vaul";
 import {
-  Check,
   Copy,
   Loader2,
   MoreHorizontal,
@@ -678,8 +677,22 @@ function EditorForm({
         return;
       }
       toast.success("Item deleted.");
+      // Close the prompt explicitly. We used to rely on the
+      // AlertDialogAction's built-in close behavior, but when the form
+      // unmounts (selectedItemId → null) before the dialog finishes
+      // closing, the next render path could leave the dialog state in
+      // an inconsistent place. Explicit close first, then unmount.
+      setDeletePromptOpen(false);
       onRequestClose();
       router.refresh();
+    } catch (err) {
+      // Defense in depth — server actions can throw on
+      // network/serialization errors that don't go through the
+      // result-object error path. Surface them as a toast so the
+      // merchant knows the delete didn't land.
+      const message =
+        err instanceof Error ? err.message : "Failed to delete item.";
+      toast.error(message);
     } finally {
       setIsDeleting(false);
     }
@@ -699,10 +712,10 @@ function EditorForm({
   // ---------------------------------------------------------------------
 
   const renderSaveButton = (className?: string) => {
-    // All variants use the shadcn Button default radius (rounded-md per
-    // DESIGN.md spec line 178-183). No rounded-full pills — those were
-    // inconsistent with the rest of the dashboard chrome and called out
-    // explicitly in merchant feedback.
+    // All Save button states use the default Button color — success
+    // signaling lives in the toast, not in the button itself. We auto-
+    // close the sheet on success so the "Saved" state is never visible
+    // anyway; the error state stays as a plain Retry button.
     if (saveStatus === "saving") {
       return (
         <Button disabled className={className}>
@@ -711,23 +724,9 @@ function EditorForm({
         </Button>
       );
     }
-    if (saveStatus === "saved") {
-      return (
-        <Button
-          disabled
-          className={cn(
-            "bg-emerald-600 text-white hover:bg-emerald-600",
-            className,
-          )}
-        >
-          <Check className="size-4" />
-          Saved
-        </Button>
-      );
-    }
     if (saveStatus === "error") {
       return (
-        <Button onClick={handleSave} variant="destructive" className={className}>
+        <Button onClick={handleSave} className={className}>
           Save failed — Retry
         </Button>
       );
@@ -830,7 +829,6 @@ function EditorForm({
                 <AlertDialogAction
                   onClick={handleDelete}
                   disabled={isDeleting}
-                  className="bg-destructive text-white hover:bg-destructive/90"
                 >
                   Delete item
                 </AlertDialogAction>
@@ -1110,10 +1108,7 @@ function EditorForm({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDiscard}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleConfirmDiscard}>
               Discard
             </AlertDialogAction>
           </AlertDialogFooter>
