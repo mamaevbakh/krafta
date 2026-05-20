@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
+import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
 
 const BUCKET_NAME = "public-assets";
 
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
 
   const { data: item, error: itemError } = await supabase
     .from("items")
-    .select("id")
+    .select("id, catalog_id")
     .eq("id", itemId)
     .maybeSingle();
 
@@ -107,6 +108,13 @@ export async function POST(request: Request) {
       })
       .eq("id", itemId);
   }
+
+  // Bust the catalog cache so the dashboard items page re-fetches with
+  // the new media + image_path. Without this, router.refresh on the
+  // client triggers an RSC re-render but the underlying cached fetch
+  // serves stale data — the photo shows up on the customer page (which
+  // reads via a different cache path) but not in the dashboard canvas.
+  await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
 
   return NextResponse.json({ ok: true, media: insertRows });
 }
@@ -194,11 +202,23 @@ export async function DELETE(request: Request) {
     .eq("item_id", itemId)
     .order("position", { ascending: true });
 
+  // Lookup the item's catalog_id once — used for the cache-bust at the
+  // end. Returns early with cache-bust if the item is gone (unexpected,
+  // but be defensive).
+  const { data: item } = await supabase
+    .from("items")
+    .select("catalog_id")
+    .eq("id", itemId)
+    .maybeSingle();
+
   if (!remainingMedia?.length) {
     await supabase
       .from("items")
       .update({ image_path: null, image_alt: null })
       .eq("id", itemId);
+    if (item?.catalog_id) {
+      await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+    }
     return NextResponse.json({ ok: true, count: mediaRows.length });
   }
 
@@ -228,6 +248,13 @@ export async function DELETE(request: Request) {
       image_alt: nextPrimary.alt ?? null,
     })
     .eq("id", itemId);
+
+  // Bust the catalog cache so the dashboard re-fetches with the
+  // deleted-media state reflected. See POST handler comment above for
+  // why this is required.
+  if (item?.catalog_id) {
+    await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+  }
 
   return NextResponse.json({ ok: true, count: mediaRows.length });
 }
@@ -303,6 +330,17 @@ export async function PATCH(request: Request) {
       image_alt: mediaRow.alt ?? null,
     })
     .eq("id", itemId);
+
+  // Bust the catalog cache so the dashboard reflects the new primary.
+  // See POST handler comment for why this is required.
+  const { data: item } = await supabase
+    .from("items")
+    .select("catalog_id")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (item?.catalog_id) {
+    await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+  }
 
   return NextResponse.json({ ok: true });
 }
