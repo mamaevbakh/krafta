@@ -521,6 +521,10 @@ function VariationsTable({
 
   return (
     <DndContext
+      // Stable id avoids the dnd-kit SSR hydration warning. See the
+      // matching comment on the canvas DndContext in
+      // canvas-with-selection.tsx for the full explanation.
+      id="variations-editor-dnd"
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}

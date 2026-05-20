@@ -539,6 +539,15 @@ export function CanvasWithSelection({
   return (
     <CanvasSelectionContext.Provider value={selectionValue}>
       <DndContext
+        // Explicit id forces dnd-kit to use this prefix for its
+        // internally-generated aria-describedby attribute. Without it,
+        // dnd-kit auto-increments a module-level counter (DndDescribedBy-N)
+        // that persists across requests on the Next.js server but resets
+        // on every client mount — server might emit "DndDescribedBy-1"
+        // while the client expects "DndDescribedBy-0", producing the
+        // hydration mismatch React warns about. Stable explicit ids
+        // sidestep the counter entirely.
+        id="library-canvas-dnd"
         sensors={sensors}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
