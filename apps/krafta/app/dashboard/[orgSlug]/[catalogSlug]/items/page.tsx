@@ -1,12 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
-// KRA-35 PR2: Library Canvas replaces the legacy DataTable-based ItemsPanel
-// as the default render. ItemsPanel stays in the codebase (Table view in
-// PR 3 once the view toggle ships); the import is kept commented so the
-// rewiring is obvious to future readers.
-// import { ItemsPanel } from "./_components/items-panel";
-import { LibraryCanvas } from "./_components/library-canvas";
+// KRA-35 PR3: LibraryRoot picks between Canvas (default) and Table view
+// based on merchant's localStorage preference. Mobile always renders
+// Canvas. Both views consume the same data shape this page fetches.
+import { LibraryRoot } from "./_components/library-root";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
@@ -131,7 +129,7 @@ export default async function DashboardItemsPage({ params }: PageProps) {
   }
 
   return (
-    <LibraryCanvas
+    <LibraryRoot
       catalogId={catalog.id}
       catalogSlug={catalogSlug}
       orgId={catalog.org_id}

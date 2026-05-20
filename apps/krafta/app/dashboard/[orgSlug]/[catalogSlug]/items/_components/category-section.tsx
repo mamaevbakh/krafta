@@ -35,15 +35,30 @@ import { EditableItemCard } from "@/components/catalogs/cards/card-default-edita
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { getItemImageUrl } from "@/lib/catalogs/media";
+import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { cn } from "@/lib/utils";
 
 import { useCanvasSelection } from "./canvas-with-selection";
-import { updateItem, type ItemTranslationInput } from "./actions";
+import { useCanvasLocale } from "./locale-context";
+import { updateItemField, updateDefaultVariationPrice } from "./actions";
+
+type ItemTranslation = {
+  id: string;
+  item_id: string;
+  locale: string;
+  name: string;
+  description: string | null;
+  image_alt: string | null;
+};
 
 export type CategorySectionProps = {
   category: CatalogCategory;
   /** Items belonging to this category. Caller filters by category_id. */
   items: Item[];
+  /** All item_translations rows (loaded at page level). Filtered per item
+   *  inside SortableItemCard so the locale-aware save can resolve the
+   *  right row + per-field fallback. */
+  translations: ItemTranslation[];
   catalogId: string;
   catalogSlug: string;
   currencySettings: CurrencySettings;
@@ -59,21 +74,19 @@ export type CategorySectionProps = {
  */
 function SortableItemCard({
   item,
+  translations,
   currencySettings,
   catalogId,
   catalogSlug,
 }: {
   item: Item;
+  translations: ItemTranslation[];
   currencySettings: CurrencySettings;
   catalogId: string;
   catalogSlug: string;
 }) {
-  // Use the legacy `items.image_path` for the canvas thumbnail. The
-  // multi-image `item_media` table is the inspector's domain (photo
-  // manager in PR 3 / follow-up); the canvas uses one primary image per
-  // card just like the customer view does.
-  const imageUrl = React.useMemo(() => getItemImageUrl(item), [item]);
   const { selectedItemId, setSelectedItemId } = useCanvasSelection();
+  const { activeLocale, defaultLocale } = useCanvasLocale();
   const {
     attributes,
     listeners,
@@ -83,79 +96,101 @@ function SortableItemCard({
     isDragging,
   } = useSortable({ id: item.id });
 
-  // Build save callbacks per field. Each one calls updateItem with the
-  // full current snapshot + the changed field. updateItem rebuilds the
-  // canonical row each call; the schema's UPDATE statements are idempotent
-  // for unchanged fields. This is the simplest wiring for PR 2; a lighter
-  // updateItemField helper can replace these in PR 3 if the round-trip
-  // becomes noticeable in production.
+  // Use the legacy `items.image_path` for the canvas thumbnail. The
+  // multi-image `item_media` table is the inspector's domain.
+  const imageUrl = React.useMemo(() => getItemImageUrl(item), [item]);
+
+  // Resolve per-field display values via the i18n fallback helper. When
+  // the active locale lacks a translation row, falls back to the default-
+  // locale canonical with isFallback=true. EditableItemCard doesn't
+  // currently surface the isFallback flag visually (italic styling is a
+  // PR 4 polish), but resolving here means non-default tabs render the
+  // translated value when one exists.
+  const itemDefaults = React.useMemo(
+    () => ({
+      name: item.name,
+      description: item.description,
+      image_alt: item.image_alt,
+    }),
+    [item.name, item.description, item.image_alt],
+  );
+
+  const itemTranslations = React.useMemo(
+    () => translations.filter((t) => t.item_id === item.id),
+    [translations, item.id],
+  );
+
+  const nameField = pickLocalizedField({
+    translations: itemTranslations,
+    defaults: itemDefaults,
+    activeLocale,
+    defaultLocale,
+    field: "name",
+  });
+  const descriptionField = pickLocalizedField({
+    translations: itemTranslations,
+    defaults: itemDefaults,
+    activeLocale,
+    defaultLocale,
+    field: "description",
+  });
+
+  // Save callbacks route through the locale-aware updateItemField helper
+  // (PR 3 / ER5). The router decides whether to write to items.* (default
+  // locale) or item_translations.* (non-default locale). Price has no
+  // locale concept — UZS values are not translated — so savePrice uses
+  // updateDefaultVariationPrice directly.
   const saveName = React.useCallback(
     async (next: string) => {
-      // Pull current translations into the call for upsert correctness.
-      // The Item type doesn't carry translations directly; for PR 2 we
-      // pass an empty array, which means non-default-locale translations
-      // are preserved by updateItem's "update existing, insert new" logic.
-      // PR 3 lifts translations into a shape the canvas can hand back here
-      // when the locale tab strip is wired.
-      const result = await updateItem({
+      const result = await updateItemField({
         catalogId,
         catalogSlug,
         itemId: item.id,
-        categoryId: item.category_id,
-        productType: item.product_type,
-        name: next,
-        priceCents: item.price_cents,
-        description: item.description,
-        imageAlt: item.image_alt,
-        translations: [] as ItemTranslationInput[],
+        activeLocale,
+        defaultLocale,
+        field: "name",
+        value: next,
+        fallbackName: item.name,
       });
       if (!result.ok) {
         throw new Error(result.error ?? "Failed to save name");
       }
     },
-    [item, catalogId, catalogSlug],
+    [item.id, item.name, catalogId, catalogSlug, activeLocale, defaultLocale],
   );
 
   const saveDescription = React.useCallback(
     async (next: string) => {
-      const result = await updateItem({
+      const result = await updateItemField({
         catalogId,
         catalogSlug,
         itemId: item.id,
-        categoryId: item.category_id,
-        productType: item.product_type,
-        name: item.name,
-        priceCents: item.price_cents,
-        description: next || null,
-        imageAlt: item.image_alt,
-        translations: [] as ItemTranslationInput[],
+        activeLocale,
+        defaultLocale,
+        field: "description",
+        value: next || null,
+        fallbackName: item.name,
       });
       if (!result.ok) {
         throw new Error(result.error ?? "Failed to save description");
       }
     },
-    [item, catalogId, catalogSlug],
+    [item.id, item.name, catalogId, catalogSlug, activeLocale, defaultLocale],
   );
 
   const savePrice = React.useCallback(
     async (nextCents: number) => {
-      const result = await updateItem({
+      const result = await updateDefaultVariationPrice({
         catalogId,
         catalogSlug,
         itemId: item.id,
-        categoryId: item.category_id,
-        productType: item.product_type,
-        name: item.name,
         priceCents: nextCents,
-        description: item.description,
-        imageAlt: item.image_alt,
-        translations: [] as ItemTranslationInput[],
       });
       if (!result.ok) {
         throw new Error(result.error ?? "Failed to save price");
       }
     },
-    [item, catalogId, catalogSlug],
+    [item.id, catalogId, catalogSlug],
   );
 
   // Item shape from the page-level query embeds price via item_variations
@@ -165,12 +200,16 @@ function SortableItemCard({
   // (only Inspector does, via a separate query), so we satisfy the type
   // with an empty array. PR 3 / inspector wiring fetches the real lists
   // when the merchant selects an item.
+  //
+  // Name + description come from the locale-aware resolver above so a
+  // non-default-locale tab shows the translated value (or the italic
+  // fallback when no translation exists).
   const cardItem = {
     id: item.id,
     slug: item.slug,
     category_id: item.category_id,
-    name: item.name,
-    description: item.description,
+    name: nameField.value,
+    description: descriptionField.value,
     image_path: item.image_path,
     image_alt: item.image_alt,
     position: item.position,
@@ -207,6 +246,7 @@ function SortableItemCard({
 export function CategorySection({
   category,
   items,
+  translations,
   catalogId,
   catalogSlug,
   currencySettings,
@@ -264,6 +304,7 @@ export function CategorySection({
               <SortableItemCard
                 key={item.id}
                 item={item}
+                translations={translations}
                 currencySettings={currencySettings}
                 catalogId={catalogId}
                 catalogSlug={catalogSlug}
