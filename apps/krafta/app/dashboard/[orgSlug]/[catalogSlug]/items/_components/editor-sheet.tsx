@@ -105,6 +105,11 @@ import {
   VariationPriceInput,
   useVariationsState,
 } from "./variations-editor";
+import { ItemTypeSelect } from "./item-type-select";
+import {
+  isCatalogItemProductType,
+  type CatalogItemProductType,
+} from "./product-types";
 
 // =======================================================================
 // Types
@@ -342,6 +347,9 @@ function EditorForm({
   const [description, setDescription] = React.useState(initialDescription);
   const [categoryId, setCategoryId] = React.useState(item.category_id);
   const [isActive, setIsActive] = React.useState(item.is_active);
+  const [productType, setProductType] = React.useState<CatalogItemProductType>(
+    isCatalogItemProductType(item.product_type) ? item.product_type : "REGULAR",
+  );
 
   // ---------------------------------------------------------------------
   // KRA-86 — variations state (single source of truth via the hook).
@@ -368,6 +376,7 @@ function EditorForm({
     description !== initialDescription ||
     categoryId !== item.category_id ||
     isActive !== item.is_active ||
+    productType !== item.product_type ||
     variationsState.isDirty;
 
   // ---------------------------------------------------------------------
@@ -413,6 +422,7 @@ function EditorForm({
       catalogSlug,
       itemId: item.id,
       categoryId,
+      productType,
       // For default-locale edits, top-level name/description go to items.*.
       // For non-default-locale edits, items.* stays at the canonical values
       // so we don't overwrite the source-of-truth row with a translation.
@@ -472,6 +482,7 @@ function EditorForm({
     description,
     categoryId,
     isActive,
+    productType,
     activeLocale,
     defaultLocale,
     itemTranslations,
@@ -481,6 +492,7 @@ function EditorForm({
     item.image_alt,
     item.price_cents,
     item.is_active,
+    item.product_type,
     catalogId,
     catalogSlug,
     router,
@@ -772,17 +784,23 @@ function EditorForm({
         >
           {/* Left column — identity fields. */}
           <div className="flex min-w-0 flex-1 flex-col gap-5">
-            {/* Item type — read-only display in iter 2 (no UI to change
-                product_type yet; the existing CreateItemFlowDialog handles
-                type selection at creation time). */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Item type
-              </Label>
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                {item.product_type}
-              </div>
-            </div>
+            {/* Item type — compact Square-style select. Trigger renders
+                the icon + value inline; menu shows enabled options with
+                description copy. Composed on top of shadcn Select; only
+                FOOD_AND_BEV + REGULAR are surfaced (matches
+                ENABLED_CATALOG_ITEM_PRODUCT_TYPES). Other types still
+                live in the CreateItemFlowDialog "request feature"
+                surface for discovery. */}
+            <ItemTypeSelect
+              value={productType}
+              onValueChange={setProductType}
+              disabled={!isDefaultLocaleEditable}
+            />
+            {!isDefaultLocaleEditable && (
+              <span className="-mt-3 text-xs text-muted-foreground">
+                Item type is edited on the default locale only.
+              </span>
+            )}
 
             {/* Name (required) */}
             <div className="flex flex-col gap-2">
