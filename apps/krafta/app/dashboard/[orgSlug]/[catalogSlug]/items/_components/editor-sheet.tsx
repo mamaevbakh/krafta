@@ -43,7 +43,6 @@
  */
 
 import * as React from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Drawer as DrawerPrimitive } from "vaul";
 import {
@@ -111,6 +110,7 @@ import {
   useVariationsState,
 } from "./variations-editor";
 import { ItemTypeSelect } from "./item-type-select";
+import { PhotoUploader } from "./photo-uploader";
 import {
   isCatalogItemProductType,
   type CatalogItemProductType,
@@ -142,6 +142,7 @@ export type EditorSheetProps = {
   categories: CatalogCategory[];
   media: ItemMedia[];
   translations: ItemTranslation[];
+  orgId: string;
   catalogId: string;
   catalogSlug: string;
   currencySettings: CurrencySettings;
@@ -158,6 +159,7 @@ export function EditorSheet({
   categories,
   media,
   translations,
+  orgId,
   catalogId,
   catalogSlug,
   currencySettings,
@@ -256,6 +258,7 @@ export function EditorSheet({
             categories={categories}
             media={media}
             translations={translations}
+            orgId={orgId}
             catalogId={catalogId}
             catalogSlug={catalogSlug}
             currencySettings={currencySettings}
@@ -277,6 +280,7 @@ type EditorFormProps = {
   categories: CatalogCategory[];
   media: ItemMedia[];
   translations: ItemTranslation[];
+  orgId: string;
   catalogId: string;
   catalogSlug: string;
   currencySettings: CurrencySettings;
@@ -294,6 +298,7 @@ function EditorForm({
   categories,
   media,
   translations,
+  orgId,
   catalogId,
   catalogSlug,
   currencySettings,
@@ -634,13 +639,6 @@ function EditorForm({
     [media, item.id],
   );
 
-  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const mediaUrls = selectedMedia.map((m) =>
-    baseUrl
-      ? `${baseUrl}/storage/v1/object/public/${m.bucket}/${m.storage_path}`
-      : null,
-  );
-
   // ---------------------------------------------------------------------
   // Save button rendering
   // ---------------------------------------------------------------------
@@ -913,47 +911,18 @@ function EditorForm({
               />
             </div>
 
-            {/* Photos — read-only grid (upload UX deferred). */}
+            {/* Photos — KRA-88 Slice 1: upload + display + delete. Reorder
+                and primary-toggle ship in Slice 2. Empty state uses shadcn
+                Empty with an upload button; populated state shows a grid
+                with a trailing "+ Add photo" tile. */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Photos</Label>
-              {mediaUrls.length === 0 ? (
-                <div className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
-                  No photos yet
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  {mediaUrls.map((url, i) =>
-                    url ? (
-                      <div
-                        key={i}
-                        className="relative aspect-square w-full overflow-hidden rounded-sm bg-muted"
-                      >
-                        <Image
-                          src={url}
-                          alt=""
-                          fill
-                          // EditorSheet is ~800px wide on desktop / full
-                          // width on mobile drawer. 3-column grid means
-                          // ~250px per cell on desktop, ~120px on a 375px
-                          // mobile drawer. The loader requests the closest
-                          // supported width.
-                          sizes="(max-width: 768px) 33vw, 250px"
-                          className="object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        key={i}
-                        className="aspect-square w-full rounded-sm bg-muted"
-                        aria-hidden
-                      />
-                    ),
-                  )}
-                </div>
-              )}
-              <span className="text-xs text-muted-foreground">
-                Photo upload + reorder + primary toggle ship as a follow-up.
-              </span>
+              <PhotoUploader
+                itemId={item.id}
+                orgId={orgId}
+                catalogId={catalogId}
+                media={selectedMedia}
+              />
             </div>
 
             {/* Variations — KRA-86 inline editor. Krafta compact-row

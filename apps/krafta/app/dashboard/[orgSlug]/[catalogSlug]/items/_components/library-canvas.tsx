@@ -465,6 +465,7 @@ export function LibraryCanvas({
             categories={sortedCategories}
             media={media}
             translations={translations}
+            orgId={orgId}
             catalogId={catalogId}
             catalogSlug={catalogSlug}
             currencySettings={currencySettings}
