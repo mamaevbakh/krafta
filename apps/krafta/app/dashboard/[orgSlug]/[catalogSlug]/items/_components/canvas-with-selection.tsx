@@ -26,7 +26,14 @@
  */
 
 import * as React from "react";
-import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import {
   reorderItems,
   type ReorderItemsChange,
@@ -109,12 +116,28 @@ export function CanvasWithSelection({
     [onSelectionChange],
   );
 
-  // Tuning: PointerSensor with an activation distance so a click-to-select
-  // doesn't accidentally start a drag. 8px is the dnd-kit default and feels
-  // right — finger-precision on mobile + mouse-precision on desktop.
+  // Sensor tuning (KRA-35 Iter 2 / Pass 6 D4B: whole-row drag, single tap
+  // opens editor):
+  //
+  //   PointerSensor (desktop): activation requires 8px drag distance. A
+  //   plain click (no movement) doesn't start a drag — the row's onClick
+  //   fires instead and opens the editor.
+  //
+  //   TouchSensor (mobile): activation requires a 250ms long-press OR 5px
+  //   movement. A quick tap releases before 250ms and below 5px → onClick
+  //   fires → editor opens. A held finger → drag activates. The 5px
+  //   tolerance allows for minor finger jitter during the press without
+  //   accidentally activating drag on what was meant as a tap.
+  //
+  // Per Iter 2 design plan §3 D4B + the LibraryRow's `touchAction: "none"`
+  // style which prevents the browser's native scroll from fighting the
+  // long-press detection.
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
     }),
   );
 
