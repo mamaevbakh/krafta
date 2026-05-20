@@ -3,6 +3,13 @@
 /**
  * inline-text.tsx — focus-styled inline-editable text primitive (KRA-35 PR1 / ER3, DR3).
  *
+ * STATUS (KRA-35 Iter 2 / OQ1): no canvas-side consumers. Iter 2 walked
+ * back the inline-edit model in favor of explicit-Save in a fullscreen
+ * EditorSheet (per Pass 2 D2C). This primitive remains in the repo as a
+ * shipped, tested primitive for future surfaces: category rename in
+ * `/items/categories`, settings forms, etc. Don't introduce a competing
+ * primitive — extend this one.
+ *
  * Renders as plain text when unfocused, native input when focused. Optimistic
  * local state for instant visual feedback as the merchant types; debounced
  * autosave on change (200ms) plus a flush on blur. Per DR3 (modeless edit

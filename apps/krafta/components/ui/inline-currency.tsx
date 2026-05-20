@@ -3,6 +3,11 @@
 /**
  * inline-currency.tsx — focus-styled inline-editable price primitive (KRA-35 PR1 / DR3).
  *
+ * STATUS (KRA-35 Iter 2 / OQ1): no canvas-side consumers. Same status as
+ * `inline-text.tsx` — iter 2 ships explicit-Save in the EditorSheet rather
+ * than inline-edit on canvas. Primitive stays for future variation-table
+ * editor (KRA-90) and any settings surface that wants modeless price edit.
+ *
  * Krafta-specific currency rendering: UZS (Uzbek sum), no decimals, comma
  * thousands separator (`25,000`, `1,250,000`). All prices render with
  * `font-mono tabular-nums` per DESIGN.md "Numerals everywhere money is
