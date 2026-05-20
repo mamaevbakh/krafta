@@ -190,6 +190,13 @@ export function EditorSheet({
           data-slot="editor-fullscreen-drawer"
           className={cn(
             "fixed inset-0 z-50 flex flex-col bg-background",
+            // `overflow-hidden` is REQUIRED for internal scrolling: it
+            // clips any flex child that would otherwise spill past the
+            // viewport. Without it, the form body grows to its content
+            // size and the page itself can't scroll either (because
+            // `position: fixed` doesn't participate in the document
+            // scroll), so the bottom of the form gets cut off invisibly.
+            "overflow-hidden",
             // Animation: slide up from bottom on open, down on close.
             // tw-animate-css utilities (imported globally in globals.css).
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
@@ -701,9 +708,16 @@ function EditorForm({
         </div>
       </header>
 
-      {/* Form body — scrollable. The header is sticky above; this area
-          fills the rest of the viewport and scrolls when content overflows. */}
-      <ScrollArea className="flex-1">
+      {/* Form body — scrollable. Pattern: outer div is `min-h-0 flex-1
+          overflow-hidden`, ScrollArea fills it with `h-full`. The outer
+          div forces the flex item to shrink below its content (default
+          `min-height: auto` would let it grow indefinitely and the form
+          would clip past the viewport without scrolling). ScrollArea's
+          Radix Viewport then takes the constrained height and enables
+          its own overflow-y: scroll. This is the documented shadcn
+          idiom for scrollable content inside a flex column. */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
         <div
           className={cn(
             "mx-auto flex max-w-[1248px] gap-6 p-4 md:p-6",
@@ -926,7 +940,8 @@ function EditorForm({
             <span className="font-medium">Save failed:</span> {saveError}
           </div>
         )}
-      </ScrollArea>
+        </ScrollArea>
+      </div>
 
       {/* No bottom footer. The header's close-X (top-left) + Save (top-
           right) carry the cancel and commit actions on every viewport.
