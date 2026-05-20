@@ -461,10 +461,12 @@ function EditorForm({
 
     setSaveStatus("saved");
     router.refresh();
-
-    // Reset to idle after the success flash. Per D7 motion budget:
-    // 1.2s ease-out for the "Saved ✓" flash before returning to idle.
-    setTimeout(() => setSaveStatus("idle"), 1200);
+    toast.success("Item saved");
+    // Auto-close the editor on success — merchant's intent ("save and
+    // get out of my way") is satisfied. The toast confirms the write
+    // without keeping the sheet open in a "Saved" success-state. The
+    // 1.2s idle reset becomes irrelevant because the sheet unmounts.
+    onRequestClose();
   }, [
     name,
     description,
@@ -482,6 +484,7 @@ function EditorForm({
     catalogId,
     catalogSlug,
     router,
+    onRequestClose,
     variationsState.changes,
   ]);
 
