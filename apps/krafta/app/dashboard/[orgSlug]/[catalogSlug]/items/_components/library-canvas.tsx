@@ -207,21 +207,24 @@ export function LibraryCanvas({
               )}
             </div>
           </div>
-        </CanvasWithSelection>
 
-        {/* EditorSheet (KRA-35 Iter 2 / T2) replaces the legacy Inspector.
-            Desktop: right-side Sheet ~800px. Mobile: Drawer 95dvh.
-            Mounts at the Provider level so it sees both selection and
-            locale context. */}
-        <EditorSheet
-          items={items}
-          categories={sortedCategories}
-          media={media}
-          translations={translations}
-          catalogId={catalogId}
-          catalogSlug={catalogSlug}
-          currencySettings={currencySettings}
-        />
+          {/* EditorSheet (KRA-35 Iter 2 / T2) replaces the legacy Inspector.
+              Desktop: right-side Sheet ~800px. Mobile: Drawer 95dvh.
+              MUST live inside <CanvasWithSelection> because the form
+              calls useCanvasSelection (selectedItemId + pulseItem). Sheet
+              portals to <body> for actual DOM rendering — placement
+              inside the provider only affects context lookup, not the
+              visual stacking. */}
+          <EditorSheet
+            items={items}
+            categories={sortedCategories}
+            media={media}
+            translations={translations}
+            catalogId={catalogId}
+            catalogSlug={catalogSlug}
+            currencySettings={currencySettings}
+          />
+        </CanvasWithSelection>
       </CanvasLocaleProvider>
 
       {/* Add-item dialog — existing flow, reused intact. */}
