@@ -32,6 +32,7 @@
  */
 
 import * as React from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Check,
@@ -818,13 +819,23 @@ function EditorForm({
                 <div className="grid grid-cols-3 gap-2">
                   {mediaUrls.map((url, i) =>
                     url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <div
                         key={i}
-                        src={url}
-                        alt=""
-                        className="aspect-square w-full rounded-sm object-cover"
-                      />
+                        className="relative aspect-square w-full overflow-hidden rounded-sm bg-muted"
+                      >
+                        <Image
+                          src={url}
+                          alt=""
+                          fill
+                          // EditorSheet is ~800px wide on desktop / full
+                          // width on mobile drawer. 3-column grid means
+                          // ~250px per cell on desktop, ~120px on a 375px
+                          // mobile drawer. The loader requests the closest
+                          // supported width.
+                          sizes="(max-width: 768px) 33vw, 250px"
+                          className="object-cover"
+                        />
+                      </div>
                     ) : (
                       <div
                         key={i}
