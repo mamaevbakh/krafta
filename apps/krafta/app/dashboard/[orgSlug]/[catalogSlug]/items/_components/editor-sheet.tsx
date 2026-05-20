@@ -804,8 +804,8 @@ function EditorForm({
 
             {/* Primary Price field — Krafta mirror of Square's pattern.
                 When the item has only the default variation, this IS the
-                price input (the variations editor below stays collapsed to
-                an "Add variation" button). When merchant adds a second
+                price input (the variations editor below stays collapsed
+                to an "Add variation" button). When merchant adds a second
                 variation, this field mutes with a hint and per-variation
                 editing happens below. The "default variation" concept is
                 hidden from the merchant entirely. */}
@@ -813,27 +813,20 @@ function EditorForm({
               <Label className="text-sm font-medium" htmlFor="editor-price">
                 Price
               </Label>
-              <div
-                className={cn(
-                  "flex h-9 items-center gap-2 rounded-md border bg-card px-3",
-                  hasMultipleVariations && "bg-muted/40",
-                )}
-              >
-                <VariationPriceInput
-                  valueCents={
-                    variationsState.defaultVariation?.price_cents ?? 0
-                  }
-                  onChange={variationsDispatch.setDefaultPrice}
-                  disabled={
-                    hasMultipleVariations ||
-                    !isDefaultLocaleEditable ||
-                    !variationsState.defaultVariation
-                  }
-                  currencySettings={currencySettings}
-                  className="h-full flex-1 w-auto border-transparent bg-transparent text-left shadow-none"
-                  data-slot="primary-price-input"
-                />
-              </div>
+              <VariationPriceInput
+                valueCents={
+                  variationsState.defaultVariation?.price_cents ?? 0
+                }
+                onChange={variationsDispatch.setDefaultPrice}
+                disabled={
+                  hasMultipleVariations ||
+                  !isDefaultLocaleEditable ||
+                  !variationsState.defaultVariation
+                }
+                currencySettings={currencySettings}
+                className="text-left"
+                data-slot="primary-price-input"
+              />
               {hasMultipleVariations && (
                 <span className="text-xs text-muted-foreground">
                   Price varies by variation — edit each below.
