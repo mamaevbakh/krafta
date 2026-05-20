@@ -833,14 +833,22 @@ function EditorForm({
                 When the item has only the default variation, this IS the
                 price input (the variations editor below stays collapsed
                 to an "Add variation" button). When merchant adds a second
-                variation, this field mutes with a hint and per-variation
-                editing happens below. The "default variation" concept is
-                hidden from the merchant entirely. */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium" htmlFor="editor-price">
-                Price
-              </Label>
+                variation, this field mutes (Field data-disabled + Input
+                disabled per shadcn forms rule) with a hint and per-
+                variation editing happens below. The "default variation"
+                concept is hidden from the merchant entirely. */}
+            <Field
+              data-disabled={
+                hasMultipleVariations ||
+                !isDefaultLocaleEditable ||
+                !variationsState.defaultVariation
+                  ? true
+                  : undefined
+              }
+            >
+              <FieldLabel htmlFor="editor-price">Price</FieldLabel>
               <VariationPriceInput
+                id="editor-price"
                 valueCents={
                   variationsState.defaultVariation?.price_cents ?? 0
                 }
@@ -855,11 +863,11 @@ function EditorForm({
                 data-slot="primary-price-input"
               />
               {hasMultipleVariations && (
-                <span className="text-xs text-muted-foreground">
+                <FieldDescription>
                   Price varies by variation — edit each below.
-                </span>
+                </FieldDescription>
               )}
-            </div>
+            </Field>
 
             {/* Description */}
             <div className="flex flex-col gap-2">

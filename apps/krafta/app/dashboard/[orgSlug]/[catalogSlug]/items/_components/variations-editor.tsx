@@ -724,6 +724,7 @@ export type VariationPriceInputProps = {
   currencySettings: CurrencySettings;
   className?: string;
   placeholder?: string;
+  id?: string;
   "data-slot"?: string;
 };
 
@@ -734,6 +735,7 @@ export function VariationPriceInput({
   currencySettings,
   className,
   placeholder,
+  id,
   "data-slot": dataSlot = "variation-price-input",
 }: VariationPriceInputProps) {
   const [focused, setFocused] = React.useState(false);
@@ -747,13 +749,14 @@ export function VariationPriceInput({
     }
   }, [valueCents, focused, currencySettings]);
 
-  // When disabled, render empty — no value, no placeholder. Caller is
-  // expected to provide context elsewhere (e.g. the editor-sheet's
-  // "Price varies by variation" hint below the muted field). Showing
-  // a greyed-out number was misleading: that price isn't the operative
-  // one when the merchant has multiple variations.
+  // When disabled, render empty — the caller (editor-sheet primary
+  // Price field) is responsible for the surrounding Field's data-disabled
+  // styling + FieldDescription hint. Showing the old default price
+  // greyed-out was misleading once the merchant added multiple
+  // variations.
   return (
     <Input
+      id={id}
       value={disabled ? "" : raw}
       onChange={(e) => {
         const next = e.target.value;
