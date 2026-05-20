@@ -55,7 +55,30 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
-import { ImagePlus, Loader2, MoreVertical, Plus, Trash2 } from "lucide-react";
+import {
+  ImagePlus,
+  Loader2,
+  MoreVertical,
+  Plus,
+  Star,
+  Trash2,
+} from "lucide-react";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -342,6 +365,102 @@ export function PhotoUploader({
     [itemId, router],
   );
 
+  const handleSetPrimary = React.useCallback(
+    async (mediaId: string) => {
+      try {
+        const resp = await fetch("/api/items/media", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ itemId, mediaId }),
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => null);
+          throw new Error(body?.error ?? "Failed to set primary photo.");
+        }
+        toast.success("Primary photo updated");
+        router.refresh();
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to set primary photo.";
+        toast.error(message);
+      }
+    },
+    [itemId, router],
+  );
+
+  /** Local optimistic order — set on dragEnd so the grid doesn't snap
+   *  back during the PATCH roundtrip + router.refresh. Cleared once the
+   *  next render arrives with fresh server data. */
+  const [optimisticOrder, setOptimisticOrder] = React.useState<string[] | null>(
+    null,
+  );
+
+  // Reset optimistic order whenever the parent passes a new media array.
+  // Identity check is enough — parent re-creates from server data.
+  const mediaRef = React.useRef(media);
+  React.useEffect(() => {
+    if (mediaRef.current !== media) {
+      mediaRef.current = media;
+      setOptimisticOrder(null);
+    }
+  }, [media]);
+
+  const handleReorder = React.useCallback(
+    async (newOrder: string[]) => {
+      const positions = newOrder.map((id, index) => ({ id, position: index }));
+      try {
+        const resp = await fetch("/api/items/media", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ itemId, positions }),
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => null);
+          throw new Error(body?.error ?? "Failed to reorder photos.");
+        }
+        router.refresh();
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to reorder photos.";
+        toast.error(message);
+        // On failure, drop the optimistic order so the UI snaps back
+        // to the server's truth.
+        setOptimisticOrder(null);
+      }
+    },
+    [itemId, router],
+  );
+
+  // -----------------------------------------------------------------------
+  // dnd-kit (photo reorder) — separate from the HTML5 dnd that handles
+  // file drops for upload. The two event systems coexist on the same
+  // wrapper because they listen for different events (pointer/touch vs
+  // dragenter/dragover/drop with dataTransfer.types=Files).
+  // -----------------------------------------------------------------------
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    }),
+  );
+
+  const handleDndEnd = React.useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const currentOrder =
+        optimisticOrder ?? mediaWithUrls.map((m) => m.id);
+      const fromIdx = currentOrder.indexOf(String(active.id));
+      const toIdx = currentOrder.indexOf(String(over.id));
+      if (fromIdx === -1 || toIdx === -1) return;
+      const next = arrayMove(currentOrder, fromIdx, toIdx);
+      setOptimisticOrder(next);
+      void handleReorder(next);
+    },
+    [optimisticOrder, mediaWithUrls, handleReorder],
+  );
+
   // -----------------------------------------------------------------------
   // Drag-and-drop handlers
   //
@@ -451,6 +570,14 @@ export function PhotoUploader({
     );
   }
 
+  // When the merchant has just dropped a tile, render in optimistic
+  // order; otherwise use the server's authoritative order.
+  const orderedMedia = optimisticOrder
+    ? optimisticOrder
+        .map((id) => mediaWithUrls.find((m) => m.id === id))
+        .filter((m): m is NonNullable<typeof m> => Boolean(m))
+    : mediaWithUrls;
+
   return (
     <div
       onDragEnter={handleDragEnter}
@@ -463,33 +590,50 @@ export function PhotoUploader({
       )}
     >
       {hiddenInput}
-      <div className="grid grid-cols-3 gap-2">
-        {mediaWithUrls.map((m) => (
-          <PhotoTile
-            key={m.id}
-            url={m.url}
-            isPrimary={m.is_primary}
-            onDelete={() => handleDelete(m.id)}
-          />
-        ))}
-        {Array.from({ length: uploadingCount }).map((_, i) => (
-          <UploadingTile key={`uploading-${i}`} />
-        ))}
-        <button
-          type="button"
-          onClick={openPicker}
-          aria-label="Add photo"
-          className={cn(
-            "flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-sm",
-            "border border-dashed bg-muted/30 text-muted-foreground transition-colors",
-            "hover:bg-muted/50 hover:text-foreground",
-            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          )}
-        >
-          <Plus className="size-5" />
-          <span className="text-xs">Add photo</span>
-        </button>
-      </div>
+      <DndContext
+        // Stable id avoids the dnd-kit SSR hydration mismatch on
+        // aria-describedby. See canvas-with-selection for the long-form
+        // explanation.
+        id="photo-uploader-dnd"
+        sensors={dndSensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDndEnd}
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <SortableContext
+            items={orderedMedia.map((m) => m.id)}
+            strategy={rectSortingStrategy}
+          >
+            {orderedMedia.map((m) => (
+              <SortablePhotoTile
+                key={m.id}
+                id={m.id}
+                url={m.url}
+                isPrimary={m.is_primary}
+                onDelete={() => handleDelete(m.id)}
+                onSetPrimary={() => handleSetPrimary(m.id)}
+              />
+            ))}
+          </SortableContext>
+          {Array.from({ length: uploadingCount }).map((_, i) => (
+            <UploadingTile key={`uploading-${i}`} />
+          ))}
+          <button
+            type="button"
+            onClick={openPicker}
+            aria-label="Add photo"
+            className={cn(
+              "flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-sm",
+              "border border-dashed bg-muted/30 text-muted-foreground transition-colors",
+              "hover:bg-muted/50 hover:text-foreground",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            )}
+          >
+            <Plus className="size-5" />
+            <span className="text-xs">Add photo</span>
+          </button>
+        </div>
+      </DndContext>
     </div>
   );
 }
@@ -498,15 +642,51 @@ export function PhotoUploader({
 // PhotoTile — single existing image with hover overlay + 3-dot menu.
 // ---------------------------------------------------------------------------
 
-type PhotoTileProps = {
+type SortablePhotoTileProps = {
+  id: string;
   url: string | null;
   isPrimary: boolean;
   onDelete: () => void;
+  onSetPrimary: () => void;
 };
 
-function PhotoTile({ url, isPrimary, onDelete }: PhotoTileProps) {
+/**
+ * SortablePhotoTile — single image with hover overlay (3-dot menu) AND
+ * dnd-kit drag handle on the whole tile.
+ *
+ * Listeners attach to the tile root (not just a grip handle) — Square's
+ * pattern + matches our LibraryRow whole-row drag. Pointer activation
+ * gates at 5px (PointerSensor), so click events on the menu trigger
+ * still resolve as clicks rather than triggering drag.
+ */
+function SortablePhotoTile({
+  id,
+  url,
+  isPrimary,
+  onDelete,
+  onSetPrimary,
+}: SortablePhotoTileProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    touchAction: "pan-y",
+  };
+
   return (
-    <div className="group relative aspect-square w-full overflow-hidden rounded-sm bg-muted">
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "group relative aspect-square w-full overflow-hidden rounded-sm bg-muted",
+        !isDragging && "cursor-grab active:cursor-grabbing",
+      )}
+    >
       {url ? (
         <Image
           src={url}
@@ -530,11 +710,21 @@ function PhotoTile({ url, isPrimary, onDelete }: PhotoTileProps) {
               size="icon"
               aria-label="Photo actions"
               className="size-7"
+              // Stop pointer events from propagating to the parent
+              // sortable listener — otherwise the menu open click can
+              // get swallowed by the drag activation gate.
+              onPointerDown={(e) => e.stopPropagation()}
             >
               <MoreVertical className="size-3.5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {!isPrimary && (
+              <DropdownMenuItem onSelect={onSetPrimary}>
+                <Star className="size-4" />
+                Set as primary
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onSelect={onDelete}
               className="text-destructive focus:text-destructive"

@@ -275,18 +275,46 @@ export async function DELETE(request: Request) {
   return NextResponse.json({ ok: true, count: mediaRows.length });
 }
 
+/**
+ * PATCH /api/items/media — two operations on the same route:
+ *
+ *   1. Set primary: body = { itemId, mediaId }
+ *      Demotes the current primary, promotes the given media row,
+ *      mirrors its storage_path + alt onto items.image_path.
+ *
+ *   2. Reorder: body = { itemId, positions: [{ id, position }, ...] }
+ *      Batch-updates the position column on item_media. Used by the
+ *      photo-uploader drag-reorder gesture. Positions are the visible
+ *      0-based index after the merchant's drag; the server doesn't
+ *      assume monotonicity (the client supplies the full target list).
+ *
+ * The two modes are disjoint; presence of `positions` picks the second
+ * mode regardless of mediaId.
+ */
 export async function PATCH(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     itemId?: string;
     mediaId?: string;
+    positions?: Array<{ id: string; position: number }>;
   } | null;
 
   const itemId = body?.itemId ?? "";
   const mediaId = body?.mediaId ?? "";
+  const positions = body?.positions;
 
-  if (!itemId || !mediaId) {
+  if (!itemId) {
     return NextResponse.json(
       { error: "Missing media update data." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    (!positions || positions.length === 0) &&
+    !mediaId
+  ) {
+    return NextResponse.json(
+      { error: "Provide either mediaId (set primary) or positions (reorder)." },
       { status: 400 },
     );
   }
@@ -306,6 +334,45 @@ export async function PATCH(request: Request) {
     auth: { persistSession: false },
   });
 
+  const { data: item } = await supabase
+    .from("items")
+    .select("catalog_id")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  // ----- REORDER MODE -------------------------------------------------
+  if (positions && positions.length > 0) {
+    // Issue N parallel UPDATEs scoped to (itemId, id). Each is a single-
+    // column write so the bump_version trigger fires once per row — same
+    // semantics as reorder_items / reorder_categories. RLS bypassed
+    // (service role), but the (item_id, id) constraint prevents writes
+    // to media owned by another item.
+    const updates = await Promise.all(
+      positions.map((p) =>
+        supabase
+          .from("item_media")
+          .update({ position: p.position })
+          .eq("id", p.id)
+          .eq("item_id", itemId),
+      ),
+    );
+
+    const firstError = updates.find((r) => r.error)?.error;
+    if (firstError) {
+      return NextResponse.json(
+        { error: firstError.message ?? "Failed to reorder photos." },
+        { status: 500 },
+      );
+    }
+
+    if (item?.catalog_id) {
+      await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // ----- SET PRIMARY MODE ---------------------------------------------
   const { data: mediaRow, error: mediaError } = await supabase
     .from("item_media")
     .select("id, storage_path, alt")
@@ -349,11 +416,6 @@ export async function PATCH(request: Request) {
 
   // Bust the catalog cache so the dashboard reflects the new primary.
   // See POST handler comment for why this is required.
-  const { data: item } = await supabase
-    .from("items")
-    .select("catalog_id")
-    .eq("id", itemId)
-    .maybeSingle();
   if (item?.catalog_id) {
     await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
   }
