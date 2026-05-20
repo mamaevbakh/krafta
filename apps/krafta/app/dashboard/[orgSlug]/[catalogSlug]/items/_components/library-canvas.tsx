@@ -38,7 +38,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { CanvasWithSelection } from "./canvas-with-selection";
 import { CategorySection } from "./category-section";
-import { Inspector } from "./inspector";
+import { EditorSheet } from "./editor-sheet";
 import { CreateItemFlowDialog } from "./create-item-flow-dialog";
 import { CanvasLocaleProvider } from "./locale-context";
 import { LocaleTabStrip } from "./locale-tab-strip";
@@ -197,17 +197,22 @@ export function LibraryCanvas({
               )}
             </div>
 
-            {/* Inspector: desktop side panel + mobile Drawer. The Inspector
-                component handles its own responsive switch. */}
-            <Inspector
-              items={items}
-              media={media}
-              catalogId={catalogId}
-              catalogSlug={catalogSlug}
-              currencySettings={currencySettings}
-            />
           </div>
         </CanvasWithSelection>
+
+        {/* EditorSheet (KRA-35 Iter 2 / T2) replaces the legacy Inspector.
+            Desktop: right-side Sheet ~800px. Mobile: Drawer 95dvh.
+            Mounts at the Provider level so it sees both selection and
+            locale context. */}
+        <EditorSheet
+          items={items}
+          categories={sortedCategories}
+          media={media}
+          translations={translations}
+          catalogId={catalogId}
+          catalogSlug={catalogSlug}
+          currencySettings={currencySettings}
+        />
       </CanvasLocaleProvider>
 
       {/* Add-item dialog — existing flow, reused intact. */}
