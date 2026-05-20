@@ -15,11 +15,15 @@ import type { CatalogOption } from "@/components/dashboard/catalog-switcher";
 import type { OrgOption } from "@/components/dashboard/org-switcher";
 import { cn } from "@/lib/utils";
 
+// Top-nav links. Categories migrates under Items per ADR 0002 §4.2 — the
+// link still appears on the top nav (for now; KRA-76 will collapse this
+// into the sidebar with proper sub-nav). The sub-path `items/categories`
+// is the destination; the old `/categories` URL 308-redirects to it.
 const DASHBOARD_LINKS = [
   { segment: "", label: "Overview" },
   { segment: "orders", label: "Orders" },
-  { segment: "categories", label: "Categories" },
   { segment: "items", label: "Items" },
+  { segment: "items/categories", label: "Categories" },
   { segment: "builder", label: "Studio" },
   { segment: "billing", label: "Billing" },
   { segment: "settings", label: "Settings" },
