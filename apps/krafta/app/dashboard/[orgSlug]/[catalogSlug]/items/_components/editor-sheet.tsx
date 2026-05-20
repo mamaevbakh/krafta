@@ -1,17 +1,24 @@
 "use client";
 
 /**
- * editor-sheet.tsx — KRA-35 Iter 2 / T2: fullscreen editor for the selected item.
+ * editor-sheet.tsx — KRA-35 Iter 2 / T2 (revised): fullscreen bottom drawer
+ * editor for the selected item.
  *
- * Replaces the v1 360px right-side Inspector with a full-width Sheet on
- * desktop / Drawer on mobile. Per iter 2 design plan §3 D1 + Pass 2 D2C:
+ * Replaces the v1 360px right-side Inspector with a truly fullscreen
+ * bottom-slide drawer on every viewport. Earlier revision used Sheet
+ * (desktop right-side) + Drawer (mobile 95dvh); merchant feedback flagged
+ * the cramped feel and the semi-opaque overlay. Per the rework:
  *
- *   - Right-anchored Sheet at ~800px / max-w-[90vw] on desktop
- *   - Drawer at h-[95dvh] on mobile
- *   - Two-column form (identity left, metadata right) collapsing to a
- *     single stack on mobile per D1.3
+ *   - Single drawer for all viewports, slides up from the bottom edge.
+ *   - Fully covers the viewport (`fixed inset-0`) — no top gap, no overlay
+ *     because there's nothing visible behind to dim.
+ *   - Two-column form (identity left, metadata right) on lg+, stacked
+ *     single column below. No `variant` prop split anymore — pure Tailwind
+ *     responsive.
+ *   - Buttons use the shadcn default (rounded-md). The earlier `rounded-
+ *     full` pill style on Save / Actions / Cancel was inconsistent with
+ *     DESIGN.md (rounded-md = buttons default per spec line 178-183).
  *   - EXPLICIT SAVE — fields are local state until merchant clicks Save.
- *     Walks back KRA-35 v1's autosave / InlineText pattern.
  *   - Save state machine: idle → saving → saved (1.2s) → idle; or
  *     idle → saving → error → idle (on retry).
  *   - AlertDialog confirming "Discard changes?" when closing with dirty
@@ -19,14 +26,18 @@
  *   - Variations + modifier list editors are READ-ONLY placeholders in
  *     iter 2 (per Pass 7 D5B + D6A). Full editing ships in KRA-90 + KRA-85.
  *
- * Composition matches the Inspector pattern: a single component renders
- * both the desktop Sheet and the mobile Drawer; Tailwind responsive classes
- * + viewport conditional decide which chrome shows. The form body is
- * shared between both via the EditorForm sub-component.
+ * Why vaul DrawerPrimitive directly (not the shadcn Drawer wrapper):
+ *   shadcn's DrawerContent bakes in `mt-24` + `max-h-[80vh]` + an
+ *   internal `bg-black/50` overlay + a drag handle div — all blocking
+ *   true fullscreen. We bypass DrawerContent and use the vaul primitives
+ *   so we can render without an overlay and without those size caps.
+ *   The Inspector's old uses of shadcn Drawer are gone (T5 deleted the
+ *   Inspector), so this is the only editor consumer and the divergence
+ *   is local.
  *
  * Selection wiring: reads `selectedItemId` from `useCanvasSelection()`.
- * When non-null, finds the matching item in props and mounts the sheet.
- * When null, sheet stays closed. Form state is fully reset when the
+ * When non-null, finds the matching item in props and mounts the drawer.
+ * When null, drawer stays closed. Form state is fully reset when the
  * selected item id changes via a React `key={item.id}` on EditorForm —
  * mount/unmount-driven state reset is cleaner than a giant useEffect.
  */
@@ -34,6 +45,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { Drawer as DrawerPrimitive } from "vaul";
 import {
   Check,
   Copy,
@@ -43,19 +55,6 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -177,22 +176,32 @@ export function EditorSheet({
   };
 
   return (
-    <>
-      {/* Desktop: right-anchored Sheet, ~800px / max-w-[90vw]. */}
-      <Sheet open={open} onOpenChange={handleOpenChange}>
-        <SheetContent
-          side="right"
+    <DrawerPrimitive.Root
+      open={open}
+      onOpenChange={handleOpenChange}
+      shouldScaleBackground={false}
+    >
+      <DrawerPrimitive.Portal>
+        {/* No DrawerPrimitive.Overlay — fullscreen content covers the
+            entire viewport, there's nothing behind to dim. The merchant
+            feedback explicitly called out the semi-opaque overlay from
+            the prior Sheet implementation. */}
+        <DrawerPrimitive.Content
+          data-slot="editor-fullscreen-drawer"
           className={cn(
-            "hidden md:flex",
-            "w-[800px] max-w-[90vw] sm:max-w-[90vw]",
-            // shadcn Sheet's default w-3/4 is too narrow on wide screens
-            // for our two-column editor. Override.
-            "flex-col p-0 gap-0",
+            "fixed inset-0 z-50 flex flex-col bg-background",
+            // Animation: slide up from bottom on open, down on close.
+            // tw-animate-css utilities (imported globally in globals.css).
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+            "duration-300",
+            // No rounded-top — we cover the viewport edge-to-edge so any
+            // curve would create a visible seam at the top of the screen.
           )}
         >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Edit item: {selectedItem.name}</SheetTitle>
-          </SheetHeader>
+          <DrawerPrimitive.Title className="sr-only">
+            Edit item: {selectedItem.name || "Untitled item"}
+          </DrawerPrimitive.Title>
           <EditorForm
             key={selectedItem.id}
             item={selectedItem}
@@ -204,40 +213,10 @@ export function EditorSheet({
             currencySettings={currencySettings}
             onRequestClose={onRequestClose}
             onRegisterClose={registerCloseHandler}
-            variant="desktop"
           />
-        </SheetContent>
-      </Sheet>
-
-      {/* Mobile: Drawer at 95dvh — taller than the v1 Inspector's 75dvh
-          because this is a real editor now, not a quick-view. */}
-      <Drawer open={open} onOpenChange={handleOpenChange}>
-        <DrawerContent
-          className={cn(
-            "md:hidden",
-            "h-[95dvh] max-h-[95dvh]",
-            "flex flex-col",
-          )}
-        >
-          <DrawerHeader className="sr-only">
-            <DrawerTitle>Edit item: {selectedItem.name}</DrawerTitle>
-          </DrawerHeader>
-          <EditorForm
-            key={selectedItem.id}
-            item={selectedItem}
-            categories={categories}
-            media={media}
-            translations={translations}
-            catalogId={catalogId}
-            catalogSlug={catalogSlug}
-            currencySettings={currencySettings}
-            onRequestClose={onRequestClose}
-            onRegisterClose={registerCloseHandler}
-            variant="mobile"
-          />
-        </DrawerContent>
-      </Drawer>
-    </>
+        </DrawerPrimitive.Content>
+      </DrawerPrimitive.Portal>
+    </DrawerPrimitive.Root>
   );
 }
 
@@ -257,10 +236,9 @@ type EditorFormProps = {
    *  the merchant confirms Discard in the dialog). */
   onRequestClose: () => void;
   /** Called once on mount to register the form's dirty-aware handleClose
-   *  fn with the parent. The parent uses it to intercept Sheet/Drawer
-   *  backdrop + ESC close paths. */
+   *  fn with the parent. The parent uses it to intercept drawer backdrop
+   *  + ESC + swipe-down close paths. */
   onRegisterClose: (fn: () => void) => void;
-  variant: "desktop" | "mobile";
 };
 
 function EditorForm({
@@ -273,7 +251,6 @@ function EditorForm({
   currencySettings,
   onRequestClose,
   onRegisterClose,
-  variant,
 }: EditorFormProps) {
   const router = useRouter();
   const { activeLocale, defaultLocale } = useCanvasLocale();
@@ -583,9 +560,13 @@ function EditorForm({
   // ---------------------------------------------------------------------
 
   const renderSaveButton = (className?: string) => {
+    // All variants use the shadcn Button default radius (rounded-md per
+    // DESIGN.md spec line 178-183). No rounded-full pills — those were
+    // inconsistent with the rest of the dashboard chrome and called out
+    // explicitly in merchant feedback.
     if (saveStatus === "saving") {
       return (
-        <Button disabled className={cn("rounded-full", className)}>
+        <Button disabled className={className}>
           <Loader2 className="size-4 animate-spin" />
           Saving…
         </Button>
@@ -596,7 +577,7 @@ function EditorForm({
         <Button
           disabled
           className={cn(
-            "rounded-full bg-emerald-600 text-white hover:bg-emerald-600",
+            "bg-emerald-600 text-white hover:bg-emerald-600",
             className,
           )}
         >
@@ -607,21 +588,13 @@ function EditorForm({
     }
     if (saveStatus === "error") {
       return (
-        <Button
-          onClick={handleSave}
-          variant="destructive"
-          className={cn("rounded-full", className)}
-        >
+        <Button onClick={handleSave} variant="destructive" className={className}>
           Save failed — Retry
         </Button>
       );
     }
     return (
-      <Button
-        onClick={handleSave}
-        disabled={!isDirty}
-        className={cn("rounded-full", className)}
-      >
+      <Button onClick={handleSave} disabled={!isDirty} className={className}>
         Save
       </Button>
     );
@@ -659,7 +632,6 @@ function EditorForm({
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-full"
                 aria-label="More actions"
               >
                 Actions
@@ -723,19 +695,21 @@ function EditorForm({
             </AlertDialogContent>
           </AlertDialog>
 
-          {variant === "desktop" && renderSaveButton()}
+          {/* Save lives in the header on every viewport now — no separate
+              mobile footer. Single click target consistent with Square. */}
+          {renderSaveButton()}
         </div>
       </header>
 
-      {/* Form body */}
+      {/* Form body — scrollable. The header is sticky above; this area
+          fills the rest of the viewport and scrolls when content overflows. */}
       <ScrollArea className="flex-1">
         <div
           className={cn(
-            "flex gap-6 p-4 md:p-6",
-            // Desktop: two columns side-by-side. Mobile: stack vertically.
-            variant === "desktop"
-              ? "flex-row"
-              : "flex-col",
+            "mx-auto flex max-w-[1248px] gap-6 p-4 md:p-6",
+            // Stack single-column on mobile / tablet, side-by-side at lg+
+            // (≥ 1024px) where there's room for the right-column metadata.
+            "flex-col lg:flex-row",
           )}
         >
           {/* Left column — identity fields. */}
@@ -890,14 +864,9 @@ function EditorForm({
             </div>
           </div>
 
-          {/* Right column — metadata cards. Desktop: 320px. Mobile:
-              full-width (already stacked by the parent's flex-col). */}
-          <div
-            className={cn(
-              "flex shrink-0 flex-col gap-4",
-              variant === "desktop" ? "w-[320px]" : "w-full",
-            )}
-          >
+          {/* Right column — metadata cards. lg+: fixed 320px sidebar.
+              Below lg: full-width, stacked below the left column. */}
+          <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
             <MetadataCard title="Categories">
               <Select value={categoryId} onValueChange={setCategoryId}>
                 <SelectTrigger>
@@ -959,22 +928,10 @@ function EditorForm({
         )}
       </ScrollArea>
 
-      {/* Mobile-only sticky footer — Cancel + Save side-by-side, each
-          flex-1, size-11 touch targets. */}
-      {variant === "mobile" && (
-        <div className="flex shrink-0 items-center gap-2 border-t bg-background px-4 py-3">
-          <Button
-            variant="outline"
-            size="lg"
-            className="flex-1 rounded-full"
-            onClick={handleClose}
-          >
-            Cancel
-          </Button>
-          {/* Reuse the same Save button render — flex-1 mobile-friendly. */}
-          <div className="flex-1">{renderSaveButton("w-full")}</div>
-        </div>
-      )}
+      {/* No bottom footer. The header's close-X (top-left) + Save (top-
+          right) carry the cancel and commit actions on every viewport.
+          Matches Square's "Edit item" pattern; one consistent click
+          target instead of footer-vs-header dependency on device size. */}
 
       {/* Discard-changes prompt — fires when handleClose detects a dirty
           form. Cancel returns to the editor; Discard closes and loses work. */}
