@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
-import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
+import { revalidateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
 
 const BUCKET_NAME = "public-assets";
 
@@ -130,7 +130,7 @@ export async function POST(request: Request) {
   // client triggers an RSC re-render but the underlying cached fetch
   // serves stale data — the photo shows up on the customer page (which
   // reads via a different cache path) but not in the dashboard canvas.
-  await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+  await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
 
   return NextResponse.json({ ok: true, media: insertRows });
 }
@@ -233,7 +233,7 @@ export async function DELETE(request: Request) {
       .update({ image_path: null, image_alt: null })
       .eq("id", itemId);
     if (item?.catalog_id) {
-      await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+      await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
     }
     return NextResponse.json({ ok: true, count: mediaRows.length });
   }
@@ -269,7 +269,7 @@ export async function DELETE(request: Request) {
   // deleted-media state reflected. See POST handler comment above for
   // why this is required.
   if (item?.catalog_id) {
-    await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+    await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
   }
 
   return NextResponse.json({ ok: true, count: mediaRows.length });
@@ -366,7 +366,7 @@ export async function PATCH(request: Request) {
     }
 
     if (item?.catalog_id) {
-      await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+      await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
     }
 
     return NextResponse.json({ ok: true });
@@ -417,7 +417,7 @@ export async function PATCH(request: Request) {
   // Bust the catalog cache so the dashboard reflects the new primary.
   // See POST handler comment for why this is required.
   if (item?.catalog_id) {
-    await updateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+    await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
   }
 
   return NextResponse.json({ ok: true });
