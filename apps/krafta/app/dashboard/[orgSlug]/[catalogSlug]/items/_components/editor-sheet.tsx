@@ -186,6 +186,28 @@ export function EditorSheet({
     [],
   );
 
+  // Body scroll lock — while the editor is open, freeze the page
+  // underneath so:
+  //   (a) Scrolling on the header area (no inner scroller above the
+  //       <ScrollArea>) doesn't fall through to the canvas.
+  //   (b) Overscroll at the form's top/bottom doesn't expose the page.
+  // Defense-in-depth: vaul DOES apply its own body lock, but the
+  // shouldScaleBackground={false} code path skips parts of the lock
+  // setup, so we re-apply explicitly. Cleanup restores the prior
+  // overflow value so other consumers (modals, popovers) aren't broken
+  // if they nested around us.
+  React.useEffect(() => {
+    if (!open) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const onRequestClose = () => setSelectedItemId(null);
@@ -778,7 +800,12 @@ function EditorForm({
           its own overflow-y: scroll. This is the documented shadcn
           idiom for scrollable content inside a flex column. */}
       <div className="min-h-0 flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
+        {/* `overscroll-contain` on the Viewport prevents scroll chaining
+            when the form hits top/bottom — without it, reaching the end
+            of the form bleeds through to the page underneath via the
+            browser's default overscroll behavior. Targets the Viewport
+            because that's the element doing the scrolling. */}
+        <ScrollArea className="h-full [&>[data-slot=scroll-area-viewport]]:overscroll-contain">
         <div
           className={cn(
             "mx-auto flex max-w-[1248px] gap-6 p-4 md:p-6",
