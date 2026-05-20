@@ -31,6 +31,10 @@
 
 import * as React from "react";
 import { Plus } from "lucide-react";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 import { Button } from "@/components/ui/button";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
@@ -83,6 +87,15 @@ export type OptimisticReorderAction = {
   /** Set when the drag crosses a category boundary. Undefined for
    *  intra-category reorders. */
   newCategoryId?: string;
+};
+
+/** Optimistic category-reorder action. The active and over ids here are
+ *  the dnd-kit category sortable ids (`category-<uuid>`), not the raw
+ *  category uuids — the canvas-with-selection drag handler strips the
+ *  prefix before dispatching. We accept the bare uuids in the reducer. */
+export type OptimisticCategoryReorderAction = {
+  activeId: string;
+  overId: string;
 };
 
 export type LibraryCanvasProps = {
@@ -145,14 +158,40 @@ export function LibraryCanvas({
     },
   );
 
+  // Optimistic category reorder (mirror of the items optimistic state).
+  // When the merchant drags a category section header, the dnd-kit handler
+  // in CanvasWithSelection dispatches this reducer inside startTransition
+  // so the section appears in its new slot synchronously. The server
+  // call follows; on success router.refresh() syncs `categories`. On
+  // failure React auto-reverts the transition.
+  const [optimisticCategories, applyOptimisticCategoryReorder] =
+    React.useOptimistic(
+      categories,
+      (
+        state: CatalogCategory[],
+        action: OptimisticCategoryReorderAction,
+      ): CatalogCategory[] => {
+        const sorted = [...state].sort((a, b) => a.position - b.position);
+        const activeIdx = sorted.findIndex((c) => c.id === action.activeId);
+        const overIdx = sorted.findIndex((c) => c.id === action.overId);
+        if (activeIdx < 0 || overIdx < 0) return state;
+        const [moved] = sorted.splice(activeIdx, 1);
+        sorted.splice(overIdx, 0, moved);
+        return sorted.map((category, idx) => ({
+          ...category,
+          position: idx,
+        }));
+      },
+    );
+
   // Group items by category id for per-section rendering. Categories
   // without items still render (their inline empty hint shows). Items
   // whose category_id is missing or no longer matches a category are
   // collected into a synthetic "Uncategorized" bucket so they don't
   // silently disappear from the merchant's view.
   const sortedCategories = React.useMemo(
-    () => [...categories].sort((a, b) => a.position - b.position),
-    [categories],
+    () => [...optimisticCategories].sort((a, b) => a.position - b.position),
+    [optimisticCategories],
   );
 
   // NOTE: bucketing uses `optimisticItems`, NOT the raw `items` prop. This
@@ -204,7 +243,9 @@ export function LibraryCanvas({
           catalogId={catalogId}
           catalogSlug={catalogSlug}
           items={optimisticItems}
+          categories={sortedCategories}
           onOptimisticReorder={applyOptimisticReorder}
+          onOptimisticCategoryReorder={applyOptimisticCategoryReorder}
         >
           <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
             {/* Category rail (KRA-35 Iter 2 / T3). Subordinate inset, no
@@ -221,16 +262,26 @@ export function LibraryCanvas({
                 <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
               ) : (
                 <div className="flex flex-col gap-8">
-                  {sortedCategories.map((category) => (
-                    <CategorySection
-                      key={category.id}
-                      category={category}
-                      items={itemsByCategory.map.get(category.id) ?? []}
-                      translations={translations}
-                      currencySettings={currencySettings}
-                      catalogId={catalogId}
-                    />
-                  ))}
+                  {/* SortableContext for category headers (KRA-91 drag-
+                      reorder). Only real categories are in the items[]
+                      list — the orphans bucket below is rendered as a
+                      static section with sortable={false} so it can't
+                      be reordered (it has no DB row to update). */}
+                  <SortableContext
+                    items={sortedCategories.map((c) => `category-${c.id}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {sortedCategories.map((category) => (
+                      <CategorySection
+                        key={category.id}
+                        category={category}
+                        items={itemsByCategory.map.get(category.id) ?? []}
+                        translations={translations}
+                        currencySettings={currencySettings}
+                        catalogId={catalogId}
+                      />
+                    ))}
+                  </SortableContext>
 
                   {itemsByCategory.orphans.length > 0 && (
                     <CategorySection
@@ -247,6 +298,7 @@ export function LibraryCanvas({
                       translations={translations}
                       currencySettings={currencySettings}
                       catalogId={catalogId}
+                      sortable={false}
                     />
                   )}
                 </div>

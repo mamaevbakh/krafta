@@ -22,12 +22,13 @@
  */
 
 import * as React from "react";
-import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
+  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { CSS } from "@dnd-kit/utilities";
+import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
@@ -55,6 +56,10 @@ export type CategorySectionProps = {
   /** Catalog id — used as the localStorage key namespace for collapse
    *  state. Each (catalog, category) gets its own persisted state. */
   catalogId: string;
+  /** When false, the section's drag affordance is disabled. The synthetic
+   *  "Uncategorized" orphans bucket passes false because it has no DB
+   *  row to reorder. Default true. */
+  sortable?: boolean;
 };
 
 const COLLAPSE_STORAGE_KEY = (catalogId: string) =>
@@ -110,10 +115,30 @@ export function CategorySection({
   translations,
   currencySettings,
   catalogId,
+  sortable = true,
 }: CategorySectionProps) {
-  const { setNodeRef, isOver } = useDroppable({
+  // useSortable doubles as droppable, so cross-category item drag still
+  // resolves to a section root drop. `disabled: !sortable` lets the
+  // orphans bucket render with the same component without participating
+  // in the SortableContext.
+  const {
+    setNodeRef,
+    listeners,
+    attributes,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({
     id: `category-${category.id}`,
+    disabled: !sortable,
   });
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   // SSR-safe collapse state. First render is always expanded (matches
   // server output), then useEffect reads localStorage and may flip to
@@ -146,6 +171,8 @@ export function CategorySection({
   return (
     <section
       ref={setNodeRef}
+      {...attributes}
+      style={sortableStyle}
       data-slot="category-section"
       data-category-id={category.id}
       className={cn(
@@ -154,43 +181,69 @@ export function CategorySection({
         // background when a draggable hovers over this section. Not a bold
         // colored fill (anti-slop) — just `bg-accent/40`.
         isOver && "bg-accent/40 rounded-md -mx-2 px-2 py-2",
+        // While THIS section is being dragged: a soft shadow indicates the
+        // category is in-flight. Functional shadow per DESIGN.md (not
+        // decorative). Other sections receive transform/transition from
+        // dnd-kit via the sortableStyle above.
+        isDragging && "shadow-md",
       )}
     >
-      {/* Section header — collapsible toggle. Whole header is clickable
-          (not just the chevron) so merchants don't have to precision-aim. */}
-      <button
-        type="button"
-        onClick={toggleCollapsed}
-        aria-expanded={!collapsed}
-        aria-controls={`category-${category.id}-content`}
-        className={cn(
-          "mb-3 flex w-full items-baseline justify-between gap-2 rounded-md py-1",
-          "text-left transition-colors hover:bg-accent/30",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+      {/* KRA-91 section header — three regions:
+            1. Drag handle (GripVertical, drag-only via useSortable listeners)
+            2. Collapse toggle (chevron + name + count, click to toggle)
+          Nesting two buttons is not allowed in HTML; they're siblings inside
+          a flex row instead. The drag handle is only rendered when
+          `sortable=true` so the orphans bucket header reads as static. */}
+      <div className="mb-3 flex w-full items-stretch gap-1">
+        {sortable && (
+          <button
+            type="button"
+            {...listeners}
+            aria-label={`Drag ${category.name} to reorder`}
+            className={cn(
+              "group/grip flex shrink-0 items-center justify-center",
+              "size-9 rounded-md text-muted-foreground transition-colors",
+              "hover:bg-accent hover:text-foreground",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              "cursor-grab active:cursor-grabbing touch-none",
+            )}
+          >
+            <GripVertical className="size-4" />
+          </button>
         )}
-      >
-        <div className="flex items-baseline gap-2 min-w-0">
-          {/* Chevron icon — visual cue. 150ms rotate via icon swap (no CSS
-              transform needed; lucide icons swap cleanly). */}
-          {collapsed ? (
-            <ChevronRight
-              className="size-4 shrink-0 text-muted-foreground transition-colors"
-              aria-hidden="true"
-            />
-          ) : (
-            <ChevronDown
-              className="size-4 shrink-0 text-muted-foreground transition-colors"
-              aria-hidden="true"
-            />
+
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-controls={`category-${category.id}-content`}
+          className={cn(
+            "flex flex-1 items-baseline justify-between gap-2 rounded-md py-1 px-2",
+            "text-left transition-colors hover:bg-accent/30",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           )}
-          <h2 className="truncate text-lg font-semibold tracking-tight">
-            {category.name}
-          </h2>
-        </div>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {items.length} {items.length === 1 ? "item" : "items"}
-        </span>
-      </button>
+        >
+          <div className="flex items-baseline gap-2 min-w-0">
+            {collapsed ? (
+              <ChevronRight
+                className="size-4 shrink-0 text-muted-foreground transition-colors"
+                aria-hidden="true"
+              />
+            ) : (
+              <ChevronDown
+                className="size-4 shrink-0 text-muted-foreground transition-colors"
+                aria-hidden="true"
+              />
+            )}
+            <h2 className="truncate text-lg font-semibold tracking-tight">
+              {category.name}
+            </h2>
+          </div>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {items.length} {items.length === 1 ? "item" : "items"}
+          </span>
+        </button>
+      </div>
 
       {/* Content — items list. Collapsed sections hide everything (including
           the empty hint), per plan D4.1: collapsed reads as "I don't care

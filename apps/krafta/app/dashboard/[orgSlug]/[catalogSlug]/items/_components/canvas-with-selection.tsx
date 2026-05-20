@@ -38,10 +38,12 @@ import {
 import { toast } from "sonner";
 
 import {
+  reorderCategories,
   reorderItems,
+  type ReorderCategoriesChange,
   type ReorderItemsChange,
 } from "@/app/dashboard/[orgSlug]/[catalogSlug]/items/_components/actions";
-import type { Item } from "@/lib/catalogs/types";
+import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 
 /**
  * Action passed to the parent's useOptimistic reducer. Kept here in
@@ -54,6 +56,19 @@ type OptimisticReorderAction = {
   overId: string;
   newCategoryId?: string;
 };
+
+/** Category-reorder twin of the above. The active/over ids passed to
+ *  this reducer are the bare uuids (the dnd-kit ids strip the
+ *  `category-` prefix before dispatch). */
+type OptimisticCategoryReorderAction = {
+  activeId: string;
+  overId: string;
+};
+
+/** dnd-kit sortable id prefix for category section headers. Item
+ *  sortables use the raw item uuid; categories prefix to disambiguate
+ *  in the shared handleDragEnd. */
+const CATEGORY_ID_PREFIX = "category-";
 
 // =======================================================================
 // Selection context
@@ -103,6 +118,11 @@ export type CanvasWithSelectionProps = {
    *  parent's `optimisticItems` — so the handler computes new positions
    *  from the latest visible state, not stale RSC data. */
   items: Item[];
+  /** Sorted category list (parent passes optimisticCategories sorted by
+   *  position). The handler reads this when a category-prefixed drag
+   *  ends to compute new positions. Required even if reorder isn't
+   *  wired so the handler doesn't crash on a category drag. */
+  categories?: CatalogCategory[];
   /** Optional callback to subscribe to selection changes (e.g. to scroll
    *  the selected card into view). */
   onSelectionChange?: (id: string | null) => void;
@@ -112,6 +132,9 @@ export type CanvasWithSelectionProps = {
    *  If omitted, drag-drop falls back to the legacy "wait for refresh"
    *  flow with the visible snap-back. */
   onOptimisticReorder?: (action: OptimisticReorderAction) => void;
+  /** Same idea, but for category-section drags. KRA-91 — wired to
+   *  applyOptimisticCategoryReorder in library-canvas.tsx. */
+  onOptimisticCategoryReorder?: (action: OptimisticCategoryReorderAction) => void;
   children: React.ReactNode;
 };
 
@@ -133,8 +156,10 @@ export function CanvasWithSelection({
   catalogId,
   catalogSlug,
   items,
+  categories,
   onSelectionChange,
   onOptimisticReorder,
+  onOptimisticCategoryReorder,
   children,
 }: CanvasWithSelectionProps) {
   const router = useRouter();
@@ -253,10 +278,67 @@ export function CanvasWithSelection({
         return;
       }
 
-      // Both ids are item ids (we attach useSortable to each item card).
-      // Compute new positions: insert active just before/after over in the
-      // canonical sort order. The server-side reorder_items RPC takes the
-      // resulting (id, position) list and updates atomically.
+      const activeIdStr = String(active.id);
+      const overIdStr = String(over.id);
+
+      // KRA-91 — category-section drag. ids look like `category-<uuid>`.
+      // Route to the category-reorder branch and short-circuit before the
+      // items path runs.
+      if (activeIdStr.startsWith(CATEGORY_ID_PREFIX)) {
+        // Defensive: ignore mismatched over (e.g. category dropped on an
+        // item id by some misconfiguration).
+        if (!overIdStr.startsWith(CATEGORY_ID_PREFIX)) return;
+        if (!categories || categories.length === 0) return;
+
+        const activeCategoryId = activeIdStr.slice(CATEGORY_ID_PREFIX.length);
+        const overCategoryId = overIdStr.slice(CATEGORY_ID_PREFIX.length);
+
+        const sortedCategories = [...categories].sort(
+          (a, b) => a.position - b.position,
+        );
+        const activeIdx = sortedCategories.findIndex(
+          (c) => c.id === activeCategoryId,
+        );
+        const overIdx = sortedCategories.findIndex(
+          (c) => c.id === overCategoryId,
+        );
+        if (activeIdx < 0 || overIdx < 0) return;
+
+        const [movedCategory] = sortedCategories.splice(activeIdx, 1);
+        sortedCategories.splice(overIdx, 0, movedCategory);
+        const categoryChanges: ReorderCategoriesChange[] =
+          sortedCategories.map((c, idx) => ({ id: c.id, position: idx }));
+
+        React.startTransition(async () => {
+          onOptimisticCategoryReorder?.({
+            activeId: activeCategoryId,
+            overId: overCategoryId,
+          });
+
+          const result = await reorderCategories({
+            catalogId,
+            catalogSlug,
+            changes: categoryChanges,
+          });
+
+          if (!result.ok) {
+            console.error(
+              "[CanvasWithSelection] reorderCategories failed:",
+              result.error,
+            );
+            toast.error(result.error ?? "Couldn't save the new category order.");
+            return;
+          }
+
+          router.refresh();
+        });
+        return;
+      }
+
+      // Items branch — original behavior. Both ids are item uuids; we
+      // attach useSortable to each item card with `item.id` as the
+      // sortable id. Compute new positions: insert active just before/
+      // after over in the canonical sort order.
       const sortedItems = [...items].sort((a, b) => a.position - b.position);
       const activeIdx = sortedItems.findIndex((item) => item.id === active.id);
       const overIdx = sortedItems.findIndex((item) => item.id === over.id);
@@ -328,7 +410,15 @@ export function CanvasWithSelection({
         router.refresh();
       });
     },
-    [items, catalogId, catalogSlug, onOptimisticReorder, router],
+    [
+      items,
+      categories,
+      catalogId,
+      catalogSlug,
+      onOptimisticReorder,
+      onOptimisticCategoryReorder,
+      router,
+    ],
   );
 
   const selectionValue = React.useMemo(
