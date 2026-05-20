@@ -30,15 +30,18 @@
  */
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { reorderItems } from "./actions";
 
 import { CanvasWithSelection } from "./canvas-with-selection";
 import { CategorySection } from "./category-section";
@@ -125,6 +128,7 @@ export function LibraryCanvas({
   media,
   currencySettings,
 }: LibraryCanvasProps) {
+  const router = useRouter();
   const [itemDialogOpen, setItemDialogOpen] = React.useState(false);
 
   // Pure reducer for an item reorder action. Used by BOTH:
@@ -226,6 +230,67 @@ export function LibraryCanvas({
     setPreviewItems(null);
   }, []);
 
+  // Commit a finalized item reorder: clears the during-drag preview,
+  // applies the optimistic state (for the server roundtrip), computes
+  // the changes payload from the SAME source as the reducer (items
+  // props), and persists via reorderItems.
+  //
+  // Why lift this here instead of keeping it in canvas-with-selection:
+  // the changes payload + the useOptimistic reducer must compute from
+  // the same state. canvas-with-selection only sees `effectiveItems`
+  // (preview-applied), so if it computed `changes` from effective it
+  // would diverge from the reducer (which applies to items props).
+  // This handler keeps both on the same `items` source and uses the
+  // reducer's output for the payload — single source of truth.
+  const handleCommitReorder = React.useCallback(
+    (action: OptimisticReorderAction) => {
+      // Compute the reordered state from ORIGINAL items + action. The
+      // reducer's optimistic apply (below) produces the same result, so
+      // payload and optimistic stay consistent.
+      const reorderedItems = applyReorderAction(items, action);
+      const changes = reorderedItems.map((item, idx) => ({
+        id: item.id,
+        position: idx,
+        // Always set category_id on the active item. The reducer's
+        // result has the correct category_id (either action.newCategoryId
+        // for Case B, or the target slug for Case A); passing it here
+        // ensures the server UPDATEs to that value rather than COALESCing
+        // to the pre-existing one. Same-category drags effectively re-
+        // write the existing value — no-op cost.
+        ...(item.id === action.activeId
+          ? { category_id: item.category_id }
+          : {}),
+      }));
+
+      React.startTransition(async () => {
+        // Clear preview + dispatch optimistic in the same transition.
+        // Both batched into the next render — no flash between
+        // preview-cleared and optimistic-applied.
+        setPreviewItems(null);
+        applyOptimisticReorder(action);
+
+        const result = await reorderItems({
+          catalogId,
+          catalogSlug,
+          changes,
+        });
+
+        if (!result.ok) {
+          console.error(
+            "[LibraryCanvas] reorderItems failed:",
+            result.error,
+          );
+          toast.error(result.error ?? "Couldn't save the new order.");
+          return;
+        }
+
+        // Sync RSC. Optimistic resolves against the refreshed prop.
+        router.refresh();
+      });
+    },
+    [items, applyReorderAction, applyOptimisticReorder, catalogId, catalogSlug, router],
+  );
+
   // Optimistic category reorder (mirror of the items optimistic state).
   // When the merchant drags a category section header, the dnd-kit handler
   // in CanvasWithSelection dispatches this reducer inside startTransition
@@ -316,10 +381,10 @@ export function LibraryCanvas({
           categories={sortedCategories}
           translations={translations}
           currencySettings={currencySettings}
-          onOptimisticReorder={applyOptimisticReorder}
           onOptimisticCategoryReorder={applyOptimisticCategoryReorder}
           onDragPreview={handleDragPreview}
           onDragPreviewClear={handleDragPreviewClear}
+          onCommitReorder={handleCommitReorder}
         >
           <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
             {/* Category rail (KRA-35 Iter 2 / T3). Subordinate inset, no
