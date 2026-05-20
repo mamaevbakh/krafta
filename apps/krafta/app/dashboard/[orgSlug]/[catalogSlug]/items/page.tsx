@@ -1,7 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
-import { ItemsPanel } from "./_components/items-panel";
+// KRA-35 PR2: Library Canvas replaces the legacy DataTable-based ItemsPanel
+// as the default render. ItemsPanel stays in the codebase (Table view in
+// PR 3 once the view toggle ships); the import is kept commented so the
+// rewiring is obvious to future readers.
+// import { ItemsPanel } from "./_components/items-panel";
+import { LibraryCanvas } from "./_components/library-canvas";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
@@ -126,7 +131,7 @@ export default async function DashboardItemsPage({ params }: PageProps) {
   }
 
   return (
-    <ItemsPanel
+    <LibraryCanvas
       catalogId={catalog.id}
       catalogSlug={catalogSlug}
       orgId={catalog.org_id}
