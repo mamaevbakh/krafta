@@ -30,6 +30,7 @@
  */
 
 import * as React from "react";
+import Image from "next/image";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
@@ -156,18 +157,21 @@ export function LibraryRow({
       />
 
       {/* Thumbnail — 40px square, rounded-xs per DESIGN.md spec line 178.
-          Fallback to muted box when no image (vs broken-image icon, per
-          DESIGN.md empty-state principle). */}
-      <div className="size-10 shrink-0 overflow-hidden rounded-xs bg-muted">
+          Uses next/image with the Supabase image-loader so the request
+          hits /storage/v1/render/image/public/ with width=40 — server-
+          side resize delivers ~2 KB instead of the full-size original
+          (which can be 1-5 MB for merchant-uploaded photos). Fallback
+          to muted box when no image. */}
+      <div className="relative size-10 shrink-0 overflow-hidden rounded-xs bg-muted">
         {imageUrl ? (
-          // Plain <img> is fine here — the row's image is 40px (tiny), and
-          // next/image's optimization overhead isn't worth the dimensions
-          // ceremony for cells of this size.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={imageUrl}
             alt={item.image_alt ?? ""}
-            className="size-full object-cover"
+            fill
+            // 40px = the row's thumbnail size on every viewport. No
+            // responsive variants needed for a fixed-size cell.
+            sizes="40px"
+            className="object-cover"
           />
         ) : null}
       </div>
