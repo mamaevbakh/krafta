@@ -573,3 +573,139 @@ export async function deleteItem(params: {
 
   return { ok: true };
 }
+
+// ============================================================================
+// KRA-35 PR1 — Library Foundation: reorder + duplicate
+// ============================================================================
+//
+// Thin wrappers around two Postgres RPCs introduced by migration
+// 20260520040000_kra35_items_reorder_duplicate_rpcs.sql. Both functions are
+// SECURITY INVOKER (default), so RLS gates which catalogs the caller can
+// touch — these wrappers don't add a separate membership check.
+//
+// Why RPC and not a Promise.all of .update() calls: PostgREST has no
+// cross-request transaction surface. A half-applied reorder leaves
+// positions inconsistent (two items at position 3, gaps elsewhere) with
+// no clean recovery — exactly the irreversible bug class D11 carves out
+// safety against. Going through a function buys atomic semantics for
+// effectively free (no test infra needed; one Postgres trip vs N).
+//
+// These actions ship in PR 1 (Foundation) with NO consumer — the Library
+// Canvas (PR 2) wires drag-drop → reorderItems, and the Inspector (PR 2)
+// wires duplicate → duplicateItem. Landing the actions isolated lets the
+// migration get reviewed on its own merit before the canvas stacks on top.
+
+export type ReorderItemsChange = {
+  /** Item id to update. */
+  id: string;
+  /** New position within the (possibly new) category. */
+  position: number;
+  /** Set ONLY on cross-category drag. Omitted means category_id is
+   *  unchanged. */
+  category_id?: string;
+};
+
+/**
+ * reorderItems — atomic batched reorder of items within a catalog.
+ *
+ * Calls the `public.reorder_items(p_catalog_id, p_changes)` RPC. The
+ * function runs each UPDATE inside a single Postgres transaction; if
+ * any row fails RLS, the whole call rolls back. The `bump_version`
+ * trigger fires per row (BEFORE UPDATE FOR EACH ROW per KRA-54 §1) —
+ * a 30-item batch produces 30 version bumps, which is the schema's
+ * intentional behavior.
+ *
+ * Used by the Library Canvas's dnd-kit drop handler (desktop) and the
+ * mobile long-press + arrow-button reorder UI (PR 2). Cross-category
+ * drag passes the new category_id; same-category reorder omits it.
+ */
+export async function reorderItems(params: {
+  catalogId: string;
+  catalogSlug: string;
+  changes: ReorderItemsChange[];
+}) {
+  if (!params.changes.length) {
+    // No-op: nothing to reorder. Caller may filter empties before
+    // calling; this is defensive.
+    return { ok: true } as const;
+  }
+
+  const supabase = await createClient();
+
+  // The RPC accepts jsonb; we pass the array as-is and Postgres validates
+  // the shape per element ({ id, position, category_id? }). The Json
+  // serializer accepts our ReorderItemsChange[] structurally.
+  const { error } = await supabase.rpc("reorder_items", {
+    p_catalog_id: params.catalogId,
+    p_changes: params.changes as unknown as Database["public"]["Functions"]["reorder_items"]["Args"]["p_changes"],
+  });
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+
+/**
+ * duplicateItem — atomic deep clone of an item.
+ *
+ * Calls the `public.duplicate_item(p_catalog_id, p_item_id)` RPC. The
+ * function clones the items row + item_variations + item_modifier_lists
+ * + item_translations + item_media rows in a single transaction. Default-
+ * locale name gets a " (copy)" suffix; non-default translations clone
+ * verbatim. Slug is uniquified with "-copy", "-copy-2", … to avoid
+ * collisions with prior duplicates. Returns the new item_id so the
+ * caller can scroll-to / select the clone in the Library Canvas.
+ *
+ * Media storage_path is SHARED between source and clone — no actual
+ * file duplication, the Supabase Storage object is referenced by both
+ * item_media rows. The existing `cleanupMediaStorage` helper removes
+ * the file only when no remaining row references it (current behavior;
+ * deletion of one item leaves files alone if other items still
+ * reference them).
+ */
+export async function duplicateItem(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+}) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("duplicate_item", {
+    p_catalog_id: params.catalogId,
+    p_item_id: params.itemId,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  // The RPC returns the new item's uuid as a string (Supabase serializes
+  // uuid as string).
+  const newItemId = typeof data === "string" ? data : null;
+  if (!newItemId) {
+    return {
+      ok: false,
+      error: "duplicate_item returned no new item id",
+    } as const;
+  }
+
+  // Sync search docs for the clone so it appears in search immediately.
+  // The RPC clones translations but search indexing happens app-side
+  // (syncItemSearchDocuments reads items + translations and upserts the
+  // search row).
+  await syncItemSearchDocuments({ itemId: newItemId, client: supabase });
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true, itemId: newItemId } as const;
+}
