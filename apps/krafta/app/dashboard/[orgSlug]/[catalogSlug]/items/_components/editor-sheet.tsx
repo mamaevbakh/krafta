@@ -99,9 +99,12 @@ import {
   duplicateItem,
   setItemActive,
   updateItem,
-  type ItemVariationChange,
 } from "./actions";
-import { VariationsEditor } from "./variations-editor";
+import {
+  VariationsEditor,
+  VariationPriceInput,
+  useVariationsState,
+} from "./variations-editor";
 
 // =======================================================================
 // Types
@@ -341,66 +344,24 @@ function EditorForm({
   const [isActive, setIsActive] = React.useState(item.is_active);
 
   // ---------------------------------------------------------------------
-  // KRA-86 — variations editor state.
+  // KRA-86 — variations state (single source of truth via the hook).
   //
-  // The VariationsEditor owns its own LocalVariation[] (with __dirty +
-  // __markedForDelete flags). It bubbles up the SAVE-ready payload via
-  // onChange — that's what the editor-sheet stores here and dispatches
-  // to updateItem on Save.
+  // The hook owns the LocalVariation[] state. We read state.changes here
+  // to build the Save payload, state.isDirty / state.isValid to gate the
+  // Save button, and state.defaultVariation to drive the top-level Price
+  // field shown above this section.
   //
-  // `variationsDirty` is detected by comparing the changes payload to a
-  // "no-changes" baseline: the seed payload that would round-trip the
-  // initial variations through the RPC unchanged. We approximate this
-  // by checking whether any change in the payload differs from the
-  // matching initial row.
+  // The "primary Price" pattern (mirrors Square): always show a Price
+  // field; when surviving variations >= 2, mute it ("Price varies by
+  // variation"). When surviving <= 1, the field IS the editor for the
+  // default variation's price — it's the only price input visible.
   // ---------------------------------------------------------------------
-  const [variationChanges, setVariationChanges] = React.useState<
-    ItemVariationChange[]
-  >([]);
-  const [isVariationsValid, setIsVariationsValid] = React.useState(true);
+  const { state: variationsState, dispatch: variationsDispatch } =
+    useVariationsState(item.variations);
 
   const isDefaultLocaleEditable = activeLocale === defaultLocale;
-
-  const variationsDirty = React.useMemo(() => {
-    if (variationChanges.length === 0) return false;
-    // The editor emits the full surviving set on every change, so payload
-    // length 0 implies "no changes ever sent yet." When the payload has
-    // contents, we compare against the initial variations: if any field
-    // differs (name, price, ordinal, is_default, is_sold_out), OR if any
-    // delete op is present, OR if any insert (no id) is present, dirty.
-    const initialById = new Map(item.variations.map((v) => [v.id, v]));
-    for (const change of variationChanges) {
-      if (change.op === "delete") return true;
-      if (!change.id) return true; // new row
-      const initial = initialById.get(change.id);
-      if (!initial) return true; // unexpected — payload references a removed id
-      if (
-        initial.name !== change.name ||
-        initial.price_cents !== change.price_cents ||
-        initial.ordinal !== change.ordinal ||
-        initial.is_default !== change.is_default ||
-        initial.is_sold_out !== change.is_sold_out
-      ) {
-        return true;
-      }
-    }
-    // The payload length also signals a structural delta: if it doesn't
-    // cover every initial row, some rows were deleted.
-    const upsertIds = new Set(
-      variationChanges
-        .filter((c) => c.op === "upsert" && c.id)
-        .map((c) => (c as { id: string }).id),
-    );
-    for (const initial of item.variations) {
-      if (!upsertIds.has(initial.id)) {
-        // Initial row neither in upsert nor in delete payload — implies
-        // the editor hasn't emitted anything for it yet, which only
-        // happens transiently. Treat as not-dirty for safety.
-        return false;
-      }
-    }
-    return false;
-  }, [variationChanges, item.variations]);
+  const survivingVariationsCount = variationsState.survivingRows.length;
+  const hasMultipleVariations = survivingVariationsCount >= 2;
 
   // Dirty = any field changed from its initial value.
   const isDirty =
@@ -408,7 +369,7 @@ function EditorForm({
     description !== initialDescription ||
     categoryId !== item.category_id ||
     isActive !== item.is_active ||
-    variationsDirty;
+    variationsState.isDirty;
 
   // ---------------------------------------------------------------------
   // Save state machine
@@ -465,13 +426,13 @@ function EditorForm({
       translations: activeTranslation
         ? [...otherTranslations, activeTranslation]
         : otherTranslations,
-      // KRA-86 — pass the variations payload IFF the merchant actually
-      // edited variations in this session. When variationsDirty is false,
-      // we let the back-compat path inside updateItem synthesize a
-      // default-row update using priceCents (legacy behavior). When dirty,
-      // the editor's full payload is dispatched and the synthesis is
-      // bypassed.
-      variationChanges: variationsDirty ? variationChanges : undefined,
+      // KRA-86 — always dispatch the full variation payload from the
+      // hook. The hook is the single source of truth for variation state
+      // (including the default's price set via the top-level Price
+      // field). When the merchant hasn't edited anything, the payload
+      // round-trips the current rows unchanged through the RPC, which
+      // is idempotent.
+      variationChanges: variationsState.changes,
     });
 
     if (!result.ok) {
@@ -522,8 +483,7 @@ function EditorForm({
     catalogId,
     catalogSlug,
     router,
-    variationChanges,
-    variationsDirty,
+    variationsState.changes,
   ]);
 
   // ---------------------------------------------------------------------
@@ -681,7 +641,7 @@ function EditorForm({
     return (
       <Button
         onClick={handleSave}
-        disabled={!isDirty || !isVariationsValid}
+        disabled={!isDirty || !variationsState.isValid}
         className={className}
       >
         Save
@@ -843,6 +803,45 @@ function EditorForm({
               )}
             </div>
 
+            {/* Primary Price field — Krafta mirror of Square's pattern.
+                When the item has only the default variation, this IS the
+                price input (the variations editor below stays collapsed to
+                an "Add variation" button). When merchant adds a second
+                variation, this field mutes with a hint and per-variation
+                editing happens below. The "default variation" concept is
+                hidden from the merchant entirely. */}
+            <div className="flex flex-col gap-2">
+              <Label className="text-sm font-medium" htmlFor="editor-price">
+                Price
+              </Label>
+              <div
+                className={cn(
+                  "flex h-9 items-center gap-2 rounded-md border bg-card px-3",
+                  hasMultipleVariations && "bg-muted/40",
+                )}
+              >
+                <VariationPriceInput
+                  valueCents={
+                    variationsState.defaultVariation?.price_cents ?? 0
+                  }
+                  onChange={variationsDispatch.setDefaultPrice}
+                  disabled={
+                    hasMultipleVariations ||
+                    !isDefaultLocaleEditable ||
+                    !variationsState.defaultVariation
+                  }
+                  currencySettings={currencySettings}
+                  className="h-full flex-1 w-auto border-transparent bg-transparent text-left shadow-none"
+                  data-slot="primary-price-input"
+                />
+              </div>
+              {hasMultipleVariations && (
+                <span className="text-xs text-muted-foreground">
+                  Price varies by variation — edit each below.
+                </span>
+              )}
+            </div>
+
             {/* Description */}
             <div className="flex flex-col gap-2">
               <Label
@@ -903,17 +902,20 @@ function EditorForm({
               </span>
             </div>
 
-            {/* Variations — KRA-86 inline editor (shadcn Table + dnd-kit).
-                Adopts Square's variations vocabulary. On non-default locale
-                tabs, renders read-only with a banner per A6 (variation name
-                translations are deferred). */}
+            {/* Variations — KRA-86 inline editor. Krafta compact-row
+                vocabulary (not shadcn Table). When variations <= 1, shows
+                only an "+ Add variation" button (the lone default's price
+                is editable via the Price field above). When >= 2, shows
+                the full list with per-row drag, name, price, status,
+                delete. On non-default locale tabs, renders read-only with
+                a banner per A6 (variation name translations are
+                deferred). */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Variations</Label>
               <VariationsEditor
-                itemId={item.id}
-                initialVariations={item.variations}
-                onChange={setVariationChanges}
-                onValidityChange={setIsVariationsValid}
+                state={variationsState}
+                dispatch={variationsDispatch}
+                currencySettings={currencySettings}
                 isLocaleEditable={isDefaultLocaleEditable}
               />
             </div>

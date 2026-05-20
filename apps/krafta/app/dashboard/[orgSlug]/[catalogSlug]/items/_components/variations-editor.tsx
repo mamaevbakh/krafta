@@ -1,46 +1,40 @@
 "use client";
 
 /**
- * variations-editor.tsx — KRA-86 / Slice 2.
+ * variations-editor.tsx — KRA-86 / Slice 2 (polished).
  *
- * Inline editable table for item_variations inside the EditorSheet's
- * Variations section. Adopts Square's "Variations" UI vocabulary
- * (shadcn Table with column headers + cell-based layout) while staying
- * within KRA-86's narrow scope (name, price, status, default flag).
+ * Hides the "default variation" concept from the merchant — mirrors
+ * Square's UX:
+ *   - The item gets a top-level Price field (rendered by editor-sheet.tsx,
+ *     not here). That field is bound to the default variation's price.
+ *   - When the item has ONLY the default (variation count = 1), this
+ *     component renders only an "+ Add variation" button. The default is
+ *     invisible.
+ *   - When the item has 2+ variations, this component renders a list of
+ *     all variations including the original default. The default has no
+ *     special UI badge.
  *
- * Layout (per plan §11.12):
- *   [grip] [Variation name (+Default pill)] [Price] [Status dropdown] [⋯]
+ * Design vocabulary (Krafta, not Square table):
+ *   Compact rows similar to LibraryRow — `h-12 rounded-md border bg-card
+ *   px-3 flex items-center gap-3`. Grip on the left, name + price inline,
+ *   status badge as a button, single 3-dot menu for delete.
  *
- * Per-row 3-dot menu (Actions column):
- *   - Make default (only on non-default rows)
- *   - Delete (soft-delete; click again to undo)
+ * State management:
+ *   This file exports a useVariationsState hook that the parent
+ *   (editor-sheet) calls to own the local state. The hook returns the
+ *   current state, validation, change payload, dispatch helpers, AND a
+ *   setDefaultPrice helper that the parent's Price field uses.
  *
- * State model:
- *   - LocalVariation extends ItemVariation with __dirty + __markedForDelete.
- *   - Soft-delete: row stays visible with line-through + opacity-50; undo
- *     by clicking the row's "Restore" affordance.
- *   - Brand-new rows have no `id`; the super-RPC INSERTs them.
- *   - Validation runs on every state change; isValid bubbles to parent
- *     so the EditorSheet Save button can disable.
+ *   The VariationsEditor view component is then controlled — it receives
+ *   { state, helpers } from the parent and just renders. This single-
+ *   source-of-truth shape lets the parent's Price field share the
+ *   default's price with the editor without a back-channel.
  *
- * Parent contract:
- *   - Pass `initialVariations` once (the editor seeds local state from this).
- *   - Receive `onChange(local)` whenever local state mutates — parent
- *     stores this as the variation-changes-source for the Save dispatch.
- *   - Receive `onValidityChange(isValid)` to wire the Save button gating.
- *
- * Locale awareness (A6):
- *   - When activeLocale !== defaultLocale, the editor renders read-only
- *     with a banner. Variation name translations are deferred to a future
- *     ticket; editing on a non-default locale would silently write to
- *     the default-locale `name` column, which is confusing.
- *
- * Drag-reorder:
- *   - Local DndContext scoped to this editor. EditorSheet is portaled
- *     outside the canvas DndContext (vaul portal), so we need our own.
- *   - PointerSensor 5px activation (desktop) + TouchSensor 250ms (mobile).
- *   - On drag end, reorder + bump every row's ordinal to match the new
- *     visible order.
+ * Currency:
+ *   formatPriceCents / parsePriceInput from lib/catalogs/pricing —
+ *   respects the catalog's currencySettings (label, separators,
+ *   decimals). Replaces the hard-coded UZS path the original Slice 2
+ *   used.
  */
 
 import * as React from "react";
@@ -60,14 +54,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  ChevronDown,
-  GripVertical,
-  MoreVertical,
-  Plus,
-  Trash2,
-  Undo2,
-} from "lucide-react";
+import { ChevronDown, GripVertical, MoreVertical, Plus, Trash2, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,67 +62,47 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  formatUzsCents,
-  parseUzsInput,
-} from "@/components/ui/inline-currency";
-import { cn } from "@/lib/utils";
+  formatPriceInputValue,
+  parsePriceInput,
+} from "@/lib/catalogs/pricing";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { ItemVariation } from "@/lib/catalogs/types";
+import { cn } from "@/lib/utils";
 
 import type { ItemVariationChange } from "./actions";
 
 // ---------------------------------------------------------------------------
-// Local state
+// Local state shape
 // ---------------------------------------------------------------------------
 
-/**
- * LocalVariation — the editor's per-row state.
- *
- * Fields with `__` prefix are local-only (never persisted directly). The
- * RPC payload is derived from the un-prefixed fields on Save. The
- * `localId` field is a client-only key for React + dnd-kit (separate from
- * the DB `id`, which is missing for unsaved rows).
- */
-type LocalVariation = {
+export type LocalVariation = {
+  /** Stable client-only key used for React + dnd-kit. Equal to DB `id`
+   *  for existing rows; a generated string for unsaved rows. */
   localId: string;
+  /** DB id. Missing for unsaved (newly-added) rows. */
   id?: string;
   name: string;
   price_cents: number;
   ordinal: number;
   is_default: boolean;
   is_sold_out: boolean;
-  /** True when this row has unsaved edits relative to its initial state.
-   *  Brand-new rows are always dirty. */
+  /** Has the row been modified relative to its seeded initial state. */
   __dirty: boolean;
-  /** Soft-delete flag — strike-through styling + the row is omitted from
-   *  Save payload OR included as `{op:'delete', id}` if it has a DB id. */
+  /** Soft-delete flag. Strikethrough + undo affordance; finalized on Save. */
   __markedForDelete: boolean;
 };
 
 function freshLocalId() {
-  // crypto.randomUUID is available in modern browsers + the React 19 / Next
-  // 16 runtime. Falls back to a date-based id to keep TS happy in case
-  // crypto isn't typed in the target.
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function seedLocalFromInitial(
-  initial: readonly ItemVariation[],
-): LocalVariation[] {
+function seedLocal(initial: readonly ItemVariation[]): LocalVariation[] {
   return [...initial]
     .sort((a, b) => a.ordinal - b.ordinal)
     .map((v) => ({
@@ -159,29 +126,22 @@ type ValidationError =
   | { kind: "name_empty"; localId: string }
   | { kind: "name_duplicate"; localId: string; conflictsWith: string }
   | { kind: "price_negative"; localId: string }
-  | { kind: "no_rows" }
-  | { kind: "no_default" }
-  | { kind: "multiple_default" };
+  | { kind: "no_rows" };
 
-function validate(local: LocalVariation[]): ValidationError[] {
+function validate(local: readonly LocalVariation[]): ValidationError[] {
   const errors: ValidationError[] = [];
   const surviving = local.filter((v) => !v.__markedForDelete);
 
   if (surviving.length === 0) {
     errors.push({ kind: "no_rows" });
-    return errors; // No surviving rows → no further checks make sense.
+    return errors;
   }
 
-  // Default-flag invariants (A1 partial-unique mirrors this client-side).
-  const defaults = surviving.filter((v) => v.is_default);
-  if (defaults.length === 0) {
-    errors.push({ kind: "no_default" });
-  } else if (defaults.length > 1) {
-    errors.push({ kind: "multiple_default" });
-  }
+  // The default exists invariantly (we never let the user end with 0 defaults
+  // — the dispatch helpers auto-promote). So no "no_default" check needed
+  // at this layer.
 
-  // Case-insensitive name uniqueness (CQ4).
-  const seenNames = new Map<string, string>(); // lower → localId
+  const seenNames = new Map<string, string>(); // lowercased name → localId
   for (const v of surviving) {
     const trimmed = v.name.trim();
     if (!trimmed) {
@@ -209,7 +169,7 @@ function validate(local: LocalVariation[]): ValidationError[] {
 }
 
 function rowHasError(
-  errors: ValidationError[],
+  errors: readonly ValidationError[],
   localId: string,
 ): boolean {
   return errors.some(
@@ -220,67 +180,87 @@ function rowHasError(
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// useVariationsState — single source of truth, lives in the parent.
 // ---------------------------------------------------------------------------
 
-export type VariationsEditorProps = {
-  /** Item id — required when the parent dispatches Save. The editor
-   *  itself only uses it for stable React keys + the change payload. */
-  itemId: string;
-  /** Initial state from the page-level fetch. The editor seeds once and
-   *  then owns local state until parent re-mounts (e.g. on Save +
-   *  router.refresh re-render). */
-  initialVariations: readonly ItemVariation[];
-  /** Called whenever local state changes. Parent stores the latest
-   *  changes payload and dispatches it on Save. */
-  onChange: (changes: ItemVariationChange[]) => void;
-  /** Called whenever validity changes. Parent gates the Save button. */
-  onValidityChange: (isValid: boolean) => void;
-  /** A6 — variation editing is locked on non-default locales. */
-  isLocaleEditable: boolean;
+export type VariationsState = {
+  local: LocalVariation[];
+  errors: ValidationError[];
+  isValid: boolean;
+  /** Surviving rows (not marked for delete), sorted by ordinal. */
+  survivingRows: LocalVariation[];
+  /** Default variation in the current local state. Always exists post-seed
+   *  because the schema guarantees at least one default per item. */
+  defaultVariation: LocalVariation | null;
+  /** Has the merchant changed anything relative to the initial seed. */
+  isDirty: boolean;
+  /** RPC payload — what to dispatch on Save. */
+  changes: ItemVariationChange[];
 };
 
-export function VariationsEditor({
-  itemId,
-  initialVariations,
-  onChange,
-  onValidityChange,
-  isLocaleEditable,
-}: VariationsEditorProps) {
+export type VariationsDispatch = {
+  setName: (localId: string, name: string) => void;
+  setPriceCents: (localId: string, cents: number) => void;
+  toggleSoldOut: (localId: string) => void;
+  softDelete: (localId: string) => void;
+  restore: (localId: string) => void;
+  /** Add a new variation. If only the default exists, the merchant is
+   *  effectively opting in to "this item has variations now." */
+  addRow: (opts?: { seedName?: string; seedPriceCents?: number }) => void;
+  /** Reorder the surviving rows after a drag-end event. */
+  reorder: (fromLocalId: string, toLocalId: string) => void;
+  /** Primary-price binding — used by editor-sheet's top-level Price field
+   *  when there's only one (default) variation. */
+  setDefaultPrice: (cents: number) => void;
+};
+
+export function useVariationsState(
+  initialVariations: readonly ItemVariation[],
+): {
+  state: VariationsState;
+  dispatch: VariationsDispatch;
+} {
   const [local, setLocal] = React.useState<LocalVariation[]>(() =>
-    seedLocalFromInitial(initialVariations),
+    seedLocal(initialVariations),
   );
 
-  // When the item changes (parent passes new initialVariations), re-seed.
-  // Identity comparison on the array reference is sufficient since the
-  // parent re-creates it from server data per render.
+  // Re-seed when the parent passes a new initialVariations reference
+  // (e.g. after router.refresh post-save). Identity comparison.
   const initialRef = React.useRef(initialVariations);
   React.useEffect(() => {
     if (initialRef.current !== initialVariations) {
       initialRef.current = initialVariations;
-      setLocal(seedLocalFromInitial(initialVariations));
+      setLocal(seedLocal(initialVariations));
     }
   }, [initialVariations]);
 
-  // ---- Validation + change-payload propagation -----------------------------
+  // ---- Derived state -----------------------------------------------------
   const errors = React.useMemo(() => validate(local), [local]);
   const isValid = errors.length === 0;
+  const survivingRows = React.useMemo(
+    () =>
+      [...local]
+        .filter((r) => !r.__markedForDelete)
+        .sort((a, b) => a.ordinal - b.ordinal),
+    [local],
+  );
+  const defaultVariation = React.useMemo(
+    () => survivingRows.find((r) => r.is_default) ?? null,
+    [survivingRows],
+  );
 
-  const changesPayload = React.useMemo<ItemVariationChange[]>(() => {
+  const isDirty = React.useMemo(
+    () => local.some((r) => r.__dirty || r.__markedForDelete),
+    [local],
+  );
+
+  const changes = React.useMemo<ItemVariationChange[]>(() => {
     const out: ItemVariationChange[] = [];
     for (const v of local) {
       if (v.__markedForDelete) {
-        // Brand-new rows that got marked for delete → omit entirely.
-        if (v.id) {
-          out.push({ op: "delete", id: v.id });
-        }
+        if (v.id) out.push({ op: "delete", id: v.id });
         continue;
       }
-      // Send upserts for everything dirty OR for everything if any row in
-      // the payload has changed ordinal (we re-bump ordinals on reorder,
-      // so all rows below the dragged-over row are dirty). Simplest is to
-      // always send the full surviving set on Save — the RPC's UPDATE
-      // statements are idempotent for unchanged rows.
       out.push({
         op: "upsert",
         ...(v.id ? { id: v.id } : {}),
@@ -294,47 +274,30 @@ export function VariationsEditor({
     return out;
   }, [local]);
 
-  // Effect refs to avoid re-running parent callbacks on parent re-renders.
-  const onChangeRef = React.useRef(onChange);
-  const onValidityChangeRef = React.useRef(onValidityChange);
-  React.useEffect(() => {
-    onChangeRef.current = onChange;
-    onValidityChangeRef.current = onValidityChange;
-  }, [onChange, onValidityChange]);
+  // ---- Dispatchers -------------------------------------------------------
 
-  React.useEffect(() => {
-    onChangeRef.current(changesPayload);
-  }, [changesPayload]);
+  const setName = React.useCallback((localId: string, name: string) => {
+    setLocal((rows) =>
+      rows.map((r) =>
+        r.localId === localId ? { ...r, name, __dirty: true } : r,
+      ),
+    );
+  }, []);
 
-  React.useEffect(() => {
-    onValidityChangeRef.current(isValid);
-  }, [isValid]);
-
-  // ---- Mutators ------------------------------------------------------------
-
-  const handleNameChange = React.useCallback(
-    (localId: string, name: string) => {
-      setLocal((rows) =>
-        rows.map((r) => (r.localId === localId ? { ...r, name, __dirty: true } : r)),
-      );
-    },
-    [],
-  );
-
-  const handlePriceChange = React.useCallback(
-    (localId: string, raw: string) => {
-      const parsed = parseUzsInput(raw);
-      if (parsed === null) return; // Invalid input — silently ignore until typing settles.
+  const setPriceCents = React.useCallback(
+    (localId: string, cents: number) => {
       setLocal((rows) =>
         rows.map((r) =>
-          r.localId === localId ? { ...r, price_cents: parsed, __dirty: true } : r,
+          r.localId === localId
+            ? { ...r, price_cents: cents, __dirty: r.price_cents !== cents || r.__dirty }
+            : r,
         ),
       );
     },
     [],
   );
 
-  const handleSoldOutToggle = React.useCallback((localId: string) => {
+  const toggleSoldOut = React.useCallback((localId: string) => {
     setLocal((rows) =>
       rows.map((r) =>
         r.localId === localId
@@ -344,31 +307,14 @@ export function VariationsEditor({
     );
   }, []);
 
-  const handleMakeDefault = React.useCallback((localId: string) => {
-    setLocal((rows) =>
-      rows.map((r) => ({
-        ...r,
-        is_default: r.localId === localId,
-        __dirty: r.is_default !== (r.localId === localId) ? true : r.__dirty,
-      })),
-    );
-  }, []);
-
-  const handleSoftDelete = React.useCallback((localId: string) => {
+  const softDelete = React.useCallback((localId: string) => {
     setLocal((rows) => {
       const target = rows.find((r) => r.localId === localId);
       if (!target) return rows;
 
-      // If the target is the current default AND there's at least one other
-      // surviving row, auto-promote the next surviving row to default. The
-      // editor never lets the merchant be stuck with "deleted default."
-      const wouldHaveNoDefault =
-        target.is_default &&
-        rows.some(
-          (r) => r.localId !== localId && !r.__markedForDelete,
-        );
+      // Auto-promote next surviving row to default if target was default.
       let newDefaultLocalId: string | null = null;
-      if (wouldHaveNoDefault) {
+      if (target.is_default) {
         const candidate = rows.find(
           (r) => r.localId !== localId && !r.__markedForDelete,
         );
@@ -392,174 +338,297 @@ export function VariationsEditor({
     });
   }, []);
 
-  const handleRestore = React.useCallback((localId: string) => {
+  const restore = React.useCallback((localId: string) => {
     setLocal((rows) =>
       rows.map((r) =>
-        r.localId === localId ? { ...r, __markedForDelete: false, __dirty: true } : r,
+        r.localId === localId
+          ? { ...r, __markedForDelete: false, __dirty: true }
+          : r,
       ),
     );
   }, []);
 
-  const handleAddRow = React.useCallback(() => {
-    setLocal((rows) => {
-      // Default the new row's price to the last surviving row's price (UX
-      // shortcut — merchants typically add sizes with similar prices).
-      const surviving = rows.filter((r) => !r.__markedForDelete);
-      const seedPrice = surviving[surviving.length - 1]?.price_cents ?? 0;
-      const nextOrdinal =
-        surviving.reduce((max, r) => Math.max(max, r.ordinal), -1) + 1;
-      return [
-        ...rows,
-        {
-          localId: freshLocalId(),
-          name: "",
-          price_cents: seedPrice,
-          ordinal: nextOrdinal,
-          is_default: false,
-          is_sold_out: false,
-          __dirty: true,
-          __markedForDelete: false,
-        },
-      ];
-    });
-  }, []);
-
-  // ---- Drag-reorder --------------------------------------------------------
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
-  );
-
-  const handleDragEnd = React.useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    setLocal((rows) => {
-      const surviving = rows.filter((r) => !r.__markedForDelete);
-      const fromIdx = surviving.findIndex((r) => r.localId === active.id);
-      const toIdx = surviving.findIndex((r) => r.localId === over.id);
-      if (fromIdx === -1 || toIdx === -1) return rows;
-
-      const reordered = arrayMove(surviving, fromIdx, toIdx);
-      // Bump ordinals to match the new visible order. We mutate __dirty
-      // for any row whose ordinal actually changes; unchanged rows
-      // keep their __dirty flag.
-      const ordinalMap = new Map<string, number>();
-      reordered.forEach((r, idx) => ordinalMap.set(r.localId, idx));
-
-      return rows.map((r) => {
-        const newOrdinal = ordinalMap.get(r.localId);
-        if (newOrdinal === undefined) return r; // Marked for delete — leave alone.
-        if (r.ordinal === newOrdinal) return r;
-        return { ...r, ordinal: newOrdinal, __dirty: true };
+  const addRow = React.useCallback(
+    (opts?: { seedName?: string; seedPriceCents?: number }) => {
+      setLocal((rows) => {
+        const surviving = rows.filter((r) => !r.__markedForDelete);
+        const seedPrice =
+          opts?.seedPriceCents ??
+          surviving[surviving.length - 1]?.price_cents ??
+          0;
+        const nextOrdinal =
+          surviving.reduce((max, r) => Math.max(max, r.ordinal), -1) + 1;
+        return [
+          ...rows,
+          {
+            localId: freshLocalId(),
+            name: opts?.seedName ?? "",
+            price_cents: seedPrice,
+            ordinal: nextOrdinal,
+            is_default: false,
+            is_sold_out: false,
+            __dirty: true,
+            __markedForDelete: false,
+          },
+        ];
       });
+    },
+    [],
+  );
+
+  const reorder = React.useCallback(
+    (fromLocalId: string, toLocalId: string) => {
+      if (fromLocalId === toLocalId) return;
+      setLocal((rows) => {
+        const surviving = rows.filter((r) => !r.__markedForDelete);
+        const fromIdx = surviving.findIndex((r) => r.localId === fromLocalId);
+        const toIdx = surviving.findIndex((r) => r.localId === toLocalId);
+        if (fromIdx === -1 || toIdx === -1) return rows;
+        const reordered = arrayMove(surviving, fromIdx, toIdx);
+        const ordinalMap = new Map<string, number>();
+        reordered.forEach((r, idx) => ordinalMap.set(r.localId, idx));
+        return rows.map((r) => {
+          const next = ordinalMap.get(r.localId);
+          if (next === undefined) return r;
+          if (r.ordinal === next) return r;
+          return { ...r, ordinal: next, __dirty: true };
+        });
+      });
+    },
+    [],
+  );
+
+  const setDefaultPrice = React.useCallback((cents: number) => {
+    setLocal((rows) => {
+      const target = rows.find((r) => r.is_default && !r.__markedForDelete);
+      if (!target) return rows;
+      if (target.price_cents === cents) return rows;
+      return rows.map((r) =>
+        r.localId === target.localId
+          ? { ...r, price_cents: cents, __dirty: true }
+          : r,
+      );
     });
   }, []);
 
-  // ---- Render --------------------------------------------------------------
-
-  // Surviving rows in render order = ordinal ASC. Soft-deleted rows render
-  // INTERLEAVED at their original ordinal position so the merchant sees
-  // exactly which slot is removed — Cmd+Z affordance.
-  const renderRows = React.useMemo(
-    () => [...local].sort((a, b) => a.ordinal - b.ordinal),
-    [local],
+  const dispatch = React.useMemo<VariationsDispatch>(
+    () => ({
+      setName,
+      setPriceCents,
+      toggleSoldOut,
+      softDelete,
+      restore,
+      addRow,
+      reorder,
+      setDefaultPrice,
+    }),
+    [
+      setName,
+      setPriceCents,
+      toggleSoldOut,
+      softDelete,
+      restore,
+      addRow,
+      reorder,
+      setDefaultPrice,
+    ],
   );
-  const sortableIds = React.useMemo(
-    () => renderRows.filter((r) => !r.__markedForDelete).map((r) => r.localId),
-    [renderRows],
+
+  const state = React.useMemo<VariationsState>(
+    () => ({
+      local,
+      errors,
+      isValid,
+      survivingRows,
+      defaultVariation,
+      isDirty,
+      changes,
+    }),
+    [local, errors, isValid, survivingRows, defaultVariation, isDirty, changes],
   );
 
-  // A6 — read-only banner when editing in a non-default locale.
+  return { state, dispatch };
+}
+
+// ---------------------------------------------------------------------------
+// VariationsEditor — the visual component. Controlled by the parent's
+// useVariationsState hook.
+//
+// Render contract:
+//   - When survivingRows.length <= 1: render only the "+ Add variation"
+//     button. The single (default) row is hidden — its price is edited
+//     via the parent's top-level Price field.
+//   - When survivingRows.length >= 2: render the full list (including the
+//     row that was the original default — it has no special UI badge).
+// ---------------------------------------------------------------------------
+
+export type VariationsEditorProps = {
+  state: VariationsState;
+  dispatch: VariationsDispatch;
+  currencySettings: CurrencySettings;
+  isLocaleEditable: boolean;
+};
+
+export function VariationsEditor({
+  state,
+  dispatch,
+  currencySettings,
+  isLocaleEditable,
+}: VariationsEditorProps) {
+  // A6 — locale guard.
   if (!isLocaleEditable) {
     return (
       <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         Switch to the default locale to edit variations. Variation names are
-        not yet translatable — this is tracked as a follow-up.
+        not yet translatable.
       </div>
     );
   }
 
+  const showList = state.survivingRows.length >= 2;
+  // Include soft-deleted rows in the visible list when expanded so the
+  // merchant sees what they marked for delete (with strikethrough + Undo).
+  const renderRows = state.local
+    .filter((r) => !r.__markedForDelete || showList)
+    .sort((a, b) => a.ordinal - b.ordinal);
+  const sortableIds = state.survivingRows.map((r) => r.localId);
+
+  const handleAdd = () => {
+    // When adding the FIRST extra variation: seed the name with the
+    // existing default's name (Square pattern). Merchant can rename in
+    // the list.
+    if (state.survivingRows.length === 1 && state.defaultVariation) {
+      dispatch.addRow({
+        seedPriceCents: state.defaultVariation.price_cents,
+      });
+    } else {
+      dispatch.addRow();
+    }
+  };
+
   return (
     <div data-slot="variations-editor" className="flex flex-col gap-2">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10" />
-              <TableHead>Variation</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-center w-32">Status</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <SortableContext
-              items={sortableIds}
-              strategy={verticalListSortingStrategy}
-            >
-              {renderRows.map((row) => (
-                <VariationRow
-                  key={row.localId}
-                  row={row}
-                  hasError={rowHasError(errors, row.localId)}
-                  hasOtherSurvivingRows={
-                    renderRows.filter(
-                      (r) => !r.__markedForDelete && r.localId !== row.localId,
-                    ).length > 0
-                  }
-                  onNameChange={(name) => handleNameChange(row.localId, name)}
-                  onPriceChange={(raw) => handlePriceChange(row.localId, raw)}
-                  onSoldOutToggle={() => handleSoldOutToggle(row.localId)}
-                  onMakeDefault={() => handleMakeDefault(row.localId)}
-                  onSoftDelete={() => handleSoftDelete(row.localId)}
-                  onRestore={() => handleRestore(row.localId)}
-                />
-              ))}
-            </SortableContext>
-          </TableBody>
-        </Table>
-      </DndContext>
+      {showList && (
+        <VariationsList
+          rows={renderRows}
+          sortableIds={sortableIds}
+          errors={state.errors}
+          currencySettings={currencySettings}
+          onNameChange={dispatch.setName}
+          onPriceChange={dispatch.setPriceCents}
+          onToggleSoldOut={dispatch.toggleSoldOut}
+          onSoftDelete={dispatch.softDelete}
+          onRestore={dispatch.restore}
+          onReorder={dispatch.reorder}
+        />
+      )}
 
       <Button
         type="button"
         variant="ghost"
         size="sm"
         className="self-start"
-        onClick={handleAddRow}
+        onClick={handleAdd}
       >
         <Plus className="size-4" />
         Add variation
       </Button>
 
-      {/* Validation banner — surfaces top-level errors that don't belong on a
-          specific row (e.g. "no surviving rows", "no default"). Per-row
-          errors are visualized via `hasError` ring. */}
-      {errors.length > 0 && (
-        <ValidationBanner errors={errors} />
+      {state.errors.some((e) => e.kind === "no_rows") && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          Add at least one variation.
+        </div>
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Per-row component — useSortable wired here so the table cell layout
-// stays declarative + the parent can stay focused on state management.
+// VariationsList — the sortable list of rows. Pure-ish; receives callbacks.
+// ---------------------------------------------------------------------------
+
+type VariationsListProps = {
+  rows: LocalVariation[];
+  sortableIds: string[];
+  errors: ValidationError[];
+  currencySettings: CurrencySettings;
+  onNameChange: (localId: string, name: string) => void;
+  onPriceChange: (localId: string, cents: number) => void;
+  onToggleSoldOut: (localId: string) => void;
+  onSoftDelete: (localId: string) => void;
+  onRestore: (localId: string) => void;
+  onReorder: (fromLocalId: string, toLocalId: string) => void;
+};
+
+function VariationsList({
+  rows,
+  sortableIds,
+  errors,
+  currencySettings,
+  onNameChange,
+  onPriceChange,
+  onToggleSoldOut,
+  onSoftDelete,
+  onRestore,
+  onReorder,
+}: VariationsListProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = React.useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      onReorder(String(active.id), String(over.id));
+    },
+    [onReorder],
+  );
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col gap-2">
+          {rows.map((row) => (
+            <VariationRow
+              key={row.localId}
+              row={row}
+              hasError={rowHasError(errors, row.localId)}
+              currencySettings={currencySettings}
+              onNameChange={(name) => onNameChange(row.localId, name)}
+              onPriceChange={(cents) => onPriceChange(row.localId, cents)}
+              onToggleSoldOut={() => onToggleSoldOut(row.localId)}
+              onSoftDelete={() => onSoftDelete(row.localId)}
+              onRestore={() => onRestore(row.localId)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// VariationRow — the compact Krafta-vocabulary row.
+//
+// Layout: [grip] [name input] [price input] [status badge] [⋯ menu]
+// Height ~48px to match the EditorSheet form vocabulary (compact-comfortable;
+// LibraryRow on the canvas uses 56px because it also carries a thumbnail —
+// here we don't need one).
 // ---------------------------------------------------------------------------
 
 type VariationRowProps = {
   row: LocalVariation;
   hasError: boolean;
-  hasOtherSurvivingRows: boolean;
+  currencySettings: CurrencySettings;
   onNameChange: (name: string) => void;
-  onPriceChange: (raw: string) => void;
-  onSoldOutToggle: () => void;
-  onMakeDefault: () => void;
+  onPriceChange: (cents: number) => void;
+  onToggleSoldOut: () => void;
   onSoftDelete: () => void;
   onRestore: () => void;
 };
@@ -567,19 +636,16 @@ type VariationRowProps = {
 function VariationRow({
   row,
   hasError,
-  hasOtherSurvivingRows,
+  currencySettings,
   onNameChange,
   onPriceChange,
-  onSoldOutToggle,
-  onMakeDefault,
+  onToggleSoldOut,
   onSoftDelete,
   onRestore,
 }: VariationRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: row.localId, disabled: row.__markedForDelete });
 
-  // Mirror the LibraryRow style: hide the in-place row during drag (we
-  // could add a DragOverlay later if we want a floating preview clone).
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -587,208 +653,199 @@ function VariationRow({
     touchAction: "pan-y",
   };
 
-  // Local controlled string for the price input. We mirror the cents value
-  // when not focused so the formatted "1,000" display matches the source
-  // of truth.
-  const [priceFocused, setPriceFocused] = React.useState(false);
-  const [priceRaw, setPriceRaw] = React.useState(formatUzsCents(row.price_cents));
-  React.useEffect(() => {
-    if (!priceFocused) {
-      setPriceRaw(formatUzsCents(row.price_cents));
-    }
-  }, [row.price_cents, priceFocused]);
-
   return (
-    <TableRow
+    <div
       ref={setNodeRef}
       style={style}
-      data-default={row.is_default || undefined}
       data-error={hasError || undefined}
+      data-marked-for-delete={row.__markedForDelete || undefined}
       className={cn(
-        hasError && "ring-1 ring-destructive ring-inset",
+        "flex h-12 items-center gap-2 rounded-md border bg-card px-2",
+        hasError && "border-destructive/60 bg-destructive/5",
         row.__markedForDelete && "line-through",
       )}
     >
       {/* Drag handle */}
-      <TableCell className="w-10 text-muted-foreground">
-        {!row.__markedForDelete && (
+      {!row.__markedForDelete && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Drag ${row.name || "variation"} to reorder`}
+          className={cn(
+            "flex size-8 shrink-0 items-center justify-center rounded-md",
+            "text-muted-foreground transition-colors",
+            "hover:bg-accent hover:text-foreground",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "cursor-grab active:cursor-grabbing touch-none",
+          )}
+        >
+          <GripVertical className="size-4" />
+        </button>
+      )}
+      {row.__markedForDelete && (
+        // Placeholder so the row layout doesn't shift when grip disappears.
+        <div className="size-8 shrink-0" aria-hidden="true" />
+      )}
+
+      {/* Name input */}
+      <Input
+        value={row.name}
+        onChange={(e) => onNameChange(e.target.value)}
+        placeholder="Variation name"
+        disabled={row.__markedForDelete}
+        className="h-8 flex-1 min-w-0 border-transparent bg-transparent shadow-none focus-visible:border-input focus-visible:bg-background"
+        data-slot="variation-name-input"
+      />
+
+      {/* Price input — currency-aware */}
+      <VariationPriceInput
+        valueCents={row.price_cents}
+        onChange={onPriceChange}
+        disabled={row.__markedForDelete}
+        currencySettings={currencySettings}
+      />
+
+      {/* Status badge / dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild disabled={row.__markedForDelete}>
           <button
             type="button"
-            {...attributes}
-            {...listeners}
-            aria-label={`Drag ${row.name || "variation"} to reorder`}
             className={cn(
-              "flex size-8 items-center justify-center rounded-md",
-              "transition-colors hover:bg-accent hover:text-foreground",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              "cursor-grab active:cursor-grabbing touch-none",
+              "inline-flex shrink-0 items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium",
+              "transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              row.is_sold_out
+                ? "bg-muted text-muted-foreground hover:bg-muted/80"
+                : "bg-emerald-100 text-emerald-900 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-100 dark:hover:bg-emerald-900",
             )}
           >
-            <GripVertical className="size-4" />
+            {row.is_sold_out ? "Sold out" : "Available"}
+            <ChevronDown className="size-3" />
           </button>
-        )}
-      </TableCell>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => {
+              if (row.is_sold_out) onToggleSoldOut();
+            }}
+          >
+            Available
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              if (!row.is_sold_out) onToggleSoldOut();
+            }}
+          >
+            Sold out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      {/* Name + default pill */}
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Input
-            value={row.name}
-            onChange={(e) => onNameChange(e.target.value)}
-            placeholder="e.g. Small"
-            disabled={row.__markedForDelete}
-            className="h-9 max-w-xs"
-            data-slot="variation-name-input"
-          />
-          {row.is_default && (
-            <span className="shrink-0 rounded-sm bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
-              Default
-            </span>
-          )}
-        </div>
-      </TableCell>
-
-      {/* Price */}
-      <TableCell className="text-right">
-        <Input
-          value={priceRaw}
-          onChange={(e) => {
-            setPriceRaw(e.target.value);
-            onPriceChange(e.target.value);
-          }}
-          onFocus={() => setPriceFocused(true)}
-          onBlur={() => {
-            setPriceFocused(false);
-            // On blur, reformat to canonical "1,000" display.
-            setPriceRaw(formatUzsCents(row.price_cents));
-          }}
-          disabled={row.__markedForDelete}
-          inputMode="numeric"
-          className="h-9 ml-auto max-w-[120px] text-right font-mono tabular-nums"
-          data-slot="variation-price-input"
-        />
-      </TableCell>
-
-      {/* Status — dropdown matching Square's affordance */}
-      <TableCell className="text-center">
+      {/* Actions: 3-dot menu OR restore button (when soft-deleted) */}
+      {row.__markedForDelete ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onRestore}
+          aria-label={`Restore ${row.name || "variation"}`}
+          className="size-8 shrink-0"
+        >
+          <Undo2 className="size-4" />
+        </Button>
+      ) : (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild disabled={row.__markedForDelete}>
-            <button
+          <DropdownMenuTrigger asChild>
+            <Button
               type="button"
-              className={cn(
-                "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium",
-                "transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                row.is_sold_out
-                  ? "bg-muted text-muted-foreground hover:bg-muted/80"
-                  : "bg-emerald-100 text-emerald-900 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-100 dark:hover:bg-emerald-900",
-              )}
+              variant="ghost"
+              size="icon"
+              aria-label={`Actions for ${row.name || "variation"}`}
+              className="size-8 shrink-0"
             >
-              {row.is_sold_out ? "Sold out" : "Available"}
-              <ChevronDown className="size-3" />
-            </button>
+              <MoreVertical className="size-4" />
+            </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="center">
+          <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={() => {
-                if (row.is_sold_out) onSoldOutToggle();
-              }}
+              onSelect={onSoftDelete}
+              className="text-destructive focus:text-destructive"
             >
-              Available
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                if (!row.is_sold_out) onSoldOutToggle();
-              }}
-            >
-              Sold out
+              <Trash2 className="size-4" />
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </TableCell>
-
-      {/* Actions — 3-dot menu OR restore button (when soft-deleted) */}
-      <TableCell className="w-10">
-        {row.__markedForDelete ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onRestore}
-            aria-label={`Restore ${row.name || "variation"}`}
-            className="size-8"
-          >
-            <Undo2 className="size-4" />
-          </Button>
-        ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`Actions for ${row.name || "variation"}`}
-                className="size-8"
-              >
-                <MoreVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {!row.is_default && (
-                <DropdownMenuItem onClick={onMakeDefault}>
-                  Make default
-                </DropdownMenuItem>
-              )}
-              {!row.is_default && hasOtherSurvivingRows && <DropdownMenuSeparator />}
-              <DropdownMenuItem
-                onClick={onSoftDelete}
-                disabled={!hasOtherSurvivingRows && row.is_default}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="size-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </TableCell>
-    </TableRow>
+      )}
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ValidationBanner — surfaces top-level errors. Per-row errors render as a
-// ring on the row itself; this banner handles cases without a single
-// "offending row" (no rows, no default, multiple defaults).
+// VariationPriceInput — currency-aware numeric input.
+//
+// Stores cents in parent state; renders the catalog's display format
+// inside the field. Switches to a raw editable string while focused so
+// the merchant can type without us reformatting mid-keystroke.
 // ---------------------------------------------------------------------------
 
-function ValidationBanner({ errors }: { errors: readonly ValidationError[] }) {
-  // Filter out per-row errors (those are already visualized via row ring).
-  const banner = errors.filter(
-    (e) =>
-      e.kind === "no_rows" ||
-      e.kind === "no_default" ||
-      e.kind === "multiple_default",
-  );
-  if (banner.length === 0) return null;
+export type VariationPriceInputProps = {
+  valueCents: number;
+  onChange: (cents: number) => void;
+  disabled?: boolean;
+  currencySettings: CurrencySettings;
+  className?: string;
+  placeholder?: string;
+  "data-slot"?: string;
+};
 
-  const messages = banner.map((e) => {
-    switch (e.kind) {
-      case "no_rows":
-        return "Add at least one variation.";
-      case "no_default":
-        return "One variation must be set as default.";
-      case "multiple_default":
-        return "Only one variation can be the default.";
+export function VariationPriceInput({
+  valueCents,
+  onChange,
+  disabled,
+  currencySettings,
+  className,
+  placeholder,
+  "data-slot": dataSlot = "variation-price-input",
+}: VariationPriceInputProps) {
+  const [focused, setFocused] = React.useState(false);
+  const [raw, setRaw] = React.useState(() =>
+    formatPriceInputValue(valueCents, currencySettings),
+  );
+
+  // Sync from prop when not focused (e.g. parent state changes via a
+  // different code path — drag-reorder doesn't touch price, but a
+  // setDefaultPrice from the top-level Price field does).
+  React.useEffect(() => {
+    if (!focused) {
+      setRaw(formatPriceInputValue(valueCents, currencySettings));
     }
-  });
+  }, [valueCents, focused, currencySettings]);
 
   return (
-    <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-      <ul className="list-disc pl-4">
-        {messages.map((m, idx) => (
-          <li key={idx}>{m}</li>
-        ))}
-      </ul>
-    </div>
+    <Input
+      value={raw}
+      onChange={(e) => {
+        const next = e.target.value;
+        setRaw(next);
+        const parsed = parsePriceInput(next, currencySettings);
+        if (parsed !== null) onChange(parsed);
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        setRaw(formatPriceInputValue(valueCents, currencySettings));
+      }}
+      disabled={disabled}
+      inputMode={currencySettings.showDecimals ? "decimal" : "numeric"}
+      placeholder={placeholder ?? formatPriceInputValue(0, currencySettings)}
+      data-slot={dataSlot}
+      className={cn(
+        "h-8 w-24 shrink-0 text-right font-mono tabular-nums",
+        "border-transparent bg-transparent shadow-none",
+        "focus-visible:border-input focus-visible:bg-background",
+        className,
+      )}
+    />
   );
 }
