@@ -709,3 +709,178 @@ export async function duplicateItem(params: {
 
   return { ok: true, itemId: newItemId } as const;
 }
+
+// ============================================================================
+// KRA-35 PR3 — Inspector status toggle
+// ============================================================================
+//
+// Lightweight wrapper updating ONLY `items.is_active`. Used by the Inspector's
+// Status section to flip active/archived without paying the full updateItem
+// round-trip (which insists on a complete payload of name, slug, category,
+// price, translations, etc.). The Switch primitive's onCheckedChange callback
+// can call this directly.
+//
+// RLS gates writes the same way updateItem does. No new policy needed.
+
+export async function setItemActive(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+  isActive: boolean;
+}) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("items")
+    .update({ is_active: params.isActive })
+    .eq("id", params.itemId)
+    .eq("catalog_id", params.catalogId);
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+
+// ============================================================================
+// KRA-35 PR3 — Inline field update (locale-aware)
+// ============================================================================
+//
+// Lightweight per-field update that flows through the routeLocaleWrite()
+// router from lib/catalogs/i18n.ts. Used by InlineText / InlineCurrency
+// inside EditableItemCard so a single-field edit (name in UZ, price, etc.)
+// doesn't have to reconstruct the full updateItem payload.
+//
+// The caller passes the active locale + the catalog's default locale. The
+// router decides whether to write `items.<column>` (default locale) or
+// `item_translations.<column>` for that (item_id, locale).
+//
+// For `price_cents` the router doesn't apply — price always lives on the
+// default item_variations row regardless of locale (UZS values are not
+// translated). A separate updateDefaultVariationPrice handler stays simple.
+
+import {
+  routeLocaleWrite,
+  type LocaleWriteTarget,
+} from "@/lib/catalogs/i18n";
+
+export async function updateItemField(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+  activeLocale: string;
+  defaultLocale: string;
+  field: "name" | "description" | "image_alt";
+  value: string | null;
+  /** The item's CURRENT canonical name (from items.name) — needed when
+   *  upserting to item_translations because that table requires `name`
+   *  NOT NULL and the merchant may be editing description/image_alt in
+   *  a non-default locale that doesn't have a translation row yet. We
+   *  use this as the fallback name on first insert so a description-only
+   *  edit doesn't fail the NOT NULL constraint. */
+  fallbackName: string;
+}) {
+  const target: LocaleWriteTarget = routeLocaleWrite({
+    activeLocale: params.activeLocale,
+    defaultLocale: params.defaultLocale,
+    field: params.field,
+    value: params.value,
+  });
+
+  const supabase = await createClient();
+
+  if (target.kind === "items") {
+    const { error } = await supabase
+      .from("items")
+      .update({ [target.column]: target.value })
+      .eq("id", params.itemId)
+      .eq("catalog_id", params.catalogId);
+
+    if (error) {
+      return { ok: false, error: error.message } as const;
+    }
+  } else {
+    // Upsert into item_translations on (item_id, locale) conflict.
+    // Build the payload: always include name (NOT NULL constraint),
+    // and the target column with its new value. If the merchant is
+    // editing name itself, the target column IS name and overrides
+    // the fallback.
+    const payload: {
+      item_id: string;
+      locale: string;
+      name: string;
+      description?: string | null;
+      image_alt?: string | null;
+    } = {
+      item_id: params.itemId,
+      locale: target.locale,
+      name: params.fallbackName,
+    };
+
+    if (target.column === "name") {
+      payload.name = params.value ?? params.fallbackName;
+    } else if (target.column === "description") {
+      payload.description = params.value;
+    } else if (target.column === "image_alt") {
+      payload.image_alt = params.value;
+    }
+
+    const { error } = await supabase
+      .from("item_translations")
+      .upsert(payload, { onConflict: "item_id,locale" });
+
+    if (error) {
+      return { ok: false, error: error.message } as const;
+    }
+  }
+
+  // Search index needs a refresh on name/description changes regardless of
+  // which table the write landed in.
+  if (params.field === "name" || params.field === "description") {
+    await syncItemSearchDocuments({
+      itemId: params.itemId,
+      client: supabase,
+    });
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+
+export async function updateDefaultVariationPrice(params: {
+  catalogId: string;
+  catalogSlug: string;
+  itemId: string;
+  priceCents: number;
+}) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("item_variations")
+    .update({ price_cents: params.priceCents })
+    .eq("item_id", params.itemId)
+    .eq("catalog_id", params.catalogId)
+    .eq("is_default", true);
+
+  if (error) {
+    return { ok: false, error: error.message } as const;
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true } as const;
+}
+

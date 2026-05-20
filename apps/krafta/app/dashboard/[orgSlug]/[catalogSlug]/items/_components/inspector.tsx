@@ -58,13 +58,15 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
 import { useCanvasSelection } from "./canvas-with-selection";
-import { deleteItem, duplicateItem } from "./actions";
+import { deleteItem, duplicateItem, setItemActive } from "./actions";
 
 type ItemMedia = {
   id: string;
@@ -159,6 +161,28 @@ export function Inspector({
     }
   }, [selectedItem, catalogId, catalogSlug, router, setSelectedItemId]);
 
+  // Status toggle handler must be declared BEFORE the early return so
+  // React Hooks rules are respected (every render must call hooks in the
+  // same order; an early return between hooks violates that).
+  const handleSetActive = React.useCallback(
+    async (isActive: boolean) => {
+      if (!selectedItem) return;
+      const result = await setItemActive({
+        catalogId,
+        catalogSlug,
+        itemId: selectedItem.id,
+        isActive,
+      });
+      if (!result.ok) {
+        toast.error(result.error ?? "Failed to update status.");
+        return;
+      }
+      toast.success(isActive ? "Item active." : "Item archived.");
+      router.refresh();
+    },
+    [selectedItem, catalogId, catalogSlug, router],
+  );
+
   if (!selectedItem) return null;
 
   // Compute media URLs once for the body. Storage objects live under
@@ -180,6 +204,7 @@ export function Inspector({
       isDeleting={isDeleting}
       onDuplicate={handleDuplicate}
       onDelete={handleDelete}
+      onSetActive={handleSetActive}
       onClose={handleClose}
     />
   );
@@ -240,6 +265,7 @@ function InspectorBody({
   isDeleting,
   onDuplicate,
   onDelete,
+  onSetActive,
   onClose,
 }: {
   item: Item;
@@ -249,6 +275,7 @@ function InspectorBody({
   isDeleting: boolean;
   onDuplicate: () => void;
   onDelete: () => void;
+  onSetActive: (next: boolean) => void;
   onClose: () => void;
 }) {
   return (
@@ -405,18 +432,29 @@ function InspectorBody({
         )}
       </section>
 
-      {/* 4. Status. Read-only display in PR 2 (toggle ships PR 3 with a
-          new server action that doesn't require a full updateItem call). */}
+      {/* 4. Status. PR 3 wires the toggle via setItemActive (lightweight
+          single-column UPDATE instead of the full updateItem round-trip). */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Status
         </h4>
-        <Badge
-          variant={item.is_active ? "default" : "secondary"}
-          className="font-normal"
-        >
-          {item.is_active ? "Active" : "Archived"}
-        </Badge>
+        <div className="flex items-center justify-between rounded-md border px-3 py-2">
+          <Label htmlFor="inspector-status" className="cursor-pointer">
+            <span className="text-sm font-medium">
+              {item.is_active ? "Active" : "Archived"}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {item.is_active
+                ? "Visible to customers"
+                : "Hidden from customers"}
+            </span>
+          </Label>
+          <Switch
+            id="inspector-status"
+            checked={item.is_active}
+            onCheckedChange={onSetActive}
+          />
+        </div>
       </section>
     </div>
   );
