@@ -14,15 +14,7 @@ import {
   isCatalogItemProductType,
   type CatalogItemProductType,
 } from "./product-types";
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+import { slugify } from "@/lib/catalogs/slug";
 
 export type ItemTranslationInput = {
   locale: string;

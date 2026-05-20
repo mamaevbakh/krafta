@@ -93,6 +93,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
+import { slugify } from "@/lib/catalogs/slug";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
@@ -382,6 +383,9 @@ function EditorForm({
   const [productType, setProductType] = React.useState<CatalogItemProductType>(
     isCatalogItemProductType(item.product_type) ? item.product_type : "REGULAR",
   );
+  /** Slug seed = current items.slug. Merchant can edit; if they clear
+   *  it, updateItem regenerates from `name` server-side. */
+  const [slug, setSlug] = React.useState(item.slug);
 
   // ---------------------------------------------------------------------
   // KRA-86 — variations state (single source of truth via the hook).
@@ -409,6 +413,7 @@ function EditorForm({
     categoryId !== item.category_id ||
     isActive !== item.is_active ||
     productType !== item.product_type ||
+    slug !== item.slug ||
     variationsState.isDirty;
 
   // ---------------------------------------------------------------------
@@ -459,6 +464,11 @@ function EditorForm({
       // For non-default-locale edits, items.* stays at the canonical values
       // so we don't overwrite the source-of-truth row with a translation.
       name: isDefaultLocale ? name.trim() : item.name,
+      // Slug edits land on items.slug regardless of locale (URLs are
+      // global). Empty string triggers updateItem's "regenerate from
+      // name" fallback. Non-default-locale edits don't change the slug
+      // so we send the existing value untouched.
+      slug: isDefaultLocale ? slug.trim() : item.slug,
       priceCents: item.price_cents,
       description: isDefaultLocale
         ? description.trim() || null
@@ -515,11 +525,13 @@ function EditorForm({
     categoryId,
     isActive,
     productType,
+    slug,
     activeLocale,
     defaultLocale,
     itemTranslations,
     item.id,
     item.name,
+    item.slug,
     item.description,
     item.image_alt,
     item.price_cents,
@@ -853,6 +865,41 @@ function EditorForm({
                 </span>
               )}
             </div>
+
+            {/* Web link (slug) — Field + plain-language description so
+                merchants understand what the field controls without
+                needing to know the word "slug". Description explains it
+                appears in the link customers see and that we'll make one
+                automatically if they leave it empty. Slug is global, not
+                locale-aware — disabled on non-default locale tabs. */}
+            <Field
+              data-disabled={!isDefaultLocaleEditable ? true : undefined}
+            >
+              <FieldLabel htmlFor="editor-slug">Web link</FieldLabel>
+              <Input
+                id="editor-slug"
+                value={slug}
+                onChange={(event) => setSlug(event.target.value)}
+                onBlur={() => {
+                  // Normalize on blur — let the merchant type freely
+                  // (uppercase, spaces, etc.) and clean it up only when
+                  // they leave the field. Empty input is allowed; the
+                  // server regenerates from the name on Save.
+                  const trimmed = slug.trim();
+                  if (trimmed) setSlug(slugify(trimmed));
+                }}
+                placeholder="auto-generated-from-name"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={!isDefaultLocaleEditable}
+              />
+              <FieldDescription>
+                This is the short text at the end of the link your
+                customers will see and share. We make one for you from
+                the item&apos;s name — change it if you want a shorter
+                or easier-to-remember link.
+              </FieldDescription>
+            </Field>
 
             {/* Primary Price field — Krafta mirror of Square's pattern.
                 When the item has only the default variation, this IS the
