@@ -1,3 +1,7 @@
+# Design System
+
+Always read [DESIGN.md](./DESIGN.md) before making any visual or UI decisions. All font choices, colors (oklch), spacing, radii, and aesthetic direction are defined there. Do not deviate without explicit user approval. In QA mode (`/qa`, `/qa-only`, `/design-review`), flag any code that does not match.
+
 # gstack
 
 Use the `/browse` skill from gstack for all web browsing. Do **not** use any `mcp__claude-in-chrome__*` tools.
