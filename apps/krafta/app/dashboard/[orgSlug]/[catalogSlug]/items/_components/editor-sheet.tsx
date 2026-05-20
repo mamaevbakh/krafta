@@ -112,6 +112,7 @@ import {
 } from "./variations-editor";
 import { ItemTypeSelect } from "./item-type-select";
 import { PhotoUploader } from "./photo-uploader";
+import { DraftEditorForm } from "./draft-editor-form";
 import {
   isCatalogItemProductType,
   type CatalogItemProductType,
@@ -165,20 +166,32 @@ export function EditorSheet({
   catalogSlug,
   currencySettings,
 }: EditorSheetProps) {
-  const { selectedItemId, setSelectedItemId } = useCanvasSelection();
+  const {
+    selectedItemId,
+    setSelectedItemId,
+    creatingForCategoryId,
+    cancelCreating,
+  } = useCanvasSelection();
 
   const selectedItem = React.useMemo(
     () => (selectedItemId ? items.find((i) => i.id === selectedItemId) : null),
     [items, selectedItemId],
   );
 
-  const open = selectedItem != null;
+  // The drawer is open when EITHER an item is selected for editing OR
+  // a create draft is in flight for some category. Mutually exclusive
+  // per the context — setting one clears the other.
+  const isCreating = creatingForCategoryId !== null;
+  const open = selectedItem != null || isCreating;
 
-  // EditorForm registers its own `handleClose` here so backdrop / ESC /
-  // built-in X close paths all route through the form's dirty-state guard
-  // (shows AlertDialog before discarding work). If no form is mounted
-  // yet (open=false transition), the fallback just nulls selection.
-  const closeRequestRef = React.useRef<() => void>(() => setSelectedItemId(null));
+  // EditorForm + DraftEditorForm both register their own dirty-aware
+  // close handler here so backdrop / ESC / built-in X close paths all
+  // route through the form's discard prompt. Fallback (before either
+  // form mounts) is a plain selection clear.
+  const closeRequestRef = React.useRef<() => void>(() => {
+    setSelectedItemId(null);
+    cancelCreating();
+  });
 
   const handleOpenChange = React.useCallback(
     (next: boolean) => {
@@ -213,7 +226,13 @@ export function EditorSheet({
 
   if (!open) return null;
 
-  const onRequestClose = () => setSelectedItemId(null);
+  // Close routes — edit clears selectedItemId, create clears the
+  // creatingForCategoryId. The wrapper picks the right one based on
+  // which mode is active.
+  const onRequestClose = () => {
+    if (isCreating) cancelCreating();
+    else setSelectedItemId(null);
+  };
 
   const registerCloseHandler = (fn: () => void) => {
     closeRequestRef.current = fn;
@@ -250,22 +269,45 @@ export function EditorSheet({
             // curve would create a visible seam at the top of the screen.
           )}
         >
-          <DrawerPrimitive.Title className="sr-only">
-            Edit item: {selectedItem.name || "Untitled item"}
-          </DrawerPrimitive.Title>
-          <EditorForm
-            key={selectedItem.id}
-            item={selectedItem}
-            categories={categories}
-            media={media}
-            translations={translations}
-            orgId={orgId}
-            catalogId={catalogId}
-            catalogSlug={catalogSlug}
-            currencySettings={currencySettings}
-            onRequestClose={onRequestClose}
-            onRegisterClose={registerCloseHandler}
-          />
+          {isCreating ? (
+            <>
+              <DrawerPrimitive.Title className="sr-only">
+                Create new item
+              </DrawerPrimitive.Title>
+              <DraftEditorForm
+                key={`draft-${creatingForCategoryId}`}
+                initialCategoryId={creatingForCategoryId!}
+                categories={categories}
+                orgId={orgId}
+                catalogId={catalogId}
+                catalogSlug={catalogSlug}
+                currencySettings={currencySettings}
+                onRequestClose={onRequestClose}
+                onRegisterClose={registerCloseHandler}
+              />
+            </>
+          ) : (
+            selectedItem && (
+              <>
+                <DrawerPrimitive.Title className="sr-only">
+                  Edit item: {selectedItem.name || "Untitled item"}
+                </DrawerPrimitive.Title>
+                <EditorForm
+                  key={selectedItem.id}
+                  item={selectedItem}
+                  categories={categories}
+                  media={media}
+                  translations={translations}
+                  orgId={orgId}
+                  catalogId={catalogId}
+                  catalogSlug={catalogSlug}
+                  currencySettings={currencySettings}
+                  onRequestClose={onRequestClose}
+                  onRegisterClose={registerCloseHandler}
+                />
+              </>
+            )
+          )}
         </DrawerPrimitive.Content>
       </DrawerPrimitive.Portal>
     </DrawerPrimitive.Root>
@@ -828,8 +870,8 @@ function EditorForm({
           <div className="flex min-w-0 flex-1 flex-col gap-5">
             {/* Item type — shadcn Select wrapped in Field for consistent
                 form chrome. Two options surfaced (FOOD_AND_BEV +
-                REGULAR); others live in CreateItemFlowDialog's request-
-                feature surface. */}
+                REGULAR); other product types stay deferred per
+                ENABLED_CATALOG_ITEM_PRODUCT_TYPES in product-types.ts. */}
             <Field>
               <FieldLabel htmlFor="editor-item-type">Item type</FieldLabel>
               <ItemTypeSelect
