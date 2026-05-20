@@ -59,6 +59,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -784,23 +789,24 @@ function EditorForm({
         >
           {/* Left column — identity fields. */}
           <div className="flex min-w-0 flex-1 flex-col gap-5">
-            {/* Item type — compact Square-style select. Trigger renders
-                the icon + value inline; menu shows enabled options with
-                description copy. Composed on top of shadcn Select; only
-                FOOD_AND_BEV + REGULAR are surfaced (matches
-                ENABLED_CATALOG_ITEM_PRODUCT_TYPES). Other types still
-                live in the CreateItemFlowDialog "request feature"
-                surface for discovery. */}
-            <ItemTypeSelect
-              value={productType}
-              onValueChange={setProductType}
-              disabled={!isDefaultLocaleEditable}
-            />
-            {!isDefaultLocaleEditable && (
-              <span className="-mt-3 text-xs text-muted-foreground">
-                Item type is edited on the default locale only.
-              </span>
-            )}
+            {/* Item type — shadcn Select wrapped in Field for consistent
+                form chrome. Two options surfaced (FOOD_AND_BEV +
+                REGULAR); others live in CreateItemFlowDialog's request-
+                feature surface. */}
+            <Field>
+              <FieldLabel htmlFor="editor-item-type">Item type</FieldLabel>
+              <ItemTypeSelect
+                id="editor-item-type"
+                value={productType}
+                onValueChange={setProductType}
+                disabled={!isDefaultLocaleEditable}
+              />
+              {!isDefaultLocaleEditable && (
+                <FieldDescription>
+                  Item type is edited on the default locale only.
+                </FieldDescription>
+              )}
+            </Field>
 
             {/* Name (required) */}
             <div className="flex flex-col gap-2">
