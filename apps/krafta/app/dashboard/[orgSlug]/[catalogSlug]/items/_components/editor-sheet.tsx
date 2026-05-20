@@ -88,14 +88,20 @@ import {
 } from "@/components/ui/select";
 
 import { cn } from "@/lib/utils";
-import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { useCanvasSelection } from "./canvas-with-selection";
 import { useCanvasLocale } from "./locale-context";
-import { deleteItem, duplicateItem, setItemActive, updateItem } from "./actions";
+import {
+  deleteItem,
+  duplicateItem,
+  setItemActive,
+  updateItem,
+  type ItemVariationChange,
+} from "./actions";
+import { VariationsEditor } from "./variations-editor";
 
 // =======================================================================
 // Types
@@ -334,12 +340,75 @@ function EditorForm({
   const [categoryId, setCategoryId] = React.useState(item.category_id);
   const [isActive, setIsActive] = React.useState(item.is_active);
 
+  // ---------------------------------------------------------------------
+  // KRA-86 — variations editor state.
+  //
+  // The VariationsEditor owns its own LocalVariation[] (with __dirty +
+  // __markedForDelete flags). It bubbles up the SAVE-ready payload via
+  // onChange — that's what the editor-sheet stores here and dispatches
+  // to updateItem on Save.
+  //
+  // `variationsDirty` is detected by comparing the changes payload to a
+  // "no-changes" baseline: the seed payload that would round-trip the
+  // initial variations through the RPC unchanged. We approximate this
+  // by checking whether any change in the payload differs from the
+  // matching initial row.
+  // ---------------------------------------------------------------------
+  const [variationChanges, setVariationChanges] = React.useState<
+    ItemVariationChange[]
+  >([]);
+  const [isVariationsValid, setIsVariationsValid] = React.useState(true);
+
+  const isDefaultLocaleEditable = activeLocale === defaultLocale;
+
+  const variationsDirty = React.useMemo(() => {
+    if (variationChanges.length === 0) return false;
+    // The editor emits the full surviving set on every change, so payload
+    // length 0 implies "no changes ever sent yet." When the payload has
+    // contents, we compare against the initial variations: if any field
+    // differs (name, price, ordinal, is_default, is_sold_out), OR if any
+    // delete op is present, OR if any insert (no id) is present, dirty.
+    const initialById = new Map(item.variations.map((v) => [v.id, v]));
+    for (const change of variationChanges) {
+      if (change.op === "delete") return true;
+      if (!change.id) return true; // new row
+      const initial = initialById.get(change.id);
+      if (!initial) return true; // unexpected — payload references a removed id
+      if (
+        initial.name !== change.name ||
+        initial.price_cents !== change.price_cents ||
+        initial.ordinal !== change.ordinal ||
+        initial.is_default !== change.is_default ||
+        initial.is_sold_out !== change.is_sold_out
+      ) {
+        return true;
+      }
+    }
+    // The payload length also signals a structural delta: if it doesn't
+    // cover every initial row, some rows were deleted.
+    const upsertIds = new Set(
+      variationChanges
+        .filter((c) => c.op === "upsert" && c.id)
+        .map((c) => (c as { id: string }).id),
+    );
+    for (const initial of item.variations) {
+      if (!upsertIds.has(initial.id)) {
+        // Initial row neither in upsert nor in delete payload — implies
+        // the editor hasn't emitted anything for it yet, which only
+        // happens transiently. Treat as not-dirty for safety.
+        return false;
+      }
+    }
+    return false;
+  }, [variationChanges, item.variations]);
+
   // Dirty = any field changed from its initial value.
   const isDirty =
     name !== initialName ||
     description !== initialDescription ||
     categoryId !== item.category_id ||
-    isActive !== item.is_active;
+    isActive !== item.is_active ||
+    variationsDirty;
 
   // ---------------------------------------------------------------------
   // Save state machine
@@ -396,6 +465,13 @@ function EditorForm({
       translations: activeTranslation
         ? [...otherTranslations, activeTranslation]
         : otherTranslations,
+      // KRA-86 — pass the variations payload IFF the merchant actually
+      // edited variations in this session. When variationsDirty is false,
+      // we let the back-compat path inside updateItem synthesize a
+      // default-row update using priceCents (legacy behavior). When dirty,
+      // the editor's full payload is dispatched and the synthesis is
+      // bypassed.
+      variationChanges: variationsDirty ? variationChanges : undefined,
     });
 
     if (!result.ok) {
@@ -446,6 +522,8 @@ function EditorForm({
     catalogId,
     catalogSlug,
     router,
+    variationChanges,
+    variationsDirty,
   ]);
 
   // ---------------------------------------------------------------------
@@ -601,7 +679,11 @@ function EditorForm({
       );
     }
     return (
-      <Button onClick={handleSave} disabled={!isDirty} className={className}>
+      <Button
+        onClick={handleSave}
+        disabled={!isDirty || !isVariationsValid}
+        className={className}
+      >
         Save
       </Button>
     );
@@ -761,24 +843,6 @@ function EditorForm({
               )}
             </div>
 
-            {/* Price summary — read-only in iter 2. Full variations editor
-                ships in KRA-90. */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">Price</Label>
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                <span className="font-mono font-semibold tabular-nums">
-                  {formatPriceCents(item.price_cents, currencySettings)}
-                </span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  default variation
-                </span>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Edit pricing via the Variations table below (KRA-90 ships
-                the full multi-variation editor).
-              </span>
-            </div>
-
             {/* Description */}
             <div className="flex flex-col gap-2">
               <Label
@@ -839,24 +903,19 @@ function EditorForm({
               </span>
             </div>
 
-            {/* Variations table — placeholder. Real editor in KRA-90. */}
+            {/* Variations — KRA-86 inline editor (shadcn Table + dnd-kit).
+                Adopts Square's variations vocabulary. On non-default locale
+                tabs, renders read-only with a banner per A6 (variation name
+                translations are deferred). */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Variations</Label>
-              <div className="rounded-md border">
-                <div className="flex items-center justify-between gap-2 border-b px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <span>Default</span>
-                  <span>Price</span>
-                </div>
-                <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <span className="font-medium">Default</span>
-                  <span className="font-mono font-semibold tabular-nums">
-                    {formatPriceCents(item.price_cents, currencySettings)}
-                  </span>
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Additional variations (sizes, options) ship with KRA-90.
-              </span>
+              <VariationsEditor
+                itemId={item.id}
+                initialVariations={item.variations}
+                onChange={setVariationChanges}
+                onValidityChange={setIsVariationsValid}
+                isLocaleEditable={isDefaultLocaleEditable}
+              />
             </div>
 
             {/* Modifier lists — placeholder. Real attach UI in KRA-85. */}

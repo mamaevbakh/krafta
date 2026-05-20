@@ -59,18 +59,25 @@ export default async function DashboardItemsPage({ params }: PageProps) {
   if (catalog?.id) {
     const [itemsResponse, categoriesResponse, localesResponse] =
       await Promise.all([
-        // Price is now sourced from the default item_variations row (Migration
-        // 1, ADR 0001 §3.1). Embed it filtered to is_default=true; PostgREST
-        // returns it as an array, we flatten below.
+        // KRA-86 — embed the FULL item_variations array per item, ordered
+        // by ordinal. The legacy `!inner` + is_default filter is dropped:
+        // the EditorSheet's variations editor needs every variation row,
+        // and the LibraryRow / table view still derive the headline price
+        // via variations.find(v => v.is_default)?.price_cents in the
+        // flatten step below.
+        //
+        // Payload cost (per /plan-eng-review P2): ~80 bytes per variation
+        // row. 50 items × 3 variations ≈ 12 KB bump. Trivial vs the
+        // multi-MB image payload already in flight.
         supabase
           .from("items")
           .select(
-            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, item_variations!inner(price_cents)",
+            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, item_variations(id, item_id, catalog_id, name, price_cents, ordinal, is_default, is_sold_out, is_active)",
           )
           .eq("catalog_id", catalog.id)
-          .eq("item_variations.is_default", true)
           .eq("item_variations.is_active", true)
-          .order("position", { ascending: true }),
+          .order("position", { ascending: true })
+          .order("ordinal", { referencedTable: "item_variations", ascending: true }),
         supabase
           .from("catalog_categories")
           .select("id, catalog_id, name, slug, position, is_active, created_at")
@@ -84,14 +91,42 @@ export default async function DashboardItemsPage({ params }: PageProps) {
       ]);
 
     const itemsRaw = (itemsResponse.data ?? []) as Array<
-      Omit<Item, "price_cents"> & {
-        item_variations: Array<{ price_cents: number }>;
+      Omit<Item, "price_cents" | "variations"> & {
+        item_variations: Array<{
+          id: string;
+          item_id: string;
+          catalog_id: string;
+          name: string;
+          price_cents: number;
+          ordinal: number;
+          is_default: boolean;
+          is_sold_out: boolean;
+          is_active: boolean;
+        }>;
       }
     >;
-    items = itemsRaw.map(({ item_variations, ...rest }) => ({
-      ...rest,
-      price_cents: item_variations[0]?.price_cents ?? 0,
-    }));
+    items = itemsRaw.map(({ item_variations, ...rest }) => {
+      const variations = item_variations ?? [];
+      // Default price = the one row with is_default=true. Fallback to 0
+      // for any item with a data bug (no default), so LibraryRow keeps
+      // rendering "0 sum" instead of NaN.
+      const defaultPrice =
+        variations.find((v) => v.is_default)?.price_cents ?? 0;
+      return {
+        ...rest,
+        price_cents: defaultPrice,
+        variations: variations.map((v) => ({
+          id: v.id,
+          item_id: v.item_id,
+          catalog_id: v.catalog_id,
+          name: v.name,
+          price_cents: v.price_cents,
+          ordinal: v.ordinal,
+          is_default: v.is_default,
+          is_sold_out: v.is_sold_out,
+        })),
+      };
+    });
     categories = (categoriesResponse.data ?? []) as CatalogCategory[];
     locales = localesResponse.data ?? [];
 

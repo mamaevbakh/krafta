@@ -3,13 +3,36 @@ import type { Tables } from "@/lib/supabase/types";
 export type Catalog = Tables<"catalogs">;
 export type CatalogCategory = Tables<"catalog_categories">;
 export type ItemRow = Tables<"items">;
+export type ItemVariationRow = Tables<"item_variations">;
 
-// Item shape carried through the app. price_cents is sourced from the
-// item's default item_variations row (Migration 1, ADR 0001 §3.1).
-// Fetchers embed item_variations(...) and flatten to this shape so
-// components don't need to know about variations yet.
+// Subset of item_variations columns the admin UI (KRA-86) needs. We embed
+// only what the EditorSheet's VariationsEditor consumes — pricing_type,
+// sku, metadata, version, created_at, updated_at, is_active stay on the
+// row but aren't surfaced through this projection. Keep this list tight
+// so the page-level fetch payload doesn't bloat unnecessarily (per
+// /plan-eng-review P2 budget).
+export type ItemVariation = Pick<
+  ItemVariationRow,
+  | "id"
+  | "item_id"
+  | "catalog_id"
+  | "name"
+  | "price_cents"
+  | "ordinal"
+  | "is_default"
+  | "is_sold_out"
+>;
+
+// Item shape carried through the app.
+// - `price_cents` is the DEFAULT variation's price (legacy flatten, kept
+//   on Item so LibraryRow / table view / customer-side don't need to
+//   know about variations).
+// - `variations` is the full array of variation rows for this item, in
+//   ordinal order. Sourced from the same embed as price_cents (KRA-86).
+//   EditorSheet's variations editor consumes this.
 export type Item = ItemRow & {
   price_cents: number;
+  variations: ItemVariation[];
 };
 
 export type CategoryWithItems = CatalogCategory & {
