@@ -276,6 +276,7 @@ function EditorForm({
 }: EditorFormProps) {
   const router = useRouter();
   const { activeLocale, defaultLocale } = useCanvasLocale();
+  const { setSelectedItemId, pulseItem } = useCanvasSelection();
 
   // ---------------------------------------------------------------------
   // Form local state
@@ -514,15 +515,31 @@ function EditorForm({
         return;
       }
       toast.success("Item duplicated.");
+
+      // Iter 2 T4 / Pass 3 D3A: post-duplicate UX — three-pronged feedback.
+      //   1. Toast (above).
+      //   2. setSelectedItemId(newId) → EditorSheet's selectedItem useMemo
+      //      finds the clone in the (refreshed) items prop on the next
+      //      render. The form re-mounts via key={item.id} with the clone's
+      //      data. There's a brief flash where the sheet closes (clone not
+      //      yet in items[]) and reopens (items refreshed) — acceptable
+      //      because router.refresh() is fast in RSC.
+      //   3. pulseItem(newId) → canvas pulses the new row + scroll-into-
+      //      view after a 100ms delay (gives router.refresh time to land).
       router.refresh();
-      // T4 wires the auto-select-clone + scroll-into-view + pulse end to
-      // end. T2 ships duplicate as toast-only; the new clone appears on
-      // the canvas at original position + 1 (per the SQL function's
-      // contract) and the merchant clicks into it to continue editing.
+      setSelectedItemId(result.itemId);
+      pulseItem(result.itemId);
     } finally {
       setIsDuplicating(false);
     }
-  }, [catalogId, catalogSlug, item.id, router]);
+  }, [
+    catalogId,
+    catalogSlug,
+    item.id,
+    router,
+    setSelectedItemId,
+    pulseItem,
+  ]);
 
   const handleDelete = React.useCallback(async () => {
     setIsDeleting(true);

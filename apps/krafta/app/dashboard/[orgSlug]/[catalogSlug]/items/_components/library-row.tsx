@@ -67,7 +67,8 @@ export function LibraryRow({
   translations,
   currencySettings,
 }: LibraryRowProps) {
-  const { selectedItemId, setSelectedItemId } = useCanvasSelection();
+  const { selectedItemId, setSelectedItemId, pulsingItemId } =
+    useCanvasSelection();
   const { activeLocale, defaultLocale } = useCanvasLocale();
   const {
     attributes,
@@ -103,6 +104,7 @@ export function LibraryRow({
   });
 
   const isSelected = selectedItemId === item.id;
+  const isPulsing = pulsingItemId === item.id;
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -122,6 +124,7 @@ export function LibraryRow({
       onClick={() => setSelectedItemId(item.id)}
       style={style}
       data-slot="library-row"
+      data-row-item-id={item.id}
       data-selected={isSelected || undefined}
       // The whole row is the draggable + the clickable. Sensors gate which
       // one fires (clicks under 8px on desktop / quick taps on mobile = onClick;
@@ -137,6 +140,11 @@ export function LibraryRow({
         // so the merchant sees what's moving). NOT a decorative shadow per
         // DESIGN.md anti-slop rule 9.
         isDragging && "shadow-md",
+        // Post-duplicate pulse (Iter 2 T4 / Pass 3 D3A): single-iteration
+        // bg-accent flash fading to transparent over 1.2s. The animation
+        // keyframe is defined in globals.css (`animate-row-flash`). Fires
+        // when CanvasSelectionContext.pulsingItemId matches this row id.
+        isPulsing && "animate-row-flash",
       )}
     >
       {/* Drag handle — visual affordance cue only. The dnd-kit listeners are

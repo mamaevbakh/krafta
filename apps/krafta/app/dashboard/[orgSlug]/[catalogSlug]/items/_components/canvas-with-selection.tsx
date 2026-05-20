@@ -45,11 +45,19 @@ import type { Item } from "@/lib/catalogs/types";
 // =======================================================================
 
 type CanvasSelectionValue = {
-  /** Item id currently selected. null = no inspector visible. */
+  /** Item id currently selected. null = no editor visible. */
   selectedItemId: string | null;
   /** Setter. Pass null to deselect (canvas chrome click outside any
    *  card calls this). */
   setSelectedItemId: (id: string | null) => void;
+  /** Item id currently pulsing (post-duplicate "find the new clone"
+   *  affordance per Iter 2 T4 / Pass 3 D3A). Null = no pulse active.
+   *  LibraryRow reads this and applies `animate-row-flash` when matched. */
+  pulsingItemId: string | null;
+  /** Fire the post-duplicate animation: set pulsingItemId for ~1.2s,
+   *  scroll the matching row into view. Called by EditorSheet's
+   *  handleDuplicate after duplicate_item succeeds. */
+  pulseItem: (id: string) => void;
 };
 
 const CanvasSelectionContext =
@@ -115,6 +123,56 @@ export function CanvasWithSelection({
     },
     [onSelectionChange],
   );
+
+  // Iter 2 T4: post-duplicate pulse coordination. EditorSheet's
+  // handleDuplicate calls pulseItem(newId) after duplicate_item resolves.
+  // The state is set immediately so LibraryRow can apply the
+  // animate-row-flash class; the scroll-into-view fires on a short delay
+  // to let router.refresh()'s new items prop mount the new <LibraryRow>.
+  // Auto-clears after 1200ms so the merchant doesn't see a stuck flash.
+  const [pulsingItemId, setPulsingItemIdState] = React.useState<
+    string | null
+  >(null);
+  const pulseTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const scrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const pulseItem = React.useCallback((id: string) => {
+    setPulsingItemIdState(id);
+
+    // Clear any pre-existing timers (back-to-back duplicates shouldn't
+    // queue stale clears or scroll attempts).
+    if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+
+    // 100ms delay before scrolling — gives router.refresh() time to land
+    // the new item in the DOM. If the row isn't there yet (slow network),
+    // the scroll is a no-op; degradation is graceful.
+    scrollTimeoutRef.current = setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(
+        `[data-row-item-id="${id}"]`,
+      );
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+
+    // Clear the pulse class after the animation duration. Per D7 motion
+    // budget: 1200ms ease-out for the "Saved ✓" / "Duplicated" flashes.
+    pulseTimeoutRef.current = setTimeout(() => {
+      setPulsingItemIdState(null);
+    }, 1200);
+  }, []);
+
+  // Cleanup on unmount: clear any pending timers so they don't fire after
+  // the component is gone.
+  React.useEffect(() => {
+    return () => {
+      if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current);
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
+  }, []);
 
   // Sensor tuning (KRA-35 Iter 2 / Pass 6 D4B: whole-row drag, single tap
   // opens editor):
@@ -207,8 +265,8 @@ export function CanvasWithSelection({
   );
 
   const selectionValue = React.useMemo(
-    () => ({ selectedItemId, setSelectedItemId }),
-    [selectedItemId, setSelectedItemId],
+    () => ({ selectedItemId, setSelectedItemId, pulsingItemId, pulseItem }),
+    [selectedItemId, setSelectedItemId, pulsingItemId, pulseItem],
   );
 
   return (

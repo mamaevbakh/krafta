@@ -99,28 +99,20 @@ export function LibraryRoot(props: LibraryRootProps) {
   // preference. Table-on-mobile is intentionally unsupported.
   const resolvedView: LibraryView = isMobile ? "canvas" : view;
 
-  // Toggle handler exposed via context so the page header (rendered
-  // inside whichever view component is active) can display the toggle
-  // alongside other chrome. For PR 3 the simplest pattern is to render
-  // the toggle here in a thin wrapper above the active view.
+  // Iter 2 T4: the view toggle is a fixed bottom-center floating pill —
+  // it positions itself via `fixed bottom-6 left-1/2 -translate-x-1/2`
+  // regardless of where it's placed in the React tree. Mounting it as a
+  // sibling here keeps it visible above both Canvas and Table views.
+  // The top strip from iter 1 is gone.
   return (
     <>
-      <div className="w-full border-b">
-        <div className="mx-auto flex h-12 max-w-[1248px] items-center justify-between px-6">
-          <LibraryViewToggle view={resolvedView} onViewChange={setView} />
-          <span className="text-xs text-muted-foreground">
-            {resolvedView === "canvas"
-              ? "Visual editor"
-              : "Table view (desktop)"}
-          </span>
-        </div>
-      </div>
-
       {resolvedView === "canvas" ? (
         <LibraryCanvas {...props} />
       ) : (
         <ItemsPanel {...props} />
       )}
+
+      <LibraryViewToggle view={resolvedView} onViewChange={setView} />
     </>
   );
 }

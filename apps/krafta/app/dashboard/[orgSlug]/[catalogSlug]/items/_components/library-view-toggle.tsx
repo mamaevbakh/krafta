@@ -1,29 +1,24 @@
 "use client";
 
 /**
- * library-view-toggle.tsx — Canvas/Table view switcher for the Library route (KRA-35 PR3).
+ * library-view-toggle.tsx — Canvas/Table view switcher (KRA-35 Iter 2 / T4).
  *
- * Per the 2026-05-20 ADR 0002 revision + design doc Approach B: the
- * Library route hosts TWO views of the same items data via an inline
- * toggle. Canvas (visual editor, the headline) is default; Table (legacy
- * DataTable UX) is preserved for power users who want sort/scan/bulk
- * select.
+ * Per design plan §3 D5: bottom-center floating segmented pill. Replaces
+ * the top-strip placement from iter 1 (which competed with the page header
+ * for visual prominence). The pill is fixed-positioned at the viewport
+ * bottom, ~30px from the edge, centered.
  *
- * Implementation: shadcn `Tabs` (TabsList + TabsTrigger only — no
- * TabsContent, since the content lives at page scope above this
- * component). State persists in localStorage under `krafta.library.view`
- * per merchant. Hydration: SSR renders Canvas (the default); the first
- * client effect reads localStorage and may flip to Table.
+ * Visual: shadcn Tabs primitive styled as a pill (rounded-full TabsList,
+ * rounded-full TabsTrigger). Backdrop blur + bg-background/85 + subtle
+ * border + shadow-sm. The shadow is functional (lifts the pill off the
+ * canvas), not decorative — within DESIGN.md tolerance.
  *
- * Mobile (< 768px) hides the Table option entirely — the DataTable
- * doesn't fit a 375px viewport and merchants on phones get the Canvas
- * regardless. The toggle still renders on mobile but with only the
- * Canvas trigger visible.
+ * Mobile (< md) hides the pill entirely. Mobile is always Canvas view;
+ * the legacy DataTable doesn't fit 375px viewports per LibraryView spec.
  *
- * The toggle is rendered ABOVE both views, INSIDE the page header so it
- * stays visible when the merchant scrolls a long list of items. The
- * parent LibraryRoot consumes the active view value and renders either
- * <LibraryCanvas> or <ItemsPanel> accordingly.
+ * Z-index: 30. shadcn Sheet's backdrop sits higher (z-50) so when the
+ * EditorSheet is open the pill is occluded by the backdrop dimming —
+ * effectively "hidden" by layering, no explicit visibility prop needed.
  */
 
 import * as React from "react";
@@ -50,8 +45,7 @@ export function useLibraryView(): [LibraryView, (next: LibraryView) => void] {
         setViewState(stored);
       }
     } catch {
-      // localStorage unavailable (private mode, etc.). Fall through with
-      // the default. No need to surface — this is a preference, not data.
+      // localStorage unavailable (private mode, etc.). Fall through.
     }
   }, []);
 
@@ -60,7 +54,7 @@ export function useLibraryView(): [LibraryView, (next: LibraryView) => void] {
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {
-      // Same as above — preference, not data. Fall through.
+      // Same as above — preference, not data.
     }
   }, []);
 
@@ -80,20 +74,30 @@ export function LibraryViewToggle({
     <Tabs
       value={view}
       onValueChange={(value) => onViewChange(value as LibraryView)}
-      className={className}
+      className={cn(
+        // Fixed bottom-center pill. z-30 — sits above canvas, below the
+        // EditorSheet's backdrop (z-50) so the sheet visually occludes it.
+        "fixed bottom-6 left-1/2 z-30 -translate-x-1/2",
+        // Hide on mobile entirely — mobile is always Canvas.
+        "hidden md:block",
+        // Surface: pill with backdrop blur. shadow-sm is functional
+        // (lifts off the canvas), not decorative.
+        "rounded-full border border-border bg-background/85 shadow-sm backdrop-blur-md",
+        className,
+      )}
     >
-      <TabsList>
-        <TabsTrigger value="canvas">
+      <TabsList className="rounded-full bg-transparent p-1">
+        <TabsTrigger
+          value="canvas"
+          className="rounded-full data-[state=active]:bg-foreground data-[state=active]:text-background"
+        >
           <LayoutGrid className="size-4" />
           Canvas
         </TabsTrigger>
-        {/* Table view is desktop-only — DataTable doesn't fit 375px
-            viewports. Hide the trigger on mobile via `hidden md:flex`.
-            If the merchant's last-saved preference was Table, the
-            useLibraryView hook still returns "table" but the parent
-            (LibraryRoot) renders Canvas on mobile regardless of the
-            stored preference — see library-canvas-or-table.tsx. */}
-        <TabsTrigger value="table" className={cn("hidden md:inline-flex")}>
+        <TabsTrigger
+          value="table"
+          className="rounded-full data-[state=active]:bg-foreground data-[state=active]:text-background"
+        >
           <TableIcon className="size-4" />
           Table
         </TabsTrigger>
