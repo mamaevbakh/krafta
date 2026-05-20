@@ -40,6 +40,8 @@ import { CanvasWithSelection } from "./canvas-with-selection";
 import { CategorySection } from "./category-section";
 import { Inspector } from "./inspector";
 import { CreateItemFlowDialog } from "./create-item-flow-dialog";
+import { CanvasLocaleProvider } from "./locale-context";
+import { LocaleTabStrip } from "./locale-tab-strip";
 
 type LocaleOption = {
   id: string;
@@ -94,11 +96,7 @@ export function LibraryCanvas({
   categories,
   items,
   locales,
-  // translations is loaded at the page level and passed in for PR 3
-  // locale-aware editing in the inspector; PR 2 doesn't render the
-  // locale tab strip yet, so we accept the prop and ignore it. Leaving
-  // the prop name out of destructure entirely (rather than prefixing
-  // with `_translations`) keeps the lint clean without an eslint-disable.
+  translations,
   media,
   currencySettings,
 }: LibraryCanvasProps) {
@@ -138,78 +136,83 @@ export function LibraryCanvas({
   // than "a new section."
   const header = (
     <div className="w-full border-b">
-      <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
-        <div className="space-y-1">
+      <div className="mx-auto flex h-[120px] max-w-[1248px] flex-col justify-center gap-2 px-6">
+        <div className="flex items-center justify-between">
           <h1 className="text-[32px] font-semibold tracking-tight">Library</h1>
+          <Button onClick={() => setItemDialogOpen(true)}>
+            <Plus className="size-4" />
+            Add item
+          </Button>
         </div>
-        <Button onClick={() => setItemDialogOpen(true)}>
-          <Plus className="size-4" />
-          Add item
-        </Button>
+        <LocaleTabStrip locales={locales} />
       </div>
     </div>
   );
 
   return (
     <main className="w-full">
-      {header}
+      <CanvasLocaleProvider locales={locales}>
+        {header}
 
-      <CanvasWithSelection
-        catalogId={catalogId}
-        catalogSlug={catalogSlug}
-        items={items}
-      >
-        <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
-          {/* Canvas column. flex-1 so it expands; inspector pulls 360px
-              on the right at md+. */}
-          <div className="flex-1 min-w-0">
-            {items.length === 0 ? (
-              <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
-            ) : (
-              <div className="flex flex-col gap-8">
-                {sortedCategories.map((category) => (
-                  <CategorySection
-                    key={category.id}
-                    category={category}
-                    items={itemsByCategory.map.get(category.id) ?? []}
-                    catalogId={catalogId}
-                    catalogSlug={catalogSlug}
-                    currencySettings={currencySettings}
-                  />
-                ))}
+        <CanvasWithSelection
+          catalogId={catalogId}
+          catalogSlug={catalogSlug}
+          items={items}
+        >
+          <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
+            {/* Canvas column. flex-1 so it expands; inspector pulls 360px
+                on the right at md+. */}
+            <div className="flex-1 min-w-0">
+              {items.length === 0 ? (
+                <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
+              ) : (
+                <div className="flex flex-col gap-8">
+                  {sortedCategories.map((category) => (
+                    <CategorySection
+                      key={category.id}
+                      category={category}
+                      items={itemsByCategory.map.get(category.id) ?? []}
+                      translations={translations}
+                      catalogId={catalogId}
+                      catalogSlug={catalogSlug}
+                      currencySettings={currencySettings}
+                    />
+                  ))}
 
-                {itemsByCategory.orphans.length > 0 && (
-                  <CategorySection
-                    category={{
-                      id: "__orphans__",
-                      catalog_id: catalogId,
-                      name: "Uncategorized",
-                      slug: "uncategorized",
-                      position: 9999,
-                      is_active: true,
-                      created_at: "",
-                    }}
-                    items={itemsByCategory.orphans}
-                    catalogId={catalogId}
-                    catalogSlug={catalogSlug}
-                    currencySettings={currencySettings}
-                  />
-                )}
-              </div>
-            )}
+                  {itemsByCategory.orphans.length > 0 && (
+                    <CategorySection
+                      category={{
+                        id: "__orphans__",
+                        catalog_id: catalogId,
+                        name: "Uncategorized",
+                        slug: "uncategorized",
+                        position: 9999,
+                        is_active: true,
+                        created_at: "",
+                      }}
+                      items={itemsByCategory.orphans}
+                      translations={translations}
+                      catalogId={catalogId}
+                      catalogSlug={catalogSlug}
+                      currencySettings={currencySettings}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Inspector: desktop side panel + mobile Drawer. The Inspector
+                component handles its own responsive switch. */}
+            <Inspector
+              items={items}
+              media={media}
+              catalogId={catalogId}
+              catalogSlug={catalogSlug}
+              currencySettings={currencySettings}
+            />
           </div>
-
-          {/* Inspector: desktop side panel + mobile Drawer. The Inspector
-              component handles its own responsive switch. */}
-          <Inspector
-            items={items}
-            media={media}
-            catalogId={catalogId}
-            catalogSlug={catalogSlug}
-            currencySettings={currencySettings}
-          />
-        </div>
-      </CanvasWithSelection>
+        </CanvasWithSelection>
+      </CanvasLocaleProvider>
 
       {/* Add-item dialog — existing flow, reused intact. */}
       <CreateItemFlowDialog
