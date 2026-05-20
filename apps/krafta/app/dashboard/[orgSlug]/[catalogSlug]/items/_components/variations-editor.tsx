@@ -747,9 +747,14 @@ export function VariationPriceInput({
     }
   }, [valueCents, focused, currencySettings]);
 
+  // When disabled, render empty — no value, no placeholder. Caller is
+  // expected to provide context elsewhere (e.g. the editor-sheet's
+  // "Price varies by variation" hint below the muted field). Showing
+  // a greyed-out number was misleading: that price isn't the operative
+  // one when the merchant has multiple variations.
   return (
     <Input
-      value={raw}
+      value={disabled ? "" : raw}
       onChange={(e) => {
         const next = e.target.value;
         setRaw(next);
@@ -763,7 +768,11 @@ export function VariationPriceInput({
       }}
       disabled={disabled}
       inputMode={currencySettings.showDecimals ? "decimal" : "numeric"}
-      placeholder={placeholder ?? formatPriceInputValue(0, currencySettings)}
+      placeholder={
+        disabled
+          ? ""
+          : (placeholder ?? formatPriceInputValue(0, currencySettings))
+      }
       data-slot={dataSlot}
       className={cn(
         "h-9 text-right font-mono tabular-nums",
