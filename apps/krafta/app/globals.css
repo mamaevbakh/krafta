@@ -178,3 +178,37 @@
 .animate-row-flash {
   animation: krafta-row-flash 1200ms ease-out;
 }
+
+/*
+ * Radix Collapsible height animation. Radix exposes
+ * `--radix-collapsible-content-height` on the content element with the
+ * measured natural height; we animate `height: 0 ↔ var(...)` to get a
+ * smooth expand/collapse. Per DESIGN.md motion budget: 200ms ease-out
+ * for state-change tier.
+ *
+ * Used by category-section.tsx (KRA-91 follow-up). Registered as
+ * `animate-collapsible-down` / `animate-collapsible-up` Tailwind
+ * utilities below via @theme.
+ */
+@keyframes collapsible-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@theme {
+  --animate-collapsible-down: collapsible-down 200ms ease-out;
+  --animate-collapsible-up: collapsible-up 200ms ease-out;
+}

@@ -34,6 +34,12 @@ import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
 import { LibraryRow } from "./library-row";
 import { useCanvasSelection } from "./canvas-with-selection";
 
@@ -158,19 +164,26 @@ export function CategorySection({
     setCollapsedState(readCollapsedState(catalogId, category.id));
   }, [catalogId, category.id]);
 
-  const toggleCollapsed = React.useCallback(() => {
-    setCollapsedState((current) => {
-      const next = !current;
-      writeCollapsedState(catalogId, category.id, next);
-      return next;
-    });
-  }, [catalogId, category.id]);
-
   // What the section actually renders as collapsed/expanded. The user's
   // own collapse toggle drives `collapsed`; an active category drag
   // overrides every section to collapsed regardless. Both the chevron
   // icon and aria-expanded reflect this so the visual matches a11y.
+  //
+  // Note: the toggle handler is now inline in <Collapsible onOpenChange>
+  // below. Radix Collapsible only fires onOpenChange for user-initiated
+  // changes (trigger click, keyboard activation) — external `open` prop
+  // changes (e.g. when isDraggingCategory flips) do not fire it. So we
+  // don't need to gate the localStorage write against the drag state.
   const effectiveCollapsed = collapsed || isDraggingCategory;
+
+  const handleOpenChange = React.useCallback(
+    (open: boolean) => {
+      const next = !open;
+      setCollapsedState(next);
+      writeCollapsedState(catalogId, category.id, next);
+    },
+    [catalogId, category.id],
+  );
 
   const sortedItems = React.useMemo(
     () => [...items].sort((a, b) => a.position - b.position),
@@ -183,103 +196,102 @@ export function CategorySection({
   );
 
   return (
-    <section
-      ref={setNodeRef}
-      {...attributes}
-      style={sortableStyle}
-      data-slot="category-section"
-      data-category-id={category.id}
-      className={cn(
-        "scroll-mt-20 transition-colors", // scroll-mt-20 ≈ sticky-header offset
-        // Drop zone highlight per design doc Pass-2 / DR2 — subtle accent
-        // background when a draggable hovers over this section. Not a bold
-        // colored fill (anti-slop) — just `bg-accent/40`.
-        isOver && "bg-accent/40 rounded-md -mx-2 px-2 py-2",
-        // While THIS section is being dragged: a soft shadow indicates the
-        // category is in-flight. Functional shadow per DESIGN.md (not
-        // decorative). Other sections receive transform/transition from
-        // dnd-kit via the sortableStyle above.
-        isDragging && "shadow-md",
-      )}
+    <Collapsible
+      open={!effectiveCollapsed}
+      onOpenChange={handleOpenChange}
+      asChild
     >
-      {/* KRA-91 section header — three regions:
-            1. Drag handle (GripVertical, drag-only via useSortable listeners)
-            2. Collapse toggle (chevron + name + count, click to toggle)
-          Nesting two buttons is not allowed in HTML; they're siblings inside
-          a flex row instead. The drag handle is only rendered when
-          `sortable=true` so the orphans bucket header reads as static.
-          No mb-3 — the spacing below the header now lives INSIDE the
-          collapsible content (pt-3) so it collapses with the content
-          when the section closes. */}
-      <div className="flex w-full items-stretch gap-1">
-        {sortable && (
-          <button
-            type="button"
-            {...listeners}
-            aria-label={`Drag ${category.name} to reorder`}
-            className={cn(
-              "group/grip flex shrink-0 items-center justify-center",
-              "size-9 rounded-md text-muted-foreground transition-colors",
-              "hover:bg-accent hover:text-foreground",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              "cursor-grab active:cursor-grabbing touch-none",
-            )}
-          >
-            <GripVertical className="size-4" />
-          </button>
+      <section
+        ref={setNodeRef}
+        {...attributes}
+        style={sortableStyle}
+        data-slot="category-section"
+        data-category-id={category.id}
+        className={cn(
+          "scroll-mt-20 transition-colors", // scroll-mt-20 ≈ sticky-header offset
+          // Drop zone highlight per design doc Pass-2 / DR2 — subtle accent
+          // background when a draggable hovers over this section. Not a bold
+          // colored fill (anti-slop) — just `bg-accent/40`.
+          isOver && "bg-accent/40 rounded-md -mx-2 px-2 py-2",
+          // While THIS section is being dragged: a soft shadow indicates the
+          // category is in-flight. Functional shadow per DESIGN.md (not
+          // decorative). Other sections receive transform/transition from
+          // dnd-kit via the sortableStyle above.
+          isDragging && "shadow-md",
         )}
+      >
+        {/* KRA-91 section header — three regions:
+              1. Drag handle (GripVertical, drag-only via useSortable listeners)
+              2. CollapsibleTrigger (chevron + name + count, click to toggle)
+            Nesting two buttons is not allowed in HTML; they're siblings inside
+            a flex row instead. The drag handle is only rendered when
+            `sortable=true` so the orphans bucket header reads as static. */}
+        <div className="flex w-full items-stretch gap-1">
+          {sortable && (
+            <button
+              type="button"
+              {...listeners}
+              aria-label={`Drag ${category.name} to reorder`}
+              className={cn(
+                "group/grip flex shrink-0 items-center justify-center",
+                "size-9 rounded-md text-muted-foreground transition-colors",
+                "hover:bg-accent hover:text-foreground",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                "cursor-grab active:cursor-grabbing touch-none",
+              )}
+            >
+              <GripVertical className="size-4" />
+            </button>
+          )}
 
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-expanded={!effectiveCollapsed}
-          aria-controls={`category-${category.id}-content`}
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "flex flex-1 items-baseline justify-between gap-2 rounded-md py-1 px-2",
+                "text-left transition-colors hover:bg-accent/30",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              )}
+            >
+              <div className="flex items-baseline gap-2 min-w-0">
+                {effectiveCollapsed ? (
+                  <ChevronRight
+                    className="size-4 shrink-0 text-muted-foreground transition-transform"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <ChevronDown
+                    className="size-4 shrink-0 text-muted-foreground transition-transform"
+                    aria-hidden="true"
+                  />
+                )}
+                <h2 className="truncate text-lg font-semibold tracking-tight">
+                  {category.name}
+                </h2>
+              </div>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {items.length} {items.length === 1 ? "item" : "items"}
+              </span>
+            </button>
+          </CollapsibleTrigger>
+        </div>
+
+        {/* Content — items list. Radix Collapsible animates height via
+            the `--radix-collapsible-content-height` CSS variable; we
+            register `animate-collapsible-down/up` Tailwind utilities in
+            globals.css that animate from 0 to that variable (and back)
+            over 200ms ease-out (DESIGN.md motion budget for state-change
+            tier). `overflow-hidden` is required so content is clipped
+            during the height animation. The pt-3 padding lives INSIDE
+            the CollapsibleContent so it collapses too — header sits
+            flush against the next section header when closed. */}
+        <CollapsibleContent
           className={cn(
-            "flex flex-1 items-baseline justify-between gap-2 rounded-md py-1 px-2",
-            "text-left transition-colors hover:bg-accent/30",
-            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "overflow-hidden",
+            "data-[state=open]:animate-collapsible-down",
+            "data-[state=closed]:animate-collapsible-up",
           )}
         >
-          <div className="flex items-baseline gap-2 min-w-0">
-            {effectiveCollapsed ? (
-              <ChevronRight
-                className="size-4 shrink-0 text-muted-foreground transition-transform"
-                aria-hidden="true"
-              />
-            ) : (
-              <ChevronDown
-                className="size-4 shrink-0 text-muted-foreground transition-transform"
-                aria-hidden="true"
-              />
-            )}
-            <h2 className="truncate text-lg font-semibold tracking-tight">
-              {category.name}
-            </h2>
-          </div>
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {items.length} {items.length === 1 ? "item" : "items"}
-          </span>
-        </button>
-      </div>
-
-      {/* Content — items list. Smooth collapse via the CSS grid-rows
-          trick: animate `grid-template-rows` between 1fr (full height)
-          and 0fr (zero height) with `overflow-hidden` on the inner cell
-          clipping content during the transition. No JS height
-          measurement, no primitive needed, GPU-accelerated.
-          Per DESIGN.md motion budget: 200ms ease-out for collapse-style
-          state changes. The pt-3 padding lives INSIDE the collapsible
-          area so the spacing collapses with the content (header sits
-          flush against the next section when collapsed). */}
-      <div
-        id={`category-${category.id}-content`}
-        className={cn(
-          "grid transition-[grid-template-rows] duration-200 ease-out",
-          effectiveCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
-        )}
-        aria-hidden={effectiveCollapsed}
-      >
-        <div className="overflow-hidden">
           <SortableContext
             items={itemIds}
             strategy={verticalListSortingStrategy}
@@ -301,8 +313,8 @@ export function CategorySection({
               )}
             </div>
           </SortableContext>
-        </div>
-      </div>
-    </section>
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 }
