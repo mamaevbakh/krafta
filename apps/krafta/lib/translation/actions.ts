@@ -12,6 +12,14 @@
  *     immutable after creation to keep translation rows attached)
  *   - setDefaultCatalogLocale (locks one row as is_default; demotes the prior)
  *
+ * Source-text edits:
+ *   - updateItemSourceText — narrow item update from inside the translation
+ *     workbench. Only touches name/description/image_alt; intentionally
+ *     does NOT dispatch through the full update_item_with_variations
+ *     super-RPC (price, slug, category, variations are out of scope here).
+ *     The drift trigger on items recomputes current_source_hash on UPDATE,
+ *     so existing translation rows automatically flip to "needs review."
+ *
  * Translation queue:
  *   - enqueueTranslationJob(s) — bulk enqueue with quota check
  *   - cancelTranslationJob — mark a queued job as dead
@@ -146,6 +154,63 @@ export async function enableCatalogLocale(
     .update({ is_enabled: true })
     .eq("catalog_id", parsed.data.catalogId)
     .eq("locale", parsed.data.locale);
+
+  if (error) return { ok: false, error: error.message };
+
+  await updateCatalogByIdAndSlug({ catalogId: parsed.data.catalogId });
+  return { ok: true };
+}
+
+// =============================================================================
+// Source-text edits — narrow item.name/description/image_alt update
+// =============================================================================
+
+const updateItemSourceTextSchema = z.object({
+  catalogId: uuidSchema,
+  itemId: uuidSchema,
+  name: z.string().trim().min(1).max(500),
+  description: z.string().trim().nullable().optional(),
+  imageAlt: z.string().trim().nullable().optional(),
+});
+
+/**
+ * Update an item's source text (name + description + image_alt) from the
+ * translation workbench. Scoped narrowly:
+ *   - Only the three translatable text fields. Price, slug, category,
+ *     variations, photos stay out of bounds — those belong to the regular
+ *     item editor.
+ *   - Hits items table directly. Cheaper than dispatching through the
+ *     update_item_with_variations RPC, which exists to keep variations
+ *     atomic. Variations aren't touched here.
+ *
+ * Drift is intentional: the AFTER UPDATE trigger on items recomputes
+ * current_source_hash; existing translation rows now disagree with the
+ * new hash and surface as "needs review" everywhere they're listed. The
+ * caller is responsible for telling the merchant how many translations
+ * just went stale (see TranslationEditDialog).
+ */
+export async function updateItemSourceText(
+  input: z.input<typeof updateItemSourceTextSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = updateItemSourceTextSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "invalid input",
+    };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("items")
+    .update({
+      name: parsed.data.name,
+      description: parsed.data.description ?? null,
+      image_alt: parsed.data.imageAlt ?? null,
+    })
+    .eq("id", parsed.data.itemId)
+    // catalog_id pin defends against a tampered itemId pointing at an
+    // item in a catalog the user can read but not write.
+    .eq("catalog_id", parsed.data.catalogId);
 
   if (error) return { ok: false, error: error.message };
 

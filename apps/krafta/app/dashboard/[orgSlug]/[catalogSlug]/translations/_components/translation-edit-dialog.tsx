@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Sparkles, X, Bot, AlertCircle } from "lucide-react";
+import { Loader2, Sparkles, X, Bot, AlertCircle, Info } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -14,12 +14,19 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import {
   enqueueTranslationJob,
   updateTranslation,
   applyAiTranslation,
+  updateItemSourceText,
 } from "@/lib/translation/actions";
 import type { CatalogLocale } from "./languages-sidebar";
 import type { ItemRow, ItemTranslation } from "./items-tab";
@@ -116,6 +123,37 @@ export function TranslationEditDialog({
   const [aiPending, setAiPending] = React.useState<Set<string>>(new Set());
   const [saving, setSaving] = React.useState<Set<string>>(new Set());
 
+  // Source-text form (default-locale editable). Same shape as target locale
+  // forms minus the AI bits. Treating the source the same as any other
+  // locale keeps the save semantics consistent across the dialog.
+  const [sourceForm, setSourceForm] = React.useState<{
+    name: string;
+    description: string;
+    image_alt: string;
+    dirty: boolean;
+  }>(() => ({
+    name: item.name,
+    description: item.description ?? "",
+    image_alt: item.image_alt ?? "",
+    dirty: false,
+  }));
+  const [savingSource, setSavingSource] = React.useState(false);
+  const [savingAll, setSavingAll] = React.useState(false);
+
+  // Re-prime the source form whenever the underlying item changes, but
+  // only if there are no unsaved edits — same protection target forms get.
+  React.useEffect(() => {
+    setSourceForm((prev) => {
+      if (prev.dirty) return prev;
+      return {
+        name: item.name,
+        description: item.description ?? "",
+        image_alt: item.image_alt ?? "",
+        dirty: false,
+      };
+    });
+  }, [item]);
+
   // When the item prop changes (refresh after AI completes), sync forms.
   // Only reset rows where the form isn't dirty — preserve unsaved edits.
   React.useEffect(() => {
@@ -147,6 +185,73 @@ export function TranslationEditDialog({
       const next = { ...current, [field]: value, dirty: true };
       return { ...prev, [locale]: next };
     });
+  };
+
+  const updateSourceField = (
+    field: "name" | "description" | "image_alt",
+    value: string,
+  ) => {
+    setSourceForm((prev) => ({ ...prev, [field]: value, dirty: true }));
+  };
+
+  const discardSource = () => {
+    setSourceForm({
+      name: item.name,
+      description: item.description ?? "",
+      image_alt: item.image_alt ?? "",
+      dirty: false,
+    });
+  };
+
+  /**
+   * Save just the source text. Returns ok-flag so SaveAll can branch.
+   * `silent` skips the toast + onMutation refresh — Save All batches the
+   * toast at the end instead of firing one per saved entity.
+   */
+  const handleSaveSource = async (
+    options: { silent?: boolean } = {},
+  ): Promise<boolean> => {
+    if (!sourceForm.dirty) return true;
+    setSavingSource(true);
+
+    const trimmedName = sourceForm.name.trim();
+    if (!trimmedName) {
+      toast.error("Name is required.");
+      setSavingSource(false);
+      return false;
+    }
+
+    const result = await updateItemSourceText({
+      catalogId,
+      itemId: item.id,
+      name: trimmedName,
+      description: sourceForm.description.trim() || null,
+      imageAlt: sourceForm.image_alt.trim() || null,
+    });
+    setSavingSource(false);
+
+    if (!result.ok) {
+      toast.error(result.error);
+      return false;
+    }
+
+    setSourceForm((prev) => ({ ...prev, dirty: false }));
+
+    if (!options.silent) {
+      // Count target locales that have an existing translation row — those
+      // are the ones the drift trigger just marked stale. Locales with no
+      // translation row yet weren't affected (they were already missing).
+      const affected = targetLocales.filter((l) =>
+        item.item_translations.some((t) => t.locale === l.locale),
+      ).length;
+      toast.success(
+        affected > 0
+          ? `Source saved. ${affected} translation${affected === 1 ? "" : "s"} now need review.`
+          : "Source saved.",
+      );
+      onMutation();
+    }
+    return true;
   };
 
   const handleAiTranslate = async (locale: CatalogLocale) => {
@@ -185,9 +290,12 @@ export function TranslationEditDialog({
     }, 8000);
   };
 
-  const handleSave = async (locale: CatalogLocale) => {
+  const handleSave = async (
+    locale: CatalogLocale,
+    options: { silent?: boolean } = {},
+  ): Promise<boolean> => {
     const form = forms[locale.locale];
-    if (!form || !form.dirty) return;
+    if (!form || !form.dirty) return true;
 
     setSaving((prev) => new Set(prev).add(locale.locale));
 
@@ -204,7 +312,7 @@ export function TranslationEditDialog({
         next.delete(locale.locale);
         return next;
       });
-      return;
+      return false;
     }
 
     // Phase 1 limitation: manual translation of a fresh locale must first
@@ -218,7 +326,7 @@ export function TranslationEditDialog({
         next.delete(locale.locale);
         return next;
       });
-      return;
+      return false;
     }
 
     const result = await updateTranslation({
@@ -234,13 +342,78 @@ export function TranslationEditDialog({
 
     if (!result.ok) {
       toast.error(result.error);
-      return;
+      return false;
     }
-    toast.success(`Saved ${locale.display_name}`);
     setForms((prev) => ({
       ...prev,
       [locale.locale]: { ...form, dirty: false },
     }));
+    if (!options.silent) {
+      toast.success(`Saved ${locale.display_name}`);
+      onMutation();
+    }
+    return true;
+  };
+
+  /**
+   * Bulk-save source + every dirty target in one click. Saves silently
+   * to avoid spamming the toaster, then surfaces a single combined
+   * success toast and one onMutation() refresh at the end.
+   */
+  const handleSaveAll = async () => {
+    setSavingAll(true);
+    let savedTargets = 0;
+    let failedAny = false;
+
+    const sourceWasDirty = sourceForm.dirty;
+    if (sourceWasDirty) {
+      const ok = await handleSaveSource({ silent: true });
+      if (!ok) failedAny = true;
+    }
+
+    for (const locale of targetLocales) {
+      const form = forms[locale.locale];
+      if (form?.dirty) {
+        const ok = await handleSave(locale, { silent: true });
+        if (ok) savedTargets += 1;
+        else failedAny = true;
+      }
+    }
+
+    setSavingAll(false);
+
+    if (failedAny) {
+      // Per-save error toast already fired; just refresh whatever did land.
+      onMutation();
+      return;
+    }
+
+    const parts: string[] = [];
+    if (sourceWasDirty) parts.push("source");
+    if (savedTargets > 0)
+      parts.push(
+        `${savedTargets} translation${savedTargets === 1 ? "" : "s"}`,
+      );
+
+    if (parts.length === 0) {
+      toast.info("Nothing to save.");
+      return;
+    }
+
+    // If we saved source AND there were existing translations, mention
+    // they're now stale so the merchant isn't surprised.
+    const affectedByDrift = sourceWasDirty
+      ? targetLocales.filter((l) =>
+          item.item_translations.some((t) => t.locale === l.locale),
+        ).length
+      : 0;
+
+    const driftNote =
+      affectedByDrift > savedTargets
+        ? ` ${affectedByDrift - savedTargets} other translation${affectedByDrift - savedTargets === 1 ? "" : "s"} now need review.`
+        : "";
+
+    toast.success(`Saved ${parts.join(" + ")}.${driftNote}`);
     onMutation();
   };
 
@@ -260,9 +433,11 @@ export function TranslationEditDialog({
     onMutation();
   };
 
-  // How many forms have unsaved edits — drives the dirty-count badge in
-  // the header so the merchant doesn't lose track of pending work.
-  const dirtyCount = Object.values(forms).filter((f) => f.dirty).length;
+  // How many forms have unsaved edits — drives the dirty-count badge AND
+  // gates the Save All button. Source counts as one unit alongside each
+  // dirty target locale.
+  const dirtyTargetCount = Object.values(forms).filter((f) => f.dirty).length;
+  const dirtyCount = dirtyTargetCount + (sourceForm.dirty ? 1 : 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -306,10 +481,31 @@ export function TranslationEditDialog({
             </h2>
           </div>
           {dirtyCount > 0 && (
-            <Badge variant="outline" className="shrink-0 gap-1">
-              <span className="text-amber-600 dark:text-amber-500">●</span>
-              {dirtyCount} unsaved
-            </Badge>
+            <>
+              <Badge variant="outline" className="shrink-0 gap-1">
+                <span className="text-amber-600 dark:text-amber-500">●</span>
+                {dirtyCount} unsaved
+              </Badge>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSaveAll}
+                disabled={savingAll || savingSource}
+                className="shrink-0"
+              >
+                {savingAll ? (
+                  <>
+                    <Loader2
+                      className="size-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                    Saving…
+                  </>
+                ) : (
+                  "Save all"
+                )}
+              </Button>
+            </>
           )}
         </header>
 
@@ -317,7 +513,11 @@ export function TranslationEditDialog({
             scroll on the right. On mobile/tablet the source stacks above
             the targets so the merchant always has reference text in view. */}
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          {/* SOURCE PANE (left on desktop, top on mobile) */}
+          {/* SOURCE PANE (left on desktop, top on mobile)
+              Now editable for the three translatable text fields. Edits
+              ripple via the items drift trigger — saving the source
+              automatically marks every existing translation as "needs
+              review." The Info tooltip below telegraphs that. */}
           <aside
             className={cn(
               "shrink-0 overflow-auto bg-muted/20",
@@ -325,60 +525,126 @@ export function TranslationEditDialog({
               // Cap mobile height so it doesn't push the targets off
               // the visible viewport. lg+ uses the natural flex height.
               "max-h-[40vh] lg:max-h-none",
+              sourceForm.dirty && "ring-1 ring-inset ring-amber-500/30",
             )}
             aria-label="Source content"
           >
             <div className="flex flex-col gap-4 p-4 md:p-6">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="h-5">
                   {defaultLocale?.display_name ?? "Source"}
                 </Badge>
                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  default · read-only
+                  default · source
                 </span>
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                        aria-label="What happens when I edit the source?"
+                      >
+                        <Info className="size-3.5" aria-hidden="true" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs">
+                      Editing the source marks every existing translation as
+                      &quot;needs review.&quot; You can re-run AI per language
+                      from the cards on the right, or per row.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
 
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <Label className="text-xs text-muted-foreground">
-                    Name
-                  </Label>
-                  <p
-                    className="text-sm font-medium"
-                    lang={defaultLocale?.locale}
+              <div
+                dir={defaultLocale?.text_direction}
+                className="flex flex-col gap-3"
+              >
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="source-name"
+                    className="text-xs text-muted-foreground"
                   >
-                    {item.name}
-                  </p>
+                    Name <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="source-name"
+                    value={sourceForm.name}
+                    onChange={(e) => updateSourceField("name", e.target.value)}
+                    lang={defaultLocale?.locale}
+                  />
                 </div>
 
-                {item.description && (
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-xs text-muted-foreground">
-                      Description
-                    </Label>
-                    <p
-                      className="whitespace-pre-wrap text-sm leading-relaxed"
-                      lang={defaultLocale?.locale}
-                    >
-                      {item.description}
-                    </p>
-                  </div>
-                )}
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="source-description"
+                    className="text-xs text-muted-foreground"
+                  >
+                    Description
+                  </Label>
+                  <Textarea
+                    id="source-description"
+                    value={sourceForm.description}
+                    onChange={(e) =>
+                      updateSourceField("description", e.target.value)
+                    }
+                    rows={5}
+                    placeholder="Add a description (optional)"
+                    lang={defaultLocale?.locale}
+                  />
+                </div>
 
-                {item.image_alt && (
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-xs text-muted-foreground">
-                      Image alt
-                    </Label>
-                    <p
-                      className="text-sm leading-relaxed"
-                      lang={defaultLocale?.locale}
-                    >
-                      {item.image_alt}
-                    </p>
-                  </div>
-                )}
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="source-image-alt"
+                    className="text-xs text-muted-foreground"
+                  >
+                    Image alt
+                  </Label>
+                  <Input
+                    id="source-image-alt"
+                    value={sourceForm.image_alt}
+                    onChange={(e) =>
+                      updateSourceField("image_alt", e.target.value)
+                    }
+                    placeholder="Describe the image (optional)"
+                    lang={defaultLocale?.locale}
+                  />
+                </div>
               </div>
+
+              {sourceForm.dirty && (
+                <div className="flex items-center justify-end gap-2 border-t pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={discardSource}
+                    disabled={savingSource || savingAll}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleSaveSource()}
+                    disabled={savingSource || savingAll}
+                  >
+                    {savingSource ? (
+                      <>
+                        <Loader2
+                          className="size-3.5 animate-spin"
+                          aria-hidden="true"
+                        />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save source"
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </aside>
 

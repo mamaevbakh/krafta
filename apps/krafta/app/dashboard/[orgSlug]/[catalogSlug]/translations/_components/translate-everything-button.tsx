@@ -138,9 +138,10 @@ export function TranslateEverythingButton({
       <BorderBeamButton
         onClick={() => setOpen(true)}
         className={className}
+        type="button" variant="default"
         // sm beam reads as "this is animated / AI is alive here" without
         // shouting. The button stays a normal-weight CTA.
-        beamSize="sm"
+        beamSize="md"
       >
         <Sparkles className="size-4" aria-hidden="true" />
         Translate everything missing ({grandTotal})
