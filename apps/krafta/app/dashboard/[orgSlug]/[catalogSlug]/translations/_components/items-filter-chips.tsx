@@ -339,9 +339,12 @@ function Chip({
       type="button"
       onClick={onClick}
       // Generous touch target (h-8 = 32px). Plain English label always
-      // visible. Color is a supporting cue, not the only signal.
+      // visible. font-medium (500) per DESIGN.md §Typography for labels —
+      // chips ARE labels, so the medium weight is the right default. The
+      // count next to the label stays at the same weight for legibility;
+      // active-state inversion provides the emphasis, not weight bumps.
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs transition-colors",
+        "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors",
         "border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
         active
           ? "border-transparent bg-foreground text-background shadow-sm"

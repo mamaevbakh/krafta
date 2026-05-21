@@ -22,7 +22,6 @@ import {
 import { cn } from "@/lib/utils";
 
 import { TranslationEditDialog } from "./translation-edit-dialog";
-import { TranslateAllButton } from "./translate-all-button";
 import type { CatalogLocale } from "./languages-sidebar";
 import {
   ItemsFilterChips,
@@ -170,24 +169,12 @@ export function ItemsTab({
         counts={chipCounts}
       />
 
-      {/* Action bar: one bulk translate per target language */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">
-          {visibleItems.length === items.length
-            ? `${items.length} ${items.length === 1 ? "item" : "items"}`
-            : `${visibleItems.length} of ${items.length} ${items.length === 1 ? "item" : "items"}`}
-          {" "}·
-        </span>
-        {targetLocales.map((locale) => (
-          <TranslateAllButton
-            key={locale.locale}
-            catalogId={catalogId}
-            targetLocale={locale}
-            items={items}
-            onEnqueued={onMutation}
-          />
-        ))}
-      </div>
+      {/* Action bar (per-language "Translate missing → X" buttons) was
+          removed. The header carries the master "Translate everything
+          missing" CTA, and the Overview tab's per-language rows host
+          the per-language bulk CTAs. Three surfaces for the same action
+          was clutter; two cover the routes. The item count moved into
+          the filter chips ("All · N") so no information was lost. */}
 
       {visibleItems.length === 0 ? (
         <FilterEmptyState onClearFilter={() => onFilterChange({ status: "all", language: "all" })} />
