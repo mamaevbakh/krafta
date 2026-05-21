@@ -41,8 +41,6 @@ export type TranslateAllButtonProps = {
   catalogId: string;
   targetLocale: CatalogLocale;
   items: ItemRow[];
-  quotaRemaining: number;
-  dailyQuota: number;
   onEnqueued: () => void;
 };
 
@@ -84,8 +82,6 @@ export function TranslateAllButton({
   catalogId,
   targetLocale,
   items,
-  quotaRemaining,
-  dailyQuota,
   onEnqueued,
 }: TranslateAllButtonProps) {
   const [open, setOpen] = React.useState(false);
@@ -98,8 +94,6 @@ export function TranslateAllButton({
   );
 
   const requested = force ? items.length : counts.enqueueable;
-  const willExceedQuota = requested > quotaRemaining;
-  const quotaRemainingAfter = Math.max(quotaRemaining - requested, 0);
 
   const handleConfirm = async () => {
     setSubmitting(true);
@@ -143,11 +137,7 @@ export function TranslateAllButton({
     setSubmitting(false);
 
     if (!result.ok) {
-      toast.error(
-        result.error === "QUOTA_EXCEEDED"
-          ? `Daily quota exceeded (${result.quotaRemaining ?? 0}/${result.dailyQuota ?? dailyQuota} remaining).`
-          : result.error,
-      );
+      toast.error(result.error);
       return;
     }
 
@@ -206,18 +196,6 @@ export function TranslateAllButton({
                   )}
                   ).
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Daily quota remaining after:{" "}
-                  <span className={willExceedQuota ? "font-medium text-destructive" : "font-medium text-foreground"}>
-                    {quotaRemainingAfter}/{dailyQuota}
-                  </span>
-                </div>
-                {willExceedQuota && (
-                  <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                    This would exceed your daily quota. The worker will translate
-                    as many as fit ({quotaRemaining} more today) and stop.
-                  </div>
-                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>

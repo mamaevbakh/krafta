@@ -67,8 +67,6 @@ export type ItemsTabProps = {
   defaultLocale: CatalogLocale | null;
   targetLocales: CatalogLocale[];
   items: ItemRow[];
-  quotaRemaining: number;
-  dailyQuota: number;
   onMutation: () => void;
 };
 
@@ -103,8 +101,6 @@ export function ItemsTab({
   defaultLocale,
   targetLocales,
   items,
-  quotaRemaining,
-  dailyQuota,
   onMutation,
 }: ItemsTabProps) {
   const [drawerItemId, setDrawerItemId] = React.useState<string | null>(null);
@@ -141,8 +137,6 @@ export function ItemsTab({
             catalogId={catalogId}
             targetLocale={locale}
             items={items}
-            quotaRemaining={quotaRemaining}
-            dailyQuota={dailyQuota}
             onEnqueued={onMutation}
           />
         ))}

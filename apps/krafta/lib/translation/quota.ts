@@ -37,22 +37,24 @@ export type QuotaCheckResult =
     };
 
 /**
- * Read-only quota check. Call BEFORE inserting into translation_jobs.
+ * Read-only "quota" check. Currently no cap is enforced — KRA-92 removed
+ * the 500/day limit. This function still reads the tracking row so the
+ * UI can show usage / cost data, but always returns ok:true.
  *
- * Behavior:
- * - If no row exists for the catalog, returns ok with full default quota
- *   (500). The actual row is inserted when the first job is enqueued OR by
- *   the worker on first increment — we don't write here to keep this
- *   function pure.
- * - If used_today + requested > daily_quota → returns ok:false with details.
- * - quota_reset_at is checked: if it's in the past, treats used_today as 0
- *   (the cron job that resets the counter may not have fired yet).
+ * Left intact (vs deleted) for two reasons:
+ *   1. Easy re-enablement of per-tier caps later by uncommenting the
+ *      `if (requested > quotaRemaining)` branch below.
+ *   2. The function still surfaces useful data (usedToday, dailyQuota) to
+ *      the caller, which the UI consumes to render the "X translations
+ *      today" counter.
  */
 export async function checkQuota(
   client: SupabaseClient<Database>,
   params: { catalogId: string; requested: number },
 ): Promise<QuotaCheckResult> {
-  const { catalogId, requested } = params;
+  // `requested` is unused in unlimited mode — referenced for callsite stability.
+  void params.requested;
+  const { catalogId } = params;
 
   const { data, error } = await client
     .from("catalog_translation_quotas")
@@ -61,43 +63,35 @@ export async function checkQuota(
     .maybeSingle();
 
   if (error) {
-    // Soft-fail on RLS errors etc. — let the enqueue proceed and the
-    // worker decide. Better than blocking a legitimate user on a quota
-    // table read bug.
+    // Soft-fail on RLS errors etc. — the tracking is informational only now.
     return {
       ok: true,
-      quotaRemaining: 500,
-      dailyQuota: 500,
+      quotaRemaining: Number.MAX_SAFE_INTEGER,
+      dailyQuota: 1_000_000,
       usedToday: 0,
     };
   }
 
-  const dailyQuota = data?.daily_quota ?? 500;
+  const dailyQuota = data?.daily_quota ?? 1_000_000;
   const rawUsedToday = data?.used_today ?? 0;
 
   // If the reset window has passed but the cron hasn't fired, treat
-  // used_today as 0. Worst case: a slightly generous burst right after
-  // midnight. Better than blocking legitimate work.
+  // used_today as 0 — same self-healing behavior we kept for tracking.
   const resetAt = data?.quota_reset_at ? new Date(data.quota_reset_at) : null;
   const usedToday =
     resetAt && resetAt.getTime() < Date.now() ? 0 : rawUsedToday;
 
-  const quotaRemaining = dailyQuota - usedToday;
-
-  if (requested > quotaRemaining) {
-    return {
-      ok: false,
-      error: "QUOTA_EXCEEDED",
-      quotaRemaining,
-      dailyQuota,
-      usedToday,
-      requested,
-    };
-  }
-
+  // KRA-92: cap removed. Re-enable by uncommenting:
+  //
+  //   const quotaRemaining = dailyQuota - usedToday;
+  //   if (requested > quotaRemaining) {
+  //     return { ok: false, error: "QUOTA_EXCEEDED", quotaRemaining, dailyQuota, usedToday, requested };
+  //   }
+  //
+  // For now: always pass; surface tracking for the UI.
   return {
     ok: true,
-    quotaRemaining,
+    quotaRemaining: Number.MAX_SAFE_INTEGER,
     dailyQuota,
     usedToday,
   };

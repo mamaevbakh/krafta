@@ -56,8 +56,6 @@ export type TranslationsPanelProps = {
   quota: Quota | null;
 };
 
-const DEFAULT_DAILY_QUOTA = 500;
-
 export function TranslationsPanel({
   catalogId,
   catalogSlug,
@@ -69,10 +67,10 @@ export function TranslationsPanel({
 }: TranslationsPanelProps) {
   const router = useRouter();
 
-  const dailyQuota = quota?.daily_quota ?? DEFAULT_DAILY_QUOTA;
+  // KRA-92: 500/day cap removed. The quota row still tracks used_today +
+  // total_tokens_used + total_usd_estimated for cost visibility, but we no
+  // longer enforce a cap. The counter just shows usage now.
   const usedToday = quota?.used_today ?? 0;
-  const quotaRemaining = Math.max(dailyQuota - usedToday, 0);
-  const quotaPct = Math.min(Math.round((usedToday / dailyQuota) * 100), 100);
 
   // Default the active tab to "items". Phase 1 only has items wired; the
   // other tabs are visual placeholders.
@@ -139,12 +137,7 @@ export function TranslationsPanel({
               {catalogName}
             </h1>
           </div>
-          <QuotaIndicator
-            usedToday={usedToday}
-            dailyQuota={dailyQuota}
-            quotaRemaining={quotaRemaining}
-            pct={quotaPct}
-          />
+          <UsageIndicator usedToday={usedToday} />
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-0 lg:flex-row">
@@ -185,8 +178,6 @@ export function TranslationsPanel({
                     defaultLocale={defaultLocale}
                     targetLocales={targetLocales}
                     items={items}
-                    quotaRemaining={quotaRemaining}
-                    dailyQuota={dailyQuota}
                     onMutation={refreshAfterMutation}
                   />
                 )}
@@ -200,48 +191,37 @@ export function TranslationsPanel({
 }
 
 // ============================================================================
-// QuotaIndicator — visible top-right of the header
+// UsageIndicator — visible top-right of the header
+//
+// KRA-92: 500/day cap removed. This used to be a cap counter; now it's just
+// a usage display. Hidden entirely when usedToday is 0 to keep the header
+// uncluttered on quiet days.
 // ============================================================================
 
-function QuotaIndicator({
-  usedToday,
-  dailyQuota,
-  quotaRemaining,
-  pct,
-}: {
-  usedToday: number;
-  dailyQuota: number;
-  quotaRemaining: number;
-  pct: number;
-}) {
-  const tone = pct >= 90 ? "warn" : pct >= 50 ? "active" : "default";
-
+function UsageIndicator({ usedToday }: { usedToday: number }) {
+  if (usedToday === 0) {
+    return null;
+  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label="Daily AI translation quota"
+          aria-label="AI translations today"
           className={cn(
             "flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-xs text-muted-foreground",
             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           )}
         >
-          <span className="font-medium text-foreground">
-            {usedToday}/{dailyQuota}
+          <span className="font-medium text-foreground">{usedToday}</span>
+          <span>
+            AI translation{usedToday === 1 ? "" : "s"} today
           </span>
-          <span>AI translations today</span>
-          <Badge
-            variant={tone === "warn" ? "destructive" : "secondary"}
-            className="ml-1 h-4 px-1.5 text-[10px] font-medium"
-          >
-            {quotaRemaining} left
-          </Badge>
         </button>
       </TooltipTrigger>
       <TooltipContent>
-        Daily quota resets at 00:00 UTC. Manual edits and human review don&apos;t
-        count against this — only AI-generated translations do.
+        Counter resets at 00:00 UTC. Manual edits don&apos;t count — only
+        AI-generated translations do.
       </TooltipContent>
     </Tooltip>
   );

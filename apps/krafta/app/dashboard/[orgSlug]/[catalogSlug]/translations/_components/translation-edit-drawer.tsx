@@ -153,11 +153,7 @@ export function TranslationEditDrawer({
         next.delete(locale.locale);
         return next;
       });
-      toast.error(
-        result.error === "QUOTA_EXCEEDED"
-          ? "Daily quota exceeded — try again tomorrow or upgrade."
-          : result.error,
-      );
+      toast.error(result.error);
       return;
     }
 
