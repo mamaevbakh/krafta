@@ -139,7 +139,11 @@ export function TranslateEverythingButton({
         onClick={() => setOpen(true)}
         className={className}
         type="button"
-        variant="default"
+        // outline keeps the button background transparent so the colorful
+        // beam reads against the dark surface — same pairing the cult-ui
+        // demo uses for its Colorful/Ocean/Sunset/Mono row. variant=default
+        // washes the beam out with a solid fill.
+        variant="outline"
         // "colorful" cycles a full-spectrum hue around the border. Reads
         // unmistakably as "AI / generative" without leaning on copy to
         // explain itself. Pairs naturally with the Sparkles icon.
