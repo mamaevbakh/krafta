@@ -11,7 +11,12 @@ import { cn } from "@/lib/utils";
 
 import { LanguagesSidebar, type CatalogLocale } from "./languages-sidebar";
 import { ItemsTab, type ItemRow } from "./items-tab";
-import { OverviewTab, type OverviewCompleteness } from "./overview-tab";
+import {
+  OverviewTab,
+  StackedProgressBar,
+  type OverviewCompleteness,
+} from "./overview-tab";
+import { TranslateEverythingButton } from "./translate-everything-button";
 import {
   DEFAULT_ITEMS_FILTER,
   classifyTranslation,
@@ -22,10 +27,14 @@ import {
  * Localization Workbench — top-level panel.
  *
  * Layout:
- *   - Header: catalog name + lifetime AI usage counter
+ *   - Sticky header: catalog crumb · hero progress band (% translated +
+ *     stacked bar + master "Translate everything missing" CTA). The hero
+ *     is intentionally persistent across tabs so the merchant feels the
+ *     work progressing while editing in Items/etc., and the master CTA
+ *     is always one click away.
  *   - Two-pane body: LanguagesSidebar (left) + Tabs (right)
  *   - Tabs:
- *       Overview (default landing — dashboard + bulk CTAs)
+ *       Overview (default landing — per-language coverage + scope + cost)
  *       Items    (worktable with status × language filter chips)
  *       Catalog / Categories / Variations / Modifiers / Modifier Lists —
  *       all disabled with "Coming in Phase 2" tooltips.
@@ -34,9 +43,6 @@ import {
  * Items tab filter chips — so the manual translator gets a one-click path
  * from "I see 23 untranslated Russian items" to a filtered worktable of
  * exactly those 23 items.
- *
- * Per the design doc, the panel intentionally stays scoped to one catalog
- * at a time. Cross-catalog translation work is a v1.5 feature.
  */
 
 export type CompletenessRow = {
@@ -100,8 +106,10 @@ export function TranslationsPanel({
   costSinceStart,
 }: TranslationsPanelProps) {
   const router = useRouter();
-
-  const usedToday = quota?.used_today ?? 0;
+  // quota is still fetched (drives future cost-tracking surfaces) but the
+  // "X today" chip got replaced by the master Translate-Everything CTA per
+  // S1c — kept here for future re-use without re-plumbing the page.
+  void quota;
 
   // Default to Overview — the merchant lands on the dashboard, sees state
   // at a glance, then drills into Items when they want to do work.
@@ -166,23 +174,41 @@ export function TranslationsPanel({
     return { byLocale };
   }, [items, targetLocales]);
 
-  // Tab label for the Items pill — counter format "Items 47/120".
-  const itemsLabel = React.useMemo(() => {
-    if (targetLocales.length === 0) return "Items";
+  // Aggregate totals for the persistent header hero band. Sums per-locale
+  // buckets across every target language so the merchant sees "your
+  // catalog is X% translated" anywhere in the workbench, not just on the
+  // Overview tab.
+  const headerTotals = React.useMemo(() => {
     let translated = 0;
+    let needsReview = 0;
+    let notTranslated = 0;
     let total = 0;
     for (const locale of targetLocales) {
       const row = overviewCompleteness.byLocale.get(locale.locale);
       if (row) {
         translated += row.translated;
+        needsReview += row.needsReview;
+        notTranslated += row.notTranslated;
         total += row.total;
       } else {
+        notTranslated += items.length;
         total += items.length;
       }
     }
-    if (total === 0) return "Items";
-    return `Items ${translated}/${total}`;
+    const completePct =
+      total === 0 ? 0 : Math.round((translated / total) * 100);
+    return { translated, needsReview, notTranslated, total, completePct };
   }, [targetLocales, overviewCompleteness, items.length]);
+
+  // Tab label for the Items pill — counter format "Items 47/120".
+  const itemsLabel = React.useMemo(() => {
+    if (headerTotals.total === 0) return "Items";
+    return `Items ${headerTotals.translated}/${headerTotals.total}`;
+  }, [headerTotals]);
+
+  // Show the hero band only when there's actual data to summarise.
+  // No target languages OR no items → just the breadcrumb on top.
+  const showHero = targetLocales.length > 0 && items.length > 0;
 
   // Overview tab → Items tab navigation. Sets both axes + flips tab.
   const handleJumpToItems = React.useCallback(
@@ -196,7 +222,8 @@ export function TranslationsPanel({
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-full min-h-screen flex-col">
-        <header className="flex flex-col gap-2 border-b px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
+        <header className="flex flex-col gap-3 border-b px-4 pb-4 pt-3 md:px-6">
+          {/* Breadcrumb row */}
           <div className="flex items-center gap-2">
             <Globe className="size-4 text-muted-foreground" aria-hidden="true" />
             <span className="text-xs text-muted-foreground">Translations</span>
@@ -205,7 +232,47 @@ export function TranslationsPanel({
               {catalogName}
             </h1>
           </div>
-          <UsageIndicator usedToday={usedToday} />
+
+          {/* Hero band — % translated + stacked bar + master CTA. Persistent
+              across tabs so the merchant always sees overall progress and
+              can fire the bulk translate from anywhere in the workbench. */}
+          {showHero && (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    Your catalog is {headerTotals.completePct}% translated
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {headerTotals.translated} of {headerTotals.total}{" "}
+                    translation rows are done across {targetLocales.length}{" "}
+                    {targetLocales.length === 1 ? "language" : "languages"}.
+                  </p>
+                </div>
+              </div>
+
+              <StackedProgressBar
+                translated={headerTotals.translated}
+                needsReview={headerTotals.needsReview}
+                notTranslated={headerTotals.notTranslated}
+                total={headerTotals.total}
+              />
+
+              {headerTotals.notTranslated + headerTotals.needsReview > 0 && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <TranslateEverythingButton
+                    catalogId={catalogId}
+                    targetLocales={targetLocales}
+                    items={items}
+                    onEnqueued={refreshAfterMutation}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Or pick a single language below.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-0 lg:flex-row">
@@ -309,42 +376,10 @@ export function TranslationsPanel({
   );
 }
 
-// ============================================================================
-// UsageIndicator — visible top-right of the header
-//
-// KRA-92: 500/day cap removed. This used to be a cap counter; now it's just
-// a usage display. Hidden entirely when usedToday is 0 to keep the header
-// uncluttered on quiet days.
-// ============================================================================
-
-function UsageIndicator({ usedToday }: { usedToday: number }) {
-  if (usedToday === 0) {
-    return null;
-  }
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label="AI translations today"
-          className={cn(
-            "flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-xs text-muted-foreground",
-            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          )}
-        >
-          <span className="font-medium text-foreground">{usedToday}</span>
-          <span>
-            AI translation{usedToday === 1 ? "" : "s"} today
-          </span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>
-        Counter resets at 00:00 UTC. Manual edits don&apos;t count — only
-        AI-generated translations do.
-      </TooltipContent>
-    </Tooltip>
-  );
-}
+// UsageIndicator was removed — the persistent header hero band now
+// carries overall progress, and the BorderBeamButton replaces the
+// per-day chip. Today's count is still tracked in catalog_translation_
+// quotas.used_today for future cost-tracking surfaces.
 
 // ============================================================================
 // DisabledTab — visual placeholder for Phase 2 entity kinds

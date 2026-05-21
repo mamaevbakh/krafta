@@ -7,28 +7,14 @@ import {
   Check,
   AlertCircle,
   XCircle,
-  Loader2,
   Package,
   FolderTree,
   Boxes,
   ListPlus,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-
-import { enqueueTranslationJob } from "@/lib/translation/actions";
 
 import { TranslateAllButton } from "./translate-all-button";
 import type { CatalogLocale } from "./languages-sidebar";
@@ -39,14 +25,15 @@ import type {
 } from "./items-filter-chips";
 
 /**
- * Overview tab — the default landing for the Translations workbench.
+ * Overview tab — landing tab for the Translations workbench.
  *
- * Three goals:
- *   1. Tell the merchant where they stand at a glance (hero band).
- *   2. Point them at the work (per-language coverage cards with two CTAs
- *      each — "find these" to filter the Items tab, "translate with AI"
- *      for bulk).
- *   3. Be honest about Phase 1 scope (items only; categories/variations
+ * Two goals (the third — hero "% translated" band + master CTA — moved
+ * into the persistent panel header so the progress stays visible across
+ * tabs):
+ *   1. Point the merchant at the work — per-language coverage cards with
+ *      two CTAs each: "find these" to filter the Items tab, "translate
+ *      with AI" for bulk.
+ *   2. Be honest about Phase 1 scope (items only; categories/variations
  *      coming in Phase 2).
  *
  * Plain-English labels throughout — "Not translated" / "Needs review" /
@@ -114,28 +101,9 @@ export function OverviewTab({
   onJumpToItems,
   onMutation,
 }: OverviewTabProps) {
-  // Aggregate across all target locales.
-  const totals = React.useMemo(() => {
-    let translated = 0;
-    let needsReview = 0;
-    let notTranslated = 0;
-    let total = 0;
-    for (const locale of targetLocales) {
-      const row = completeness.byLocale.get(locale.locale);
-      if (row) {
-        translated += row.translated;
-        needsReview += row.needsReview;
-        notTranslated += row.notTranslated;
-        total += row.total;
-      } else {
-        // No completeness row at all → all rows are missing for this locale.
-        notTranslated += items.length;
-        total += items.length;
-      }
-    }
-    const completePct = total === 0 ? 0 : Math.round((translated / total) * 100);
-    return { translated, needsReview, notTranslated, total, completePct };
-  }, [targetLocales, completeness, items.length]);
+  // Aggregate totals + hero band live in the panel header now (so they
+  // stay visible across tabs). Overview only computes per-language card
+  // breakdowns from the completeness map passed in.
 
   // Empty-states first.
   if (targetLocales.length === 0) {
@@ -147,43 +115,10 @@ export function OverviewTab({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ===================================================================
-          HERO BAND — % complete + master "translate everything" CTA
-      =================================================================== */}
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Your catalog is {totals.completePct}% translated
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {totals.translated} of {totals.total} translation rows are done
-            across {targetLocales.length}{" "}
-            {targetLocales.length === 1 ? "language" : "languages"}.
-          </p>
-        </div>
-
-        <StackedProgressBar
-          translated={totals.translated}
-          needsReview={totals.needsReview}
-          notTranslated={totals.notTranslated}
-          total={totals.total}
-        />
-
-        {totals.notTranslated + totals.needsReview > 0 && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <TranslateEverythingButton
-              catalogId={catalogId}
-              targetLocales={targetLocales}
-              items={items}
-              completeness={completeness}
-              onEnqueued={onMutation}
-            />
-            <span className="text-xs text-muted-foreground">
-              Or pick a single language below.
-            </span>
-          </div>
-        )}
-      </section>
+      {/* Hero band (% complete + master "translate everything" CTA) lives
+          in the persistent panel header now, not here. That way the
+          progress remains visible while the merchant works in Items/etc.
+          and the master CTA is always one click away. */}
 
       {/* ===================================================================
           COVERAGE BY LANGUAGE — the work-finder
@@ -268,9 +203,11 @@ export function OverviewTab({
 
 // ============================================================================
 // StackedProgressBar — three-segment horizontal bar
+//
+// Exported because the panel header reuses it for the persistent hero band.
 // ============================================================================
 
-function StackedProgressBar({
+export function StackedProgressBar({
   translated,
   needsReview,
   notTranslated,
@@ -543,170 +480,9 @@ function ScopeChip({
   );
 }
 
-// ============================================================================
-// TranslateEverythingButton — master "do it all" CTA
-// ============================================================================
-
-function TranslateEverythingButton({
-  catalogId,
-  targetLocales,
-  items,
-  completeness,
-  onEnqueued,
-}: {
-  catalogId: string;
-  targetLocales: CatalogLocale[];
-  items: ItemRow[];
-  completeness: OverviewCompleteness;
-  onEnqueued: () => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const [submitting, setSubmitting] = React.useState(false);
-
-  // Compute the work that will be enqueued per language. We mirror
-  // TranslateAllButton's own "missing + stale, skip human-edited" logic so
-  // the merchant sees a number that matches what actually gets queued.
-  const perLanguage = React.useMemo(() => {
-    const out: Array<{ locale: CatalogLocale; entityIds: string[] }> = [];
-    for (const locale of targetLocales) {
-      const entityIds: string[] = [];
-      for (const item of items) {
-        const t = item.item_translations.find(
-          (tr) => tr.locale === locale.locale,
-        );
-        if (!t) {
-          entityIds.push(item.id);
-          continue;
-        }
-        const isHumanEdited =
-          !t.is_ai_translated && t.last_edited_by !== null;
-        if (isHumanEdited) continue;
-        const isStale =
-          item.current_source_hash !== null &&
-          t.source_hash !== null &&
-          item.current_source_hash !== t.source_hash;
-        if (!t.is_ai_translated && !isStale) {
-          // Already reviewed and fresh — skip.
-          continue;
-        }
-        if (t.is_ai_translated || isStale) {
-          entityIds.push(item.id);
-        }
-      }
-      if (entityIds.length > 0) out.push({ locale, entityIds });
-    }
-    return out;
-  }, [targetLocales, items, completeness]);
-
-  const grandTotal = React.useMemo(
-    () => perLanguage.reduce((acc, p) => acc + p.entityIds.length, 0),
-    [perLanguage],
-  );
-
-  if (grandTotal === 0) {
-    return null;
-  }
-
-  const handleConfirm = async () => {
-    setSubmitting(true);
-    let totalEnqueued = 0;
-    let firstError: string | null = null;
-    for (const { locale, entityIds } of perLanguage) {
-      const result = await enqueueTranslationJob({
-        catalogId,
-        targetLocale: locale.locale,
-        entityKind: "item",
-        entityIds,
-        force: false,
-      });
-      if (!result.ok) {
-        firstError = result.error;
-        break;
-      }
-      totalEnqueued += result.enqueued ?? 0;
-    }
-    setSubmitting(false);
-    setOpen(false);
-
-    if (firstError) {
-      toast.error(firstError);
-      return;
-    }
-    toast.success(
-      totalEnqueued === 0
-        ? "Nothing new to translate."
-        : `Queued ${totalEnqueued} translations across ${perLanguage.length} languages.`,
-    );
-    onEnqueued();
-  };
-
-  return (
-    <>
-      <Button onClick={() => setOpen(true)} className="gap-1.5">
-        <Sparkles className="size-4" aria-hidden="true" />
-        Translate everything missing ({grandTotal})
-      </Button>
-
-      <AlertDialog open={open} onOpenChange={setOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Translate everything missing with AI?
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="flex flex-col gap-2 text-sm">
-                <p>
-                  This will queue{" "}
-                  <strong className="text-foreground">{grandTotal}</strong>{" "}
-                  translation{grandTotal === 1 ? "" : "s"} across{" "}
-                  <strong className="text-foreground">
-                    {perLanguage.length}
-                  </strong>{" "}
-                  language{perLanguage.length === 1 ? "" : "s"}:
-                </p>
-                <ul className="ml-4 list-disc text-xs text-muted-foreground">
-                  {perLanguage.map(({ locale, entityIds }) => (
-                    <li key={locale.locale}>
-                      <span className="font-medium text-foreground">
-                        {locale.display_name}
-                      </span>{" "}
-                      — {entityIds.length} item
-                      {entityIds.length === 1 ? "" : "s"}
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs text-muted-foreground">
-                  Rows you&apos;ve manually edited stay untouched. To
-                  retranslate a specific row over your edit, use the row&apos;s
-                  own AI button.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                handleConfirm();
-              }}
-              disabled={submitting}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  Queuing…
-                </>
-              ) : (
-                "Translate everything"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
-  );
-}
+// TranslateEverythingButton lives in its own file now
+// (./translate-everything-button.tsx) so the panel header can render it
+// alongside the hero progress bar.
 
 // ============================================================================
 // Empty states
