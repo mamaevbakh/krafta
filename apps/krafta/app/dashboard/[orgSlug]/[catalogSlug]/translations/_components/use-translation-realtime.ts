@@ -76,6 +76,32 @@ export type UseTranslationRealtimeResult = {
 
 const DEBOUNCE_MS = 250;
 
+/**
+ * Diagnostic logging gate. Set `localStorage.kraftaRealtimeDebug = "1"` in
+ * the browser to enable verbose console output. Off by default so prod
+ * builds don't leak debug noise. Toggle for a session via the devtools
+ * console:
+ *
+ *   localStorage.kraftaRealtimeDebug = "1"
+ *   location.reload()
+ *
+ * Then watch the console for `[translations-realtime]` lines: channel
+ * status, event payloads, backfill results. Clear with:
+ *
+ *   localStorage.removeItem("kraftaRealtimeDebug")
+ */
+function debug(...args: unknown[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem("kraftaRealtimeDebug") === "1") {
+      // eslint-disable-next-line no-console
+      console.log("[translations-realtime]", ...args);
+    }
+  } catch {
+    // localStorage unavailable (private mode, sandbox) — silently skip.
+  }
+}
+
 export function useTranslationRealtime(
   options: UseTranslationRealtimeOptions,
 ): UseTranslationRealtimeResult {
@@ -147,6 +173,7 @@ export function useTranslationRealtime(
       new: Record<string, unknown>;
       old: Record<string, unknown>;
     }) => {
+      debug("translation_jobs event", payload.eventType, payload.new ?? payload.old);
       if (payload.eventType === "DELETE") {
         const id = (payload.old.id as string | undefined) ?? null;
         if (!id) return;
@@ -180,10 +207,18 @@ export function useTranslationRealtime(
       new: Record<string, unknown>;
       old: Record<string, unknown>;
     }) => {
+      debug(
+        "item_translations event",
+        payload.eventType,
+        payload.new ?? payload.old,
+      );
       const source =
         payload.eventType === "DELETE" ? payload.old : payload.new;
       const itemId = source.item_id as string | undefined;
-      if (!itemId) return;
+      if (!itemId) {
+        debug("item_translations event skipped — no item_id on payload");
+        return;
+      }
       // Filter to this catalog's items. RLS already limits the
       // stream to the user's accessible catalogs; this scopes to
       // the one being viewed.
@@ -195,10 +230,12 @@ export function useTranslationRealtime(
     };
 
     const subscribe = async () => {
+      debug("setting up channel", channelName);
       // Make sure the merchant's JWT is set on the realtime socket
       // before subscribing. See pinRealtimeAuth header comment.
       await pinRealtimeAuth(supabase);
       if (cancelled) return;
+      debug("pinRealtimeAuth done, subscribing…");
 
       // The Realtime client lib's postgres_changes filter signature is
       // narrow to the literal "*" / specific events but the channel
@@ -228,16 +265,32 @@ export function useTranslationRealtime(
           },
           (payload: RealtimePayload) => handleTranslationChange(payload),
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          // status: SUBSCRIBED | TIMED_OUT | CLOSED | CHANNEL_ERROR
+          // The most common silent failure is the publication not
+          // including the table — channel shows SUBSCRIBED but
+          // postgres_changes events never fire. The realtime DB
+          // migration (20260521060000) must have applied for this
+          // to work. To verify:
+          //   SELECT * FROM pg_publication_tables
+          //   WHERE pubname = 'supabase_realtime'
+          //   AND tablename IN ('item_translations','translation_jobs');
+          debug("channel status →", status, err ? `err=${err.message}` : "");
+        });
 
       // Backfill: pull jobs already in-flight when the user landed on
       // the page. Without this, refreshing mid-translation would show
       // "no AI activity" until the next job transitioned.
-      const { data: existing } = await supabase
+      const { data: existing, error: backfillErr } = await supabase
         .from("translation_jobs")
         .select("id, target_locale, status")
         .eq("catalog_id", catalogId)
         .in("status", ["queued", "running"]);
+      debug(
+        "backfill result",
+        backfillErr ? `error=${backfillErr.message}` : `rows=${existing?.length ?? 0}`,
+        existing,
+      );
       if (!cancelled && existing) {
         setActiveJobs(
           existing.map((row) => ({
