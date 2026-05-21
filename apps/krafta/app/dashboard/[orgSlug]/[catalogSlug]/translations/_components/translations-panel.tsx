@@ -64,23 +64,6 @@ export type Quota = {
   daily_quota: number;
   used_today: number;
   quota_reset_at: string;
-  /** Lifetime running total updated by the translate-worker after each
-   *  successful AI call. Numeric column comes back as string from
-   *  PostgREST; cast to number at the page boundary. */
-  total_usd_estimated?: number | string | null;
-  total_tokens_used?: number | null;
-};
-
-export type ScopeCounts = {
-  items: number;
-  categories: number;
-  variations: number;
-  modifierLists: number;
-};
-
-export type CostSinceStart = {
-  usd: number;
-  aiCount: number;
 };
 
 export type TranslationsPanelProps = {
@@ -91,8 +74,6 @@ export type TranslationsPanelProps = {
   items: ItemRow[];
   completeness: CompletenessRow[];
   quota: Quota | null;
-  scopeCounts: ScopeCounts;
-  costSinceStart: CostSinceStart;
 };
 
 export function TranslationsPanel({
@@ -103,8 +84,6 @@ export function TranslationsPanel({
   items,
   completeness,
   quota,
-  scopeCounts,
-  costSinceStart,
 }: TranslationsPanelProps) {
   const router = useRouter();
   // quota is still fetched (drives future cost-tracking surfaces) but the
@@ -354,8 +333,6 @@ export function TranslationsPanel({
                   targetLocales={targetLocales}
                   items={items}
                   completeness={overviewCompleteness}
-                  costSinceStart={costSinceStart}
-                  scopeCounts={scopeCounts}
                   onJumpToItems={handleJumpToItems}
                   onMutation={refreshAfterMutation}
                 />

@@ -59,21 +59,6 @@ export type OverviewTabProps = {
    * one source of truth.
    */
   completeness: OverviewCompleteness;
-  /** Cost / activity numbers for the running total block. Lifetime
-   *  cumulative — `total_usd_estimated` from the quotas table and a count
-   *  of `item_translations.is_ai_translated = true` rows. Optional; null
-   *  renders an empty-friendly placeholder. */
-  costSinceStart: {
-    usd: number;
-    aiCount: number;
-  } | null;
-  /** Counts of other entity kinds for the Phase 1 scope honesty section. */
-  scopeCounts: {
-    items: number;
-    categories: number;
-    variations: number;
-    modifierLists: number;
-  };
   /** Called when a coverage card's "Find these" button is clicked. The
    *  panel uses this to switch to the Items tab with chips pre-selected. */
   onJumpToItems: (filter: ItemsFilter) => void;
@@ -86,8 +71,6 @@ export function OverviewTab({
   targetLocales,
   items,
   completeness,
-  costSinceStart,
-  scopeCounts,
   onJumpToItems,
   onMutation,
 }: OverviewTabProps) {
@@ -138,61 +121,9 @@ export function OverviewTab({
         </ul>
       </section>
 
-      {/* ===================================================================
-          INLINE FOOTER — cost + scope on a single line
-          Replaces the old two stacked sections (ScopeSection +
-          TotalToDateSection). Same information, far less vertical real
-          estate. Wraps gracefully on narrow viewports.
-      =================================================================== */}
-      <footer className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
-        {/* Cost — only when there's data */}
-        {costSinceStart && costSinceStart.aiCount > 0 ? (
-          <>
-            <span className="inline-flex items-baseline gap-1">
-              <span className="font-semibold tabular-nums text-foreground">
-                ${costSinceStart.usd.toFixed(2)}
-              </span>
-              <span className="text-muted-foreground">spent on AI</span>
-            </span>
-            <span className="text-muted-foreground">·</span>
-            <span className="inline-flex items-baseline gap-1">
-              <span className="font-semibold tabular-nums text-foreground">
-                {costSinceStart.aiCount.toLocaleString()}
-              </span>
-              <span className="text-muted-foreground">
-                AI translation{costSinceStart.aiCount === 1 ? "" : "s"}
-              </span>
-            </span>
-            <span className="text-muted-foreground">·</span>
-          </>
-        ) : (
-          <>
-            <span className="text-muted-foreground">No AI cost yet</span>
-            <span className="text-muted-foreground">·</span>
-          </>
-        )}
-
-        {/* Scope */}
-        <span className="inline-flex items-center gap-1 text-foreground">
-          <Check
-            className="size-3 text-emerald-600 dark:text-emerald-500"
-            aria-hidden="true"
-          />
-          Items
-          <span className="text-muted-foreground">
-            ({scopeCounts.items})
-          </span>
-        </span>
-        <span className="inline-flex items-center gap-1 text-muted-foreground">
-          <span className="text-[10px]">⏳</span>
-          Categories ({scopeCounts.categories}) · Variations (
-          {scopeCounts.variations}) · Modifier lists (
-          {scopeCounts.modifierLists})
-          <span className="ml-1 rounded-full bg-muted px-1.5 py-0 text-[10px] uppercase tracking-wide">
-            Phase 2
-          </span>
-        </span>
-      </footer>
+      {/* Inline cost + scope footer was removed — the merchant has
+          already seen Phase 1 scope on first visit and the cost data
+          lives on the quotas table for future analytics surfaces. */}
     </div>
   );
 }
