@@ -138,9 +138,14 @@ export function TranslateEverythingButton({
       <BorderBeamButton
         onClick={() => setOpen(true)}
         className={className}
-        type="button" variant="default"
-        // sm beam reads as "this is animated / AI is alive here" without
-        // shouting. The button stays a normal-weight CTA.
+        type="button"
+        variant="default"
+        // "colorful" cycles a full-spectrum hue around the border. Reads
+        // unmistakably as "AI / generative" without leaning on copy to
+        // explain itself. Pairs naturally with the Sparkles icon.
+        colorVariant="colorful"
+        // md keeps a perceptible glow at header sizing; sm felt too
+        // subtle for a primary CTA carrying this much weight.
         beamSize="md"
       >
         <Sparkles className="size-4" aria-hidden="true" />
