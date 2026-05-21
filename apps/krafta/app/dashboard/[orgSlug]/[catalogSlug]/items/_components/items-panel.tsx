@@ -77,6 +77,13 @@ type ItemsPanelProps = {
   locales: LocaleOption[];
   translations: ItemTranslation[];
   media: ItemMedia[];
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    is_active: boolean;
+  }>;
+  itemModifierLists: Array<{ item_id: string; modifier_list_id: string }>;
   currencySettings: CurrencySettings;
 };
 
@@ -101,6 +108,8 @@ export function ItemsPanel(props: ItemsPanelProps) {
             categories={props.categories}
             media={props.media}
             translations={props.translations}
+            modifierLists={props.modifierLists}
+            itemModifierLists={props.itemModifierLists}
             orgId={props.orgId}
             catalogId={props.catalogId}
             catalogSlug={props.catalogSlug}

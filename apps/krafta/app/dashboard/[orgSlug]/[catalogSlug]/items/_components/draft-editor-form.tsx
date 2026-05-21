@@ -34,7 +34,7 @@
  */
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Drawer as DrawerPrimitive } from "vaul";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -77,6 +77,7 @@ import { useCanvasLocale } from "./locale-context";
 import { createItem, setItemActive } from "./actions";
 import { ItemTypeSelect } from "./item-type-select";
 import { AdvancedSection } from "./advanced-section";
+import { ModifierListsPicker } from "./modifier-lists-picker";
 import {
   PhotoUploader,
   type PhotoUploaderMedia,
@@ -95,6 +96,14 @@ export type DraftEditorFormProps = {
    *  change it via the Category dropdown. */
   initialCategoryId: string;
   categories: CatalogCategory[];
+  /** KRA-85 follow-up — catalog's modifier lists, drives the
+   *  ModifierListsPicker in the create flow. */
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    is_active: boolean;
+  }>;
   orgId: string;
   catalogId: string;
   catalogSlug: string;
@@ -118,6 +127,7 @@ function freshUuid(): string {
 export function DraftEditorForm({
   initialCategoryId,
   categories,
+  modifierLists,
   orgId,
   catalogId,
   catalogSlug,
@@ -126,6 +136,13 @@ export function DraftEditorForm({
   onRegisterClose,
 }: DraftEditorFormProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const modifiersManageHref = React.useMemo(() => {
+    const match = pathname?.match(
+      /^(\/dashboard\/[^/]+\/[^/]+)\/items(?:\/.*)?$/,
+    );
+    return match ? `${match[1]}/items/modifiers` : "/dashboard";
+  }, [pathname]);
   const { activeLocale, defaultLocale } = useCanvasLocale();
   const isDefaultLocaleEditable = activeLocale === defaultLocale;
 
@@ -147,6 +164,10 @@ export function DraftEditorForm({
   );
   const [isActive, setIsActive] = React.useState(true);
   const [photos, setPhotos] = React.useState<PhotoUploaderMedia[]>([]);
+  // KRA-85 follow-up — modifier lists the merchant picked at create
+  // time. Sent to createItem.modifierListIds; the server inserts the
+  // item_modifier_lists rows after the items row exists.
+  const [modifierListIds, setModifierListIds] = React.useState<string[]>([]);
 
   // Variations seed: synthetic default row so the top-level Price
   // field has something to bind to. The id is a synthetic UUID — on
@@ -186,7 +207,8 @@ export function DraftEditorForm({
     productType !== "REGULAR" ||
     !isActive ||
     photos.length > 0 ||
-    variationsState.isDirty;
+    variationsState.isDirty ||
+    modifierListIds.length > 0;
 
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -249,6 +271,11 @@ export function DraftEditorForm({
       translations: [],
       variations,
       photoUploads,
+      // KRA-85 follow-up — attach the lists the merchant picked during
+      // create. Server inserts item_modifier_lists pairs after items
+      // and item_variations land.
+      modifierListIds:
+        modifierListIds.length > 0 ? modifierListIds : undefined,
     });
 
     if (!result.ok) {
@@ -288,6 +315,7 @@ export function DraftEditorForm({
     catalogSlug,
     router,
     onRequestClose,
+    modifierListIds,
   ]);
 
   // -------------------------------------------------------------------
@@ -472,6 +500,24 @@ export function DraftEditorForm({
                   currencySettings={currencySettings}
                   isLocaleEditable={isDefaultLocaleEditable}
                 />
+              </div>
+
+              {/* Modifier lists — KRA-85 follow-up. Same picker the
+                  edit form uses; create flow seeds with an empty
+                  attached set. */}
+              <div className="flex flex-col gap-2">
+                <Label className="text-sm font-medium">Modifier lists</Label>
+                <ModifierListsPicker
+                  available={modifierLists}
+                  attachedIds={modifierListIds}
+                  onChange={setModifierListIds}
+                  disabled={saveStatus === "saving"}
+                  manageHref={modifiersManageHref}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Sizes, toppings, prep notes — pick from any modifier list
+                  in this catalog.
+                </p>
               </div>
 
               <AdvancedSection

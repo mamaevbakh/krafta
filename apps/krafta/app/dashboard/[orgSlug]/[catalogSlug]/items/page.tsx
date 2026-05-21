@@ -56,6 +56,13 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     position: number;
     is_primary: boolean;
   }[] = [];
+  let modifierLists: {
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    is_active: boolean;
+  }[] = [];
+  let itemModifierLists: { item_id: string; modifier_list_id: string }[] = [];
   if (catalog?.id) {
     const [itemsResponse, categoriesResponse, localesResponse] =
       await Promise.all([
@@ -132,7 +139,17 @@ export default async function DashboardItemsPage({ params }: PageProps) {
 
     if (items.length) {
       const itemIds = items.map((item) => item.id);
-      const [translationsResponse, mediaResponse] = await Promise.all([
+      // KRA-85 follow-up: fetch the catalog's modifier_lists +
+      // item_modifier_lists snapshot in the same wave. The editor uses
+      // both to render the ModifierListsPicker (available options +
+      // currently-attached state). Cheap because list counts per catalog
+      // are typically <30.
+      const [
+        translationsResponse,
+        mediaResponse,
+        modifierListsResponse,
+        itemModifierListsResponse,
+      ] = await Promise.all([
         supabase
           .from("item_translations")
           .select("id, item_id, locale, name, description, image_alt")
@@ -144,10 +161,23 @@ export default async function DashboardItemsPage({ params }: PageProps) {
           )
           .in("item_id", itemIds)
           .order("position", { ascending: true }),
+        supabase
+          .from("modifier_lists")
+          .select("id, name, modifier_type, is_active")
+          .eq("catalog_id", catalog.id)
+          .order("name", { ascending: true }),
+        supabase
+          .from("item_modifier_lists")
+          .select("item_id, modifier_list_id")
+          .eq("catalog_id", catalog.id)
+          .eq("is_active", true)
+          .in("item_id", itemIds),
       ]);
 
       translations = translationsResponse.data ?? [];
       media = mediaResponse.data ?? [];
+      modifierLists = modifierListsResponse.data ?? [];
+      itemModifierLists = itemModifierListsResponse.data ?? [];
     }
   }
 
@@ -173,6 +203,8 @@ export default async function DashboardItemsPage({ params }: PageProps) {
       locales={locales}
       translations={translations}
       media={media}
+      modifierLists={modifierLists}
+      itemModifierLists={itemModifierLists}
       currencySettings={currencySettings}
     />
   );

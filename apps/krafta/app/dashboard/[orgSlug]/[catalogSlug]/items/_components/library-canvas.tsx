@@ -121,6 +121,14 @@ export type LibraryCanvasProps = {
   /** Loaded for PR 3 locale-aware editing in the inspector. PR 2 unused. */
   translations: ItemTranslation[];
   media: ItemMedia[];
+  /** KRA-85 follow-up — drive the editor-sheet ModifierListsPicker. */
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    is_active: boolean;
+  }>;
+  itemModifierLists: Array<{ item_id: string; modifier_list_id: string }>;
   currencySettings: CurrencySettings;
 };
 
@@ -133,6 +141,8 @@ export function LibraryCanvas({
   locales,
   translations,
   media,
+  modifierLists,
+  itemModifierLists,
   currencySettings,
 }: LibraryCanvasProps) {
   const router = useRouter();
@@ -460,6 +470,8 @@ export function LibraryCanvas({
             categories={sortedCategories}
             media={media}
             translations={translations}
+            modifierLists={modifierLists}
+            itemModifierLists={itemModifierLists}
             orgId={orgId}
             catalogId={catalogId}
             catalogSlug={catalogSlug}

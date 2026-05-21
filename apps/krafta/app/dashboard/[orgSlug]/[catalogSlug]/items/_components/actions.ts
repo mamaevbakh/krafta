@@ -153,6 +153,71 @@ async function synthesizeDefaultVariationUpdate(args: {
   ];
 }
 
+/**
+ * Sync the modifier-list set attached to an item — KRA-85 follow-up.
+ *
+ * Called from createItem (after the items row exists) and updateItem.
+ * Replace-the-set semantics: compute the diff against the current
+ * `item_modifier_lists` rows, insert the new pairs, delete the removed
+ * pairs. Inserts default `is_active=true` so any existing inactive pair
+ * the merchant re-attaches comes back live.
+ *
+ * Returns `{ ok: false, error }` on any failure so the caller can
+ * propagate. Doesn't bust the catalog cache — the wrapping action does
+ * that once at the end.
+ */
+async function syncItemModifierLists(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  itemId: string;
+  catalogId: string;
+  desiredListIds: string[];
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: existing, error: fetchError } = await args.supabase
+    .from("item_modifier_lists")
+    .select("modifier_list_id")
+    .eq("item_id", args.itemId);
+  if (fetchError) {
+    return { ok: false, error: fetchError.message };
+  }
+
+  const existingIds = new Set(
+    (existing ?? []).map((r) => r.modifier_list_id),
+  );
+  const desiredIds = new Set(args.desiredListIds);
+
+  const toInsert = [...desiredIds].filter((id) => !existingIds.has(id));
+  const toDelete = [...existingIds].filter((id) => !desiredIds.has(id));
+
+  if (toInsert.length > 0) {
+    const { error: insertError } = await args.supabase
+      .from("item_modifier_lists")
+      .insert(
+        toInsert.map((modifierListId) => ({
+          item_id: args.itemId,
+          modifier_list_id: modifierListId,
+          catalog_id: args.catalogId,
+          is_active: true,
+        })),
+      );
+    if (insertError) {
+      return { ok: false, error: insertError.message };
+    }
+  }
+
+  if (toDelete.length > 0) {
+    const { error: deleteError } = await args.supabase
+      .from("item_modifier_lists")
+      .delete()
+      .eq("item_id", args.itemId)
+      .in("modifier_list_id", toDelete);
+    if (deleteError) {
+      return { ok: false, error: deleteError.message };
+    }
+  }
+
+  return { ok: true };
+}
+
 export async function createItem(params: {
   catalogId: string;
   catalogSlug: string;
@@ -188,6 +253,10 @@ export async function createItem(params: {
     bytes?: number | null;
     alt?: string | null;
   }>;
+  /** KRA-85 follow-up: modifier-list ids to attach during the create
+   *  gesture. Inserted as item_modifier_lists rows after the items row
+   *  exists. Empty / omitted leaves the item with no attached lists. */
+  modifierListIds?: string[];
 }) {
   const supabase = await createClient();
 
@@ -365,6 +434,21 @@ export async function createItem(params: {
     }
   }
 
+  // KRA-85 follow-up: attach the requested modifier lists. Done after the
+  // items + variations rows exist so the FK + denormalized catalog_id
+  // sync trigger have parents to reference.
+  if (params.modifierListIds && params.modifierListIds.length > 0) {
+    const syncResult = await syncItemModifierLists({
+      supabase,
+      itemId: item.id,
+      catalogId: params.catalogId,
+      desiredListIds: params.modifierListIds,
+    });
+    if (!syncResult.ok) {
+      return { ok: false, error: syncResult.error };
+    }
+  }
+
   await syncItemSearchDocuments({ itemId: item.id, client: supabase });
 
   await updateCatalogByIdAndSlug({
@@ -394,6 +478,12 @@ export async function updateItem(params: {
   /** KRA-86 — atomic variations changes. Optional. When present, dispatched
    *  inside the same super-RPC call as the item field UPDATE. */
   variationChanges?: ItemVariationChange[];
+  /** KRA-85 follow-up: full set of modifier-list ids that should be
+   *  attached to this item after the save. Replace-the-set semantics —
+   *  any list currently attached but not in this array gets detached.
+   *  Pass `undefined` to leave the existing attachments untouched (legacy
+   *  callers don't need to know about this field). */
+  modifierListIds?: string[];
 }) {
   const supabase = await createClient();
 
@@ -544,6 +634,21 @@ export async function updateItem(params: {
           error: insertError.message ?? "Failed to insert item translations.",
         };
       }
+    }
+  }
+
+  // KRA-85 follow-up: replace the attached modifier-list set if the
+  // caller passed one. `undefined` leaves attachments untouched so
+  // legacy code paths keep working unchanged.
+  if (params.modifierListIds !== undefined) {
+    const syncResult = await syncItemModifierLists({
+      supabase,
+      itemId: params.itemId,
+      catalogId: params.catalogId,
+      desiredListIds: params.modifierListIds,
+    });
+    if (!syncResult.ok) {
+      return { ok: false, error: syncResult.error };
     }
   }
 

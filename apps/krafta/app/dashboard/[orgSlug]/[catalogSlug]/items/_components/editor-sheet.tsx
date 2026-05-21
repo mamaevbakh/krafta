@@ -43,7 +43,7 @@
  */
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Drawer as DrawerPrimitive } from "vaul";
 import {
   Copy,
@@ -112,6 +112,7 @@ import { ItemTypeSelect } from "./item-type-select";
 import { PhotoUploader } from "./photo-uploader";
 import { DraftEditorForm } from "./draft-editor-form";
 import { AdvancedSection } from "./advanced-section";
+import { ModifierListsPicker } from "./modifier-lists-picker";
 import {
   isCatalogItemProductType,
   type CatalogItemProductType,
@@ -143,6 +144,17 @@ export type EditorSheetProps = {
   categories: CatalogCategory[];
   media: ItemMedia[];
   translations: ItemTranslation[];
+  /** KRA-85 follow-up — full modifier-list set for the catalog, drives
+   *  the ModifierListsPicker inside the editor. */
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    is_active: boolean;
+  }>;
+  /** KRA-85 follow-up — current (item × list) attachments. The editor
+   *  derives `initialAttachedIds` by filtering on the selected item's id. */
+  itemModifierLists: Array<{ item_id: string; modifier_list_id: string }>;
   orgId: string;
   catalogId: string;
   catalogSlug: string;
@@ -160,6 +172,8 @@ export function EditorSheet({
   categories,
   media,
   translations,
+  modifierLists,
+  itemModifierLists,
   orgId,
   catalogId,
   catalogSlug,
@@ -277,6 +291,7 @@ export function EditorSheet({
                 key={`draft-${creatingForCategoryId}`}
                 initialCategoryId={creatingForCategoryId!}
                 categories={categories}
+                modifierLists={modifierLists}
                 orgId={orgId}
                 catalogId={catalogId}
                 catalogSlug={catalogSlug}
@@ -297,6 +312,8 @@ export function EditorSheet({
                   categories={categories}
                   media={media}
                   translations={translations}
+                  modifierLists={modifierLists}
+                  itemModifierLists={itemModifierLists}
                   orgId={orgId}
                   catalogId={catalogId}
                   catalogSlug={catalogSlug}
@@ -322,6 +339,13 @@ type EditorFormProps = {
   categories: CatalogCategory[];
   media: ItemMedia[];
   translations: ItemTranslation[];
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    is_active: boolean;
+  }>;
+  itemModifierLists: Array<{ item_id: string; modifier_list_id: string }>;
   orgId: string;
   catalogId: string;
   catalogSlug: string;
@@ -340,6 +364,8 @@ function EditorForm({
   categories,
   media,
   translations,
+  modifierLists,
+  itemModifierLists,
   orgId,
   catalogId,
   catalogSlug,
@@ -348,6 +374,17 @@ function EditorForm({
   onRegisterClose,
 }: EditorFormProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  // Derive /items/modifiers from the current path so we don't have to
+  // thread orgSlug through every consumer just to build one link. The
+  // form only mounts under /dashboard/[orgSlug]/[catalogSlug]/items*
+  // so the prefix is always present.
+  const modifiersManageHref = React.useMemo(() => {
+    const match = pathname?.match(
+      /^(\/dashboard\/[^/]+\/[^/]+)\/items(?:\/.*)?$/,
+    );
+    return match ? `${match[1]}/items/modifiers` : "/dashboard";
+  }, [pathname]);
   const { activeLocale, defaultLocale } = useCanvasLocale();
   const { setSelectedItemId, pulseItem } = useCanvasSelection();
 
@@ -429,6 +466,32 @@ function EditorForm({
   const [slug, setSlug] = React.useState(item.slug);
 
   // ---------------------------------------------------------------------
+  // KRA-85 follow-up — modifier-list attachment state.
+  //
+  // initial = the (item × list) pairs from the snapshot, filtered to this
+  // item, sorted by stable order. Picker is controlled; merchant adds /
+  // removes; the changeset rides along with Save as updateItem's new
+  // `modifierListIds` field.
+  // ---------------------------------------------------------------------
+  const initialModifierListIds = React.useMemo(
+    () =>
+      itemModifierLists
+        .filter((pair) => pair.item_id === item.id)
+        .map((pair) => pair.modifier_list_id),
+    [itemModifierLists, item.id],
+  );
+  const [modifierListIds, setModifierListIds] = React.useState<string[]>(
+    initialModifierListIds,
+  );
+
+  // Re-seed if the item id changes — same key={item.id} pattern as the
+  // rest of the form, so this is mostly a safety net for prop refreshes
+  // while the same item stays open.
+  React.useEffect(() => {
+    setModifierListIds(initialModifierListIds);
+  }, [initialModifierListIds]);
+
+  // ---------------------------------------------------------------------
   // KRA-86 — variations state (single source of truth via the hook).
   //
   // The hook owns the LocalVariation[] state. We read state.changes here
@@ -448,6 +511,12 @@ function EditorForm({
   const hasMultipleVariations = variationsState.local.length >= 2;
 
   // Dirty = any field changed from its initial value.
+  const modifierListIdsDirty = React.useMemo(() => {
+    if (modifierListIds.length !== initialModifierListIds.length) return true;
+    const initialSet = new Set(initialModifierListIds);
+    return modifierListIds.some((id) => !initialSet.has(id));
+  }, [modifierListIds, initialModifierListIds]);
+
   const isDirty =
     name !== initialName ||
     description !== initialDescription ||
@@ -455,7 +524,8 @@ function EditorForm({
     isActive !== item.is_active ||
     productType !== item.product_type ||
     slug !== item.slug ||
-    variationsState.isDirty;
+    variationsState.isDirty ||
+    modifierListIdsDirty;
 
   // ---------------------------------------------------------------------
   // Save state machine
@@ -525,6 +595,10 @@ function EditorForm({
       // round-trips the current rows unchanged through the RPC, which
       // is idempotent.
       variationChanges: variationsState.changes,
+      // KRA-85 follow-up — full modifier-list set after this save. The
+      // server replaces the item_modifier_lists row set with this list,
+      // inserting new pairs and deleting removed ones in one pass.
+      modifierListIds,
     });
 
     if (!result.ok) {
@@ -583,6 +657,7 @@ function EditorForm({
     router,
     onRequestClose,
     variationsState.changes,
+    modifierListIds,
   ]);
 
   // ---------------------------------------------------------------------
@@ -995,18 +1070,24 @@ function EditorForm({
               />
             </div>
 
-            {/* Modifier lists — read-only summary; the attach surface lives
-                on the Modifiers page so the merchant can do bulk attach
-                across many items. Wiring the per-item editor here is
-                follow-up polish. */}
+            {/* Modifier lists — attached state lives in modifierListIds,
+                Save flushes via updateItem's modifierListIds field. Picker
+                is controlled; merchant adds via popover + Command list,
+                detaches via X on each chip. */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Modifier lists</Label>
-              <span className="text-xs text-muted-foreground">
-                Build and attach modifier lists from{" "}
-                <span className="font-medium">Items → Modifiers</span>. Each
-                list (sizes, toppings, prep notes) can be attached to any
-                number of items.
-              </span>
+              <ModifierListsPicker
+                available={modifierLists}
+                attachedIds={modifierListIds}
+                onChange={setModifierListIds}
+                disabled={saveStatus === "saving"}
+                manageHref={modifiersManageHref}
+              />
+              <FieldDescription>
+                Sizes, toppings, prep notes — pick from any modifier list
+                in this catalog. Build new ones in{" "}
+                <span className="font-medium">Items → Modifiers</span>.
+              </FieldDescription>
             </div>
 
             {/* Advanced — collapsible power-user knobs. Currently just
