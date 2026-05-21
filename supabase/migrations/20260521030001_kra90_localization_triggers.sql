@@ -183,6 +183,123 @@ CREATE TRIGGER trg_catalog_categories_compute_source_hash
   FOR EACH ROW EXECUTE FUNCTION public.catalog_categories_compute_source_hash();
 
 -- =============================================================================
+-- 3b. Pre-backfill fix: patch catalog_search_sync_category_document for
+--     service-role / migration contexts (mirrors the KRA-88 fix for items)
+-- =============================================================================
+--
+-- KRA-88 (migration 20260521010000) patched `catalog_search_sync_item_document`
+-- so it skips its `is_org_role(...)` guard when there is no authenticated
+-- user — that lets service-role / migration / trigger contexts UPDATE items
+-- without tripping a 42501 "not authorized" error.
+--
+-- The symmetric category function (`catalog_search_sync_category_document`)
+-- was NOT patched. It still raises 42501 when `auth.uid()` is null. That
+-- bug was harmless until now because no migration UPDATEd `public.catalog_categories`.
+-- Our backfill in section 4 below does exactly that to populate
+-- `current_source_hash`, which fires the search_sync trigger, which calls
+-- this function, which fails.
+--
+-- Apply the same auth.uid() guard pattern here so the backfill succeeds AND
+-- future service-role writes to catalog_categories don't trip the same bug.
+-- This is in scope for KRA-90 because (a) we're the ones surfacing it and
+-- (b) the fix is small and bounded — no behavior change for authenticated
+-- merchant sessions, which is the original "prevent direct RPC misuse" intent.
+
+CREATE OR REPLACE FUNCTION public.catalog_search_sync_category_document(p_category_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+declare
+  v_category record;
+begin
+  select
+    c.id,
+    c.catalog_id,
+    c.name,
+    c.slug,
+    cat.org_id
+  into v_category
+  from public.catalog_categories c
+  join public.catalogs cat on cat.id = c.catalog_id
+  where c.id = p_category_id;
+
+  if not found then
+    return;
+  end if;
+
+  -- Prevent direct RPC misuse from anon/non-admin sessions. Skip the check
+  -- when there is no authenticated user — that's service-role / migration /
+  -- trigger context, all trusted by construction. Matches the KRA-88 pattern
+  -- applied to catalog_search_sync_item_document.
+  if (select auth.uid()) is not null
+     and not public.is_org_role(v_category.org_id, array['owner','admin']) then
+    raise exception 'not authorized' using errcode = '42501';
+  end if;
+
+  delete from public.catalog_search_documents
+  where source_table = 'catalog_categories'
+    and source_id::text = v_category.id::text;
+
+  insert into public.catalog_search_documents (
+    catalog_id,
+    org_id,
+    source_table,
+    source_id,
+    locale,
+    title,
+    subtitle,
+    description,
+    tags
+  )
+  values (
+    v_category.catalog_id,
+    v_category.org_id,
+    'catalog_categories',
+    v_category.id,
+    null,
+    v_category.name,
+    v_category.slug,
+    null,
+    array['category']::text[]
+  );
+
+  delete from public.catalog_search_documents d
+  where d.source_table = 'catalog_category_translations'
+    and d.source_id::text in (
+      select t.id::text
+      from public.catalog_category_translations t
+      where t.category_id = v_category.id
+    );
+
+  insert into public.catalog_search_documents (
+    catalog_id,
+    org_id,
+    source_table,
+    source_id,
+    locale,
+    title,
+    subtitle,
+    description,
+    tags
+  )
+  select
+    v_category.catalog_id,
+    v_category.org_id,
+    'catalog_category_translations',
+    t.id,
+    t.locale,
+    t.name,
+    v_category.slug,
+    t.description,
+    array['category', 'translation']::text[]
+  from public.catalog_category_translations t
+  where t.category_id = v_category.id;
+end;
+$function$;
+
+-- =============================================================================
 -- 4. Backfill existing rows
 -- =============================================================================
 --
