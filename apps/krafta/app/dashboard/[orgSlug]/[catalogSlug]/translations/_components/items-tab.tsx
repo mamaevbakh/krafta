@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-import { TranslationEditDrawer } from "./translation-edit-drawer";
+import { TranslationEditDialog } from "./translation-edit-dialog";
 import { TranslateAllButton } from "./translate-all-button";
 import type { CatalogLocale } from "./languages-sidebar";
 import {
@@ -258,7 +258,7 @@ export function ItemsTab({
       )}
 
       {drawerItem && (
-        <TranslationEditDrawer
+        <TranslationEditDialog
           open
           onOpenChange={(open) => !open && setDrawerItemId(null)}
           item={drawerItem}
