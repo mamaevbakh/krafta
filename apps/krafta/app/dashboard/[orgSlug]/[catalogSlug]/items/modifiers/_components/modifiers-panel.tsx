@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { ModifierListEditorDialog } from "./modifier-list-editor-dialog";
 import { ModifierListsTable } from "./modifier-lists-table";
@@ -87,6 +88,7 @@ export function ModifiersPanel({
   lists,
   items,
   attachments,
+  currencySettings,
 }: {
   catalogId: string;
   catalogSlug: string;
@@ -96,6 +98,10 @@ export function ModifiersPanel({
   lists: ModifierListRow[];
   items: ModifierListItemOption[];
   attachments: ModifierListAttachmentRow[];
+  /** Drives the modifier price input format + suffix label. Threaded
+   *  through to ModifierListEditorDialog → SortableModifierRow. Same
+   *  CurrencySettings the items page uses. */
+  currencySettings: CurrencySettings;
 }) {
   const router = useRouter();
   const [editor, setEditor] = React.useState<EditorState>({ mode: "closed" });
@@ -241,6 +247,7 @@ export function ModifiersPanel({
         catalogId={catalogId}
         catalogSlug={catalogSlug}
         list={editor.mode === "edit" ? editor.list : null}
+        currencySettings={currencySettings}
         onOpenChange={(next) => {
           if (!next) setEditor({ mode: "closed" });
         }}

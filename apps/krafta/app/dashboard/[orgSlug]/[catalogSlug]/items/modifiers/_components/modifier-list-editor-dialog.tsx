@@ -28,11 +28,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import {
+  formatPriceInputValue,
+  parsePriceInput,
+} from "@/lib/catalogs/pricing";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { saveModifierList, type ModifierKind } from "./actions";
 import type { ModifierListRow, ModifierRowFromDb } from "./modifiers-panel";
@@ -131,6 +141,7 @@ export function ModifierListEditorDialog({
   catalogId,
   catalogSlug,
   list,
+  currencySettings,
   onOpenChange,
   onSaved,
 }: {
@@ -139,6 +150,10 @@ export function ModifierListEditorDialog({
   catalogSlug: string;
   /** null = create mode */
   list: ModifierListRow | null;
+  /** Drives the per-row price input format + suffix label (e.g. "UZS").
+   *  Same CurrencySettings the items page uses, so a price typed here
+   *  parses identically to one typed in the variations editor. */
+  currencySettings: CurrencySettings;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
@@ -428,6 +443,7 @@ export function ModifierListEditorDialog({
                   ) : (
                     <ModifierRowsList
                       rows={form.rows}
+                      currencySettings={currencySettings}
                       onChange={patchRow}
                       onRemove={removeRow}
                       onDragEnd={handleDragEnd}
@@ -507,11 +523,13 @@ export function ModifierListEditorDialog({
 
 function ModifierRowsList({
   rows,
+  currencySettings,
   onChange,
   onRemove,
   onDragEnd,
 }: {
   rows: ModifierDraftRow[];
+  currencySettings: CurrencySettings;
   onChange: (key: string, patch: Partial<ModifierDraftRow>) => void;
   onRemove: (key: string) => void;
   onDragEnd: (event: DragEndEvent) => void;
@@ -538,6 +556,7 @@ function ModifierRowsList({
             <SortableModifierRow
               key={row.key}
               row={row}
+              currencySettings={currencySettings}
               onChange={onChange}
               onRemove={onRemove}
             />
@@ -550,10 +569,12 @@ function ModifierRowsList({
 
 function SortableModifierRow({
   row,
+  currencySettings,
   onChange,
   onRemove,
 }: {
   row: ModifierDraftRow;
+  currencySettings: CurrencySettings;
   onChange: (key: string, patch: Partial<ModifierDraftRow>) => void;
   onRemove: (key: string) => void;
 }) {
@@ -564,6 +585,21 @@ function SortableModifierRow({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  // Currency-aware price input — keep the raw merchant-typed string while
+  // focused so they can type "25,000" without us reformatting mid-stroke,
+  // then snap back to the canonical format on blur. Mirrors the pattern
+  // VariationPriceInput uses in the items editor — same parser, same
+  // display contract, so a UZS catalog reads identically across surfaces.
+  const [priceFocused, setPriceFocused] = React.useState(false);
+  const [priceRaw, setPriceRaw] = React.useState(() =>
+    formatPriceInputValue(row.price_cents, currencySettings),
+  );
+  React.useEffect(() => {
+    if (!priceFocused) {
+      setPriceRaw(formatPriceInputValue(row.price_cents, currencySettings));
+    }
+  }, [row.price_cents, priceFocused, currencySettings]);
 
   return (
     <div
@@ -589,20 +625,44 @@ function SortableModifierRow({
         placeholder="Choice name"
         className="h-8 flex-1 border-none bg-transparent shadow-none focus-visible:ring-1"
       />
-      <Input
-        type="number"
-        inputMode="numeric"
-        min={0}
-        step={100}
-        value={row.price_cents}
-        onChange={(e) =>
-          onChange(row.key, {
-            price_cents: Math.max(0, Number(e.target.value) || 0),
-          })
-        }
-        className="h-8 w-24 text-right tabular-nums"
-        aria-label="Price (cents)"
-      />
+      {/* Price + currency suffix label.  InputGroup keeps the addon
+          visually attached so the merchant reads "3,000 UZS" as one
+          unit. labelPosition flips prefix/suffix per catalog settings
+          (USD prefix "$", UZS suffix "UZS"). */}
+      <InputGroup className="h-8 w-36 shrink-0">
+        <InputGroupInput
+          value={priceRaw}
+          onChange={(e) => {
+            const next = e.target.value;
+            setPriceRaw(next);
+            const parsed = parsePriceInput(next, currencySettings);
+            if (parsed !== null) {
+              onChange(row.key, { price_cents: parsed });
+            }
+          }}
+          onFocus={() => setPriceFocused(true)}
+          onBlur={() => {
+            setPriceFocused(false);
+            setPriceRaw(
+              formatPriceInputValue(row.price_cents, currencySettings),
+            );
+          }}
+          inputMode={currencySettings.showDecimals ? "decimal" : "numeric"}
+          placeholder={formatPriceInputValue(0, currencySettings)}
+          aria-label="Price"
+          className="text-right font-mono tabular-nums"
+        />
+        <InputGroupAddon
+          align={
+            currencySettings.labelPosition === "prefix"
+              ? "inline-start"
+              : "inline-end"
+          }
+          className="text-[11px] font-normal"
+        >
+          {currencySettings.label}
+        </InputGroupAddon>
+      </InputGroup>
       <label
         className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
         title="Pre-selected for the customer by default"

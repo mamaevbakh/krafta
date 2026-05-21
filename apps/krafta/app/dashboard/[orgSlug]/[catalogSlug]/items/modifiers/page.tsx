@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { ModifiersPanel } from "./_components/modifiers-panel";
 import type {
@@ -34,7 +35,7 @@ export default async function DashboardModifiersPage({ params }: PageProps) {
 
   const { data: catalog } = await supabase
     .from("catalogs")
-    .select("id")
+    .select("id, pricing_config, settings_currency")
     .eq("slug", catalogSlug)
     .maybeSingle();
 
@@ -86,6 +87,16 @@ export default async function DashboardModifiersPage({ params }: PageProps) {
   const attachments = (attachmentsResponse.data ??
     []) as ModifierListAttachmentRow[];
 
+  // Currency settings drive how modifier price inputs format + the suffix
+  // label ("UZS", "$", etc.). Mirrors the normalization the /items page
+  // does so the modifier editor reads prices identically to the variations
+  // editor — same parser, same display.
+  const currencySettings = normalizeCurrencySettings(
+    (catalog?.pricing_config ??
+      catalog?.settings_currency ??
+      {}) as Record<string, unknown>,
+  );
+
   return (
     <ModifiersPanel
       catalogId={catalog.id}
@@ -93,6 +104,7 @@ export default async function DashboardModifiersPage({ params }: PageProps) {
       lists={lists}
       items={items}
       attachments={attachments}
+      currencySettings={currencySettings}
     />
   );
 }
