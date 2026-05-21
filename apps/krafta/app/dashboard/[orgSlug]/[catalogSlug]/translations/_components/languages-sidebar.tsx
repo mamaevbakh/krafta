@@ -110,67 +110,83 @@ export function LanguagesSidebar({
             No languages set up.
           </li>
         ) : (
-          locales.map((locale) => (
-            <li
-              key={locale.id}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 text-sm md:px-5",
-                locale.is_enabled ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {locale.is_default ? (
-                <Star
-                  className="size-3.5 shrink-0 fill-foreground text-foreground"
-                  aria-label="Default language"
-                />
-              ) : (
-                <span className="inline-block size-3.5 shrink-0" aria-hidden="true" />
-              )}
+          locales.map((locale) => {
+            // Hide the secondary code line when it would duplicate the
+            // display name (e.g. catalogs whose default locale was
+            // created with display_name = "en"). Belt + braces: also
+            // compare lowercased so "EN" vs "en" still collapses.
+            const showCode =
+              locale.display_name.trim().toLowerCase() !==
+              locale.locale.toLowerCase();
 
-              <div className="min-w-0 flex-1">
-                <div
-                  className={cn(
-                    "truncate text-sm font-medium",
-                    !locale.is_enabled && "line-through opacity-60",
-                  )}
-                >
-                  {locale.display_name}
-                </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span>{locale.locale}</span>
-                  {locale.text_direction === "rtl" && (
-                    <Badge variant="outline" className="h-4 px-1 text-[10px]">
-                      RTL
-                    </Badge>
-                  )}
-                  {!locale.is_enabled && (
-                    <Badge variant="outline" className="h-4 px-1 text-[10px]">
-                      disabled
-                    </Badge>
-                  )}
-                </div>
-              </div>
+            return (
+              <li
+                key={locale.id}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 text-sm md:px-5",
+                  // Single source of "this is off": opacity on the whole
+                  // row. The closed-eye icon carries the rest of the
+                  // semantics — no strikethrough, no extra badge.
+                  locale.is_enabled ? "text-foreground" : "opacity-50",
+                )}
+              >
+                {locale.is_default ? (
+                  <Star
+                    className="size-3.5 shrink-0 fill-foreground text-foreground"
+                    aria-label="Default language"
+                  />
+                ) : (
+                  <span className="inline-block size-3.5 shrink-0" aria-hidden="true" />
+                )}
 
-              {!locale.is_default && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  onClick={() => handleToggle(locale)}
-                  disabled={pendingLocale === locale.locale}
-                  aria-label={locale.is_enabled ? `Disable ${locale.display_name}` : `Enable ${locale.display_name}`}
-                >
-                  {pendingLocale === locale.locale ? (
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                  ) : locale.is_enabled ? (
-                    <EyeOff className="size-3.5" aria-hidden="true" />
-                  ) : (
-                    <Eye className="size-3.5" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                    {locale.display_name}
+                  </div>
+                  {(showCode || locale.text_direction === "rtl") && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      {showCode && <span>{locale.locale}</span>}
+                      {locale.text_direction === "rtl" && (
+                        <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                          RTL
+                        </Badge>
+                      )}
+                    </div>
                   )}
-                </Button>
-              )}
-            </li>
-          ))
+                </div>
+
+                {!locale.is_default && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    onClick={() => handleToggle(locale)}
+                    disabled={pendingLocale === locale.locale}
+                    // Buttons describe the action that will happen on
+                    // click, not the current state. Screen-reader user
+                    // hears "Hide English, button" when looking at the
+                    // open-eye icon next to a visible language.
+                    aria-label={
+                      locale.is_enabled
+                        ? `Hide ${locale.display_name}`
+                        : `Show ${locale.display_name}`
+                    }
+                  >
+                    {pendingLocale === locale.locale ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : locale.is_enabled ? (
+                      // Icon represents STATE, not action. Enabled
+                      // language → open eye ("currently visible").
+                      // Tapping it flips state to hidden.
+                      <Eye className="size-3.5" aria-hidden="true" />
+                    ) : (
+                      <EyeOff className="size-3.5" aria-hidden="true" />
+                    )}
+                  </Button>
+                )}
+              </li>
+            );
+          })
         )}
       </ul>
 
