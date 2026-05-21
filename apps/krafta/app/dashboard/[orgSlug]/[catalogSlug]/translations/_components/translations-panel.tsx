@@ -11,11 +11,7 @@ import { cn } from "@/lib/utils";
 
 import { LanguagesSidebar, type CatalogLocale } from "./languages-sidebar";
 import { ItemsTab, type ItemRow } from "./items-tab";
-import {
-  OverviewTab,
-  StackedProgressBar,
-  type OverviewCompleteness,
-} from "./overview-tab";
+import { OverviewTab, type OverviewCompleteness } from "./overview-tab";
 import { TranslateEverythingButton } from "./translate-everything-button";
 import {
   DEFAULT_ITEMS_FILTER,
@@ -209,31 +205,26 @@ export function TranslationsPanel({
             120px, but the column anchor points stay identical. */}
         {showHero ? (
           <header className="w-full border-b">
-            <div className="mx-auto flex max-w-[1248px] flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between md:gap-6">
-              {/* Left: title + subtitle + linear progress */}
-              <div className="flex min-w-0 flex-1 flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <h1 className="text-[32px] font-semibold leading-tight tracking-tight">
-                    Your catalog is {headerTotals.completePct}% translated
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    {headerTotals.translated} of {headerTotals.total}{" "}
-                    translation rows are done across {targetLocales.length}{" "}
-                    {targetLocales.length === 1 ? "language" : "languages"}.
-                  </p>
-                </div>
-                <StackedProgressBar
-                  translated={headerTotals.translated}
-                  needsReview={headerTotals.needsReview}
-                  notTranslated={headerTotals.notTranslated}
-                  total={headerTotals.total}
-                />
+            <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between gap-6 px-6">
+              {/* Left: title + subtitle. Matches the title block on
+                  /items (items-panel.tsx:156-158) and /items/categories
+                  — a `space-y-1` container with the dashboard H1. The
+                  subtitle survives because the % alone doesn't show
+                  scope (rows + languages); items/categories don't
+                  carry that signal in their title. */}
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-[32px] font-semibold leading-tight tracking-tight">
+                  Your catalog is {headerTotals.completePct}% translated
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {headerTotals.translated} of {headerTotals.total}{" "}
+                  translation rows are done across {targetLocales.length}{" "}
+                  {targetLocales.length === 1 ? "language" : "languages"}.
+                </p>
               </div>
 
-              {/* Right: master CTA, vertically centered via md:items-center
-                  on the parent flex container. Same position as "Add
-                  item" on /items and "Create category" on
-                  /items/categories. */}
+              {/* Right: master CTA. Same slot as "Add item" / "Create
+                  category" on the sibling pages. */}
               {headerTotals.notTranslated + headerTotals.needsReview > 0 && (
                 <div className="shrink-0">
                   <TranslateEverythingButton
