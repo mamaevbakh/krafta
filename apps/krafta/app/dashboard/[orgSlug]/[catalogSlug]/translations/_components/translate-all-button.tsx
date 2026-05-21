@@ -15,8 +15,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 import { enqueueTranslationJob } from "@/lib/translation/actions";
 import type { CatalogLocale } from "./languages-sidebar";
@@ -67,35 +65,22 @@ export type TranslateAllButtonProps = {
 
 type Counts = {
   missing: number;
-  stale: number;
-  humanEdited: number;
-  // Total that would enqueue WITHOUT force
+  /** Total that would enqueue WITHOUT force. Now equals `missing`
+   *  exactly — staleness is no longer auto-retranslated as a UI
+   *  side effect. The `force` toggle remains for the rare case
+   *  where a merchant wants to retranslate every row regardless. */
   enqueueable: number;
 };
 
 function computeCounts(items: ItemRow[], targetLocale: string): Counts {
   let missing = 0;
-  let stale = 0;
-  let humanEdited = 0;
   for (const item of items) {
     const t = item.item_translations.find((tr) => tr.locale === targetLocale);
-    if (!t) {
-      missing += 1;
-      continue;
-    }
-    const isHumanEdited = !t.is_ai_translated && t.last_edited_by !== null;
-    const isStale =
-      item.current_source_hash !== null &&
-      t.source_hash !== null &&
-      item.current_source_hash !== t.source_hash;
-    if (isHumanEdited) humanEdited += 1;
-    if (isStale && !isHumanEdited) stale += 1;
+    if (!t) missing += 1;
   }
   return {
     missing,
-    stale,
-    humanEdited,
-    enqueueable: missing + stale,
+    enqueueable: missing,
   };
 }
 
@@ -109,7 +94,6 @@ export function TranslateAllButton({
   isAiBusy = false,
 }: TranslateAllButtonProps) {
   const [open, setOpen] = React.useState(false);
-  const [force, setForce] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
   const counts = React.useMemo(
@@ -117,37 +101,26 @@ export function TranslateAllButton({
     [items, targetLocale.locale],
   );
 
-  const requested = force ? items.length : counts.enqueueable;
+  const requested = counts.enqueueable;
 
   const handleConfirm = async () => {
     setSubmitting(true);
-    // Collect entityIds. With force, send all items; without, send only the
-    // missing + stale ones.
+    // Enqueue only items where no translation row exists for this
+    // locale. Stale + human-edited rows are no longer auto-handled —
+    // see translate-everything-button.tsx for the rationale.
     const entityIds = items
       .filter((item) => {
         const t = item.item_translations.find(
           (tr) => tr.locale === targetLocale.locale,
         );
-        if (force) return true;
-        if (!t) return true; // missing
-        const isHumanEdited = !t.is_ai_translated && t.last_edited_by !== null;
-        if (isHumanEdited) return false;
-        const isStale =
-          item.current_source_hash !== null &&
-          t.source_hash !== null &&
-          item.current_source_hash !== t.source_hash;
-        return isStale;
+        return !t;
       })
       .map((item) => item.id);
 
     if (entityIds.length === 0) {
       setSubmitting(false);
       setOpen(false);
-      toast.info(
-        force
-          ? "Nothing to translate."
-          : "Everything is up to date. Use Retranslate inside a row to override.",
-      );
+      toast.info("Nothing to translate.");
       return;
     }
 
@@ -156,7 +129,7 @@ export function TranslateAllButton({
       targetLocale: targetLocale.locale,
       entityKind: "item",
       entityIds,
-      force,
+      force: false,
     });
     setSubmitting(false);
 
@@ -166,20 +139,16 @@ export function TranslateAllButton({
     }
 
     setOpen(false);
-    setForce(false);
     const enqueued = result.enqueued ?? 0;
-    const skipped = result.skippedHumanEdited ?? 0;
     toast.success(
       enqueued === 0
-        ? skipped > 0
-          ? `Nothing enqueued — ${skipped} human-edited row${skipped === 1 ? "" : "s"} preserved.`
-          : "Nothing to translate."
-        : `Queued ${enqueued} translation${enqueued === 1 ? "" : "s"}.${skipped > 0 ? ` Skipped ${skipped} human-edited row${skipped === 1 ? "" : "s"}.` : ""}`,
+        ? "Nothing to translate."
+        : `Queued ${enqueued} translation${enqueued === 1 ? "" : "s"}.`,
     );
     onEnqueued();
   };
 
-  const disabled = counts.enqueueable === 0 && !force;
+  const disabled = counts.enqueueable === 0;
 
   return (
     <>
@@ -232,45 +201,17 @@ export function TranslateAllButton({
             <AlertDialogDescription asChild>
               <div className="flex flex-col gap-2 text-sm">
                 <div>
-                  This will enqueue{" "}
+                  This will translate{" "}
                   <strong className="text-foreground">{requested}</strong>{" "}
-                  translation{requested === 1 ? "" : "s"} (
-                  <span className="text-foreground">{counts.missing}</span> missing
-                  {" "}+{" "}
-                  <span className="text-foreground">{counts.stale}</span> stale
-                  {counts.humanEdited > 0 && !force && (
-                    <>
-                      ;{" "}
-                      <span className="text-foreground">
-                        {counts.humanEdited} human-edited
-                      </span>{" "}
-                      row{counts.humanEdited === 1 ? "" : "s"} skipped
-                    </>
-                  )}
-                  ).
+                  missing item{requested === 1 ? "" : "s"} into{" "}
+                  <strong className="text-foreground">
+                    {targetLocale.display_name}
+                  </strong>{" "}
+                  with AI.
                 </div>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
-
-          {counts.humanEdited > 0 && (
-            <div className="flex items-start justify-between gap-3 rounded-md border bg-card p-3">
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <Label htmlFor="force-toggle" className="text-sm font-medium">
-                  Also re-translate human-edited rows
-                </Label>
-                <span className="text-xs text-muted-foreground">
-                  By default we skip rows you&apos;ve manually edited. Turn this
-                  on to overwrite them with fresh AI translations.
-                </span>
-              </div>
-              <Switch
-                id="force-toggle"
-                checked={force}
-                onCheckedChange={setForce}
-              />
-            </div>
-          )}
 
           <AlertDialogFooter>
             <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>

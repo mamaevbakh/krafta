@@ -129,24 +129,20 @@ export function TranslationsPanel({
       string,
       {
         translated: number;
-        needsReview: number;
         notTranslated: number;
         total: number;
       }
     >();
     for (const locale of targetLocales) {
       let translated = 0;
-      let needsReview = 0;
       let notTranslated = 0;
       for (const item of items) {
         const bucket = classifyTranslation(item, locale.locale);
         if (bucket === "translated") translated += 1;
-        else if (bucket === "needs-review") needsReview += 1;
         else notTranslated += 1;
       }
       byLocale.set(locale.locale, {
         translated,
-        needsReview,
         notTranslated,
         total: items.length,
       });
@@ -160,14 +156,12 @@ export function TranslationsPanel({
   // Overview tab.
   const headerTotals = React.useMemo(() => {
     let translated = 0;
-    let needsReview = 0;
     let notTranslated = 0;
     let total = 0;
     for (const locale of targetLocales) {
       const row = overviewCompleteness.byLocale.get(locale.locale);
       if (row) {
         translated += row.translated;
-        needsReview += row.needsReview;
         notTranslated += row.notTranslated;
         total += row.total;
       } else {
@@ -177,7 +171,7 @@ export function TranslationsPanel({
     }
     const completePct =
       total === 0 ? 0 : Math.round((translated / total) * 100);
-    return { translated, needsReview, notTranslated, total, completePct };
+    return { translated, notTranslated, total, completePct };
   }, [targetLocales, overviewCompleteness, items.length]);
 
   // Items pill label — plain "Items", no counter. The header hero band
@@ -329,7 +323,7 @@ export function TranslationsPanel({
 
                   {/* Right: master CTA. Same slot as "Add item" / "Create
                       category" on the sibling pages. */}
-                  {headerTotals.notTranslated + headerTotals.needsReview > 0 && (
+                  {headerTotals.notTranslated > 0 && (
                     <div className="shrink-0">
                       <TranslateEverythingButton
                         catalogId={catalogId}

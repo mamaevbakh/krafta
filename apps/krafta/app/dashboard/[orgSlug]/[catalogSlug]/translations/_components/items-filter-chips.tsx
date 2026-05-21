@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, AlertCircle, XCircle, List, X } from "lucide-react";
+import { Check, XCircle, List, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -28,11 +28,7 @@ import type { ItemRow } from "./items-tab";
  * the type and the chip UI together makes the contract obvious.
  */
 
-export type ItemsStatusFilter =
-  | "all"
-  | "not-translated"
-  | "needs-review"
-  | "translated";
+export type ItemsStatusFilter = "all" | "not-translated" | "translated";
 
 export type ItemsLanguageFilter = "all" | string;
 
@@ -51,40 +47,33 @@ export const DEFAULT_ITEMS_FILTER: ItemsFilter = {
 // ============================================================================
 
 /**
- * For a given (item, locale), classify the translation row into one of three
+ * For a given (item, locale), classify the translation row into one of two
  * buckets so chip filters can match against it.
  *
- * Semantics (corrected — AI translations count as translated):
+ * Semantics (simplified — "needs review" / drift state hidden from UI):
  *   - "not-translated": no translation row exists for this locale
- *   - "needs-review":   row exists but the source text changed since it was
- *                       written (the stale flag). The translation is still
- *                       SHOWN on the storefront — anon RLS doesn't filter
- *                       it — but the merchant should re-check it.
- *   - "translated":     row exists AND fresh. Both AI-generated rows and
- *                       human-edited rows live here. AI translations are
- *                       customer-facing the moment the worker writes them;
- *                       the manual "Accept" flow is merchant moderation,
- *                       not a publish gate.
+ *   - "translated":     a row exists. Anything else (AI vs human, fresh vs
+ *                       stale) is metadata, not a status.
  *
- * Why this changed: the previous model treated is_ai_translated=true as a
- * "not yet done" state, which contradicted the storefront's behavior (anon
- * SELECT doesn't filter on is_ai_translated). The header would read "5%
- * translated" when customers were actually seeing 100% of the catalog in
- * their language. The AI-vs-human distinction is still surfaced per-row
- * via the table's "AI — review" badge, but it's informational/moderation
- * signal, not a completeness signal.
+ * Why drift / stale was removed from the surface: in practice F&B merchants
+ * rarely edit source items after initial setup, so the stale signal fired
+ * <5 % of the time but added permanent UI complexity. The DB-side drift
+ * detection (source_hash + trigger) is still in place and a future
+ * "auto-retranslate on source change" feature can use it directly without
+ * surfacing a chip — fix the problem instead of announcing it.
+ *
+ * The original `needs-review` state covered two distinct things conflated
+ * under one word: stale (source changed) AND is_ai_translated=true. The
+ * AI case never deserved review-status semantics anyway — anon storefront
+ * RLS doesn't filter on is_ai_translated, so AI translations have always
+ * been customer-visible the moment the worker writes them.
  */
 export function classifyTranslation(
   item: ItemRow,
   locale: string,
-): "not-translated" | "needs-review" | "translated" {
+): "not-translated" | "translated" {
   const t = item.item_translations.find((tr) => tr.locale === locale);
   if (!t) return "not-translated";
-  const stale =
-    item.current_source_hash !== null &&
-    t.source_hash !== null &&
-    item.current_source_hash !== t.source_hash;
-  if (stale) return "needs-review";
   return "translated";
 }
 
@@ -94,7 +83,6 @@ export function classifyTranslation(
  *
  * Status semantics with language=all:
  *   - "not-translated": item has AT LEAST ONE target locale not translated
- *   - "needs-review":   item has AT LEAST ONE target locale needing review
  *   - "translated":     item has ALL target locales translated (no gaps)
  *
  * With language=X, the bucket is just for that single locale.
@@ -156,7 +144,6 @@ export function computeChipCounts(
     status: {
       all: 0,
       "not-translated": 0,
-      "needs-review": 0,
       translated: 0,
     },
     languageMissing: {},
@@ -173,15 +160,6 @@ export function computeChipCounts(
       )
     ) {
       counts.status["not-translated"] += 1;
-    }
-    if (
-      matchesFilter(
-        item,
-        { ...filter, status: "needs-review" },
-        targetLocales,
-      )
-    ) {
-      counts.status["needs-review"] += 1;
     }
     if (
       matchesFilter(item, { ...filter, status: "translated" }, targetLocales)
@@ -223,16 +201,6 @@ const STATUS_OPTIONS: Array<{
     icon: (
       <XCircle
         className="size-3.5 text-muted-foreground"
-        aria-hidden="true"
-      />
-    ),
-  },
-  {
-    key: "needs-review",
-    label: "Needs review",
-    icon: (
-      <AlertCircle
-        className="size-3.5 text-amber-600 dark:text-amber-500"
         aria-hidden="true"
       />
     ),

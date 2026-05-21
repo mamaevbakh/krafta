@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Sparkles, X, Bot, AlertCircle, Info } from "lucide-react";
+import { Loader2, Sparkles, X, Info } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -25,7 +25,6 @@ import { cn } from "@/lib/utils";
 import {
   enqueueTranslationJob,
   updateTranslation,
-  applyAiTranslation,
   updateItemSourceText,
 } from "@/lib/translation/actions";
 import type { CatalogLocale } from "./languages-sidebar";
@@ -238,17 +237,11 @@ export function TranslationEditDialog({
     setSourceForm((prev) => ({ ...prev, dirty: false }));
 
     if (!options.silent) {
-      // Count target locales that have an existing translation row — those
-      // are the ones the drift trigger just marked stale. Locales with no
-      // translation row yet weren't affected (they were already missing).
-      const affected = targetLocales.filter((l) =>
-        item.item_translations.some((t) => t.locale === l.locale),
-      ).length;
-      toast.success(
-        affected > 0
-          ? `Source saved. ${affected} translation${affected === 1 ? "" : "s"} now need review.`
-          : "Source saved.",
-      );
+      // We no longer surface a "needs review" state per the
+      // simplification — drift is tracked in the DB but not announced
+      // here. If the merchant wants the new text translated, they
+      // hit Retranslate per locale below.
+      toast.success("Source saved.");
       onMutation();
     }
     return true;
@@ -400,38 +393,16 @@ export function TranslationEditDialog({
       return;
     }
 
-    // If we saved source AND there were existing translations, mention
-    // they're now stale so the merchant isn't surprised.
-    const affectedByDrift = sourceWasDirty
-      ? targetLocales.filter((l) =>
-          item.item_translations.some((t) => t.locale === l.locale),
-        ).length
-      : 0;
-
-    const driftNote =
-      affectedByDrift > savedTargets
-        ? ` ${affectedByDrift - savedTargets} other translation${affectedByDrift - savedTargets === 1 ? "" : "s"} now need review.`
-        : "";
-
-    toast.success(`Saved ${parts.join(" + ")}.${driftNote}`);
+    // Drift notification removed along with the "needs review" surface.
+    // The DB drift trigger still fires; we just don't mention it.
+    toast.success(`Saved ${parts.join(" + ")}.`);
     onMutation();
   };
 
-  const handleAccept = async (locale: CatalogLocale) => {
-    const form = forms[locale.locale];
-    if (!form?.serverRow) return;
-    const result = await applyAiTranslation({
-      entityKind: "item",
-      translationRowId: form.serverRow.id,
-      accept: true,
-    });
-    if (!result.ok) {
-      toast.error(result.error);
-      return;
-    }
-    toast.success(`Accepted ${locale.display_name}`);
-    onMutation();
-  };
+  // handleAccept / applyAiTranslation were removed when the AI-vs-human
+  // moderation flow got hidden. The server action is still in lib/
+  // translation/actions.ts in case we resurrect a moderation surface
+  // later, just unwired from the UI.
 
   // How many forms have unsaved edits — drives the dirty-count badge AND
   // gates the Save All button. Source counts as one unit alongside each
@@ -514,10 +485,12 @@ export function TranslationEditDialog({
             the targets so the merchant always has reference text in view. */}
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           {/* SOURCE PANE (left on desktop, top on mobile)
-              Now editable for the three translatable text fields. Edits
-              ripple via the items drift trigger — saving the source
-              automatically marks every existing translation as "needs
-              review." The Info tooltip below telegraphs that. */}
+              Editable for the two translatable text fields. The DB drift
+              trigger still fires on source edits, updating each
+              translation row's source_hash mismatch — but that state
+              isn't surfaced in the UI anymore. If the merchant wants
+              to refresh after editing, they hit Retranslate per
+              language or per row. */}
           <aside
             className={cn(
               "shrink-0 overflow-auto bg-muted/20",
@@ -549,9 +522,9 @@ export function TranslationEditDialog({
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-xs">
-                      Editing the source marks every existing translation as
-                      &quot;needs review.&quot; You can re-run AI per language
-                      from the cards on the right, or per row.
+                      Editing the source updates the catalog, but existing
+                      translations on each target stay as they are. Hit
+                      Retranslate per language to refresh them with AI.
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -645,13 +618,6 @@ export function TranslationEditDialog({
                 const form =
                   forms[locale.locale] ?? initialFormState(undefined);
                 const serverRow = form.serverRow;
-                const showAccept =
-                  serverRow && serverRow.is_ai_translated && !form.dirty;
-                const stale =
-                  serverRow &&
-                  item.current_source_hash !== null &&
-                  serverRow.source_hash !== null &&
-                  item.current_source_hash !== serverRow.source_hash;
 
                 return (
                   <section
@@ -661,7 +627,10 @@ export function TranslationEditDialog({
                       form.dirty && "ring-1 ring-amber-500/30",
                     )}
                   >
-                    {/* Locale header — name + badges + per-locale actions */}
+                    {/* Locale header — name + per-locale Retranslate.
+                        The "AI — review" / "stale" / "Accept" controls
+                        from earlier moderation flow are gone; AI rows
+                        are simply translated, no review semantics. */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3
@@ -673,27 +642,6 @@ export function TranslationEditDialog({
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
                           {locale.locale}
                         </span>
-                        {serverRow?.is_ai_translated && (
-                          <Badge
-                            variant="secondary"
-                            className="h-5 gap-0.5 text-[10px]"
-                          >
-                            <Bot className="size-3" aria-hidden="true" />
-                            AI — review
-                          </Badge>
-                        )}
-                        {stale && (
-                          <Badge
-                            variant="outline"
-                            className="h-5 gap-0.5 text-[10px]"
-                          >
-                            <AlertCircle
-                              className="size-3"
-                              aria-hidden="true"
-                            />
-                            stale
-                          </Badge>
-                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Button
@@ -715,16 +663,6 @@ export function TranslationEditDialog({
                             </>
                           )}
                         </Button>
-                        {showAccept && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleAccept(locale)}
-                          >
-                            Accept
-                          </Button>
-                        )}
                       </div>
                     </div>
 

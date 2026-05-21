@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { startTransition } from "react";
-import { Bot, AlertCircle, Check } from "lucide-react";
 
 import {
   Table,
@@ -14,11 +13,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import { TranslationEditDialog } from "./translation-edit-dialog";
@@ -87,29 +81,13 @@ export type ItemsTabProps = {
 };
 
 type CellStatus =
-  | { kind: "translated"; text: string; needsReview: boolean; stale: boolean }
+  | { kind: "translated"; text: string }
   | { kind: "missing" };
 
-function getCellStatus(
-  item: ItemRow,
-  locale: string,
-): CellStatus {
+function getCellStatus(item: ItemRow, locale: string): CellStatus {
   const t = item.item_translations.find((tr) => tr.locale === locale);
   if (!t) return { kind: "missing" };
-
-  // Drift detection: stored source_hash should equal the parent's current.
-  // Bytea comes back as hex string with `\x` prefix; compare verbatim.
-  const stale =
-    item.current_source_hash !== null &&
-    t.source_hash !== null &&
-    item.current_source_hash !== t.source_hash;
-
-  return {
-    kind: "translated",
-    text: t.name,
-    needsReview: t.is_ai_translated,
-    stale,
-  };
+  return { kind: "translated", text: t.name };
 }
 
 export function ItemsTab({
@@ -320,76 +298,41 @@ function FilterEmptyState({ onClearFilter }: { onClearFilter: () => void }) {
 
 // ============================================================================
 // TranslationCell — visual for a single (item × locale) cell
+//
+// Simplified to "text or 'Not translated' placeholder." The previous
+// version layered three moderation badges (stale / AI — review / reviewed)
+// that all rested on the assumption AI translations needed human approval
+// before going live. Storefront RLS never enforced that, so the badges
+// were warning the merchant about something that wasn't true. Drift
+// detection (`source_hash` vs `current_source_hash`) is still in the DB
+// for a future auto-retranslate feature; just not surfaced as a status.
 // ============================================================================
 
 function TranslationCell({ status }: { status: CellStatus }) {
   if (status.kind === "missing") {
     return (
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="inline-block size-1.5 rounded-full bg-muted-foreground/40" aria-hidden="true" />
-        Missing
+        <span
+          className="inline-block size-1.5 rounded-full bg-muted-foreground/40"
+          aria-hidden="true"
+        />
+        Not translated
       </div>
     );
   }
 
-  // 280px cap + truncate. `min-w-0` on the flex column releases the
-  // inner span from flex's default min-content sizing so `truncate`
-  // (overflow-hidden + text-ellipsis + whitespace-nowrap) takes effect.
-  // `title` exposes the full string on hover.
+  // 280 px cap + truncate. `min-w-0` releases the inner span from
+  // flex's default min-content sizing so `truncate` (overflow-hidden
+  // + text-ellipsis + whitespace-nowrap) takes effect. `title`
+  // exposes the full string on hover.
   return (
-    <div className="flex min-w-0 max-w-[280px] flex-col gap-1">
+    <div className="flex min-w-0 max-w-[280px] flex-col">
       <span
-        className={cn(
-          "block truncate text-sm font-medium",
-          status.stale && "text-muted-foreground",
-        )}
+        className="block truncate text-sm font-medium"
         title={status.text}
       >
         {status.text}
       </span>
-      <div className="flex flex-wrap items-center gap-1">
-        {status.stale && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge variant="outline" className="h-4 gap-0.5 px-1 text-[10px]">
-                <AlertCircle className="size-2.5" aria-hidden="true" />
-                stale
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent>
-              The source text changed since this translation was made. Re-translate
-              to refresh.
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {status.needsReview ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge variant="secondary" className="h-4 gap-0.5 px-1 text-[10px]">
-                <Bot className="size-2.5" aria-hidden="true" />
-                AI — review
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent>
-              AI generated this translation. Open the row to edit or accept it.
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          !status.stale && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="outline" className="h-4 gap-0.5 px-1 text-[10px]">
-                  <Check className="size-2.5" aria-hidden="true" />
-                  reviewed
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                Translation reviewed by a human (or accepted).
-              </TooltipContent>
-            </Tooltip>
-          )
-        )}
-      </div>
     </div>
   );
 }

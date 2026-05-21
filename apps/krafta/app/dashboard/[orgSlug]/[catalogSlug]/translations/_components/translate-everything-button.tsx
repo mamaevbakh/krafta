@@ -66,17 +66,15 @@ export function TranslateEverythingButton({
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Compute the work that will be enqueued per language. Truly missing
-  // rows or stale ones (source changed) get queued; everything else
-  // counts as already translated.
-  //
-  // Key invariant: AI-generated rows that are NOT stale are TRANSLATED.
-  // They show on the storefront immediately (anon RLS doesn't filter
-  // is_ai_translated). The merchant's "Accept" flow is moderation, not
-  // a publish gate. Re-translating fresh AI rows by default would
-  // burn API budget on work that's already done. If the merchant
-  // explicitly wants to retranslate an AI row (different prompt, new
-  // model), they hit the per-row Retranslate button in the editor.
+  // Compute the work that will be enqueued per language. Only truly
+  // missing rows get queued — anything else counts as already
+  // translated. The previous "missing + stale" model was dropped along
+  // with the "Needs review" surface; staleness is no longer a status
+  // the merchant sees, and silently enqueuing stale rows would cause
+  // the displayed count (matches "items where no row exists") to
+  // diverge from what actually gets queued. When auto-retranslate-on-
+  // source-change ships as a separate feature, stale rows will be
+  // handled there rather than batched into this button.
   const perLanguage = React.useMemo(() => {
     const out: Array<{ locale: CatalogLocale; entityIds: string[] }> = [];
     for (const locale of targetLocales) {
@@ -86,24 +84,8 @@ export function TranslateEverythingButton({
           (tr) => tr.locale === locale.locale,
         );
         if (!t) {
-          // Missing → queue it.
-          entityIds.push(item.id);
-          continue;
-        }
-        // Translation exists. Never auto-overwrite human edits.
-        const isHumanEdited =
-          !t.is_ai_translated && t.last_edited_by !== null;
-        if (isHumanEdited) continue;
-        const isStale =
-          item.current_source_hash !== null &&
-          t.source_hash !== null &&
-          item.current_source_hash !== t.source_hash;
-        if (isStale) {
-          // Source changed → retranslate.
           entityIds.push(item.id);
         }
-        // Otherwise (row exists, not stale, AI or human) → already
-        // translated, skip.
       }
       if (entityIds.length > 0) out.push({ locale, entityIds });
     }

@@ -36,13 +36,15 @@ import type {
  */
 
 export type OverviewCompleteness = {
-  /** Per-locale stats indexed by locale code. */
+  /** Per-locale stats indexed by locale code. Just two buckets — a row
+   *  for this locale either exists (translated) or doesn't (not-
+   *  translated). AI vs human and stale-vs-fresh are no longer surfaced
+   *  as completeness signals; see classifyTranslation for the rationale. */
   byLocale: Map<
     string,
     {
-      translated: number; // human-reviewed + not stale
-      needsReview: number; // AI-not-yet-reviewed OR stale
-      notTranslated: number; // missing entirely
+      translated: number;
+      notTranslated: number;
       total: number;
     }
   >;
@@ -109,7 +111,6 @@ export function OverviewTab({
           {targetLocales.map((locale) => {
             const row = completeness.byLocale.get(locale.locale) ?? {
               translated: 0,
-              needsReview: 0,
               notTranslated: items.length,
               total: items.length,
             };
@@ -157,7 +158,6 @@ function LanguageCoverageRow({
   locale: CatalogLocale;
   stats: {
     translated: number;
-    needsReview: number;
     notTranslated: number;
     total: number;
   };
@@ -169,7 +169,7 @@ function LanguageCoverageRow({
   onJumpToItems: (filter: ItemsFilter) => void;
   onMutation: () => void;
 }) {
-  const hasWork = stats.notTranslated + stats.needsReview > 0;
+  const hasWork = stats.notTranslated > 0;
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-card px-3 py-2">
@@ -186,18 +186,16 @@ function LanguageCoverageRow({
         </span>
       </div>
 
-      {/* Progress bar — flex-1 so it absorbs available width */}
+      {/* Progress bar — two segments, flex-1 to absorb available width */}
       <div className="min-w-[120px] flex-1">
         <StackedProgressBar
           translated={stats.translated}
-          needsReview={stats.needsReview}
           notTranslated={stats.notTranslated}
           total={stats.total}
         />
       </div>
 
-      {/* Compact counts — dot + number, no labels (the bar shows what's
-          what; labels would crowd the row). Tooltip if needed in V2. */}
+      {/* Compact counts — dot + number for the two real states. */}
       <div className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
         <span
           className="inline-flex items-center gap-1"
@@ -208,24 +206,6 @@ function LanguageCoverageRow({
             aria-hidden="true"
           />
           <span className="text-foreground">{stats.translated}</span>
-        </span>
-        <span
-          className="inline-flex items-center gap-1"
-          title={`${stats.needsReview} need review`}
-        >
-          <span
-            className="size-1.5 rounded-full bg-amber-500"
-            aria-hidden="true"
-          />
-          <span
-            className={cn(
-              stats.needsReview === 0
-                ? "text-muted-foreground/50"
-                : "text-foreground",
-            )}
-          >
-            {stats.needsReview}
-          </span>
         </span>
         <span
           className="inline-flex items-center gap-1"
@@ -247,43 +227,24 @@ function LanguageCoverageRow({
         </span>
       </div>
 
-      {/* Actions — both buttons visible per accessibility-first guideline.
-          Hidden entirely when the language is fully done (clean "all good"
-          read with no dangling controls). */}
+      {/* Actions — Find + Translate when there's missing work. Hidden
+          when fully done (clean 'all good' read). */}
       {hasWork ? (
         <div className="flex shrink-0 items-center gap-1.5">
-          {stats.notTranslated > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={() =>
-                onJumpToItems({
-                  status: "not-translated",
-                  language: locale.locale,
-                })
-              }
-            >
-              <ArrowRight className="size-3" aria-hidden="true" />
-              Find {stats.notTranslated}
-            </Button>
-          )}
-          {stats.needsReview > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={() =>
-                onJumpToItems({
-                  status: "needs-review",
-                  language: locale.locale,
-                })
-              }
-            >
-              <ArrowRight className="size-3" aria-hidden="true" />
-              Review {stats.needsReview}
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() =>
+              onJumpToItems({
+                status: "not-translated",
+                language: locale.locale,
+              })
+            }
+          >
+            <ArrowRight className="size-3" aria-hidden="true" />
+            Find {stats.notTranslated}
+          </Button>
           <TranslateAllButton
             catalogId={catalogId}
             targetLocale={locale}
@@ -304,19 +265,21 @@ function LanguageCoverageRow({
 }
 
 // ============================================================================
-// StackedProgressBar — three-segment horizontal bar
+// StackedProgressBar — two-segment horizontal bar
 //
-// Exported because the panel header reuses it for the persistent hero band.
+// Simplified from three segments (translated / needs-review / not-translated)
+// to two now that "needs review" is no longer a surfaced state. The amber
+// middle is gone; bar is just emerald (done) over a muted track (the
+// "not translated" portion shows as the unfilled track, no fill of its
+// own needed).
 // ============================================================================
 
 export function StackedProgressBar({
   translated,
-  needsReview,
   notTranslated,
   total,
 }: {
   translated: number;
-  needsReview: number;
   notTranslated: number;
   total: number;
 }) {
@@ -326,26 +289,16 @@ export function StackedProgressBar({
     );
   }
   const tPct = (translated / total) * 100;
-  const rPct = (needsReview / total) * 100;
-  const nPct = (notTranslated / total) * 100;
 
   return (
     <div
       className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
       role="img"
-      aria-label={`${translated} translated, ${needsReview} needs review, ${notTranslated} not translated`}
+      aria-label={`${translated} translated, ${notTranslated} not translated`}
     >
       <div
         className="h-full bg-emerald-500 transition-[width] duration-500 ease-out"
         style={{ width: `${tPct}%` }}
-      />
-      <div
-        className="h-full bg-amber-500 transition-[width] duration-500 ease-out"
-        style={{ width: `${rPct}%` }}
-      />
-      <div
-        className="h-full bg-transparent"
-        style={{ width: `${nPct}%` }}
       />
     </div>
   );
