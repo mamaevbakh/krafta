@@ -180,11 +180,10 @@ export function TranslationsPanel({
     return { translated, needsReview, notTranslated, total, completePct };
   }, [targetLocales, overviewCompleteness, items.length]);
 
-  // Tab label for the Items pill — counter format "Items 47/120".
-  const itemsLabel = React.useMemo(() => {
-    if (headerTotals.total === 0) return "Items";
-    return `Items ${headerTotals.translated}/${headerTotals.total}`;
-  }, [headerTotals]);
+  // Items pill label — plain "Items", no counter. The header hero band
+  // already carries the X/Y count, the % completion, the linear bar AND
+  // the donut. Repeating it on the tab strip was visual noise.
+  const itemsLabel = "Items";
 
   // Show the hero band only when there's actual data to summarise.
   // No target languages OR no items → just the breadcrumb on top.
