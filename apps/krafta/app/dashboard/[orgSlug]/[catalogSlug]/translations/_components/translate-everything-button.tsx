@@ -143,14 +143,14 @@ export function TranslateEverythingButton({
         // beam reads against the dark surface — same pairing the cult-ui
         // demo uses for its Colorful/Ocean/Sunset/Mono row. variant=default
         // washes the beam out with a solid fill.
-        variant="outline"
+        variant="ghost"
         // "colorful" cycles a full-spectrum hue around the border. Reads
         // unmistakably as "AI / generative" without leaning on copy to
         // explain itself. Pairs naturally with the Sparkles icon.
-        colorVariant="colorful"
+        colorVariant="sunset"
         // md keeps a perceptible glow at header sizing; sm felt too
         // subtle for a primary CTA carrying this much weight.
-        beamSize="md"
+        beamSize="sm"
       >
         <Sparkles className="size-4" aria-hidden="true" />
         Translate everything missing ({grandTotal})

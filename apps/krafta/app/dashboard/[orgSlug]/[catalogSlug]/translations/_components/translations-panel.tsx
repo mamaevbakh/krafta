@@ -17,6 +17,7 @@ import {
   type OverviewCompleteness,
 } from "./overview-tab";
 import { TranslateEverythingButton } from "./translate-everything-button";
+import { CompletenessDonut } from "./completeness-donut";
 import {
   DEFAULT_ITEMS_FILTER,
   classifyTranslation,
@@ -222,33 +223,24 @@ export function TranslationsPanel({
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-full min-h-screen flex-col">
-        <header className="flex flex-col gap-3 border-b px-4 pb-4 pt-3 md:px-6">
-          {/* Breadcrumb row */}
-          <div className="flex items-center gap-2">
-            <Globe className="size-4 text-muted-foreground" aria-hidden="true" />
-            <span className="text-xs text-muted-foreground">Translations</span>
-            <span className="text-xs text-muted-foreground">·</span>
-            <h1 className="truncate text-base font-semibold tracking-tight">
-              {catalogName}
-            </h1>
-          </div>
-
-          {/* Hero band — % translated + stacked bar + master CTA. Persistent
-              across tabs so the merchant always sees overall progress and
-              can fire the bulk translate from anywhere in the workbench. */}
-          {showHero && (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <h2 className="text-lg font-semibold tracking-tight">
-                    Your catalog is {headerTotals.completePct}% translated
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {headerTotals.translated} of {headerTotals.total}{" "}
-                    translation rows are done across {targetLocales.length}{" "}
-                    {targetLocales.length === 1 ? "language" : "languages"}.
-                  </p>
-                </div>
+        {/* Persistent dashboard header. Breadcrumb removed — the merchant
+            already knows they're on Translations; catalog name lives in
+            the sidebar. Two-column layout fills the previously-empty
+            right side with a donut summary so the header is dense rather
+            than sprawling. */}
+        {showHero ? (
+          <header className="grid grid-cols-1 gap-4 border-b px-4 py-4 md:px-6 md:grid-cols-[1fr_auto] md:gap-6">
+            {/* Left column — narrative + progress bar + master CTA */}
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <h1 className="text-lg font-semibold tracking-tight">
+                  Your catalog is {headerTotals.completePct}% translated
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {headerTotals.translated} of {headerTotals.total}{" "}
+                  translation rows are done across {targetLocales.length}{" "}
+                  {targetLocales.length === 1 ? "language" : "languages"}.
+                </p>
               </div>
 
               <StackedProgressBar
@@ -266,14 +258,33 @@ export function TranslationsPanel({
                     items={items}
                     onEnqueued={refreshAfterMutation}
                   />
-                  <span className="text-xs text-muted-foreground">
-                    Or pick a single language below.
-                  </span>
                 </div>
               )}
             </div>
-          )}
-        </header>
+
+            {/* Right column — donut. Hidden on mobile (left column already
+                tells the story; donut would push the work surface below
+                the fold on narrow screens). */}
+            <div className="hidden md:flex md:items-center">
+              <CompletenessDonut
+                translated={headerTotals.translated}
+                needsReview={headerTotals.needsReview}
+                notTranslated={headerTotals.notTranslated}
+                completePct={headerTotals.completePct}
+                size={120}
+              />
+            </div>
+          </header>
+        ) : (
+          // Empty-state header — minimal chrome when there's no data to
+          // visualise yet (no target languages, no items, or both).
+          <header className="border-b px-4 py-3 md:px-6">
+            <p className="text-sm text-muted-foreground">
+              Add a target language in the sidebar to start translating
+              {catalogName ? ` ${catalogName}` : ""}.
+            </p>
+          </header>
+        )}
 
         <div className="flex min-h-0 flex-1 flex-col gap-0 lg:flex-row">
           <aside className="border-b lg:w-64 lg:border-b-0 lg:border-r">

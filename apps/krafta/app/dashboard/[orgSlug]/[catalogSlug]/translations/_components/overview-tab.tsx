@@ -1,17 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Sparkles,
-  ArrowRight,
-  Check,
-  AlertCircle,
-  XCircle,
-  Package,
-  FolderTree,
-  Boxes,
-  ListPlus,
-} from "lucide-react";
+import { Sparkles, ArrowRight, Check, Package } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -114,20 +104,18 @@ export function OverviewTab({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {/* Hero band (% complete + master "translate everything" CTA) lives
-          in the persistent panel header now, not here. That way the
-          progress remains visible while the merchant works in Items/etc.
-          and the master CTA is always one click away. */}
+          in the persistent panel header now, not here. */}
 
       {/* ===================================================================
-          COVERAGE BY LANGUAGE — the work-finder
+          COVERAGE BY LANGUAGE — compact rows (one line per language)
       =================================================================== */}
       <section className="flex flex-col gap-3">
         <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           By language
         </h3>
-        <div className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
+        <ul className="flex flex-col gap-1.5">
           {targetLocales.map((locale) => {
             const row = completeness.byLocale.get(locale.locale) ?? {
               translated: 0,
@@ -136,7 +124,7 @@ export function OverviewTab({
               total: items.length,
             };
             return (
-              <LanguageCoverageCard
+              <LanguageCoverageRow
                 key={locale.locale}
                 catalogId={catalogId}
                 locale={locale}
@@ -147,57 +135,226 @@ export function OverviewTab({
               />
             );
           })}
-        </div>
+        </ul>
       </section>
 
       {/* ===================================================================
-          PHASE 1 SCOPE HONESTY
+          INLINE FOOTER — cost + scope on a single line
+          Replaces the old two stacked sections (ScopeSection +
+          TotalToDateSection). Same information, far less vertical real
+          estate. Wraps gracefully on narrow viewports.
       =================================================================== */}
-      <ScopeSection counts={scopeCounts} />
-
-      {/* ===================================================================
-          TOTAL TO DATE — lifetime cost + activity
-          Inlined (not a separate component) because it's tiny, used
-          exactly once, and inlining sidesteps a stubborn Turbopack HMR
-          cache that kept resolving the old component name after a rename.
-      =================================================================== */}
-      {!costSinceStart || costSinceStart.aiCount === 0 ? (
-        <section className="flex flex-col gap-1 rounded-lg border bg-card p-4">
-          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            Total to date
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            No AI translations yet. Run a bulk translate above and the cost
-            will show up here.
-          </p>
-        </section>
-      ) : (
-        <section className="flex flex-col gap-2 rounded-lg border bg-card p-4">
-          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            Total to date
-          </h3>
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold tabular-nums">
+      <footer className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
+        {/* Cost — only when there's data */}
+        {costSinceStart && costSinceStart.aiCount > 0 ? (
+          <>
+            <span className="inline-flex items-baseline gap-1">
+              <span className="font-semibold tabular-nums text-foreground">
                 ${costSinceStart.usd.toFixed(2)}
               </span>
-              <span className="text-xs text-muted-foreground">
-                spent on AI
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold tabular-nums">
+              <span className="text-muted-foreground">spent on AI</span>
+            </span>
+            <span className="text-muted-foreground">·</span>
+            <span className="inline-flex items-baseline gap-1">
+              <span className="font-semibold tabular-nums text-foreground">
                 {costSinceStart.aiCount.toLocaleString()}
               </span>
-              <span className="text-xs text-muted-foreground">
-                AI translation{costSinceStart.aiCount === 1 ? "" : "s"}{" "}
-                completed
+              <span className="text-muted-foreground">
+                AI translation{costSinceStart.aiCount === 1 ? "" : "s"}
               </span>
-            </div>
-          </div>
-        </section>
-      )}
+            </span>
+            <span className="text-muted-foreground">·</span>
+          </>
+        ) : (
+          <>
+            <span className="text-muted-foreground">No AI cost yet</span>
+            <span className="text-muted-foreground">·</span>
+          </>
+        )}
+
+        {/* Scope */}
+        <span className="inline-flex items-center gap-1 text-foreground">
+          <Check
+            className="size-3 text-emerald-600 dark:text-emerald-500"
+            aria-hidden="true"
+          />
+          Items
+          <span className="text-muted-foreground">
+            ({scopeCounts.items})
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <span className="text-[10px]">⏳</span>
+          Categories ({scopeCounts.categories}) · Variations (
+          {scopeCounts.variations}) · Modifier lists (
+          {scopeCounts.modifierLists})
+          <span className="ml-1 rounded-full bg-muted px-1.5 py-0 text-[10px] uppercase tracking-wide">
+            Phase 2
+          </span>
+        </span>
+      </footer>
     </div>
+  );
+}
+
+// ============================================================================
+// LanguageCoverageRow — compact, single-line per-locale row
+//
+// Replaces the older LanguageCoverageCard (big card with stacked content).
+// One row ≈ 36px tall on desktop; wraps gracefully on narrow viewports.
+// Same affordances (two buttons), just compressed.
+// ============================================================================
+
+function LanguageCoverageRow({
+  catalogId,
+  locale,
+  stats,
+  items,
+  onJumpToItems,
+  onMutation,
+}: {
+  catalogId: string;
+  locale: CatalogLocale;
+  stats: {
+    translated: number;
+    needsReview: number;
+    notTranslated: number;
+    total: number;
+  };
+  items: ItemRow[];
+  onJumpToItems: (filter: ItemsFilter) => void;
+  onMutation: () => void;
+}) {
+  const hasWork = stats.notTranslated + stats.needsReview > 0;
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-card px-3 py-2">
+      {/* Name + code — fixed-ish width so multiple rows align vertically */}
+      <div className="flex w-32 min-w-0 shrink-0 items-baseline gap-1.5">
+        <span
+          className="truncate text-sm font-medium"
+          lang={locale.locale}
+        >
+          {locale.display_name}
+        </span>
+        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+          {locale.locale}
+        </span>
+      </div>
+
+      {/* Progress bar — flex-1 so it absorbs available width */}
+      <div className="min-w-[120px] flex-1">
+        <StackedProgressBar
+          translated={stats.translated}
+          needsReview={stats.needsReview}
+          notTranslated={stats.notTranslated}
+          total={stats.total}
+        />
+      </div>
+
+      {/* Compact counts — dot + number, no labels (the bar shows what's
+          what; labels would crowd the row). Tooltip if needed in V2. */}
+      <div className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
+        <span
+          className="inline-flex items-center gap-1"
+          title={`${stats.translated} translated`}
+        >
+          <span
+            className="size-1.5 rounded-full bg-emerald-500"
+            aria-hidden="true"
+          />
+          <span className="text-foreground">{stats.translated}</span>
+        </span>
+        <span
+          className="inline-flex items-center gap-1"
+          title={`${stats.needsReview} need review`}
+        >
+          <span
+            className="size-1.5 rounded-full bg-amber-500"
+            aria-hidden="true"
+          />
+          <span
+            className={cn(
+              stats.needsReview === 0
+                ? "text-muted-foreground/50"
+                : "text-foreground",
+            )}
+          >
+            {stats.needsReview}
+          </span>
+        </span>
+        <span
+          className="inline-flex items-center gap-1"
+          title={`${stats.notTranslated} not translated`}
+        >
+          <span
+            className="size-1.5 rounded-full bg-muted-foreground/40"
+            aria-hidden="true"
+          />
+          <span
+            className={cn(
+              stats.notTranslated === 0
+                ? "text-muted-foreground/50"
+                : "text-foreground",
+            )}
+          >
+            {stats.notTranslated}
+          </span>
+        </span>
+      </div>
+
+      {/* Actions — both buttons visible per accessibility-first guideline.
+          Hidden entirely when the language is fully done (clean "all good"
+          read with no dangling controls). */}
+      {hasWork ? (
+        <div className="flex shrink-0 items-center gap-1.5">
+          {stats.notTranslated > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() =>
+                onJumpToItems({
+                  status: "not-translated",
+                  language: locale.locale,
+                })
+              }
+            >
+              <ArrowRight className="size-3" aria-hidden="true" />
+              Find {stats.notTranslated}
+            </Button>
+          )}
+          {stats.needsReview > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() =>
+                onJumpToItems({
+                  status: "needs-review",
+                  language: locale.locale,
+                })
+              }
+            >
+              <ArrowRight className="size-3" aria-hidden="true" />
+              Review {stats.needsReview}
+            </Button>
+          )}
+          <TranslateAllButton
+            catalogId={catalogId}
+            targetLocale={locale}
+            items={items}
+            onEnqueued={onMutation}
+            labelMode="compact"
+          />
+        </div>
+      ) : (
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-emerald-600 dark:text-emerald-500">
+          <Check className="size-3.5" aria-hidden="true" />
+          All done
+        </span>
+      )}
+    </li>
   );
 }
 
@@ -249,236 +406,10 @@ export function StackedProgressBar({
   );
 }
 
-// ============================================================================
-// LanguageCoverageCard — one per target locale
-// ============================================================================
-
-function LanguageCoverageCard({
-  catalogId,
-  locale,
-  stats,
-  items,
-  onJumpToItems,
-  onMutation,
-}: {
-  catalogId: string;
-  locale: CatalogLocale;
-  stats: {
-    translated: number;
-    needsReview: number;
-    notTranslated: number;
-    total: number;
-  };
-  items: ItemRow[];
-  onJumpToItems: (filter: ItemsFilter) => void;
-  onMutation: () => void;
-}) {
-  const hasWork = stats.notTranslated + stats.needsReview > 0;
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
-      {/* Header: language name + native name */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <h4
-            className="truncate text-base font-semibold"
-            lang={locale.locale}
-          >
-            {locale.display_name}
-          </h4>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {locale.locale}
-          </span>
-        </div>
-        {!hasWork && (
-          <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-500">
-            <Check className="size-3.5" aria-hidden="true" />
-            All done
-          </span>
-        )}
-      </div>
-
-      {/* Stacked bar */}
-      <StackedProgressBar
-        translated={stats.translated}
-        needsReview={stats.needsReview}
-        notTranslated={stats.notTranslated}
-        total={stats.total}
-      />
-
-      {/* Stat row with icons + plain English */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <StatPill
-          icon={<Check className="size-3.5 text-emerald-600 dark:text-emerald-500" />}
-          label="Translated"
-          count={stats.translated}
-        />
-        <StatPill
-          icon={<AlertCircle className="size-3.5 text-amber-600 dark:text-amber-500" />}
-          label="Needs review"
-          count={stats.needsReview}
-        />
-        <StatPill
-          icon={<XCircle className="size-3.5 text-muted-foreground" />}
-          label="Not translated"
-          count={stats.notTranslated}
-        />
-      </div>
-
-      {/* CTAs — only show when there's work; otherwise the card reads as
-          "done" with the green tick above. */}
-      {hasWork && (
-        <div className="flex flex-wrap gap-2 pt-1">
-          {stats.notTranslated > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() =>
-                onJumpToItems({
-                  status: "not-translated",
-                  language: locale.locale,
-                })
-              }
-            >
-              Find these {stats.notTranslated}
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Button>
-          )}
-          {stats.needsReview > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() =>
-                onJumpToItems({
-                  status: "needs-review",
-                  language: locale.locale,
-                })
-              }
-            >
-              Review {stats.needsReview}
-              <ArrowRight className="size-3.5" aria-hidden="true" />
-            </Button>
-          )}
-          <TranslateAllButton
-            catalogId={catalogId}
-            targetLocale={locale}
-            items={items}
-            onEnqueued={onMutation}
-            labelMode="compact"
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatPill({
-  icon,
-  label,
-  count,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5",
-        count === 0 && "text-muted-foreground/50",
-      )}
-    >
-      {icon}
-      <span>
-        <span className="font-medium">{count}</span>{" "}
-        <span className="text-muted-foreground">{label}</span>
-      </span>
-    </span>
-  );
-}
-
-// ============================================================================
-// ScopeSection — Phase 1 honesty
-// ============================================================================
-
-function ScopeSection({
-  counts,
-}: {
-  counts: OverviewTabProps["scopeCounts"];
-}) {
-  return (
-    <section className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-4">
-      <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-        What we translate today
-      </h3>
-      <p className="text-xs text-muted-foreground">
-        Translations are live for items. Other entities ship in Phase 2 with
-        the same drift detection and AI workflow.
-      </p>
-      <ul className="flex flex-wrap gap-2 pt-1 text-xs">
-        <ScopeChip
-          icon={<Package className="size-3.5" aria-hidden="true" />}
-          label="Items"
-          count={counts.items}
-          active
-        />
-        <ScopeChip
-          icon={<FolderTree className="size-3.5" aria-hidden="true" />}
-          label="Categories"
-          count={counts.categories}
-        />
-        <ScopeChip
-          icon={<Boxes className="size-3.5" aria-hidden="true" />}
-          label="Variations"
-          count={counts.variations}
-        />
-        <ScopeChip
-          icon={<ListPlus className="size-3.5" aria-hidden="true" />}
-          label="Modifier lists"
-          count={counts.modifierLists}
-        />
-      </ul>
-    </section>
-  );
-}
-
-function ScopeChip({
-  icon,
-  label,
-  count,
-  active,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  active?: boolean;
-}) {
-  return (
-    <li
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1",
-        active
-          ? "border-emerald-500/30 bg-emerald-500/10 text-foreground"
-          : "border-border bg-background text-muted-foreground",
-      )}
-    >
-      {icon}
-      <span>
-        <span className="font-medium">{label}</span>
-        <span className="ml-1 opacity-70">({count})</span>
-      </span>
-      {active ? (
-        <Check className="size-3.5 text-emerald-600 dark:text-emerald-500" aria-hidden="true" />
-      ) : (
-        <span className="text-[10px] uppercase tracking-wide opacity-60">
-          Phase 2
-        </span>
-      )}
-    </li>
-  );
-}
+// LanguageCoverageCard / StatPill / ScopeSection / ScopeChip were
+// removed — replaced by LanguageCoverageRow + the inline footer above.
+// The compact-row layout halves vertical real estate while preserving
+// every signal the cards carried.
 
 // TranslateEverythingButton lives in its own file now
 // (./translate-everything-button.tsx) so the panel header can render it
