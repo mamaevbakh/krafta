@@ -54,11 +54,25 @@ export const DEFAULT_ITEMS_FILTER: ItemsFilter = {
  * For a given (item, locale), classify the translation row into one of three
  * buckets so chip filters can match against it.
  *
- * Semantics (intentionally chosen for plain-English chips):
+ * Semantics (corrected — AI translations count as translated):
  *   - "not-translated": no translation row exists for this locale
- *   - "needs-review":  AI-generated (is_ai_translated=true) OR stale
- *                      (source changed since translation was written)
- *   - "translated":    human-touched (is_ai_translated=false) and fresh
+ *   - "needs-review":   row exists but the source text changed since it was
+ *                       written (the stale flag). The translation is still
+ *                       SHOWN on the storefront — anon RLS doesn't filter
+ *                       it — but the merchant should re-check it.
+ *   - "translated":     row exists AND fresh. Both AI-generated rows and
+ *                       human-edited rows live here. AI translations are
+ *                       customer-facing the moment the worker writes them;
+ *                       the manual "Accept" flow is merchant moderation,
+ *                       not a publish gate.
+ *
+ * Why this changed: the previous model treated is_ai_translated=true as a
+ * "not yet done" state, which contradicted the storefront's behavior (anon
+ * SELECT doesn't filter on is_ai_translated). The header would read "5%
+ * translated" when customers were actually seeing 100% of the catalog in
+ * their language. The AI-vs-human distinction is still surfaced per-row
+ * via the table's "AI — review" badge, but it's informational/moderation
+ * signal, not a completeness signal.
  */
 export function classifyTranslation(
   item: ItemRow,
@@ -70,7 +84,7 @@ export function classifyTranslation(
     item.current_source_hash !== null &&
     t.source_hash !== null &&
     item.current_source_hash !== t.source_hash;
-  if (t.is_ai_translated || stale) return "needs-review";
+  if (stale) return "needs-review";
   return "translated";
 }
 
