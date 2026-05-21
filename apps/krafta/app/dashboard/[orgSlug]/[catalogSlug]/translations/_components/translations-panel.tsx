@@ -17,7 +17,6 @@ import {
   type OverviewCompleteness,
 } from "./overview-tab";
 import { TranslateEverythingButton } from "./translate-everything-button";
-import { CompletenessDonut } from "./completeness-donut";
 import {
   DEFAULT_ITEMS_FILTER,
   classifyTranslation,
@@ -201,35 +200,42 @@ export function TranslationsPanel({
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-full min-h-screen flex-col">
-        {/* Persistent dashboard header. Breadcrumb removed — the merchant
-            already knows they're on Translations; catalog name lives in
-            the sidebar. Two-column layout fills the previously-empty
-            right side with a donut summary so the header is dense rather
-            than sprawling. */}
+        {/* Dashboard-standard header — matches the layout shipped by the
+            Items page (items-panel.tsx) and Categories page
+            (categories-panel.tsx): full-width border-b shell, max-w-1248px
+            inner container, title left, primary CTA centered on the
+            right. Translations carries extra content (subtitle + linear
+            progress bar) so the row grows taller than items' fixed
+            120px, but the column anchor points stay identical. */}
         {showHero ? (
-          <header className="grid grid-cols-1 gap-4 border-b px-4 py-4 md:px-6 md:grid-cols-[1fr_auto] md:gap-6">
-            {/* Left column — narrative + progress bar + master CTA */}
-            <div className="flex min-w-0 flex-col gap-3">
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <h1 className="text-lg font-semibold tracking-tight">
-                  Your catalog is {headerTotals.completePct}% translated
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {headerTotals.translated} of {headerTotals.total}{" "}
-                  translation rows are done across {targetLocales.length}{" "}
-                  {targetLocales.length === 1 ? "language" : "languages"}.
-                </p>
+          <header className="w-full border-b">
+            <div className="mx-auto flex max-w-[1248px] flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between md:gap-6">
+              {/* Left: title + subtitle + linear progress */}
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <h1 className="text-[32px] font-semibold leading-tight tracking-tight">
+                    Your catalog is {headerTotals.completePct}% translated
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    {headerTotals.translated} of {headerTotals.total}{" "}
+                    translation rows are done across {targetLocales.length}{" "}
+                    {targetLocales.length === 1 ? "language" : "languages"}.
+                  </p>
+                </div>
+                <StackedProgressBar
+                  translated={headerTotals.translated}
+                  needsReview={headerTotals.needsReview}
+                  notTranslated={headerTotals.notTranslated}
+                  total={headerTotals.total}
+                />
               </div>
 
-              <StackedProgressBar
-                translated={headerTotals.translated}
-                needsReview={headerTotals.needsReview}
-                notTranslated={headerTotals.notTranslated}
-                total={headerTotals.total}
-              />
-
+              {/* Right: master CTA, vertically centered via md:items-center
+                  on the parent flex container. Same position as "Add
+                  item" on /items and "Create category" on
+                  /items/categories. */}
               {headerTotals.notTranslated + headerTotals.needsReview > 0 && (
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="shrink-0">
                   <TranslateEverythingButton
                     catalogId={catalogId}
                     targetLocales={targetLocales}
@@ -239,28 +245,24 @@ export function TranslationsPanel({
                 </div>
               )}
             </div>
-
-            {/* Right column — donut. Hidden on mobile (left column already
-                tells the story; donut would push the work surface below
-                the fold on narrow screens). */}
-            <div className="hidden md:flex md:items-center">
-              <CompletenessDonut
-                translated={headerTotals.translated}
-                needsReview={headerTotals.needsReview}
-                notTranslated={headerTotals.notTranslated}
-                completePct={headerTotals.completePct}
-                size={120}
-              />
-            </div>
           </header>
         ) : (
-          // Empty-state header — minimal chrome when there's no data to
-          // visualise yet (no target languages, no items, or both).
-          <header className="border-b px-4 py-3 md:px-6">
-            <p className="text-sm text-muted-foreground">
-              Add a target language in the sidebar to start translating
-              {catalogName ? ` ${catalogName}` : ""}.
-            </p>
+          // Empty-state header — same outer shell as the data state so
+          // the page chrome doesn't visually shift when the merchant
+          // adds their first language / items. Matches items header
+          // height (h-[120px]) since there's no extra content to grow it.
+          <header className="w-full border-b">
+            <div className="mx-auto flex h-[120px] max-w-[1248px] items-center px-6">
+              <div className="space-y-1">
+                <h1 className="text-[32px] font-semibold tracking-tight">
+                  Translations
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Add a target language in the sidebar to get started
+                  {catalogName ? ` translating ${catalogName}` : ""}.
+                </p>
+              </div>
+            </div>
           </header>
         )}
 
