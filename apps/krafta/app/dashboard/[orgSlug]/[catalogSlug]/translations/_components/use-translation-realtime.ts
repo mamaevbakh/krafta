@@ -94,7 +94,6 @@ function debug(...args: unknown[]): void {
   if (typeof window === "undefined") return;
   try {
     if (window.localStorage.getItem("kraftaRealtimeDebug") === "1") {
-      // eslint-disable-next-line no-console
       console.log("[translations-realtime]", ...args);
     }
   } catch {
@@ -116,10 +115,16 @@ export function useTranslationRealtime(
   // Keep the latest itemIds + onTranslationChange in refs so the
   // subscribe effect doesn't tear down + resubscribe every render.
   // The channel lifecycle should track catalogId only.
+  //
+  // React 19's react-hooks/refs rule flags `ref.current = X` during
+  // render — assignment goes through useEffect instead so the rule is
+  // satisfied and we still get the latest-value capture we need.
   const itemIdsRef = React.useRef(itemIds);
-  itemIdsRef.current = itemIds;
   const onChangeRef = React.useRef(onTranslationChange);
-  onChangeRef.current = onTranslationChange;
+  React.useEffect(() => {
+    itemIdsRef.current = itemIds;
+    onChangeRef.current = onTranslationChange;
+  });
 
   React.useEffect(() => {
     let cancelled = false;

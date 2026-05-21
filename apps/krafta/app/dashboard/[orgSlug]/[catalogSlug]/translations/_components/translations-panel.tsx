@@ -14,6 +14,10 @@ import { ItemsTab, type ItemRow } from "./items-tab";
 import { OverviewTab, type OverviewCompleteness } from "./overview-tab";
 import { TranslateEverythingButton } from "./translate-everything-button";
 import {
+  EntityTranslationsTab,
+  type EntityRowForTable,
+} from "./entity-translations-tab";
+import {
   useTranslationRealtime,
   type ActiveJob,
 } from "./use-translation-realtime";
@@ -72,6 +76,14 @@ export type TranslationsPanelProps = {
   catalogName: string;
   locales: CatalogLocale[];
   items: ItemRow[];
+  /** KRA-94 Phase 2 entity payloads — each is the source row + its nested
+   *  translation rows, already flattened by the RSC fetch. The four arrays
+   *  share the same EntityRowForTable shape so the generic
+   *  EntityTranslationsTab can consume them directly. */
+  categories: EntityRowForTable[];
+  variations: EntityRowForTable[];
+  modifiers: EntityRowForTable[];
+  modifierLists: EntityRowForTable[];
   completeness: CompletenessRow[];
   quota: Quota | null;
 };
@@ -82,14 +94,21 @@ export function TranslationsPanel({
   catalogName,
   locales,
   items,
+  categories,
+  variations,
+  modifiers,
+  modifierLists,
   completeness,
   quota,
 }: TranslationsPanelProps) {
   const router = useRouter();
-  // quota is still fetched (drives future cost-tracking surfaces) but the
-  // "X today" chip got replaced by the master Translate-Everything CTA per
-  // S1c — kept here for future re-use without re-plumbing the page.
+  // quota + completeness are still fetched (drive future cost-tracking and
+  // server-side completeness signal surfaces) but the current header reads
+  // its numbers from classifyTranslation so the Overview and Items tabs
+  // never disagree. Kept on the props so the RSC payload stays stable when
+  // those surfaces light up.
   void quota;
+  void completeness;
 
   // Default to Overview — the merchant lands on the dashboard, sees state
   // at a glance, then drills into Items when they want to do work.
@@ -406,11 +425,50 @@ export function TranslationsPanel({
                     >
                       {itemsLabel}
                     </TabsTrigger>
-                    <DisabledTab label="Catalog" reason="Catalog meta (shop name + description) ships in Phase 2 once demand evidence emerges." />
-                    <DisabledTab label="Categories" reason="Category translations land in Phase 2 of the workbench." />
-                    <DisabledTab label="Variations" reason="Variation translations land in Phase 2 of the workbench." />
-                    <DisabledTab label="Modifiers" reason="Modifier translations land in Phase 2, after KRA-85 ships modifier-list CRUD." />
-                    <DisabledTab label="Modifier Lists" reason="Same as Modifiers — Phase 2 dependency on KRA-85." />
+                    <TabsTrigger
+                      value="categories"
+                      className={cn(
+                        "rounded-full px-3",
+                        "data-[state=active]:bg-foreground data-[state=active]:text-background",
+                      )}
+                    >
+                      Categories
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="variations"
+                      className={cn(
+                        "rounded-full px-3",
+                        "data-[state=active]:bg-foreground data-[state=active]:text-background",
+                      )}
+                    >
+                      Variations
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="modifier_lists"
+                      className={cn(
+                        "rounded-full px-3",
+                        "data-[state=active]:bg-foreground data-[state=active]:text-background",
+                      )}
+                    >
+                      Modifier lists
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="modifiers"
+                      className={cn(
+                        "rounded-full px-3",
+                        "data-[state=active]:bg-foreground data-[state=active]:text-background",
+                      )}
+                    >
+                      Modifiers
+                    </TabsTrigger>
+                    {/* "Catalog" (shop name + description) tab stays
+                        deferred — Phase 2 spec says ship only if demand
+                        evidence emerges. The DisabledTab placeholder
+                        documents the gap without taking up active surface. */}
+                    <DisabledTab
+                      label="Catalog"
+                      reason="Catalog meta (shop name + description) ships once a merchant asks for it. The workbench will turn it on then."
+                    />
                   </TabsList>
                 </div>
               </div>
@@ -447,6 +505,94 @@ export function TranslationsPanel({
                     onFilterChange={setItemsFilter}
                     onMutation={refreshAfterMutation}
                     recentlyUpdated={recentlyUpdated}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent
+                value="categories"
+                className="flex-1 overflow-auto p-4 md:p-6"
+              >
+                {enabledLocales.length <= 1 ? (
+                  <NoTargetLocalesEmpty hasDefaultLocale={defaultLocale !== null} />
+                ) : (
+                  <EntityTranslationsTab
+                    catalogId={catalogId}
+                    entityKind="category"
+                    entityLabel="category"
+                    entityLabelPlural="categories"
+                    fields={["name", "description"] as const}
+                    rows={categories}
+                    defaultLocale={defaultLocale}
+                    targetLocales={targetLocales}
+                    busyLocales={busyLocales}
+                    onMutation={refreshAfterMutation}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent
+                value="variations"
+                className="flex-1 overflow-auto p-4 md:p-6"
+              >
+                {enabledLocales.length <= 1 ? (
+                  <NoTargetLocalesEmpty hasDefaultLocale={defaultLocale !== null} />
+                ) : (
+                  <EntityTranslationsTab
+                    catalogId={catalogId}
+                    entityKind="variation"
+                    entityLabel="variation"
+                    entityLabelPlural="variations"
+                    fields={["name"] as const}
+                    rows={variations}
+                    defaultLocale={defaultLocale}
+                    targetLocales={targetLocales}
+                    busyLocales={busyLocales}
+                    onMutation={refreshAfterMutation}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent
+                value="modifier_lists"
+                className="flex-1 overflow-auto p-4 md:p-6"
+              >
+                {enabledLocales.length <= 1 ? (
+                  <NoTargetLocalesEmpty hasDefaultLocale={defaultLocale !== null} />
+                ) : (
+                  <EntityTranslationsTab
+                    catalogId={catalogId}
+                    entityKind="modifier_list"
+                    entityLabel="modifier list"
+                    entityLabelPlural="modifier lists"
+                    fields={["name"] as const}
+                    rows={modifierLists}
+                    defaultLocale={defaultLocale}
+                    targetLocales={targetLocales}
+                    busyLocales={busyLocales}
+                    onMutation={refreshAfterMutation}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent
+                value="modifiers"
+                className="flex-1 overflow-auto p-4 md:p-6"
+              >
+                {enabledLocales.length <= 1 ? (
+                  <NoTargetLocalesEmpty hasDefaultLocale={defaultLocale !== null} />
+                ) : (
+                  <EntityTranslationsTab
+                    catalogId={catalogId}
+                    entityKind="modifier"
+                    entityLabel="modifier"
+                    entityLabelPlural="modifiers"
+                    fields={["name"] as const}
+                    rows={modifiers}
+                    defaultLocale={defaultLocale}
+                    targetLocales={targetLocales}
+                    busyLocales={busyLocales}
+                    onMutation={refreshAfterMutation}
                   />
                 )}
               </TabsContent>

@@ -23,7 +23,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
 
-export const dynamic = "force-static"; // route handler, no SSR concerns
+// Route handlers don't render anything cache-component-aware; no `dynamic`
+// directive needed. The previous `force-static` was incompatible with
+// nextConfig.cacheComponents (Next 16 enforces this at build time).
 
 function getServiceRoleKey(): string | null {
   return (
