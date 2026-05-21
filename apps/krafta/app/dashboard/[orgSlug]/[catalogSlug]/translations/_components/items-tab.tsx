@@ -77,6 +77,13 @@ export type ItemsTabProps = {
   filter: ItemsFilter;
   onFilterChange: (next: ItemsFilter) => void;
   onMutation: () => void;
+  /**
+   * Item IDs whose translations just changed via realtime. Used to
+   * paint a soft amber highlight on the affected rows for ~2.5s so
+   * the merchant sees "this row just updated." Items expire from the
+   * set individually; the row class re-evaluates on every render.
+   */
+  recentlyUpdated?: ReadonlySet<string>;
 };
 
 type CellStatus =
@@ -113,6 +120,7 @@ export function ItemsTab({
   filter,
   onFilterChange,
   onMutation,
+  recentlyUpdated,
 }: ItemsTabProps) {
   const [drawerItemId, setDrawerItemId] = React.useState<string | null>(null);
 
@@ -216,13 +224,20 @@ export function ItemsTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleItems.map((item) => (
+              {visibleItems.map((item) => {
+                const justUpdated = recentlyUpdated?.has(item.id) ?? false;
+                return (
                 <TableRow
                   key={item.id}
                   onClick={() => setDrawerItemId(item.id)}
                   className={cn(
-                    "cursor-pointer",
+                    "cursor-pointer transition-colors duration-700",
                     !item.is_active && "opacity-60",
+                    // Soft amber highlight when realtime fires for
+                    // this row. The transition + the 2.5s TTL in
+                    // use-translation-realtime produce a "glow on,
+                    // fade out" effect without any keyframe CSS.
+                    justUpdated && "bg-amber-500/10",
                   )}
                 >
                   <TableCell className="max-w-[280px] align-top">
@@ -260,7 +275,8 @@ export function ItemsTab({
                     );
                   })}
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </div>

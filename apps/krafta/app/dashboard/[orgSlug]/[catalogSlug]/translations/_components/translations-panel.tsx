@@ -14,6 +14,11 @@ import { ItemsTab, type ItemRow } from "./items-tab";
 import { OverviewTab, type OverviewCompleteness } from "./overview-tab";
 import { TranslateEverythingButton } from "./translate-everything-button";
 import {
+  useTranslationRealtime,
+  type ActiveJob,
+} from "./use-translation-realtime";
+import { useAnimatedNumber } from "@/lib/hooks/use-animated-number";
+import {
   DEFAULT_ITEMS_FILTER,
   classifyTranslation,
   type ItemsFilter,
@@ -193,6 +198,28 @@ export function TranslationsPanel({
     [],
   );
 
+  // Realtime: subscribe to translation_jobs + item_translations for
+  // this catalog. The hook exposes activeJobs (drives the "AI
+  // translating…" pulse) and recentlyUpdated (drives the row
+  // highlight in ItemsTab). onTranslationChange is debounced inside
+  // the hook so a 200-row bulk translate doesn't cause 200 router
+  // refreshes — one fan-out covers the burst.
+  const itemIdSet = React.useMemo(
+    () => new Set(items.map((i) => i.id)),
+    [items],
+  );
+  const { activeJobs, recentlyUpdated } = useTranslationRealtime({
+    catalogId,
+    itemIds: itemIdSet,
+    onTranslationChange: refreshAfterMutation,
+  });
+
+  // Animate the % counter and the X / Y fraction so the header reads
+  // as "alive" when the worker lands a translation: 3% → 4% tweens
+  // rather than snaps. ease-out cubic, 400ms — see useAnimatedNumber.
+  const animatedPct = useAnimatedNumber(headerTotals.completePct);
+  const animatedTranslated = useAnimatedNumber(headerTotals.translated);
+
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex h-full min-h-screen flex-col">
@@ -211,16 +238,48 @@ export function TranslationsPanel({
                   — a `space-y-1` container with the dashboard H1. The
                   subtitle survives because the % alone doesn't show
                   scope (rows + languages); items/categories don't
-                  carry that signal in their title. */}
+                  carry that signal in their title.
+
+                  The % and translated count animate via
+                  useAnimatedNumber so realtime updates from the worker
+                  read as "the number is ticking up" rather than
+                  snapping. `tabular-nums` keeps glyph widths fixed so
+                  the title doesn't shimmy during the tween. */}
               <div className="min-w-0 space-y-1">
                 <h1 className="text-[32px] font-semibold leading-tight tracking-tight">
-                  Your catalog is {headerTotals.completePct}% translated
+                  Your catalog is{" "}
+                  <span className="tabular-nums">
+                    {Math.round(animatedPct)}
+                  </span>
+                  % translated
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {headerTotals.translated} of {headerTotals.total}{" "}
+                  <span className="tabular-nums">
+                    {Math.round(animatedTranslated)}
+                  </span>{" "}
+                  of <span className="tabular-nums">{headerTotals.total}</span>{" "}
                   translation rows are done across {targetLocales.length}{" "}
                   {targetLocales.length === 1 ? "language" : "languages"}.
                 </p>
+                {/* Live activity pulse — visible only while at least one
+                    translation_job is queued/processing for this catalog.
+                    Soft amber dot + plain English copy ("AI translating
+                    into Русский…"). Disappears when the worker finishes. */}
+                {activeJobs.length > 0 && (
+                  <p
+                    className="flex items-center gap-2 pt-1 text-xs text-muted-foreground"
+                    aria-live="polite"
+                  >
+                    <span
+                      className="relative inline-flex size-2 shrink-0"
+                      aria-hidden="true"
+                    >
+                      <span className="absolute inset-0 inline-flex animate-ping rounded-full bg-amber-500/60" />
+                      <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+                    </span>
+                    {formatActivityCopy(activeJobs, targetLocales)}
+                  </p>
+                )}
               </div>
 
               {/* Right: master CTA. Same slot as "Add item" / "Create
@@ -284,14 +343,14 @@ export function TranslationsPanel({
                 <div className="overflow-x-auto">
                   <TabsList
                     className={cn(
-                      "inline-flex h-auto gap-1 border rounded-full border-border p-1 py-0",
+                      "inline-flex h-auto gap-1 border border-border p-1 py-0",
                       "bg-background/85 shadow-sm backdrop-blur-md",
                     )}
                   >
                     <TabsTrigger
                       value="overview"
                       className={cn(
-                        "rounded-full px-3",
+                        " px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >
@@ -345,6 +404,7 @@ export function TranslationsPanel({
                     filter={itemsFilter}
                     onFilterChange={setItemsFilter}
                     onMutation={refreshAfterMutation}
+                    recentlyUpdated={recentlyUpdated}
                   />
                 )}
               </TabsContent>
@@ -398,6 +458,48 @@ function DisabledTab({ label, reason }: { label: string; reason: string }) {
 // ============================================================================
 // Empty state when the merchant hasn't added a target locale yet
 // ============================================================================
+
+// ============================================================================
+// formatActivityCopy — builds the "AI translating into X…" pulse string
+//
+// translation_jobs is one-row-per-entity, so a bulk translate of 23
+// items into Russian shows up as 23 separate rows in `jobs`. Group
+// by target_locale to derive the per-language count for the copy.
+//
+// One locale:    "AI translating 23 items into Русский…"
+// Two locales:   "AI translating into Русский (23) and English (17)…"
+// Many locales:  "AI translating into 3 languages (62 items)…"
+// ============================================================================
+
+function formatActivityCopy(
+  jobs: ActiveJob[],
+  targetLocales: CatalogLocale[],
+): string {
+  const localeName = (code: string): string =>
+    targetLocales.find((l) => l.locale === code)?.display_name ?? code;
+
+  if (jobs.length === 0) return "";
+
+  // Bucket: locale code → in-flight job count.
+  const byLocale = new Map<string, number>();
+  for (const j of jobs) {
+    byLocale.set(j.targetLocale, (byLocale.get(j.targetLocale) ?? 0) + 1);
+  }
+  const entries = Array.from(byLocale.entries());
+
+  if (entries.length === 1) {
+    const [code, count] = entries[0];
+    const name = localeName(code);
+    return `AI translating ${count} item${count === 1 ? "" : "s"} into ${name}…`;
+  }
+
+  if (entries.length === 2) {
+    const [a, b] = entries;
+    return `AI translating into ${localeName(a[0])} (${a[1]}) and ${localeName(b[0])} (${b[1]})…`;
+  }
+
+  return `AI translating into ${entries.length} languages (${jobs.length} items)…`;
+}
 
 function NoTargetLocalesEmpty({ hasDefaultLocale }: { hasDefaultLocale: boolean }) {
   return (
