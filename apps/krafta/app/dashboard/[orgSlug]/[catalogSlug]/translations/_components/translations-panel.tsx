@@ -240,92 +240,128 @@ export function TranslationsPanel({
             right. Translations carries extra content (subtitle + linear
             progress bar) so the row grows taller than items' fixed
             120px, but the column anchor points stay identical. */}
-        {showHero ? (
-          <header className="w-full border-b">
-            <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between gap-6 px-6">
-              {/* Left: title + subtitle. Matches the title block on
-                  /items (items-panel.tsx:156-158) and /items/categories
-                  — a `space-y-1` container with the dashboard H1. The
-                  subtitle survives because the % alone doesn't show
-                  scope (rows + languages); items/categories don't
-                  carry that signal in their title.
+        {(() => {
+          // Three header states, in order of restraint:
+          //   1. Fully translated + no AI in flight → just "Translations".
+          //      Matches the items/categories pattern exactly. Quiet
+          //      chrome reads as "you're done, nothing to do here."
+          //   2. In progress → "Your catalog is X% translated" + subtitle
+          //      + master CTA. The narrative title earns its weight
+          //      because the merchant has work to do.
+          //   3. No data yet (no target languages, no items) → just
+          //      "Translations" + a help line pointing at the sidebar.
+          //
+          // Gate (1) on hasActivity too so we don't flicker to the quiet
+          // state during the brief window where the worker has written
+          // the last row but hasn't yet marked the job 'done'.
+          const isFullyTranslated =
+            showHero &&
+            headerTotals.completePct === 100 &&
+            !hasActivity;
 
-                  The % and translated count animate via
-                  useAnimatedNumber so realtime updates from the worker
-                  read as "the number is ticking up" rather than
-                  snapping. `tabular-nums` keeps glyph widths fixed so
-                  the title doesn't shimmy during the tween. */}
-              <div className="min-w-0 space-y-1">
-                <h1 className="text-[32px] font-semibold leading-tight tracking-tight">
-                  Your catalog is{" "}
-                  <span className="tabular-nums">
-                    {Math.round(animatedPct)}
-                  </span>
-                  % translated
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  <span className="tabular-nums">
-                    {Math.round(animatedTranslated)}
-                  </span>{" "}
-                  of <span className="tabular-nums">{headerTotals.total}</span>{" "}
-                  translation rows are done across {targetLocales.length}{" "}
-                  {targetLocales.length === 1 ? "language" : "languages"}.
-                </p>
-                {/* Live activity pulse — visible only while at least one
-                    translation_job is queued/processing for this catalog.
-                    Soft amber dot + plain English copy ("AI translating
-                    into Русский…"). Disappears when the worker finishes. */}
-                {activeJobs.length > 0 && (
-                  <p
-                    className="flex items-center gap-2 pt-1 text-xs text-muted-foreground"
-                    aria-live="polite"
-                  >
-                    <span
-                      className="relative inline-flex size-2 shrink-0"
-                      aria-hidden="true"
-                    >
-                      <span className="absolute inset-0 inline-flex animate-ping rounded-full bg-amber-500/60" />
-                      <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
-                    </span>
-                    {formatActivityCopy(activeJobs, targetLocales)}
-                  </p>
-                )}
-              </div>
-
-              {/* Right: master CTA. Same slot as "Add item" / "Create
-                  category" on the sibling pages. */}
-              {headerTotals.notTranslated + headerTotals.needsReview > 0 && (
-                <div className="shrink-0">
-                  <TranslateEverythingButton
-                    catalogId={catalogId}
-                    targetLocales={targetLocales}
-                    items={items}
-                    onEnqueued={refreshAfterMutation}
-                    isAiBusy={hasActivity}
-                  />
+          if (isFullyTranslated) {
+            return (
+              <header className="w-full border-b">
+                <div className="mx-auto flex h-[120px] max-w-[1248px] items-center px-6">
+                  <h1 className="text-[32px] font-semibold tracking-tight">
+                    Translations
+                  </h1>
                 </div>
-              )}
-            </div>
-          </header>
-        ) : (
-          // Empty-state header — same outer shell as the data state so
-          // the page chrome doesn't visually shift when the merchant
-          // adds their first language / items. Matches items header
-          // height (h-[120px]) since there's no extra content to grow it.
-          <header className="w-full border-b">
-            <div className="mx-auto flex h-[120px] max-w-[1248px] items-center px-6">
-              <div className="space-y-1">
-                <h1 className="text-[32px] font-semibold tracking-tight">
-                  Translations
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Add a target language in the sidebar to get started
-                  {catalogName ? ` translating ${catalogName}` : ""}.
-                </p>
+              </header>
+            );
+          }
+
+          if (showHero) {
+            return (
+              <header className="w-full border-b">
+                <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between gap-6 px-6">
+                  {/* Left: title + subtitle. Matches the title block on
+                      /items (items-panel.tsx:156-158) and /items/categories
+                      — a `space-y-1` container with the dashboard H1. The
+                      subtitle survives because the % alone doesn't show
+                      scope (rows + languages); items/categories don't
+                      carry that signal in their title.
+
+                      The % and translated count animate via
+                      useAnimatedNumber so realtime updates from the worker
+                      read as "the number is ticking up" rather than
+                      snapping. `tabular-nums` keeps glyph widths fixed so
+                      the title doesn't shimmy during the tween. */}
+                  <div className="min-w-0 space-y-1">
+                    <h1 className="text-[32px] font-semibold leading-tight tracking-tight">
+                      Your catalog is{" "}
+                      <span className="tabular-nums">
+                        {Math.round(animatedPct)}
+                      </span>
+                      % translated
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      <span className="tabular-nums">
+                        {Math.round(animatedTranslated)}
+                      </span>{" "}
+                      of{" "}
+                      <span className="tabular-nums">
+                        {headerTotals.total}
+                      </span>{" "}
+                      translation rows are done across {targetLocales.length}{" "}
+                      {targetLocales.length === 1 ? "language" : "languages"}.
+                    </p>
+                    {/* Live activity pulse — visible only while at least one
+                        translation_job is queued/processing for this catalog.
+                        Soft amber dot + plain English copy ("AI translating
+                        into Русский…"). Disappears when the worker finishes. */}
+                    {activeJobs.length > 0 && (
+                      <p
+                        className="flex items-center gap-2 pt-1 text-xs text-muted-foreground"
+                        aria-live="polite"
+                      >
+                        <span
+                          className="relative inline-flex size-2 shrink-0"
+                          aria-hidden="true"
+                        >
+                          <span className="absolute inset-0 inline-flex animate-ping rounded-full bg-amber-500/60" />
+                          <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+                        </span>
+                        {formatActivityCopy(activeJobs, targetLocales)}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Right: master CTA. Same slot as "Add item" / "Create
+                      category" on the sibling pages. */}
+                  {headerTotals.notTranslated + headerTotals.needsReview > 0 && (
+                    <div className="shrink-0">
+                      <TranslateEverythingButton
+                        catalogId={catalogId}
+                        targetLocales={targetLocales}
+                        items={items}
+                        onEnqueued={refreshAfterMutation}
+                        isAiBusy={hasActivity}
+                      />
+                    </div>
+                  )}
+                </div>
+              </header>
+            );
+          }
+
+          // Empty-state header — no target locales OR no items.
+          return (
+            <header className="w-full border-b">
+              <div className="mx-auto flex h-[120px] max-w-[1248px] items-center px-6">
+                <div className="space-y-1">
+                  <h1 className="text-[32px] font-semibold tracking-tight">
+                    Translations
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    Add a target language in the sidebar to get started
+                    {catalogName ? ` translating ${catalogName}` : ""}.
+                  </p>
+                </div>
               </div>
-            </div>
-          </header>
-        )}
+            </header>
+          );
+        })()}
 
         <div className="flex min-h-0 flex-1 flex-col gap-0 lg:flex-row">
           <aside className="border-b lg:w-64 lg:border-b-0 lg:border-r">
