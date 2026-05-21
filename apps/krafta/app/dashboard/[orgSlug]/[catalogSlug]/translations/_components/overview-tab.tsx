@@ -222,8 +222,46 @@ export function OverviewTab({
 
       {/* ===================================================================
           TOTAL TO DATE — lifetime cost + activity
+          Inlined (not a separate component) because it's tiny, used
+          exactly once, and inlining sidesteps a stubborn Turbopack HMR
+          cache that kept resolving the old component name after a rename.
       =================================================================== */}
-      <TotalToDateSection cost={costSinceStart} />
+      {!costSinceStart || costSinceStart.aiCount === 0 ? (
+        <section className="flex flex-col gap-1 rounded-lg border bg-card p-4">
+          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            Total to date
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            No AI translations yet. Run a bulk translate above and the cost
+            will show up here.
+          </p>
+        </section>
+      ) : (
+        <section className="flex flex-col gap-2 rounded-lg border bg-card p-4">
+          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            Total to date
+          </h3>
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-semibold tabular-nums">
+                ${costSinceStart.usd.toFixed(2)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                spent on AI
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-semibold tabular-nums">
+                {costSinceStart.aiCount.toLocaleString()}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                AI translation{costSinceStart.aiCount === 1 ? "" : "s"}{" "}
+                completed
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -502,54 +540,6 @@ function ScopeChip({
         </span>
       )}
     </li>
-  );
-}
-
-// ============================================================================
-// TotalToDateSection — lifetime cost + activity
-// ============================================================================
-
-function TotalToDateSection({
-  cost,
-}: {
-  cost: OverviewTabProps["costSinceStart"];
-}) {
-  if (!cost || cost.aiCount === 0) {
-    return (
-      <section className="flex flex-col gap-1 rounded-lg border bg-card p-4">
-        <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Total to date
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          No AI translations yet. Run a bulk translate above and the cost will
-          show up here.
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="flex flex-col gap-2 rounded-lg border bg-card p-4">
-      <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-        Total to date
-      </h3>
-      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-semibold tabular-nums">
-            ${cost.usd.toFixed(2)}
-          </span>
-          <span className="text-xs text-muted-foreground">spent on AI</span>
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-semibold tabular-nums">
-            {cost.aiCount.toLocaleString()}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            AI translation{cost.aiCount === 1 ? "" : "s"} completed
-          </span>
-        </div>
-      </div>
-    </section>
   );
 }
 
