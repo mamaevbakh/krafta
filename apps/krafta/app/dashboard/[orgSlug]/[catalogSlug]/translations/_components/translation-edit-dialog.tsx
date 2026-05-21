@@ -595,23 +595,13 @@ export function TranslationEditDialog({
                   />
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <Label
-                    htmlFor="source-image-alt"
-                    className="text-xs text-muted-foreground"
-                  >
-                    Image alt
-                  </Label>
-                  <Input
-                    id="source-image-alt"
-                    value={sourceForm.image_alt}
-                    onChange={(e) =>
-                      updateSourceField("image_alt", e.target.value)
-                    }
-                    placeholder="Describe the image (optional)"
-                    lang={defaultLocale?.locale}
-                  />
-                </div>
+                {/* image_alt was removed from the editor by design — F&B
+                    merchants rarely fill it in and the storefront uses
+                    item.name as a sensible fallback. The schema column +
+                    the AI translation worker still handle alt text; it's
+                    just not editable from this surface. Existing values
+                    are preserved on save: sourceForm.image_alt is loaded
+                    from item.image_alt and round-tripped unchanged. */}
               </div>
 
               {sourceForm.dirty && (
@@ -787,28 +777,9 @@ export function TranslationEditDialog({
                           />
                         </div>
                       )}
-                      {item.image_alt && (
-                        <div className="flex flex-col gap-1.5">
-                          <Label
-                            htmlFor={`alt-${locale.locale}`}
-                            className="text-xs"
-                          >
-                            Image alt text
-                          </Label>
-                          <Input
-                            id={`alt-${locale.locale}`}
-                            value={form.image_alt}
-                            onChange={(e) =>
-                              updateField(
-                                locale.locale,
-                                "image_alt",
-                                e.target.value,
-                              )
-                            }
-                            lang={locale.locale}
-                          />
-                        </div>
-                      )}
+                      {/* image_alt input intentionally omitted — see the
+                          comment in the source pane. Existing values
+                          round-trip through form.image_alt on save. */}
                     </div>
 
                     {/* Per-locale Save row — only renders when dirty */}
