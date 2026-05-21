@@ -57,55 +57,70 @@ ALTER TABLE public.catalog_categories
 -- to be safe in fresh environments.
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
+-- Hash field separator.
+--
+-- The first version used `chr(0)` (NUL byte) as a separator in text concat,
+-- which PostgreSQL rejects: `text` values cannot contain NUL bytes
+-- (SQLSTATE 54000 "null character not permitted"). NUL is the C-string
+-- terminator and Postgres treats it as forbidden in text storage.
+--
+-- Fix: concatenate as `bytea` instead. Convert each text field to UTF-8 bytea
+-- via `convert_to()`, then join with the `\x00` bytea literal. `digest()` is
+-- overloaded for bytea so this works directly. The hash is the same as it
+-- would have been with text-concat (just goes through bytea), so future
+-- callers that need to recompute the hash get a stable value.
+
 -- items: name + description + image_alt
 CREATE OR REPLACE FUNCTION public.items_compute_source_hash() RETURNS trigger
   LANGUAGE plpgsql
 AS $$
 BEGIN
   NEW.current_source_hash := extensions.digest(
-    coalesce(NEW.name, '') || chr(0) ||
-    coalesce(NEW.description, '') || chr(0) ||
-    coalesce(NEW.image_alt, ''),
+    convert_to(coalesce(NEW.name, ''), 'UTF8')
+      || '\x00'::bytea
+      || convert_to(coalesce(NEW.description, ''), 'UTF8')
+      || '\x00'::bytea
+      || convert_to(coalesce(NEW.image_alt, ''), 'UTF8'),
     'sha256'
   );
   RETURN NEW;
 END;
 $$;
 
--- item_variations: name only
+-- item_variations: name only (no separator needed)
 CREATE OR REPLACE FUNCTION public.item_variations_compute_source_hash() RETURNS trigger
   LANGUAGE plpgsql
 AS $$
 BEGIN
   NEW.current_source_hash := extensions.digest(
-    coalesce(NEW.name, ''),
+    convert_to(coalesce(NEW.name, ''), 'UTF8'),
     'sha256'
   );
   RETURN NEW;
 END;
 $$;
 
--- modifiers: name only
+-- modifiers: name only (no separator needed)
 CREATE OR REPLACE FUNCTION public.modifiers_compute_source_hash() RETURNS trigger
   LANGUAGE plpgsql
 AS $$
 BEGIN
   NEW.current_source_hash := extensions.digest(
-    coalesce(NEW.name, ''),
+    convert_to(coalesce(NEW.name, ''), 'UTF8'),
     'sha256'
   );
   RETURN NEW;
 END;
 $$;
 
--- modifier_lists: name only (modifier_lists.name is the merchant-visible
--- "Modifier Set" label, e.g. "Size", "Toppings")
+-- modifier_lists: name only (the merchant-visible "Modifier Set" label,
+-- e.g. "Size", "Toppings")
 CREATE OR REPLACE FUNCTION public.modifier_lists_compute_source_hash() RETURNS trigger
   LANGUAGE plpgsql
 AS $$
 BEGIN
   NEW.current_source_hash := extensions.digest(
-    coalesce(NEW.name, ''),
+    convert_to(coalesce(NEW.name, ''), 'UTF8'),
     'sha256'
   );
   RETURN NEW;
@@ -124,7 +139,9 @@ BEGIN
   -- tolerant of future ALTERs.
   v_description := coalesce((to_jsonb(NEW) ->> 'description'), '');
   NEW.current_source_hash := extensions.digest(
-    coalesce(NEW.name, '') || chr(0) || v_description,
+    convert_to(coalesce(NEW.name, ''), 'UTF8')
+      || '\x00'::bytea
+      || convert_to(v_description, 'UTF8'),
     'sha256'
   );
   RETURN NEW;
