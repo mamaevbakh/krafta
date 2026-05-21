@@ -208,11 +208,21 @@ export function TranslationsPanel({
     () => new Set(items.map((i) => i.id)),
     [items],
   );
-  const { activeJobs, recentlyUpdated } = useTranslationRealtime({
+  const { activeJobs, recentlyUpdated, hasActivity } = useTranslationRealtime({
     catalogId,
     itemIds: itemIdSet,
     onTranslationChange: refreshAfterMutation,
   });
+
+  // Per-locale busy map for the per-language TranslateAllButton in the
+  // Overview cards. Each card disables its own AI button when its
+  // target language has an in-flight job, so the merchant can't stack
+  // a second batch on top of the running one.
+  const busyLocales = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const j of activeJobs) set.add(j.targetLocale);
+    return set;
+  }, [activeJobs]);
 
   // Animate the % counter and the X / Y fraction so the header reads
   // as "alive" when the worker lands a translation: 3% → 4% tweens
@@ -291,6 +301,7 @@ export function TranslationsPanel({
                     targetLocales={targetLocales}
                     items={items}
                     onEnqueued={refreshAfterMutation}
+                    isAiBusy={hasActivity}
                   />
                 </div>
               )}
@@ -384,6 +395,7 @@ export function TranslationsPanel({
                   targetLocales={targetLocales}
                   items={items}
                   completeness={overviewCompleteness}
+                  busyLocales={busyLocales}
                   onJumpToItems={handleJumpToItems}
                   onMutation={refreshAfterMutation}
                 />

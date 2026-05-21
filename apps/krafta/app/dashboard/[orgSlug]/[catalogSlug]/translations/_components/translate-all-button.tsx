@@ -54,6 +54,15 @@ export type TranslateAllButtonProps = {
   labelMode?: "with-locale" | "compact";
   /** Optional visual variant — outline by default, "primary" reads stronger. */
   variant?: "outline" | "primary";
+  /**
+   * True when this target locale has an in-flight translation_job
+   * (realtime). Disables the button and flips the label to
+   * "Translating into X…" so the merchant doesn't stack a second
+   * batch on top of the running one. The DB UNIQUE constraint
+   * dedupes anyway but a disabled button reads as "wait" — silent
+   * rejection reads as "broken."
+   */
+  isAiBusy?: boolean;
 };
 
 type Counts = {
@@ -97,6 +106,7 @@ export function TranslateAllButton({
   onEnqueued,
   labelMode = "with-locale",
   variant = "outline",
+  isAiBusy = false,
 }: TranslateAllButtonProps) {
   const [open, setOpen] = React.useState(false);
   const [force, setForce] = React.useState(false);
@@ -177,20 +187,40 @@ export function TranslateAllButton({
         variant={variant === "primary" ? "default" : "outline"}
         size="sm"
         onClick={() => setOpen(true)}
-        disabled={items.length === 0}
+        // Disabled when there's nothing to translate OR when a job for
+        // this locale is already in-flight. The realtime hook tracks
+        // queued/running translation_jobs per catalog; the parent maps
+        // those into a per-locale busy flag.
+        disabled={items.length === 0 || isAiBusy}
         className={
           variant === "primary"
             ? "gap-1.5"
             : "h-7 gap-1.5 text-xs font-normal"
         }
       >
-        <Sparkles
-          className={variant === "primary" ? "size-4" : "size-3.5"}
-          aria-hidden="true"
-        />
-        {labelMode === "compact"
-          ? "Translate all missing with AI"
-          : `Translate missing → ${targetLocale.display_name}`}
+        {isAiBusy ? (
+          <>
+            <Loader2
+              className={
+                variant === "primary"
+                  ? "size-4 animate-spin"
+                  : "size-3.5 animate-spin"
+              }
+              aria-hidden="true"
+            />
+            Translating into {targetLocale.display_name}…
+          </>
+        ) : (
+          <>
+            <Sparkles
+              className={variant === "primary" ? "size-4" : "size-3.5"}
+              aria-hidden="true"
+            />
+            {labelMode === "compact"
+              ? "Translate all missing with AI"
+              : `Translate missing → ${targetLocale.display_name}`}
+          </>
+        )}
       </Button>
 
       <AlertDialog open={open} onOpenChange={setOpen}>

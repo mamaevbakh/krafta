@@ -59,6 +59,12 @@ export type OverviewTabProps = {
    * one source of truth.
    */
   completeness: OverviewCompleteness;
+  /**
+   * Locale codes with an in-flight translation_job. Each row disables
+   * its own AI bulk button when its locale is in this set, so the
+   * merchant can't stack a second batch on top of the running one.
+   */
+  busyLocales?: ReadonlySet<string>;
   /** Called when a coverage card's "Find these" button is clicked. The
    *  panel uses this to switch to the Items tab with chips pre-selected. */
   onJumpToItems: (filter: ItemsFilter) => void;
@@ -71,6 +77,7 @@ export function OverviewTab({
   targetLocales,
   items,
   completeness,
+  busyLocales,
   onJumpToItems,
   onMutation,
 }: OverviewTabProps) {
@@ -113,6 +120,7 @@ export function OverviewTab({
                 locale={locale}
                 stats={row}
                 items={items}
+                isLocaleBusy={busyLocales?.has(locale.locale) ?? false}
                 onJumpToItems={onJumpToItems}
                 onMutation={onMutation}
               />
@@ -141,6 +149,7 @@ function LanguageCoverageRow({
   locale,
   stats,
   items,
+  isLocaleBusy,
   onJumpToItems,
   onMutation,
 }: {
@@ -153,6 +162,10 @@ function LanguageCoverageRow({
     total: number;
   };
   items: ItemRow[];
+  /** True when this locale has an in-flight translation_job. The
+   *  row's AI bulk button disables + relabels so the merchant can't
+   *  enqueue a second batch on top. */
+  isLocaleBusy: boolean;
   onJumpToItems: (filter: ItemsFilter) => void;
   onMutation: () => void;
 }) {
@@ -277,6 +290,7 @@ function LanguageCoverageRow({
             items={items}
             onEnqueued={onMutation}
             labelMode="compact"
+            isAiBusy={isLocaleBusy}
           />
         </div>
       ) : (

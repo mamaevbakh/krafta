@@ -42,6 +42,17 @@ export type TranslateEverythingButtonProps = {
   onEnqueued: () => void;
   /** Optional className passed through to the BorderBeamButton's Button. */
   className?: string;
+  /**
+   * Set true while AI is processing translations for this catalog
+   * (realtime: any translation_job in queued/running state). The
+   * button disables and the label flips to "AI translating…" so the
+   * merchant can't enqueue a second batch on top of the running one.
+   *
+   * The DB's UNIQUE (catalog_id, target_locale, entity_kind, entity_id)
+   * would reject duplicates anyway, but a disabled button is a far
+   * better signal than a silent rejection from the merchant's POV.
+   */
+  isAiBusy?: boolean;
 };
 
 export function TranslateEverythingButton({
@@ -50,6 +61,7 @@ export function TranslateEverythingButton({
   items,
   onEnqueued,
   className,
+  isAiBusy = false,
 }: TranslateEverythingButtonProps) {
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -143,17 +155,37 @@ export function TranslateEverythingButton({
         // beam reads against the dark surface — same pairing the cult-ui
         // demo uses for its Colorful/Ocean/Sunset/Mono row. variant=default
         // washes the beam out with a solid fill.
-        variant="ghost"
+        variant="outline"
         // "colorful" cycles a full-spectrum hue around the border. Reads
         // unmistakably as "AI / generative" without leaning on copy to
         // explain itself. Pairs naturally with the Sparkles icon.
         colorVariant="sunset"
         // md keeps a perceptible glow at header sizing; sm felt too
         // subtle for a primary CTA carrying this much weight.
-        beamSize="sm"
+        beamSize="md"
+        // Disable while AI is mid-flight to prevent stacking a second
+        // batch on top. The header pulse already says exactly what's
+        // happening; the button's label flips to a calm spinner so the
+        // disabled state reads as "waiting" rather than "broken."
+        disabled={isAiBusy}
+        // Pause the beam too while idle-but-busy — a glowing disabled
+        // button is mixed-signals.
+        active={!isAiBusy}
       >
-        <Sparkles className="size-4" aria-hidden="true" />
-        Translate everything missing ({grandTotal})
+        {isAiBusy ? (
+          <>
+            <Loader2
+              className="size-4 animate-spin"
+              aria-hidden="true"
+            />
+            AI translating…
+          </>
+        ) : (
+          <>
+            <Sparkles className="size-4" aria-hidden="true" />
+            Translate everything missing ({grandTotal})
+          </>
+        )}
       </BorderBeamButton>
 
       <AlertDialog open={open} onOpenChange={setOpen}>
