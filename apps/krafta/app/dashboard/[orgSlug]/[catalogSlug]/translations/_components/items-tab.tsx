@@ -183,7 +183,10 @@ export function ItemsTab({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-1/3">
+                {/* w-1/3 dropped — it competed with the cell-level
+                    max-w-[280px] cap. Header columns now size to
+                    content; cell content does the constraining. */}
+                <TableHead className="max-w-[280px]">
                   {defaultLocale ? (
                     <span className="flex items-center gap-2">
                       <span className="font-semibold">
@@ -198,7 +201,10 @@ export function ItemsTab({
                   )}
                 </TableHead>
                 {columnsToShow.map((locale) => (
-                  <TableHead key={locale.locale}>
+                  <TableHead
+                    key={locale.locale}
+                    className="max-w-[280px]"
+                  >
                     <span className="flex items-center gap-1.5">
                       {locale.display_name}
                       <span className="text-[10px] font-normal text-muted-foreground">
@@ -219,11 +225,24 @@ export function ItemsTab({
                     !item.is_active && "opacity-60",
                   )}
                 >
-                  <TableCell className="align-top">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium">{item.name}</span>
+                  <TableCell className="max-w-[280px] align-top">
+                    {/* 280px cap per row cell. `min-w-0` lets the
+                        truncate utility win against flex's default
+                        min-content sizing; `title` exposes the full
+                        string on hover so truncation doesn't hide
+                        information. */}
+                    <div className="flex min-w-0 max-w-[280px] flex-col gap-0.5">
+                      <span
+                        className="truncate font-medium"
+                        title={item.name}
+                      >
+                        {item.name}
+                      </span>
                       {item.description && (
-                        <span className="line-clamp-2 text-xs text-muted-foreground">
+                        <span
+                          className="line-clamp-2 text-xs text-muted-foreground"
+                          title={item.description}
+                        >
                           {item.description}
                         </span>
                       )}
@@ -232,7 +251,10 @@ export function ItemsTab({
                   {columnsToShow.map((locale) => {
                     const status = getCellStatus(item, locale.locale);
                     return (
-                      <TableCell key={locale.locale} className="align-top">
+                      <TableCell
+                        key={locale.locale}
+                        className="max-w-[280px] align-top"
+                      >
                         <TranslationCell status={status} />
                       </TableCell>
                     );
@@ -294,13 +316,21 @@ function TranslationCell({ status }: { status: CellStatus }) {
     );
   }
 
+  // 280px cap + truncate. `min-w-0` on the flex column releases the
+  // inner span from flex's default min-content sizing so `truncate`
+  // (overflow-hidden + text-ellipsis + whitespace-nowrap) takes effect.
+  // `title` exposes the full string on hover.
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5">
-        <span className={cn("text-sm font-medium", status.stale && "text-muted-foreground")}>
-          {status.text}
-        </span>
-      </div>
+    <div className="flex min-w-0 max-w-[280px] flex-col gap-1">
+      <span
+        className={cn(
+          "block truncate text-sm font-medium",
+          status.stale && "text-muted-foreground",
+        )}
+        title={status.text}
+      >
+        {status.text}
+      </span>
       <div className="flex flex-wrap items-center gap-1">
         {status.stale && (
           <Tooltip>
