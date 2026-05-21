@@ -142,7 +142,7 @@ export function LocalePicker({
             // Hard cap of 280px on tall screens — shows ~6 items at a
             // glance, which keeps the dialog feeling compact rather than
             // taking over the viewport.
-            className="max-h-[min(280px,var(--radix-popper-available-height))]"
+            className="max-h-[min(250px,var(--radix-popper-available-height))]"
           >
             <CommandEmpty>No language found.</CommandEmpty>
 
