@@ -121,17 +121,28 @@ export function LocalePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        side="bottom"
         align="start"
+        sideOffset={4}
+        // collisionPadding keeps a small gutter when the popover butts
+        // against the viewport edge. Combined with the
+        // --radix-popper-available-height variable below, the list
+        // measures whatever real estate Radix gave it after collision
+        // checks and caps itself to fit — no manual breakpoint guesses.
+        collisionPadding={8}
         className="w-[var(--radix-popover-trigger-width)] p-0"
       >
-        <Command
-          // Custom filter: match across nativeName + englishName + code so
-          // typing "russian", "ru", "Русский", or even "русский" all match.
-          // Defaults to the option's `value` prop which we pack with all
-          // search-relevant text.
-        >
+        <Command>
           <CommandInput placeholder="Search languages..." />
-          <CommandList className="max-h-[min(60vh,400px)]">
+          <CommandList
+            // Radix exposes the available height after positioning + flip
+            // logic via this CSS variable. Capping CommandList to that
+            // value means the picker never overflows the viewport AND
+            // stays scrollable, regardless of where the trigger lives.
+            // Hard cap of 360px on tall screens so the dropdown stays
+            // visually proportional.
+            className="max-h-[min(360px,var(--radix-popper-available-height))]"
+          >
             <CommandEmpty>No language found.</CommandEmpty>
 
             {availableRecommended.length > 0 && (

@@ -51,22 +51,19 @@ export type LocaleDefinition = {
 };
 
 // =============================================================================
-// Recommended (Tashkent + adjacent regional markets)
+// Recommended — the languages a brand-new Krafta merchant in Tashkent
+// is most likely to actually translate INTO on day 1.
+//
+// Trimmed to the absolute essentials per founder feedback. Other regional
+// languages (Tajik, Kazakh, Kyrgyz, Turkmen, Turkish, Arabic, Persian,
+// Cyrillic Uzbek) are valid choices — they live under "All languages"
+// alphabetically and surface immediately via search.
 // =============================================================================
 
 const RECOMMENDED: LocaleDefinition[] = [
   { code: "ru", nativeName: "Русский", englishName: "Russian", direction: "ltr", recommended: true },
   { code: "uz-Latn", nativeName: "Oʻzbek tili", englishName: "Uzbek (Latin)", direction: "ltr", recommended: true },
-  { code: "uz-Cyrl", nativeName: "Ўзбек тили", englishName: "Uzbek (Cyrillic)", direction: "ltr", recommended: true },
   { code: "en", nativeName: "English", englishName: "English", direction: "ltr", recommended: true },
-  { code: "tg-Cyrl", nativeName: "Тоҷикӣ", englishName: "Tajik (Cyrillic)", direction: "ltr", recommended: true },
-  { code: "kk-Latn", nativeName: "Qazaq tili", englishName: "Kazakh (Latin)", direction: "ltr", recommended: true },
-  { code: "kk-Cyrl", nativeName: "Қазақ тілі", englishName: "Kazakh (Cyrillic)", direction: "ltr", recommended: true },
-  { code: "ky", nativeName: "Кыргызча", englishName: "Kyrgyz", direction: "ltr", recommended: true },
-  { code: "tk", nativeName: "Türkmen dili", englishName: "Turkmen", direction: "ltr", recommended: true },
-  { code: "tr", nativeName: "Türkçe", englishName: "Turkish", direction: "ltr", recommended: true },
-  { code: "ar", nativeName: "العربية", englishName: "Arabic", direction: "rtl", recommended: true },
-  { code: "fa", nativeName: "فارسی", englishName: "Persian / Farsi", direction: "rtl", recommended: true },
 ];
 
 // =============================================================================
@@ -77,6 +74,7 @@ const OTHER: LocaleDefinition[] = [
   { code: "af", nativeName: "Afrikaans", englishName: "Afrikaans", direction: "ltr" },
   { code: "sq", nativeName: "Shqip", englishName: "Albanian", direction: "ltr" },
   { code: "am", nativeName: "አማርኛ", englishName: "Amharic", direction: "ltr" },
+  { code: "ar", nativeName: "العربية", englishName: "Arabic", direction: "rtl" },
   { code: "hy", nativeName: "Հայերեն", englishName: "Armenian", direction: "ltr" },
   { code: "az-Latn", nativeName: "Azərbaycan dili", englishName: "Azerbaijani (Latin)", direction: "ltr" },
   { code: "az-Cyrl", nativeName: "Азәрбајҹан дили", englishName: "Azerbaijani (Cyrillic)", direction: "ltr" },
@@ -112,10 +110,13 @@ const OTHER: LocaleDefinition[] = [
   { code: "it", nativeName: "Italiano", englishName: "Italian", direction: "ltr" },
   { code: "ja", nativeName: "日本語", englishName: "Japanese", direction: "ltr" },
   { code: "kn", nativeName: "ಕನ್ನಡ", englishName: "Kannada", direction: "ltr" },
+  { code: "kk-Latn", nativeName: "Qazaq tili", englishName: "Kazakh (Latin)", direction: "ltr" },
+  { code: "kk-Cyrl", nativeName: "Қазақ тілі", englishName: "Kazakh (Cyrillic)", direction: "ltr" },
   { code: "km", nativeName: "ខ្មែរ", englishName: "Khmer", direction: "ltr" },
   { code: "ko", nativeName: "한국어", englishName: "Korean", direction: "ltr" },
   { code: "ku", nativeName: "Kurdî", englishName: "Kurdish (Kurmanji)", direction: "ltr" },
   { code: "ckb", nativeName: "کوردیی ناوەندی", englishName: "Kurdish (Sorani)", direction: "rtl" },
+  { code: "ky", nativeName: "Кыргызча", englishName: "Kyrgyz", direction: "ltr" },
   { code: "lo", nativeName: "ລາວ", englishName: "Lao", direction: "ltr" },
   { code: "lv", nativeName: "Latviešu", englishName: "Latvian", direction: "ltr" },
   { code: "lt", nativeName: "Lietuvių", englishName: "Lithuanian", direction: "ltr" },
@@ -131,6 +132,7 @@ const OTHER: LocaleDefinition[] = [
   { code: "nn", nativeName: "Norsk Nynorsk", englishName: "Norwegian Nynorsk", direction: "ltr" },
   { code: "or", nativeName: "ଓଡ଼ିଆ", englishName: "Odia", direction: "ltr" },
   { code: "ps", nativeName: "پښتو", englishName: "Pashto", direction: "rtl" },
+  { code: "fa", nativeName: "فارسی", englishName: "Persian / Farsi", direction: "rtl" },
   { code: "pl", nativeName: "Polski", englishName: "Polish", direction: "ltr" },
   { code: "pt-BR", nativeName: "Português (Brasil)", englishName: "Portuguese (Brazil)", direction: "ltr" },
   { code: "pt-PT", nativeName: "Português (Portugal)", englishName: "Portuguese (Portugal)", direction: "ltr" },
@@ -147,13 +149,17 @@ const OTHER: LocaleDefinition[] = [
   { code: "es-MX", nativeName: "Español (México)", englishName: "Spanish (Mexico)", direction: "ltr" },
   { code: "sw", nativeName: "Kiswahili", englishName: "Swahili", direction: "ltr" },
   { code: "sv", nativeName: "Svenska", englishName: "Swedish", direction: "ltr" },
+  { code: "tg-Cyrl", nativeName: "Тоҷикӣ", englishName: "Tajik (Cyrillic)", direction: "ltr" },
   { code: "ta", nativeName: "தமிழ்", englishName: "Tamil", direction: "ltr" },
   { code: "te", nativeName: "తెలుగు", englishName: "Telugu", direction: "ltr" },
   { code: "th", nativeName: "ไทย", englishName: "Thai", direction: "ltr" },
   { code: "ti", nativeName: "ትግርኛ", englishName: "Tigrinya", direction: "ltr" },
+  { code: "tr", nativeName: "Türkçe", englishName: "Turkish", direction: "ltr" },
+  { code: "tk", nativeName: "Türkmen dili", englishName: "Turkmen", direction: "ltr" },
   { code: "uk", nativeName: "Українська", englishName: "Ukrainian", direction: "ltr" },
   { code: "ur", nativeName: "اردو", englishName: "Urdu", direction: "rtl" },
   { code: "ug", nativeName: "ئۇيغۇرچە", englishName: "Uyghur", direction: "rtl" },
+  { code: "uz-Cyrl", nativeName: "Ўзбек тили", englishName: "Uzbek (Cyrillic)", direction: "ltr" },
   { code: "vi", nativeName: "Tiếng Việt", englishName: "Vietnamese", direction: "ltr" },
   { code: "cy", nativeName: "Cymraeg", englishName: "Welsh", direction: "ltr" },
   { code: "yi", nativeName: "ייִדיש", englishName: "Yiddish", direction: "rtl" },
