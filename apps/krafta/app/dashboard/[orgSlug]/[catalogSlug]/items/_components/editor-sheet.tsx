@@ -63,7 +63,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -996,21 +995,17 @@ function EditorForm({
               />
             </div>
 
-            {/* Modifier lists — placeholder. Real attach UI in KRA-85. */}
+            {/* Modifier lists — read-only summary; the attach surface lives
+                on the Modifiers page so the merchant can do bulk attach
+                across many items. Wiring the per-item editor here is
+                follow-up polish. */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Modifier lists</Label>
-              <div className="flex flex-wrap gap-2">
-                <Badge
-                  variant="outline"
-                  className="font-normal text-muted-foreground"
-                >
-                  No modifier lists attached
-                </Badge>
-              </div>
               <span className="text-xs text-muted-foreground">
-                Attach modifier lists from{" "}
-                <span className="font-medium">Items → Modifiers</span> once
-                it ships (KRA-85).
+                Build and attach modifier lists from{" "}
+                <span className="font-medium">Items → Modifiers</span>. Each
+                list (sizes, toppings, prep notes) can be attached to any
+                number of items.
               </span>
             </div>
 

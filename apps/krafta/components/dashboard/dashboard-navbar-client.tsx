@@ -27,6 +27,10 @@ const DASHBOARD_LINKS = [
   { segment: "orders", label: "Orders" },
   { segment: "items", label: "Items" },
   { segment: "items/categories", label: "Categories" },
+  // KRA-85 adds Modifiers under the Items tree per ADR 0002 §2. Same
+  // temporary-top-nav pattern as Categories; collapses into the proper
+  // Items sub-nav when KRA-76 lands.
+  { segment: "items/modifiers", label: "Modifiers" },
   { segment: "translations", label: "Translations" },
   { segment: "builder", label: "Studio" },
   { segment: "billing", label: "Billing" },
