@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { startTransition } from "react";
-import { Plus, Star, EyeOff, Eye, Loader2 } from "lucide-react";
+import { Plus, Star, EyeOff, Eye, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,24 +14,30 @@ import {
 } from "@/lib/translation/actions";
 
 import { AddLocaleDialog } from "./add-locale-dialog";
+import { EditLocaleDialog } from "./edit-locale-dialog";
 
 /**
  * Languages sidebar.
  *
  * Lists all locales for the catalog (enabled + disabled). Per locale:
  *   - default star (✦) on the one is_default row
- *   - enabled / disabled toggle (eye icon)
- *   - locale code + display name
- *   - text_direction badge for RTL languages
+ *   - display name (primary) + locale code + RTL badge (secondary)
+ *   - pencil button → EditLocaleDialog (rename display name)
+ *   - eye toggle → enable / disable (hidden on the default row)
  *
  * Operations:
- *   - "+ Add language" button → AddLocaleDialog → addCatalogLocale action
+ *   - "+ Add language" button → AddLocaleDialog → addCatalogLocale
+ *   - Pencil → EditLocaleDialog → updateCatalogLocale
  *   - Eye toggle → disableCatalogLocale / enableCatalogLocale
- *   - (Phase 2: set-default-locale, change-display-name — currently view-only
- *     after creation)
+ *   - (Phase 2: set-default-locale, drag-reorder)
  *
  * The default locale CANNOT be disabled — that would orphan all translation
- * rows. The toggle is hidden on the default row.
+ * rows. The eye toggle is hidden on the default row; the pencil stays
+ * (renaming a default is a legitimate, frequent need — e.g. "en" → "English").
+ *
+ * Rows have a subtle hover background to telegraph "these are interactive
+ * surfaces" without forcing whole-row click semantics — the actual actions
+ * still live in their dedicated icon buttons.
  */
 
 export type CatalogLocale = {
@@ -57,6 +63,8 @@ export function LanguagesSidebar({
   onMutation,
 }: LanguagesSidebarProps) {
   const [addOpen, setAddOpen] = React.useState(false);
+  const [editingLocale, setEditingLocale] =
+    React.useState<CatalogLocale | null>(null);
   const [pendingLocale, setPendingLocale] = React.useState<string | null>(null);
 
   const handleToggle = React.useCallback(
@@ -123,7 +131,11 @@ export function LanguagesSidebar({
               <li
                 key={locale.id}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 text-sm md:px-5",
+                  "flex items-center gap-1 px-4 py-2 text-sm transition-colors md:px-5",
+                  // Subtle hover bg signals "these rows are alive" without
+                  // making the whole row clickable. Actions still live in
+                  // dedicated buttons.
+                  "hover:bg-accent/40",
                   // Single source of "this is off": opacity on the whole
                   // row. The closed-eye icon carries the rest of the
                   // semantics — no strikethrough, no extra badge.
@@ -132,11 +144,14 @@ export function LanguagesSidebar({
               >
                 {locale.is_default ? (
                   <Star
-                    className="size-3.5 shrink-0 fill-foreground text-foreground"
+                    className="mr-1 size-3.5 shrink-0 fill-foreground text-foreground"
                     aria-label="Default language"
                   />
                 ) : (
-                  <span className="inline-block size-3.5 shrink-0" aria-hidden="true" />
+                  <span
+                    className="mr-1 inline-block size-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
                 )}
 
                 <div className="min-w-0 flex-1">
@@ -154,6 +169,16 @@ export function LanguagesSidebar({
                     </div>
                   )}
                 </div>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => setEditingLocale(locale)}
+                  aria-label={`Rename ${locale.display_name}`}
+                >
+                  <Pencil className="size-3.5" aria-hidden="true" />
+                </Button>
 
                 {!locale.is_default && (
                   <Button
@@ -198,6 +223,19 @@ export function LanguagesSidebar({
         hasDefault={locales.some((l) => l.is_default)}
         onCreated={() => {
           setAddOpen(false);
+          startTransition(() => onMutation());
+        }}
+      />
+
+      <EditLocaleDialog
+        open={editingLocale !== null}
+        onOpenChange={(next) => {
+          if (!next) setEditingLocale(null);
+        }}
+        catalogId={catalogId}
+        locale={editingLocale}
+        onSaved={() => {
+          setEditingLocale(null);
           startTransition(() => onMutation());
         }}
       />

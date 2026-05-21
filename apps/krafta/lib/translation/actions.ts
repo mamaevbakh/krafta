@@ -8,6 +8,8 @@
  *
  * Locale management:
  *   - addCatalogLocale, disableCatalogLocale, enableCatalogLocale
+ *   - updateCatalogLocale (rename — display_name only; locale code is
+ *     immutable after creation to keep translation rows attached)
  *   - setDefaultCatalogLocale (locks one row as is_default; demotes the prior)
  *
  * Translation queue:
@@ -142,6 +144,39 @@ export async function enableCatalogLocale(
   const { error } = await supabase
     .from("catalog_locales")
     .update({ is_enabled: true })
+    .eq("catalog_id", parsed.data.catalogId)
+    .eq("locale", parsed.data.locale);
+
+  if (error) return { ok: false, error: error.message };
+
+  await updateCatalogByIdAndSlug({ catalogId: parsed.data.catalogId });
+  return { ok: true };
+}
+
+const updateCatalogLocaleSchema = z.object({
+  catalogId: uuidSchema,
+  locale: localeSchema,
+  /** Whitespace-trimmed before persisting. Empty string fails validation. */
+  displayName: z.string().trim().min(1).max(120),
+});
+
+/**
+ * Rename a catalog locale. Only `display_name` is mutable — the locale
+ * code itself is fixed at creation time so that translation rows and
+ * drift hashes stay attached. Direction comes from the registry and
+ * the enable/default flags have their own dedicated actions.
+ */
+export async function updateCatalogLocale(
+  input: z.input<typeof updateCatalogLocaleSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = updateCatalogLocaleSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("catalog_locales")
+    .update({ display_name: parsed.data.displayName })
     .eq("catalog_id", parsed.data.catalogId)
     .eq("locale", parsed.data.locale);
 
