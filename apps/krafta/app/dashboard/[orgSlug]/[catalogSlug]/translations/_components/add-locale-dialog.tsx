@@ -113,18 +113,10 @@ export function AddLocaleDialog({
                 onChange={setSelectedCode}
                 excludeCodes={existingLocales}
               />
-              {selected && (
+              {selected?.direction === "rtl" && (
                 <p className="text-xs text-muted-foreground">
-                  Code: <code className="text-foreground">{selected.code}</code>
-                  {selected.direction === "rtl" && (
-                    <>
-                      {" · "}
-                      <span className="font-medium text-foreground">
-                        Right-to-left
-                      </span>{" "}
-                      script — storefront direction support ships in Phase 2.
-                    </>
-                  )}
+                  Right-to-left script — storefront direction support ships
+                  in Phase 2.
                 </p>
               )}
             </div>

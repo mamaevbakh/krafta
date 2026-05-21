@@ -84,7 +84,12 @@ export function LocalePicker({
   const totalAvailable = availableRecommended.length + availableOther.length;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // `modal` is required when the Popover lives inside a Dialog. Without
+    // it Radix's Dialog focus trap intercepts wheel events meant for the
+    // Popover content — the list looks scrollable but doesn't scroll.
+    // `modal` makes the Popover self-contained: its own focus trap, its
+    // own wheel handling, no conflict with the surrounding Dialog.
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -126,7 +131,7 @@ export function LocalePicker({
           // search-relevant text.
         >
           <CommandInput placeholder="Search languages..." />
-          <CommandList>
+          <CommandList className="max-h-[min(60vh,400px)]">
             <CommandEmpty>No language found.</CommandEmpty>
 
             {availableRecommended.length > 0 && (
