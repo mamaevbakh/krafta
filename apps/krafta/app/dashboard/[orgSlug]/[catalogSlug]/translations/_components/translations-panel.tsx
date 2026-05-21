@@ -11,19 +11,32 @@ import { cn } from "@/lib/utils";
 
 import { LanguagesSidebar, type CatalogLocale } from "./languages-sidebar";
 import { ItemsTab, type ItemRow } from "./items-tab";
+import { OverviewTab, type OverviewCompleteness } from "./overview-tab";
+import {
+  DEFAULT_ITEMS_FILTER,
+  classifyTranslation,
+  type ItemsFilter,
+} from "./items-filter-chips";
 
 /**
  * Localization Workbench — top-level panel.
  *
  * Layout:
- *   - Header: catalog name + daily quota counter
+ *   - Header: catalog name + lifetime AI usage counter
  *   - Two-pane body: LanguagesSidebar (left) + Tabs (right)
- *   - Tabs: Items (only enabled in Phase 1); Catalog / Categories / Variations /
- *     Modifiers / Modifier Lists shown disabled with "Coming in Phase 2" tooltips
+ *   - Tabs:
+ *       Overview (default landing — dashboard + bulk CTAs)
+ *       Items    (worktable with status × language filter chips)
+ *       Catalog / Categories / Variations / Modifiers / Modifier Lists —
+ *       all disabled with "Coming in Phase 2" tooltips.
  *
- * Per the design doc, the panel intentionally stays scoped to one catalog at
- * a time. Cross-catalog translation work is a v1.5 feature (a "Translate all
- * my catalogs" bulk surface).
+ * The Overview tab's "Find these N" CTAs flip both the active tab AND the
+ * Items tab filter chips — so the manual translator gets a one-click path
+ * from "I see 23 untranslated Russian items" to a filtered worktable of
+ * exactly those 23 items.
+ *
+ * Per the design doc, the panel intentionally stays scoped to one catalog
+ * at a time. Cross-catalog translation work is a v1.5 feature.
  */
 
 export type CompletenessRow = {
@@ -44,6 +57,23 @@ export type Quota = {
   daily_quota: number;
   used_today: number;
   quota_reset_at: string;
+  /** Lifetime running total updated by the translate-worker after each
+   *  successful AI call. Numeric column comes back as string from
+   *  PostgREST; cast to number at the page boundary. */
+  total_usd_estimated?: number | string | null;
+  total_tokens_used?: number | null;
+};
+
+export type ScopeCounts = {
+  items: number;
+  categories: number;
+  variations: number;
+  modifierLists: number;
+};
+
+export type CostSinceStart = {
+  usd: number;
+  aiCount: number;
 };
 
 export type TranslationsPanelProps = {
@@ -54,6 +84,8 @@ export type TranslationsPanelProps = {
   items: ItemRow[];
   completeness: CompletenessRow[];
   quota: Quota | null;
+  scopeCounts: ScopeCounts;
+  costSinceStart: CostSinceStart;
 };
 
 export function TranslationsPanel({
@@ -64,21 +96,24 @@ export function TranslationsPanel({
   items,
   completeness,
   quota,
+  scopeCounts,
+  costSinceStart,
 }: TranslationsPanelProps) {
   const router = useRouter();
 
-  // KRA-92: 500/day cap removed. The quota row still tracks used_today +
-  // total_tokens_used + total_usd_estimated for cost visibility, but we no
-  // longer enforce a cap. The counter just shows usage now.
   const usedToday = quota?.used_today ?? 0;
 
-  // Default the active tab to "items". Phase 1 only has items wired; the
-  // other tabs are visual placeholders.
-  const [activeTab, setActiveTab] = React.useState("items");
+  // Default to Overview — the merchant lands on the dashboard, sees state
+  // at a glance, then drills into Items when they want to do work.
+  const [activeTab, setActiveTab] = React.useState("overview");
+
+  // Filter state lives here so the Overview tab's "Find these N" CTAs can
+  // pre-set both axes before switching the merchant to the Items tab.
+  // Single source of truth — Items tab is a controlled consumer.
+  const [itemsFilter, setItemsFilter] =
+    React.useState<ItemsFilter>(DEFAULT_ITEMS_FILTER);
 
   const refreshAfterMutation = React.useCallback(() => {
-    // Re-fetch the RSC payload — picks up new locales / new translation
-    // rows / new quota usage. Cheap on this small page.
     router.refresh();
   }, [router]);
 
@@ -95,35 +130,68 @@ export function TranslationsPanel({
     [enabledLocales],
   );
 
-  // Completeness lookup helper for the Items tab counter.
-  const itemsCompleteness = React.useMemo(() => {
-    const map = new Map<string, CompletenessRow>();
-    for (const row of completeness) {
-      if (row.entity_kind === "item" && row.locale) {
-        map.set(row.locale, row);
+  // Build per-locale completeness for the Overview tab. We derive
+  // "needs review / translated / not translated" directly from the items
+  // payload (same classifier the Items tab uses) so the two surfaces never
+  // disagree. The completeness VIEW is a useful future signal but its
+  // semantics are "AI vs human" not "needs review vs done", so we don't
+  // depend on it here.
+  const overviewCompleteness = React.useMemo<OverviewCompleteness>(() => {
+    const byLocale = new Map<
+      string,
+      {
+        translated: number;
+        needsReview: number;
+        notTranslated: number;
+        total: number;
       }
+    >();
+    for (const locale of targetLocales) {
+      let translated = 0;
+      let needsReview = 0;
+      let notTranslated = 0;
+      for (const item of items) {
+        const bucket = classifyTranslation(item, locale.locale);
+        if (bucket === "translated") translated += 1;
+        else if (bucket === "needs-review") needsReview += 1;
+        else notTranslated += 1;
+      }
+      byLocale.set(locale.locale, {
+        translated,
+        needsReview,
+        notTranslated,
+        total: items.length,
+      });
     }
-    return map;
-  }, [completeness]);
+    return { byLocale };
+  }, [items, targetLocales]);
 
-  // Tab counter format: "Items 47/120" → translated / total, summed across
-  // all non-default locales for that entity kind.
+  // Tab label for the Items pill — counter format "Items 47/120".
   const itemsLabel = React.useMemo(() => {
     if (targetLocales.length === 0) return "Items";
     let translated = 0;
     let total = 0;
     for (const locale of targetLocales) {
-      const row = itemsCompleteness.get(locale.locale);
+      const row = overviewCompleteness.byLocale.get(locale.locale);
       if (row) {
-        translated += row.non_stale ?? 0;
-        total += row.total ?? 0;
+        translated += row.translated;
+        total += row.total;
       } else {
         total += items.length;
       }
     }
     if (total === 0) return "Items";
     return `Items ${translated}/${total}`;
-  }, [targetLocales, itemsCompleteness, items.length]);
+  }, [targetLocales, overviewCompleteness, items.length]);
+
+  // Overview tab → Items tab navigation. Sets both axes + flips tab.
+  const handleJumpToItems = React.useCallback(
+    (next: ItemsFilter) => {
+      setItemsFilter(next);
+      setActiveTab("items");
+    },
+    [],
+  );
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -163,14 +231,23 @@ export function TranslationsPanel({
                 continuous shape; previously the row used flex-wrap which broke
                 the pill silhouette as soon as items overflowed.
               */}
-              <div className="border-b px-4 py-3 md:px-6">
+              <div className="border-b px-2 py-2 md:px-2">
                 <div className="overflow-x-auto">
                   <TabsList
                     className={cn(
-                      "inline-flex h-auto gap-1 rounded-full border border-border p-1",
+                      "inline-flex h-auto gap-1 border rounded-full border-border p-1 py-0",
                       "bg-background/85 shadow-sm backdrop-blur-md",
                     )}
                   >
+                    <TabsTrigger
+                      value="overview"
+                      className={cn(
+                        "rounded-full px-3",
+                        "data-[state=active]:bg-foreground data-[state=active]:text-background",
+                      )}
+                    >
+                      Overview
+                    </TabsTrigger>
                     <TabsTrigger
                       value="items"
                       className={cn(
@@ -189,7 +266,27 @@ export function TranslationsPanel({
                 </div>
               </div>
 
-              <TabsContent value="items" className="flex-1 overflow-auto p-4 md:p-6">
+              <TabsContent
+                value="overview"
+                className="flex-1 overflow-auto p-4 md:p-6"
+              >
+                <OverviewTab
+                  catalogId={catalogId}
+                  defaultLocale={defaultLocale}
+                  targetLocales={targetLocales}
+                  items={items}
+                  completeness={overviewCompleteness}
+                  costSinceStart={costSinceStart}
+                  scopeCounts={scopeCounts}
+                  onJumpToItems={handleJumpToItems}
+                  onMutation={refreshAfterMutation}
+                />
+              </TabsContent>
+
+              <TabsContent
+                value="items"
+                className="flex-1 overflow-auto p-4 md:p-6"
+              >
                 {enabledLocales.length <= 1 ? (
                   <NoTargetLocalesEmpty hasDefaultLocale={defaultLocale !== null} />
                 ) : (
@@ -198,6 +295,8 @@ export function TranslationsPanel({
                     defaultLocale={defaultLocale}
                     targetLocales={targetLocales}
                     items={items}
+                    filter={itemsFilter}
+                    onFilterChange={setItemsFilter}
                     onMutation={refreshAfterMutation}
                   />
                 )}

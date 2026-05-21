@@ -42,6 +42,18 @@ export type TranslateAllButtonProps = {
   targetLocale: CatalogLocale;
   items: ItemRow[];
   onEnqueued: () => void;
+  /**
+   * "with-locale" (default) — for surfaces with multiple bulk buttons in a
+   * row (Items toolbar). Shows the locale name on the button so the merchant
+   * can tell them apart at a glance.
+   *
+   * "compact" — for surfaces where the locale is already visible elsewhere
+   * (Overview language cards). Drops the locale name; reads as just
+   * "Translate all missing with AI."
+   */
+  labelMode?: "with-locale" | "compact";
+  /** Optional visual variant — outline by default, "primary" reads stronger. */
+  variant?: "outline" | "primary";
 };
 
 type Counts = {
@@ -83,6 +95,8 @@ export function TranslateAllButton({
   targetLocale,
   items,
   onEnqueued,
+  labelMode = "with-locale",
+  variant = "outline",
 }: TranslateAllButtonProps) {
   const [open, setOpen] = React.useState(false);
   const [force, setForce] = React.useState(false);
@@ -160,14 +174,23 @@ export function TranslateAllButton({
   return (
     <>
       <Button
-        variant="outline"
+        variant={variant === "primary" ? "default" : "outline"}
         size="sm"
         onClick={() => setOpen(true)}
         disabled={items.length === 0}
-        className="h-7 text-xs font-normal"
+        className={
+          variant === "primary"
+            ? "gap-1.5"
+            : "h-7 gap-1.5 text-xs font-normal"
+        }
       >
-        <Sparkles className="size-3.5" aria-hidden="true" />
-        Translate all to {targetLocale.display_name}
+        <Sparkles
+          className={variant === "primary" ? "size-4" : "size-3.5"}
+          aria-hidden="true"
+        />
+        {labelMode === "compact"
+          ? "Translate all missing with AI"
+          : `Translate missing → ${targetLocale.display_name}`}
       </Button>
 
       <AlertDialog open={open} onOpenChange={setOpen}>

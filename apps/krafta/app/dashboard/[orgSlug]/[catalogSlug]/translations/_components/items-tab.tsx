@@ -24,19 +24,27 @@ import { cn } from "@/lib/utils";
 import { TranslationEditDrawer } from "./translation-edit-drawer";
 import { TranslateAllButton } from "./translate-all-button";
 import type { CatalogLocale } from "./languages-sidebar";
+import {
+  ItemsFilterChips,
+  computeChipCounts,
+  matchesFilter,
+  type ItemsFilter,
+} from "./items-filter-chips";
 
 /**
- * Items tab — the only Phase 1 enabled tab.
+ * Items tab — the Phase 1 worktable.
  *
  * Layout:
- *   - Action bar at top: "Translate all to {locale}" buttons (one per target)
- *   - Table:
- *     - Column 1: default-locale name + description preview (read-only)
- *     - Columns 2..N: one per target locale, showing translated name OR
- *       "Missing" badge OR "AI — review" badge OR "Stale" badge
+ *   - Filter chips (sticky top) — Status × Language two-axis filter
+ *   - Action bar — bulk "Translate missing → {locale}" buttons per language
+ *   - Table — one column per locale showing translated text or status badge
  *
  * Row click opens the TranslationEditDrawer for that item, with all enabled
  * target locales pre-filled in editable columns.
+ *
+ * Filter state is controlled by the parent (TranslationsPanel) so the
+ * Overview tab's "Find these N" CTAs can pre-set both chips before
+ * switching to this tab.
  */
 
 export type ItemTranslation = {
@@ -67,6 +75,8 @@ export type ItemsTabProps = {
   defaultLocale: CatalogLocale | null;
   targetLocales: CatalogLocale[];
   items: ItemRow[];
+  filter: ItemsFilter;
+  onFilterChange: (next: ItemsFilter) => void;
   onMutation: () => void;
 };
 
@@ -101,6 +111,8 @@ export function ItemsTab({
   defaultLocale,
   targetLocales,
   items,
+  filter,
+  onFilterChange,
   onMutation,
 }: ItemsTabProps) {
   const [drawerItemId, setDrawerItemId] = React.useState<string | null>(null);
@@ -108,6 +120,30 @@ export function ItemsTab({
   const drawerItem = React.useMemo(
     () => (drawerItemId ? items.find((i) => i.id === drawerItemId) ?? null : null),
     [drawerItemId, items],
+  );
+
+  // Counts feed the filter chips. Status counts respect the current
+  // language filter so the merchant sees "Russian — 23 not translated"
+  // when they're scoped to Russian.
+  const chipCounts = React.useMemo(
+    () => computeChipCounts(items, targetLocales, filter),
+    [items, targetLocales, filter],
+  );
+
+  const visibleItems = React.useMemo(
+    () => items.filter((item) => matchesFilter(item, filter, targetLocales)),
+    [items, filter, targetLocales],
+  );
+
+  // When the language filter is set, narrow which target columns show.
+  // We keep all of them visible by default — but a single-language filter
+  // emphasises the locale being worked on.
+  const columnsToShow = React.useMemo(
+    () =>
+      filter.language === "all"
+        ? targetLocales
+        : targetLocales.filter((l) => l.locale === filter.language),
+    [filter.language, targetLocales],
   );
 
   if (items.length === 0) {
@@ -126,10 +162,21 @@ export function ItemsTab({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Action bar: one Translate-all per target locale */}
+      {/* Filter chips (sticky-friendly — parent sets the bg) */}
+      <ItemsFilterChips
+        filter={filter}
+        onFilterChange={onFilterChange}
+        targetLocales={targetLocales}
+        counts={chipCounts}
+      />
+
+      {/* Action bar: one bulk translate per target language */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground">
-          {items.length} {items.length === 1 ? "item" : "items"} ·
+          {visibleItems.length === items.length
+            ? `${items.length} ${items.length === 1 ? "item" : "items"}`
+            : `${visibleItems.length} of ${items.length} ${items.length === 1 ? "item" : "items"}`}
+          {" "}·
         </span>
         {targetLocales.map((locale) => (
           <TranslateAllButton
@@ -142,69 +189,73 @@ export function ItemsTab({
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-1/3">
-                {defaultLocale ? (
-                  <span className="flex items-center gap-2">
-                    <span className="font-semibold">
-                      {defaultLocale.display_name}
-                    </span>
-                    <Badge variant="outline" className="h-4 px-1.5 text-[10px]">
-                      default
-                    </Badge>
-                  </span>
-                ) : (
-                  "Source"
-                )}
-              </TableHead>
-              {targetLocales.map((locale) => (
-                <TableHead key={locale.locale}>
-                  <span className="flex items-center gap-1.5">
-                    {locale.display_name}
-                    <span className="text-[10px] font-normal text-muted-foreground">
-                      {locale.locale}
-                    </span>
-                  </span>
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) => (
-              <TableRow
-                key={item.id}
-                onClick={() => setDrawerItemId(item.id)}
-                className={cn(
-                  "cursor-pointer",
-                  !item.is_active && "opacity-60",
-                )}
-              >
-                <TableCell className="align-top">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">{item.name}</span>
-                    {item.description && (
-                      <span className="line-clamp-2 text-xs text-muted-foreground">
-                        {item.description}
+      {visibleItems.length === 0 ? (
+        <FilterEmptyState onClearFilter={() => onFilterChange({ status: "all", language: "all" })} />
+      ) : (
+        <div className="overflow-hidden rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-1/3">
+                  {defaultLocale ? (
+                    <span className="flex items-center gap-2">
+                      <span className="font-semibold">
+                        {defaultLocale.display_name}
                       </span>
-                    )}
-                  </div>
-                </TableCell>
-                {targetLocales.map((locale) => {
-                  const status = getCellStatus(item, locale.locale);
-                  return (
-                    <TableCell key={locale.locale} className="align-top">
-                      <TranslationCell status={status} />
-                    </TableCell>
-                  );
-                })}
+                      <Badge variant="outline" className="h-4 px-1.5 text-[10px]">
+                        default
+                      </Badge>
+                    </span>
+                  ) : (
+                    "Source"
+                  )}
+                </TableHead>
+                {columnsToShow.map((locale) => (
+                  <TableHead key={locale.locale}>
+                    <span className="flex items-center gap-1.5">
+                      {locale.display_name}
+                      <span className="text-[10px] font-normal text-muted-foreground">
+                        {locale.locale}
+                      </span>
+                    </span>
+                  </TableHead>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {visibleItems.map((item) => (
+                <TableRow
+                  key={item.id}
+                  onClick={() => setDrawerItemId(item.id)}
+                  className={cn(
+                    "cursor-pointer",
+                    !item.is_active && "opacity-60",
+                  )}
+                >
+                  <TableCell className="align-top">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium">{item.name}</span>
+                      {item.description && (
+                        <span className="line-clamp-2 text-xs text-muted-foreground">
+                          {item.description}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  {columnsToShow.map((locale) => {
+                    const status = getCellStatus(item, locale.locale);
+                    return (
+                      <TableCell key={locale.locale} className="align-top">
+                        <TranslationCell status={status} />
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       {drawerItem && (
         <TranslationEditDrawer
@@ -219,6 +270,25 @@ export function ItemsTab({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function FilterEmptyState({ onClearFilter }: { onClearFilter: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-md border border-dashed bg-muted/20 py-12 text-center">
+      <p className="text-sm font-medium">No items match this filter.</p>
+      <p className="max-w-xs text-xs text-muted-foreground">
+        Try a different status or language combination, or clear the filter
+        to see all items.
+      </p>
+      <button
+        type="button"
+        onClick={onClearFilter}
+        className="text-xs text-foreground underline-offset-4 hover:underline"
+      >
+        Clear filter
+      </button>
     </div>
   );
 }
