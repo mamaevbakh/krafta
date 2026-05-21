@@ -156,17 +156,37 @@ export function TranslationsPanel({
               onValueChange={setActiveTab}
               className="flex h-full flex-col"
             >
-              <div className="border-b px-4 py-2 md:px-6">
-                <TabsList className="h-auto flex-wrap gap-1 bg-transparent p-0">
-                  <TabsTrigger value="items" className="data-[state=active]:bg-muted">
-                    {itemsLabel}
-                  </TabsTrigger>
-                  <DisabledTab label="Catalog" reason="Catalog meta (shop name + description) ships in Phase 2 once demand evidence emerges." />
-                  <DisabledTab label="Categories" reason="Category translations land in Phase 2 of the workbench." />
-                  <DisabledTab label="Variations" reason="Variation translations land in Phase 2 of the workbench." />
-                  <DisabledTab label="Modifiers" reason="Modifier translations land in Phase 2, after KRA-85 ships modifier-list CRUD." />
-                  <DisabledTab label="Modifier Lists" reason="Same as Modifiers — Phase 2 dependency on KRA-85." />
-                </TabsList>
+              {/*
+                Pill tab strip — mirrors the canvas/table view-toggle treatment:
+                rounded-full chrome, high-contrast active segment. Scrolls
+                horizontally on narrow viewports so the pill stays a single
+                continuous shape; previously the row used flex-wrap which broke
+                the pill silhouette as soon as items overflowed.
+              */}
+              <div className="border-b px-4 py-3 md:px-6">
+                <div className="overflow-x-auto">
+                  <TabsList
+                    className={cn(
+                      "inline-flex h-auto gap-1 rounded-full border border-border p-1",
+                      "bg-background/85 shadow-sm backdrop-blur-md",
+                    )}
+                  >
+                    <TabsTrigger
+                      value="items"
+                      className={cn(
+                        "rounded-full px-3",
+                        "data-[state=active]:bg-foreground data-[state=active]:text-background",
+                      )}
+                    >
+                      {itemsLabel}
+                    </TabsTrigger>
+                    <DisabledTab label="Catalog" reason="Catalog meta (shop name + description) ships in Phase 2 once demand evidence emerges." />
+                    <DisabledTab label="Categories" reason="Category translations land in Phase 2 of the workbench." />
+                    <DisabledTab label="Variations" reason="Variation translations land in Phase 2 of the workbench." />
+                    <DisabledTab label="Modifiers" reason="Modifier translations land in Phase 2, after KRA-85 ships modifier-list CRUD." />
+                    <DisabledTab label="Modifier Lists" reason="Same as Modifiers — Phase 2 dependency on KRA-85." />
+                  </TabsList>
+                </div>
               </div>
 
               <TabsContent value="items" className="flex-1 overflow-auto p-4 md:p-6">
@@ -237,15 +257,21 @@ function DisabledTab({ label, reason }: { label: string; reason: string }) {
       <TooltipTrigger asChild>
         <span
           className={cn(
-            "inline-flex h-9 cursor-not-allowed select-none items-center gap-1 rounded-md px-3 text-sm",
-            "text-muted-foreground/60 opacity-70",
+            // Match the active TabsTrigger height (Radix renders triggers
+            // at h-9 by default) so disabled placeholders sit at the same
+            // baseline inside the pill — no half-pixel jog.
+            "inline-flex h-9 cursor-not-allowed select-none items-center gap-1.5 rounded-full px-3 text-sm",
+            "text-muted-foreground/60",
           )}
           aria-disabled="true"
           role="button"
           tabIndex={-1}
         >
           {label}
-          <Badge variant="outline" className="h-4 px-1.5 text-[10px]">
+          <Badge
+            variant="outline"
+            className="h-4 rounded-full px-1.5 text-[10px] font-normal"
+          >
             Soon
           </Badge>
         </span>
