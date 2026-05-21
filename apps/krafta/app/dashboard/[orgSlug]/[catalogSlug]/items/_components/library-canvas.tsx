@@ -50,7 +50,13 @@ import { CategoryRail } from "./category-rail";
 import { EditorSheet } from "./editor-sheet";
 import { useCanvasSelection } from "./canvas-with-selection";
 import { CanvasLocaleProvider } from "./locale-context";
-import { LocaleTabStrip } from "./locale-tab-strip";
+// LocaleTabStrip mount removed — Phase 2 of the localization work (KRA-94)
+// moved per-locale editing into a dedicated /translations workbench. The
+// canvas now stays default-locale-only. The CanvasLocaleProvider stays
+// mounted (consumers still read it as a stable "always default" handle)
+// so the per-row + editor-sheet save paths don't need to be rewritten
+// in the same pass; a follow-up cleanup can strip the now-dead
+// activeLocale === defaultLocale gating.
 
 type LocaleOption = {
   id: string;
@@ -499,7 +505,6 @@ function PageHeader({
             Add item
           </Button>
         </div>
-        <LocaleTabStrip locales={locales} />
       </div>
     </div>
   );
