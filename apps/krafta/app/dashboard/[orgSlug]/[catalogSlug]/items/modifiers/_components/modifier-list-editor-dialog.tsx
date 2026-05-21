@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { GripVertical, Loader2, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -21,17 +21,15 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -40,27 +38,28 @@ import { saveModifierList, type ModifierKind } from "./actions";
 import type { ModifierListRow, ModifierRowFromDb } from "./modifiers-panel";
 
 /**
- * ModifierListEditorSheet — create or edit a single modifier list.
+ * ModifierListEditorDialog — fullscreen create/edit dialog.
  *
- * Layout (right-side Sheet, max-w-2xl):
- *   - Header: title ("New list" / list.name) + status toggle
- *   - Form body (scroll):
- *       Name + internal name
- *       Kind toggle (List | Text)
- *       List-mode: min/max selected + ModifierRows (drag, name, price, default, delete)
- *       Text-mode: text_required + max_length
- *   - Footer: Cancel + Save
+ * shadcn `Dialog` primitive, opened at viewport size via className override
+ * (`top-0 left-0 translate-x-0 translate-y-0 h-screen w-screen max-w-none
+ * rounded-none border-0 p-0 gap-0 flex flex-col`). Same chrome the
+ * translations workbench dialogs use (`translation-edit-dialog.tsx`,
+ * `entity-translation-edit-dialog.tsx`) — the editor reads as a focused
+ * page rather than a side rail, which suits a form this dense (kind toggle,
+ * min/max + N draggable modifier rows + active switch).
  *
- * State model: a single `form` object mirroring the SaveModifierListInput
- * shape. Dirty-tracking via JSON.stringify diff against the snapshot taken
- * on open — keeps it simple and the payload is small.
+ * Layout:
+ *   - Sticky top bar: title + dirty badge + Save + close X
+ *   - Centered scroll body (max-w-2xl) with the form
+ *
+ * Dirty-tracking via JSON.stringify diff against the snapshot taken on
+ * open — keeps it simple and the payload is small. Close prompts to discard
+ * on dirty state.
  *
  * The modifier rows use dnd-kit (already a dep from KRA-35) for vertical
- * reorder. We persist via the same saveModifierList endpoint by reassigning
- * ordinals from the current array index — no separate reorder call on
- * save. The standalone `reorderModifiers` action exists for the rare case
- * where someone wants to commit a reorder without other edits (not wired
- * into this UI in Phase 1; future polish).
+ * reorder. Ordinals are reassigned from current array index on save — no
+ * separate reorder call needed in the happy path. The standalone
+ * `reorderModifiers` action stays for future drag-without-save flows.
  */
 
 type ModifierDraftRow = {
@@ -127,7 +126,7 @@ function toFormFromList(list: ModifierListRow | null): EditorForm {
   };
 }
 
-export function ModifierListEditorSheet({
+export function ModifierListEditorDialog({
   open,
   catalogId,
   catalogSlug,
@@ -149,7 +148,7 @@ export function ModifierListEditorSheet({
   );
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Re-seed form when the sheet opens or the target list changes. Without
+  // Re-seed form when the dialog opens or the target list changes. Without
   // this, opening Edit on list A then closing and opening Edit on list B
   // would show A's data because React's setState only runs on initial mount.
   React.useEffect(() => {
@@ -241,31 +240,85 @@ export function ModifierListEditorSheet({
     onOpenChange(false);
   }
 
+  const titleText = isEditing
+    ? form.name || "Modifier list"
+    : "New modifier list";
+  const descriptionText =
+    form.modifier_type === "list"
+      ? "Build a set of choices customers pick from at checkout."
+      : "Let customers type a short note (size of a kid's shirt, prep request, etc.).";
+
   return (
-    <Sheet
+    <Dialog
       open={open}
       onOpenChange={(next) => {
         if (!next) handleClose();
         else onOpenChange(true);
       }}
     >
-      <SheetContent
-        side="right"
-        className="flex w-full flex-col gap-0 sm:max-w-2xl"
+      <DialogContent
         showCloseButton={false}
+        className={cn(
+          // Fullscreen override — same chrome the translations workbench
+          // dialogs use. shadcn's default DialogContent is centered + max-w-lg;
+          // these classes flip it to viewport-size.
+          "top-0 left-0 translate-x-0 translate-y-0",
+          "h-screen w-screen max-w-none sm:max-w-none",
+          "rounded-none border-0 p-0 gap-0 flex flex-col",
+        )}
       >
-        <SheetHeader className="border-b">
-          <SheetTitle>{isEditing ? form.name || "Modifier list" : "New modifier list"}</SheetTitle>
-          <SheetDescription>
-            {form.modifier_type === "list"
-              ? "Build a set of choices customers pick from at checkout."
-              : "Let customers type a short note (size of a kid's shirt, prep request, etc.)."}
-          </SheetDescription>
-        </SheetHeader>
+        {/* Header — sticky top bar carrying title, dirty badge, save, close.
+            Custom close (X) instead of the default since the form needs a
+            confirm prompt on dirty state. */}
+        <div className="flex shrink-0 items-center gap-3 border-b px-6 py-4">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="truncate text-lg font-semibold">
+              {titleText}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {descriptionText}
+            </DialogDescription>
+          </div>
+          {isDirty && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+              ● Unsaved
+            </span>
+          )}
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={submitting || !form.name.trim()}
+            size="sm"
+          >
+            {submitting ? (
+              <>
+                <Loader2
+                  className="size-3.5 animate-spin"
+                  aria-hidden="true"
+                />
+                Saving…
+              </>
+            ) : isEditing ? (
+              "Save changes"
+            ) : (
+              "Create list"
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleClose}
+            disabled={submitting}
+            aria-label="Close"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </Button>
+        </div>
 
-        {/* Scrollable form body */}
-        <div className="flex-1 overflow-y-auto px-4 py-5">
-          <div className="flex flex-col gap-5">
+        {/* Body — centered scroll. max-w-2xl keeps the form measure
+            comfortable on widescreens without spreading inputs edge-to-edge. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8">
+          <div className="mx-auto flex max-w-2xl flex-col gap-6">
             {/* Name */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ml-name">Name</Label>
@@ -443,35 +496,8 @@ export function ModifierListEditorSheet({
             </div>
           </div>
         </div>
-
-        <SheetFooter className="flex-row items-center justify-end gap-2 border-t">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={handleClose}
-            disabled={submitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={submitting || !form.name.trim()}
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                Saving…
-              </>
-            ) : isEditing ? (
-              "Save changes"
-            ) : (
-              "Create list"
-            )}
-          </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 

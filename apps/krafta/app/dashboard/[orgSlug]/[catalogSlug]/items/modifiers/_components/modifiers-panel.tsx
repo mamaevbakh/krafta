@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import { ModifierListEditorSheet } from "./modifier-list-editor-sheet";
+import { ModifierListEditorDialog } from "./modifier-list-editor-dialog";
 import { ModifierListsTable } from "./modifier-lists-table";
 import { AttachToItemsDialog } from "./attach-to-items-dialog";
 import {
@@ -236,7 +236,7 @@ export function ModifiersPanel({
         )}
       </div>
 
-      <ModifierListEditorSheet
+      <ModifierListEditorDialog
         open={editor.mode !== "closed"}
         catalogId={catalogId}
         catalogSlug={catalogSlug}
