@@ -63,6 +63,7 @@ export type LocaleDefinition = {
 const RECOMMENDED: LocaleDefinition[] = [
   { code: "ru", nativeName: "Русский", englishName: "Russian", direction: "ltr", recommended: true },
   { code: "uz-Latn", nativeName: "Oʻzbek tili", englishName: "Uzbek (Latin)", direction: "ltr", recommended: true },
+  { code: "uz-Cyrl", nativeName: "Ўзбек тили", englishName: "Uzbek (Cyrillic)", direction: "ltr", recommended: true },
   { code: "en", nativeName: "English", englishName: "English", direction: "ltr", recommended: true },
 ];
 
@@ -159,7 +160,6 @@ const OTHER: LocaleDefinition[] = [
   { code: "uk", nativeName: "Українська", englishName: "Ukrainian", direction: "ltr" },
   { code: "ur", nativeName: "اردو", englishName: "Urdu", direction: "rtl" },
   { code: "ug", nativeName: "ئۇيغۇرچە", englishName: "Uyghur", direction: "rtl" },
-  { code: "uz-Cyrl", nativeName: "Ўзбек тили", englishName: "Uzbek (Cyrillic)", direction: "ltr" },
   { code: "vi", nativeName: "Tiếng Việt", englishName: "Vietnamese", direction: "ltr" },
   { code: "cy", nativeName: "Cymraeg", englishName: "Welsh", direction: "ltr" },
   { code: "yi", nativeName: "ייִדיש", englishName: "Yiddish", direction: "rtl" },

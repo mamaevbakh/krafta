@@ -139,9 +139,10 @@ export function LocalePicker({
             // logic via this CSS variable. Capping CommandList to that
             // value means the picker never overflows the viewport AND
             // stays scrollable, regardless of where the trigger lives.
-            // Hard cap of 360px on tall screens so the dropdown stays
-            // visually proportional.
-            className="max-h-[min(360px,var(--radix-popper-available-height))]"
+            // Hard cap of 280px on tall screens — shows ~6 items at a
+            // glance, which keeps the dialog feeling compact rather than
+            // taking over the viewport.
+            className="max-h-[min(280px,var(--radix-popper-available-height))]"
           >
             <CommandEmpty>No language found.</CommandEmpty>
 
