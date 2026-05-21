@@ -1,0 +1,190 @@
+"use client";
+
+import * as React from "react";
+import { startTransition } from "react";
+import { Plus, Star, EyeOff, Eye, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import {
+  disableCatalogLocale,
+  enableCatalogLocale,
+} from "@/lib/translation/actions";
+
+import { AddLocaleDialog } from "./add-locale-dialog";
+
+/**
+ * Languages sidebar.
+ *
+ * Lists all locales for the catalog (enabled + disabled). Per locale:
+ *   - default star (✦) on the one is_default row
+ *   - enabled / disabled toggle (eye icon)
+ *   - locale code + display name
+ *   - text_direction badge for RTL languages
+ *
+ * Operations:
+ *   - "+ Add language" button → AddLocaleDialog → addCatalogLocale action
+ *   - Eye toggle → disableCatalogLocale / enableCatalogLocale
+ *   - (Phase 2: set-default-locale, change-display-name — currently view-only
+ *     after creation)
+ *
+ * The default locale CANNOT be disabled — that would orphan all translation
+ * rows. The toggle is hidden on the default row.
+ */
+
+export type CatalogLocale = {
+  id: string;
+  locale: string;
+  is_default: boolean;
+  is_enabled: boolean;
+  sort_order: number;
+  display_name: string;
+  text_direction: "ltr" | "rtl";
+};
+
+export type LanguagesSidebarProps = {
+  catalogId: string;
+  catalogSlug: string;
+  locales: CatalogLocale[];
+  onMutation: () => void;
+};
+
+export function LanguagesSidebar({
+  catalogId,
+  locales,
+  onMutation,
+}: LanguagesSidebarProps) {
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [pendingLocale, setPendingLocale] = React.useState<string | null>(null);
+
+  const handleToggle = React.useCallback(
+    async (locale: CatalogLocale) => {
+      if (locale.is_default) return; // never disable the default
+
+      setPendingLocale(locale.locale);
+      const action = locale.is_enabled
+        ? disableCatalogLocale
+        : enableCatalogLocale;
+      const result = await action({
+        catalogId,
+        locale: locale.locale,
+      });
+      setPendingLocale(null);
+
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(
+        locale.is_enabled
+          ? `${locale.display_name} disabled`
+          : `${locale.display_name} re-enabled`,
+      );
+      startTransition(() => onMutation());
+    },
+    [catalogId, onMutation],
+  );
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between px-4 py-3 md:px-5">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Languages
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={() => setAddOpen(true)}
+          aria-label="Add language"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
+
+      <ul className="flex flex-col">
+        {locales.length === 0 ? (
+          <li className="px-4 py-2 text-xs text-muted-foreground md:px-5">
+            No languages set up.
+          </li>
+        ) : (
+          locales.map((locale) => (
+            <li
+              key={locale.id}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-sm md:px-5",
+                locale.is_enabled ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {locale.is_default ? (
+                <Star
+                  className="size-3.5 shrink-0 fill-foreground text-foreground"
+                  aria-label="Default language"
+                />
+              ) : (
+                <span className="inline-block size-3.5 shrink-0" aria-hidden="true" />
+              )}
+
+              <div className="min-w-0 flex-1">
+                <div
+                  className={cn(
+                    "truncate text-sm font-medium",
+                    !locale.is_enabled && "line-through opacity-60",
+                  )}
+                >
+                  {locale.display_name}
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span>{locale.locale}</span>
+                  {locale.text_direction === "rtl" && (
+                    <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                      RTL
+                    </Badge>
+                  )}
+                  {!locale.is_enabled && (
+                    <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                      disabled
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {!locale.is_default && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => handleToggle(locale)}
+                  disabled={pendingLocale === locale.locale}
+                  aria-label={locale.is_enabled ? `Disable ${locale.display_name}` : `Enable ${locale.display_name}`}
+                >
+                  {pendingLocale === locale.locale ? (
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                  ) : locale.is_enabled ? (
+                    <EyeOff className="size-3.5" aria-hidden="true" />
+                  ) : (
+                    <Eye className="size-3.5" aria-hidden="true" />
+                  )}
+                </Button>
+              )}
+            </li>
+          ))
+        )}
+      </ul>
+
+      <AddLocaleDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        catalogId={catalogId}
+        existingLocales={locales.map((l) => l.locale)}
+        hasDefault={locales.some((l) => l.is_default)}
+        onCreated={() => {
+          setAddOpen(false);
+          startTransition(() => onMutation());
+        }}
+      />
+    </div>
+  );
+}
