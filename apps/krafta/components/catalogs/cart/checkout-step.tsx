@@ -16,7 +16,14 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
+import { isValidUzPhone } from "@/lib/cart/phone";
 import {
   type CurrencySettings,
   defaultCurrencySettings,
@@ -140,13 +147,17 @@ export function CartCheckoutStep({
     if (isPlacingOrder) return false;
     if (mode === "dine_in") return tableLabel.trim().length > 0;
     if (mode === "pickup") {
-      return pickupSchedule === "asap" || pickupAt.length > 0;
+      // Pickup phone is optional, but if typed, must validate. Lets the
+      // customer leave it blank while still catching typos.
+      const phoneOk =
+        pickupPhone.trim().length === 0 || isValidUzPhone(pickupPhone);
+      return (pickupSchedule === "asap" || pickupAt.length > 0) && phoneOk;
     }
-    // delivery
+    // delivery — phone is required (courier callback).
     return (
       deliveryAddress.trim().length > 0 &&
       deliveryName.trim().length > 0 &&
-      deliveryPhone.trim().length > 0 &&
+      isValidUzPhone(deliveryPhone) &&
       (deliverySchedule === "asap" || deliveryAt.length > 0)
     );
   }, [
@@ -158,6 +169,7 @@ export function CartCheckoutStep({
     isPlacingOrder,
     mode,
     pickupAt,
+    pickupPhone,
     pickupSchedule,
     tableLabel,
   ]);
@@ -318,13 +330,25 @@ export function CartCheckoutStep({
                 <FieldLabel htmlFor="pickup-phone">
                   {t("checkout.phone.label")}
                 </FieldLabel>
-                <Input
-                  id="pickup-phone"
-                  inputMode="tel"
-                  value={pickupPhone}
-                  onChange={(event) => setPickupPhone(event.target.value)}
-                  placeholder={t("checkout.phone.placeholder")}
-                />
+                {/* +998 stays pinned as a non-editable addon — Uzbek
+                    market only for v1, and a locked prefix removes the
+                    "which format do I type" cognitive load. The
+                    customer types just the 9-digit local part. Server
+                    re-normalizes via lib/cart/phone.ts so the DB stores
+                    canonical E.164 ("+998901234567"). */}
+                <InputGroup>
+                  <InputGroupAddon>
+                    <InputGroupText className="font-mono">+998</InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="pickup-phone"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    value={pickupPhone}
+                    onChange={(event) => setPickupPhone(event.target.value)}
+                    placeholder={t("checkout.phone.placeholder")}
+                  />
+                </InputGroup>
               </Field>
               <Field>
                 <FieldLabel htmlFor="pickup-note">
@@ -372,13 +396,19 @@ export function CartCheckoutStep({
                 <FieldLabel htmlFor="delivery-phone">
                   {t("checkout.phone.label")}
                 </FieldLabel>
-                <Input
-                  id="delivery-phone"
-                  inputMode="tel"
-                  value={deliveryPhone}
-                  onChange={(event) => setDeliveryPhone(event.target.value)}
-                  placeholder={t("checkout.phone.placeholder")}
-                />
+                <InputGroup>
+                  <InputGroupAddon>
+                    <InputGroupText className="font-mono">+998</InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="delivery-phone"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    value={deliveryPhone}
+                    onChange={(event) => setDeliveryPhone(event.target.value)}
+                    placeholder={t("checkout.phone.placeholder")}
+                  />
+                </InputGroup>
               </Field>
               <Field>
                 <FieldLabel>{t("checkout.schedule.when")}</FieldLabel>

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { ensureCartIdentity } from "./identity";
+import { normalizeUzPhone } from "./phone";
 import {
   computePricing,
   distributeProRata,
@@ -244,6 +245,14 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (scheduleType === "scheduled" && !pickupAt) {
       throw new Error("Scheduled pickup requires a pickup time.");
     }
+    // Phone is optional for pickup, but if the customer typed one, it
+    // must match the +998 shape so we can call them back if there's a
+    // problem with the order.
+    let normalizedPickupPhone: string | null = null;
+    if (recipientPhone && recipientPhone.trim()) {
+      normalizedPickupPhone = normalizeUzPhone(recipientPhone);
+      if (!normalizedPickupPhone) throw new Error("phone_invalid");
+    }
     const { error } = await supabase
       .schema("commerce")
       .from("fulfillment_pickup_details")
@@ -252,7 +261,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         schedule_type: scheduleType,
         pickup_at: scheduleType === "scheduled" ? pickupAt : null,
         recipient_name: recipientName?.trim() || null,
-        recipient_phone: recipientPhone?.trim() || null,
+        recipient_phone: normalizedPickupPhone,
         note: note?.trim() || null,
         placed_at: new Date().toISOString(),
       });
@@ -264,6 +273,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (!address.trim()) throw new Error("Delivery address is required.");
     if (!recipientName.trim()) throw new Error("Recipient name is required.");
     if (!recipientPhone.trim()) throw new Error("Recipient phone is required.");
+    // Phone is required for delivery — courier needs to call.
+    const normalizedDeliveryPhone = normalizeUzPhone(recipientPhone);
+    if (!normalizedDeliveryPhone) throw new Error("phone_invalid");
 
     const { error } = await supabase
       .schema("commerce")
@@ -271,7 +283,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       .insert({
         fulfillment_id: fulfillment.id,
         recipient_name: recipientName.trim(),
-        recipient_phone: recipientPhone.trim(),
+        recipient_phone: normalizedDeliveryPhone,
         address: { freeform: address.trim() },
         scheduled_for: scheduledFor,
         delivery_provider: "merchant",
