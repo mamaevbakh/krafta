@@ -581,6 +581,110 @@ const updateTranslationSchema = z.object({
   fields: z.record(z.string(), z.union([z.string(), z.null()])),
 });
 
+// =============================================================================
+// createTranslation — INSERT a fresh translation row when none exists yet
+// =============================================================================
+//
+// Previously the workbench forced the merchant through "Translate with AI"
+// before they could type a manual translation, because updateTranslation
+// requires an existing translationRowId. That gate is the wrong default —
+// a merchant who already speaks the target language should be able to type
+// the translation directly. This action handles the "no row yet" branch.
+//
+// Semantics:
+//   - Validates fields against FIELDS_BY_ENTITY[entityKind].
+//   - Fetches the parent's current_source_hash and stores it on the new
+//     row so drift detection starts in the "non-stale" state (we're
+//     capturing the source the merchant just translated against).
+//   - Marks the row is_ai_translated=false + last_edited_by=auth.uid()
+//     since this IS a human edit by definition.
+//   - Upsert on (entity_fk_column, locale) for idempotence — a parallel
+//     AI run that wrote in the milliseconds between client check and
+//     server insert won't crash this call.
+
+const createTranslationSchema = z.object({
+  catalogId: uuidSchema,
+  entityKind: entityKindSchema,
+  entityId: uuidSchema,
+  locale: localeSchema,
+  fields: z.record(z.string(), z.union([z.string(), z.null()])),
+});
+
+export async function createTranslation(
+  input: z.input<typeof createTranslationSchema>,
+): Promise<{ ok: true; translationRowId: string } | { ok: false; error: string }> {
+  const parsed = createTranslationSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" };
+  }
+  const { catalogId, entityKind, entityId, locale, fields } = parsed.data;
+  const supabase = await createClient();
+
+  // Sanitize to the entity's known fields; reject empty `name`.
+  const allowedFields = new Set(FIELDS_BY_ENTITY[entityKind]);
+  const sanitized: Record<string, string | null> = {};
+  for (const key of Object.keys(fields)) {
+    if (allowedFields.has(key)) sanitized[key] = fields[key];
+  }
+  if (!sanitized.name || (sanitized.name as string).trim().length === 0) {
+    return { ok: false, error: "name is required" };
+  }
+
+  // Pull parent's current_source_hash so the new row starts non-stale.
+  // Same parent-table map the worker uses. Null is acceptable — the
+  // parent's trigger may not have populated it yet (just-created row).
+  const parentTable = parentTableFor(entityKind);
+  const parentPkColumn = entityKind === "catalog" ? "id" : "id";
+  // For non-catalog entities we additionally pin catalog_id to defend
+  // against a tampered entityId pointing at an entity in another catalog.
+  // Catalog kind doesn't carry a catalog_id column on itself (it IS the
+  // catalog), so we pin id=entityId AND id=catalogId — both must match.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parentQuery = (supabase.from(parentTable as never) as any)
+    .select("current_source_hash")
+    .eq(parentPkColumn, entityId);
+  if (entityKind === "catalog") {
+    parentQuery.eq("id", catalogId);
+  } else {
+    parentQuery.eq("catalog_id", catalogId);
+  }
+  const { data: parentRow } = (await parentQuery.maybeSingle()) as {
+    data: { current_source_hash: string | null } | null;
+  };
+  if (!parentRow) {
+    return { ok: false, error: "parent row not found or access denied" };
+  }
+
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData.user?.id ?? null;
+
+  const tableName = translationTableFor(entityKind);
+  const fkColumn = translationFkColumnFor(entityKind);
+
+  // Cast: dynamic table name across 6 translation tables; the columns we
+  // touch are shared across all of them. Table + FK names validated by
+  // translationTableFor + translationFkColumnFor (typed switch).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dynamicFrom = supabase.from(tableName as never) as any;
+  const { data: inserted, error } = await dynamicFrom
+    .upsert(
+      {
+        [fkColumn]: entityId,
+        locale,
+        ...sanitized,
+        source_hash: parentRow.current_source_hash ?? null,
+        is_ai_translated: false,
+        last_edited_by: userId,
+      },
+      { onConflict: `${fkColumn},locale` },
+    )
+    .select("id")
+    .single();
+
+  if (error) return { ok: false, error: (error as { message: string }).message };
+  return { ok: true, translationRowId: (inserted as { id: string }).id };
+}
+
 export async function updateTranslation(
   input: z.input<typeof updateTranslationSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -679,6 +783,31 @@ function translationTableFor(entityKind: EntityKind): TranslationTableName {
       return "catalog_category_translations";
     case "catalog":
       return "catalog_translations";
+  }
+}
+
+type ParentTableName =
+  | "items"
+  | "item_variations"
+  | "modifiers"
+  | "modifier_lists"
+  | "catalog_categories"
+  | "catalogs";
+
+function parentTableFor(entityKind: EntityKind): ParentTableName {
+  switch (entityKind) {
+    case "item":
+      return "items";
+    case "variation":
+      return "item_variations";
+    case "modifier":
+      return "modifiers";
+    case "modifier_list":
+      return "modifier_lists";
+    case "category":
+      return "catalog_categories";
+    case "catalog":
+      return "catalogs";
   }
 }
 

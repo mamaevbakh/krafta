@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import {
+  createTranslation,
   enqueueTranslationJob,
   updateEntitySourceText,
   updateTranslation,
@@ -248,15 +249,6 @@ export function EntityTranslationEditDialog({
       return false;
     }
 
-    if (!form.serverRow) {
-      if (!options.silent) {
-        toast.error(
-          `Use "Translate with AI" first for ${locale.display_name}, then edit the result.`,
-        );
-      }
-      return false;
-    }
-
     setSavingLocales((prev) => new Set(prev).add(locale.locale));
     const payload: Record<string, string | null> = { name };
     if (fields.includes("description")) {
@@ -264,11 +256,24 @@ export function EntityTranslationEditDialog({
       payload.description = desc.length === 0 ? null : desc;
     }
 
-    const result = await updateTranslation({
-      entityKind,
-      translationRowId: form.serverRow.id,
-      fields: payload,
-    });
+    // Two save paths: UPDATE an existing translation row, or INSERT a
+    // fresh one when the merchant typed the translation directly without
+    // first running "Translate with AI". The previous gate forced every
+    // merchant through AI; createTranslation lifts that — merchants who
+    // already speak the target language can just type.
+    const result = form.serverRow
+      ? await updateTranslation({
+          entityKind,
+          translationRowId: form.serverRow.id,
+          fields: payload,
+        })
+      : await createTranslation({
+          catalogId,
+          entityKind,
+          entityId: entity.id,
+          locale: locale.locale,
+          fields: payload,
+        });
     setSavingLocales((prev) => {
       const next = new Set(prev);
       next.delete(locale.locale);
@@ -592,7 +597,7 @@ export function EntityTranslationEditDialog({
                         <Button
                           size="sm"
                           onClick={() => handleSaveLocale(locale)}
-                          disabled={!form.dirty || isSaving || isMissing}
+                          disabled={!form.dirty || isSaving}
                           className="h-7 text-xs font-normal"
                         >
                           {isSaving ? (
@@ -624,13 +629,8 @@ export function EntityTranslationEditDialog({
                           onChange={(e) =>
                             updateField(locale.locale, "name", e.target.value)
                           }
-                          placeholder={
-                            isMissing
-                              ? "Use 'Translate with AI' first"
-                              : entity.name
-                          }
+                          placeholder={entity.name}
                           dir={locale.text_direction}
-                          disabled={isMissing}
                         />
                       </div>
                       {fields.includes("description") && (
@@ -651,13 +651,8 @@ export function EntityTranslationEditDialog({
                                 e.target.value,
                               )
                             }
-                            placeholder={
-                              isMissing
-                                ? "—"
-                                : entity.description ?? "Optional"
-                            }
+                            placeholder={entity.description ?? "Optional"}
                             dir={locale.text_direction}
-                            disabled={isMissing}
                             rows={3}
                           />
                         </div>

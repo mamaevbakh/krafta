@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import {
+  createTranslation,
   enqueueTranslationJob,
   updateTranslation,
   updateItemSourceText,
@@ -308,25 +309,24 @@ export function TranslationEditDialog({
       return false;
     }
 
-    // Phase 1 limitation: manual translation of a fresh locale must first
-    // go through AI (which creates the row), then merchant edits.
-    if (!form.serverRow) {
-      toast.error(
-        "Use 'Translate with AI' first for this language, then edit the result.",
-      );
-      setSaving((prev) => {
-        const next = new Set(prev);
-        next.delete(locale.locale);
-        return next;
-      });
-      return false;
-    }
-
-    const result = await updateTranslation({
-      entityKind: "item",
-      translationRowId: form.serverRow.id,
-      fields,
-    });
+    // Two save paths: UPDATE an existing translation row, or INSERT a
+    // fresh one when the merchant typed directly without first running
+    // "Translate with AI". The previous gate forced every merchant
+    // through AI; createTranslation lifts that — merchants who already
+    // speak the target language can just type and save.
+    const result = form.serverRow
+      ? await updateTranslation({
+          entityKind: "item",
+          translationRowId: form.serverRow.id,
+          fields,
+        })
+      : await createTranslation({
+          catalogId,
+          entityKind: "item",
+          entityId: item.id,
+          locale: locale.locale,
+          fields,
+        });
     setSaving((prev) => {
       const next = new Set(prev);
       next.delete(locale.locale);
@@ -685,9 +685,6 @@ export function TranslationEditDialog({
                             updateField(locale.locale, "name", e.target.value)
                           }
                           placeholder={`${item.name} (${locale.display_name})`}
-                          disabled={
-                            !serverRow && !form.dirty && form.name === ""
-                          }
                           lang={locale.locale}
                         />
                       </div>
