@@ -116,7 +116,7 @@ function Combobox({
                     />
                     <span className="flex-1 truncate">{option.label}</span>
                     {option.hint ? (
-                      <span className="text-muted-foreground ml-2 text-xs">
+                      <span className="ml-3 font-mono text-[10px] uppercase tabular-nums text-muted-foreground/70">
                         {option.hint}
                       </span>
                     ) : null}
