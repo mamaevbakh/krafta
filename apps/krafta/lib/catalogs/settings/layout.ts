@@ -22,7 +22,10 @@ export type ItemCardVariant =
   | "card-minimal"
   | "card-photo-row"
   | "card-default"
-  | "card-glass-blur";
+  | "card-glass-blur"
+  // ~48px photoless row, dense — for catalogs with no photos or
+  // operator preference for list-density (KRA-36 / S9).
+  | "card-row-compact";
 
 export type ItemDetailVariant =
   | "item-sheet"

@@ -21,6 +21,7 @@ import { BigPhotoCard } from "@/components/catalogs/cards/card-photo-big";
 import { CustomerItemCard } from "@/components/catalogs/cards/card-default";
 import { PhotoRowCard } from "@/components/catalogs/cards/card-photo-row";
 import { GlassBlurCard } from "@/components/catalogs/cards/card-glass-blur";
+import { RowCompactCard } from "@/components/catalogs/cards/card-row-compact";
 
 // Sections
 import { SectionBasic } from "@/components/catalogs/sections/section-basic";
@@ -135,6 +136,7 @@ const itemCardRegistry: Record<
   "card-photo-row": PhotoRowCard,
   "card-default": CustomerItemCard,
   "card-glass-blur": GlassBlurCard,
+  "card-row-compact": RowCompactCard,
 };
 
 export const headerVariants = Object.keys(

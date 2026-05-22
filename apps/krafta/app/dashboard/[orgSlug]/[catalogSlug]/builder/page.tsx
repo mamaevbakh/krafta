@@ -37,6 +37,7 @@ const ITEM_CARD_LABELS: Record<ItemCardVariant, string> = {
   "card-minimal": "Minimal",
   "card-default": "Default",
   "card-glass-blur": "Glass Blur",
+  "card-row-compact": "Compact Row",
 };
 
 const NAV_LABELS: Record<CategoryNavVariant, string> = {
