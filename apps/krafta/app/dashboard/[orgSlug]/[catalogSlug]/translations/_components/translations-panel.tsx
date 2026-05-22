@@ -24,7 +24,6 @@ import {
 import { useAnimatedNumber } from "@/lib/hooks/use-animated-number";
 import {
   DEFAULT_ITEMS_FILTER,
-  classifyTranslation,
   type ItemsFilter,
 } from "./items-filter-chips";
 
@@ -103,10 +102,10 @@ export function TranslationsPanel({
 }: TranslationsPanelProps) {
   const router = useRouter();
   // quota + completeness are still fetched (drive future cost-tracking and
-  // server-side completeness signal surfaces) but the current header reads
-  // its numbers from classifyTranslation so the Overview and Items tabs
-  // never disagree. Kept on the props so the RSC payload stays stable when
-  // those surfaces light up.
+  // server-side completeness signal surfaces) but the current header
+  // derives its numbers from the loaded entity arrays directly so the
+  // Overview and per-tab Find buttons never disagree. Kept on the props
+  // so the RSC payload stays stable when those surfaces light up.
   void quota;
   void completeness;
 
@@ -137,12 +136,76 @@ export function TranslationsPanel({
     [enabledLocales],
   );
 
-  // Build per-locale completeness for the Overview tab. We derive
-  // "needs review / translated / not translated" directly from the items
-  // payload (same classifier the Items tab uses) so the two surfaces never
-  // disagree. The completeness VIEW is a useful future signal but its
-  // semantics are "AI vs human" not "needs review vs done", so we don't
-  // depend on it here.
+  // Build the payload list the master "Translate everything missing"
+  // CTA fans out over. One entry per entity kind that exists on this
+  // catalog. KRA-97: previously the button hardcoded entityKind="item"
+  // and ignored the other four kinds — Phase 2 entity translations were
+  // silently left untranslated even though the button claimed to cover
+  // everything.
+  const translateEverythingEntities = React.useMemo(() => {
+    return [
+      {
+        kind: "item" as const,
+        singularLabel: "item",
+        pluralLabel: "items",
+        rows: items.map((i) => ({
+          id: i.id,
+          translations: i.item_translations,
+        })),
+      },
+      {
+        kind: "category" as const,
+        singularLabel: "category",
+        pluralLabel: "categories",
+        rows: categories.map((c) => ({
+          id: c.id,
+          translations: c.translations,
+        })),
+      },
+      {
+        kind: "variation" as const,
+        singularLabel: "variation",
+        pluralLabel: "variations",
+        rows: variations.map((v) => ({
+          id: v.id,
+          translations: v.translations,
+        })),
+      },
+      {
+        kind: "modifier_list" as const,
+        singularLabel: "modifier list",
+        pluralLabel: "modifier lists",
+        rows: modifierLists.map((m) => ({
+          id: m.id,
+          translations: m.translations,
+        })),
+      },
+      {
+        kind: "modifier" as const,
+        singularLabel: "modifier",
+        pluralLabel: "modifiers",
+        rows: modifiers.map((m) => ({
+          id: m.id,
+          translations: m.translations,
+        })),
+      },
+    ];
+  }, [items, categories, variations, modifierLists, modifiers]);
+
+  // Build per-locale completeness for the Overview tab + hero band.
+  //
+  // KRA-97 Gap 2: previously this counted Items only, so a catalog with
+  // 100% items translated reported "100% translated" even when categories,
+  // variations, and modifiers were still in the source locale. Now we
+  // count every translatable row across all 5 entity kinds so the hero
+  // band's "% translated" matches what the merchant actually sees on
+  // each tab's "Translate N missing" buttons.
+  //
+  // The classifier is intentionally simple — a row either exists for
+  // the (entity, locale) pair or it doesn't. Drift / AI vs human is
+  // metadata, not a completeness signal (same semantics as the Items
+  // tab; see classifyTranslation in items-filter-chips.ts for the
+  // history).
   const overviewCompleteness = React.useMemo<OverviewCompleteness>(() => {
     const byLocale = new Map<
       string,
@@ -152,22 +215,49 @@ export function TranslationsPanel({
         total: number;
       }
     >();
+
+    // Per-kind row → translation list shape. Items use
+    // `item_translations` because the page-level fetch nests under that
+    // key; Phase 2 kinds use the flattened `translations` shape from
+    // page.tsx. We normalise here so the counter doesn't care which
+    // upstream shape it's looking at.
+    const allRows: Array<{ translations: ReadonlyArray<{ locale: string }> }> = [
+      ...items.map((i) => ({ translations: i.item_translations })),
+      ...categories.map((c) => ({ translations: c.translations })),
+      ...variations.map((v) => ({ translations: v.translations })),
+      ...modifierLists.map((m) => ({ translations: m.translations })),
+      ...modifiers.map((m) => ({ translations: m.translations })),
+    ];
+
     for (const locale of targetLocales) {
       let translated = 0;
       let notTranslated = 0;
-      for (const item of items) {
-        const bucket = classifyTranslation(item, locale.locale);
-        if (bucket === "translated") translated += 1;
+      for (const row of allRows) {
+        const hit = row.translations.find((tr) => tr.locale === locale.locale);
+        if (hit) translated += 1;
         else notTranslated += 1;
       }
       byLocale.set(locale.locale, {
         translated,
         notTranslated,
-        total: items.length,
+        total: allRows.length,
       });
     }
     return { byLocale };
-  }, [items, targetLocales]);
+  }, [items, categories, variations, modifierLists, modifiers, targetLocales]);
+
+  // Total translatable source rows across the whole catalog. KRA-97:
+  // previously this was `items.length` only, so the hero band's "X of Y
+  // translation rows are done" denominator left out categories /
+  // variations / modifiers — making the % overstate completeness. Now Y
+  // sums all five entity kinds so the denominator matches what's
+  // actually translatable.
+  const totalSourceRows =
+    items.length +
+    categories.length +
+    variations.length +
+    modifierLists.length +
+    modifiers.length;
 
   // Aggregate totals for the persistent header hero band. Sums per-locale
   // buckets across every target language so the merchant sees "your
@@ -184,14 +274,18 @@ export function TranslationsPanel({
         notTranslated += row.notTranslated;
         total += row.total;
       } else {
-        notTranslated += items.length;
-        total += items.length;
+        // Defensive fallback: locale missing from the completeness map.
+        // Treat its total as the catalog's source row count, none
+        // translated. Builds correct math even if a race lets a locale
+        // slip through without an entry.
+        notTranslated += totalSourceRows;
+        total += totalSourceRows;
       }
     }
     const completePct =
       total === 0 ? 0 : Math.round((translated / total) * 100);
     return { translated, notTranslated, total, completePct };
-  }, [targetLocales, overviewCompleteness, items.length]);
+  }, [targetLocales, overviewCompleteness, totalSourceRows]);
 
   // Items pill label — plain "Items", no counter. The header hero band
   // already carries the X/Y count, the % completion, the linear bar AND
@@ -199,8 +293,11 @@ export function TranslationsPanel({
   const itemsLabel = "Items";
 
   // Show the hero band only when there's actual data to summarise.
-  // No target languages OR no items → just the breadcrumb on top.
-  const showHero = targetLocales.length > 0 && items.length > 0;
+  // No target languages OR an empty catalog (no rows of any kind) →
+  // just the breadcrumb on top. KRA-97: previously gated on items.length
+  // alone, hiding the hero for catalogs that have categories or
+  // modifier_lists but no items yet (rare but possible during setup).
+  const showHero = targetLocales.length > 0 && totalSourceRows > 0;
 
   // Overview tab → Items tab navigation. Sets both axes + flips tab.
   const handleJumpToItems = React.useCallback(
@@ -341,13 +438,15 @@ export function TranslationsPanel({
                   </div>
 
                   {/* Right: master CTA. Same slot as "Add item" / "Create
-                      category" on the sibling pages. */}
+                      category" on the sibling pages. KRA-97: fans out
+                      across all 5 entity kinds so "Translate everything
+                      missing (N)" actually means "everything." */}
                   {headerTotals.notTranslated > 0 && (
                     <div className="shrink-0">
                       <TranslateEverythingButton
                         catalogId={catalogId}
                         targetLocales={targetLocales}
-                        items={items}
+                        entities={translateEverythingEntities}
                         onEnqueued={refreshAfterMutation}
                         isAiBusy={hasActivity}
                       />

@@ -57,6 +57,10 @@ export type EntityRowForTable = {
   description: string | null;
   context: string | null;
   is_active: boolean;
+  /** Current hash of the source row's translatable fields. Compared against
+   *  each translation row's `source_hash` to detect drift (KRA-90 trigger).
+   *  Null when the trigger hasn't fired yet (just-created row). */
+  current_source_hash: string | null;
   translations: EntityTranslationLite[];
 };
 
@@ -204,16 +208,40 @@ export function EntityTranslationsTab({
                   const t = row.translations.find(
                     (tr) => tr.locale === locale.locale,
                   );
+                  // Drift detection (KRA-97 Gap 4): a translation
+                  // exists but its captured source_hash no longer
+                  // matches the parent's current_source_hash, meaning
+                  // the source row was edited after this translation
+                  // was generated. Surfaced as a subtle amber dot
+                  // beside the translated name — discoverable via the
+                  // row's own dialog where the re-translate button
+                  // lives.
+                  const isDrift =
+                    !!t &&
+                    !!row.current_source_hash &&
+                    !!t.source_hash &&
+                    t.source_hash !== row.current_source_hash;
                   return (
                     <TableCell
                       key={locale.locale}
                       className="max-w-[280px] align-top"
                     >
                       {t ? (
-                        <div className="flex min-w-0 max-w-[280px] flex-col">
+                        <div className="flex min-w-0 max-w-[280px] items-start gap-1.5">
+                          {isDrift && (
+                            <span
+                              className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500"
+                              aria-hidden="true"
+                              title="Source changed since translation — may need re-translate"
+                            />
+                          )}
                           <span
-                            className="block truncate text-sm font-medium"
-                            title={t.name}
+                            className="block min-w-0 truncate text-sm font-medium"
+                            title={
+                              isDrift
+                                ? `${t.name} (source changed — may need re-translate)`
+                                : t.name
+                            }
                           >
                             {t.name}
                           </span>
@@ -260,6 +288,7 @@ function toDialogEntity(row: EntityRowForTable): EntityForDialog {
     name: row.name,
     description: row.description,
     context: row.context,
+    current_source_hash: row.current_source_hash,
     translations: row.translations,
   };
 }

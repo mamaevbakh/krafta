@@ -17,28 +17,55 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { enqueueTranslationJob } from "@/lib/translation/actions";
+import type { EntityKind } from "@/lib/translation/schemas";
 
 import type { CatalogLocale } from "./languages-sidebar";
-import type { ItemRow } from "./items-tab";
 
 /**
- * Master "do it all" CTA — translates every missing or stale row across
- * every target language with one click.
+ * Master "do it all" CTA — translates every missing row across every
+ * target language AND every entity kind with one click.
  *
  * Lives in the panel header so it's reachable from any tab. Built on
  * BorderBeamButton so the glow telegraphs "AI" without needing a separate
  * label. The button is hidden entirely when there's nothing to enqueue —
  * a quiet header reads "all caught up" without needing a banner.
  *
- * The enqueue loop mirrors the per-language TranslateAllButton's
- * "missing + stale, skip human-edited" logic, fanning out one job per
- * target language so the worker can process each independently.
+ * KRA-97: extended to fan out across all five entity kinds (items,
+ * categories, variations, modifiers, modifier lists). Previously the
+ * button hardcoded `entityKind: "item"` and silently left the other four
+ * kinds untranslated, so a "100% translated" claim was misleading.
+ * The enqueue loop now dispatches one job per (locale × kind) pair.
  */
+
+/**
+ * One entity-kind payload the button can fan out over.
+ *
+ * `rows` is anything with an id + a translations array. We don't take a
+ * narrower type because each tab carries a slightly different EntityRow
+ * shape (Items has more fields than Variations etc.) and there's no
+ * shared interface for them across the workbench.
+ */
+export type TranslateEverythingEntityPayload = {
+  kind: EntityKind;
+  /** Singular noun used in confirmation dialog ("item", "category", …). */
+  singularLabel: string;
+  /** Plural noun used in confirmation dialog ("items", "categories", …). */
+  pluralLabel: string;
+  rows: ReadonlyArray<{
+    id: string;
+    translations: ReadonlyArray<{ locale: string }>;
+  }>;
+};
 
 export type TranslateEverythingButtonProps = {
   catalogId: string;
   targetLocales: CatalogLocale[];
-  items: ItemRow[];
+  /**
+   * All entity kinds this catalog has. Each entry contributes its own
+   * "missing translation rows" to the master count + enqueue fan-out.
+   * Empty arrays are fine — they contribute zero.
+   */
+  entities: TranslateEverythingEntityPayload[];
   onEnqueued: () => void;
   /** Optional className passed through to the BorderBeamButton's Button. */
   className?: string;
@@ -55,10 +82,28 @@ export type TranslateEverythingButtonProps = {
   isAiBusy?: boolean;
 };
 
+/**
+ * Per (locale × kind) breakdown the dialog and the enqueue loop both
+ * consume. Built once via useMemo and reused so the displayed count
+ * matches the enqueued count byte-for-byte.
+ */
+type KindBreakdown = {
+  kind: EntityKind;
+  singularLabel: string;
+  pluralLabel: string;
+  entityIds: string[];
+};
+
+type LocaleBreakdown = {
+  locale: CatalogLocale;
+  perKind: KindBreakdown[];
+  totalForLocale: number;
+};
+
 export function TranslateEverythingButton({
   catalogId,
   targetLocales,
-  items,
+  entities,
   onEnqueued,
   className,
   isAiBusy = false,
@@ -66,34 +111,41 @@ export function TranslateEverythingButton({
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Compute the work that will be enqueued per language. Only truly
-  // missing rows get queued — anything else counts as already
-  // translated. The previous "missing + stale" model was dropped along
-  // with the "Needs review" surface; staleness is no longer a status
-  // the merchant sees, and silently enqueuing stale rows would cause
-  // the displayed count (matches "items where no row exists") to
-  // diverge from what actually gets queued. When auto-retranslate-on-
-  // source-change ships as a separate feature, stale rows will be
-  // handled there rather than batched into this button.
-  const perLanguage = React.useMemo(() => {
-    const out: Array<{ locale: CatalogLocale; entityIds: string[] }> = [];
+  // Compute the work that will be enqueued per (locale, kind). Only
+  // truly-missing rows get queued — anything else counts as already
+  // translated. Staleness is no longer surfaced as a status; the
+  // future auto-retranslate-on-source-change feature handles that.
+  const perLanguage = React.useMemo<LocaleBreakdown[]>(() => {
+    const out: LocaleBreakdown[] = [];
     for (const locale of targetLocales) {
-      const entityIds: string[] = [];
-      for (const item of items) {
-        const t = item.item_translations.find(
-          (tr) => tr.locale === locale.locale,
-        );
-        if (!t) {
-          entityIds.push(item.id);
+      const perKind: KindBreakdown[] = [];
+      let totalForLocale = 0;
+      for (const entity of entities) {
+        const entityIds: string[] = [];
+        for (const row of entity.rows) {
+          if (!row.translations.find((tr) => tr.locale === locale.locale)) {
+            entityIds.push(row.id);
+          }
+        }
+        if (entityIds.length > 0) {
+          perKind.push({
+            kind: entity.kind,
+            singularLabel: entity.singularLabel,
+            pluralLabel: entity.pluralLabel,
+            entityIds,
+          });
+          totalForLocale += entityIds.length;
         }
       }
-      if (entityIds.length > 0) out.push({ locale, entityIds });
+      if (totalForLocale > 0) {
+        out.push({ locale, perKind, totalForLocale });
+      }
     }
     return out;
-  }, [targetLocales, items]);
+  }, [targetLocales, entities]);
 
   const grandTotal = React.useMemo(
-    () => perLanguage.reduce((acc, p) => acc + p.entityIds.length, 0),
+    () => perLanguage.reduce((acc, p) => acc + p.totalForLocale, 0),
     [perLanguage],
   );
 
@@ -107,19 +159,25 @@ export function TranslateEverythingButton({
     setSubmitting(true);
     let totalEnqueued = 0;
     let firstError: string | null = null;
-    for (const { locale, entityIds } of perLanguage) {
-      const result = await enqueueTranslationJob({
-        catalogId,
-        targetLocale: locale.locale,
-        entityKind: "item",
-        entityIds,
-        force: false,
-      });
-      if (!result.ok) {
-        firstError = result.error;
-        break;
+    // Fan out: per locale, per kind. Sequential within a locale so a
+    // single failure short-circuits the rest of the batch (and the
+    // partial enqueue is still useful — what landed is queued, what
+    // didn't shows in the toast).
+    outer: for (const { locale, perKind } of perLanguage) {
+      for (const { kind, entityIds } of perKind) {
+        const result = await enqueueTranslationJob({
+          catalogId,
+          targetLocale: locale.locale,
+          entityKind: kind,
+          entityIds,
+          force: false,
+        });
+        if (!result.ok) {
+          firstError = result.error;
+          break outer;
+        }
+        totalEnqueued += result.enqueued ?? 0;
       }
-      totalEnqueued += result.enqueued ?? 0;
     }
     setSubmitting(false);
     setOpen(false);
@@ -131,7 +189,7 @@ export function TranslateEverythingButton({
     toast.success(
       totalEnqueued === 0
         ? "Nothing new to translate."
-        : `Queued ${totalEnqueued} translations across ${perLanguage.length} languages.`,
+        : `Queued ${totalEnqueued} translations across ${perLanguage.length} ${perLanguage.length === 1 ? "language" : "languages"}.`,
     );
     onEnqueued();
   };
@@ -197,13 +255,25 @@ export function TranslateEverythingButton({
                   language{perLanguage.length === 1 ? "" : "s"}:
                 </p>
                 <ul className="ml-4 list-disc text-xs text-muted-foreground">
-                  {perLanguage.map(({ locale, entityIds }) => (
+                  {perLanguage.map(({ locale, perKind, totalForLocale }) => (
                     <li key={locale.locale}>
                       <span className="font-medium text-foreground">
                         {locale.display_name}
                       </span>{" "}
-                      — {entityIds.length} item
-                      {entityIds.length === 1 ? "" : "s"}
+                      — {totalForLocale} total
+                      {/* Per-kind breakdown nested under the locale —
+                          gives the merchant a sense of where the work
+                          lives ("3 items, 2 categories, 5 variations"). */}
+                      <span className="ml-1 text-muted-foreground/80">
+                        (
+                        {perKind
+                          .map(
+                            (k) =>
+                              `${k.entityIds.length} ${k.entityIds.length === 1 ? k.singularLabel : k.pluralLabel}`,
+                          )
+                          .join(", ")}
+                        )
+                      </span>
                     </li>
                   ))}
                 </ul>

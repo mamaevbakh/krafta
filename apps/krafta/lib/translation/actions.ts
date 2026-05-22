@@ -218,6 +218,109 @@ export async function updateItemSourceText(
   return { ok: true };
 }
 
+// =============================================================================
+// Phase 2 source-text edits — generic update across the 4 non-item kinds
+// =============================================================================
+
+const updateEntitySourceTextSchema = z.object({
+  catalogId: uuidSchema,
+  entityKind: z.enum(["variation", "modifier", "modifier_list", "category"] as const),
+  entityId: uuidSchema,
+  /** Required. Trimmed; empty string fails validation. */
+  name: z.string().trim().min(1).max(500),
+  /** Optional. Only honored when the entity kind has a description column
+   *  (currently `category` only). Pass `null` to clear. */
+  description: z.string().trim().nullable().optional(),
+});
+
+/**
+ * Update a Phase 2 entity's source text (name, and `description` where the
+ * entity has one). KRA-97 Gap 3: the entity translation edit dialog
+ * previously left the source pane read-only with a "edit on the entity's
+ * own page" note. Wiring this action makes the dialog symmetric with the
+ * Items dialog — the merchant can correct a typo in the source row
+ * without leaving the translation workbench.
+ *
+ * Scoped narrowly to the translatable text fields. Variation prices,
+ * modifier prices, list min/max, category positions etc. stay out of
+ * bounds — those belong to the regular entity editors. We dispatch
+ * directly to the parent table (no super-RPC) because each kind has only
+ * 1-2 mutable columns here and there are no child rows to keep atomic.
+ *
+ * Drift is intentional and matches updateItemSourceText: the AFTER
+ * UPDATE trigger on each parent table recomputes current_source_hash;
+ * existing translation rows now disagree with the new hash and surface
+ * as "drift" in the table. The dialog already exposes a re-translate
+ * button per locale so the merchant can immediately fan out.
+ */
+export async function updateEntitySourceText(
+  input: z.input<typeof updateEntitySourceTextSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = updateEntitySourceTextSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "invalid input",
+    };
+  }
+  const { catalogId, entityKind, entityId, name, description } = parsed.data;
+  const supabase = await createClient();
+
+  // Per-kind dispatch. The four parent tables share `name` but differ in
+  // whether they carry `description` and on the catalog scope column
+  // name. The catalog-id pin guards against tampered entityIds pointing
+  // at an entity in a catalog the user can read but not write.
+  let error: { message: string } | null;
+  switch (entityKind) {
+    case "category": {
+      // catalog_categories has both name + description.
+      const payload: Record<string, string | null> = { name };
+      if (description !== undefined) {
+        payload.description = description;
+      }
+      const res = await supabase
+        .from("catalog_categories")
+        .update(payload)
+        .eq("id", entityId)
+        .eq("catalog_id", catalogId);
+      error = res.error;
+      break;
+    }
+    case "modifier_list": {
+      const res = await supabase
+        .from("modifier_lists")
+        .update({ name })
+        .eq("id", entityId)
+        .eq("catalog_id", catalogId);
+      error = res.error;
+      break;
+    }
+    case "modifier": {
+      const res = await supabase
+        .from("modifiers")
+        .update({ name })
+        .eq("id", entityId)
+        .eq("catalog_id", catalogId);
+      error = res.error;
+      break;
+    }
+    case "variation": {
+      const res = await supabase
+        .from("item_variations")
+        .update({ name })
+        .eq("id", entityId)
+        .eq("catalog_id", catalogId);
+      error = res.error;
+      break;
+    }
+  }
+
+  if (error) return { ok: false, error: error.message };
+
+  await updateCatalogByIdAndSlug({ catalogId });
+  return { ok: true };
+}
+
 const updateCatalogLocaleSchema = z.object({
   catalogId: uuidSchema,
   locale: localeSchema,

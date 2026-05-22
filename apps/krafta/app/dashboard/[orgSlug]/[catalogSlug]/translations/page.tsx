@@ -79,8 +79,8 @@ export default async function TranslationsPage({ params }: PageProps) {
     supabase
       .from("catalog_categories")
       .select(
-        `id, name, slug, position, is_active,
-         catalog_category_translations(id, locale, name, description, is_ai_translated)`,
+        `id, name, slug, position, is_active, current_source_hash,
+         catalog_category_translations(id, locale, name, description, is_ai_translated, source_hash)`,
       )
       .eq("catalog_id", catalog.id)
       .order("position", { ascending: true })
@@ -88,26 +88,26 @@ export default async function TranslationsPage({ params }: PageProps) {
     supabase
       .from("item_variations")
       .select(
-        `id, name, ordinal, is_active, item_id,
+        `id, name, ordinal, is_active, item_id, current_source_hash,
          items!inner(name, is_active),
-         variation_translations(id, locale, name, is_ai_translated)`,
+         variation_translations(id, locale, name, is_ai_translated, source_hash)`,
       )
       .eq("catalog_id", catalog.id)
       .order("ordinal", { ascending: true }),
     supabase
       .from("modifier_lists")
       .select(
-        `id, name, modifier_type, is_active,
-         modifier_list_translations(id, locale, name, is_ai_translated)`,
+        `id, name, modifier_type, is_active, current_source_hash,
+         modifier_list_translations(id, locale, name, is_ai_translated, source_hash)`,
       )
       .eq("catalog_id", catalog.id)
       .order("name", { ascending: true }),
     supabase
       .from("modifiers")
       .select(
-        `id, name, ordinal, is_active, modifier_list_id,
+        `id, name, ordinal, is_active, modifier_list_id, current_source_hash,
          modifier_lists!inner(name),
-         modifier_translations(id, locale, name, is_ai_translated)`,
+         modifier_translations(id, locale, name, is_ai_translated, source_hash)`,
       )
       .eq("catalog_id", catalog.id)
       .order("ordinal", { ascending: true }),
@@ -149,12 +149,14 @@ export default async function TranslationsPage({ params }: PageProps) {
       // (the storefront doesn't show it either way), so collapse both into
       // one display flag here.
       is_active: v.is_active && (parent?.is_active ?? true),
+      current_source_hash: v.current_source_hash,
       translations: (v.variation_translations ?? []).map((t) => ({
         id: t.id,
         locale: t.locale,
         name: t.name,
         description: null as string | null,
         is_ai_translated: t.is_ai_translated,
+        source_hash: t.source_hash,
       })),
     };
   });
@@ -168,12 +170,14 @@ export default async function TranslationsPage({ params }: PageProps) {
       description: null as string | null,
       context: parent?.name ?? null,
       is_active: m.is_active,
+      current_source_hash: m.current_source_hash,
       translations: (m.modifier_translations ?? []).map((t) => ({
         id: t.id,
         locale: t.locale,
         name: t.name,
         description: null as string | null,
         is_ai_translated: t.is_ai_translated,
+        source_hash: t.source_hash,
       })),
     };
   });
@@ -184,12 +188,14 @@ export default async function TranslationsPage({ params }: PageProps) {
     description: null as string | null,
     context: l.modifier_type === "text" ? "Free-text list" : null,
     is_active: l.is_active,
+    current_source_hash: l.current_source_hash,
     translations: (l.modifier_list_translations ?? []).map((t) => ({
       id: t.id,
       locale: t.locale,
       name: t.name,
       description: null as string | null,
       is_ai_translated: t.is_ai_translated,
+      source_hash: t.source_hash,
     })),
   }));
 
@@ -199,12 +205,14 @@ export default async function TranslationsPage({ params }: PageProps) {
     description: null as string | null,
     context: null,
     is_active: c.is_active,
+    current_source_hash: c.current_source_hash,
     translations: (c.catalog_category_translations ?? []).map((t) => ({
       id: t.id,
       locale: t.locale,
       name: t.name,
       description: t.description,
       is_ai_translated: t.is_ai_translated,
+      source_hash: t.source_hash,
     })),
   }));
 
