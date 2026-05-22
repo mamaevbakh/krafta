@@ -93,9 +93,31 @@ SELECT cron.schedule(
 -- =============================================================================
 -- 3. Verification helper
 -- =============================================================================
+--
+-- The COMMENT ON SCHEMA cron is purely documentation, but only the cron
+-- schema owner is allowed to set it. Supabase branches inherit ownership
+-- from the parent project — on the dev branch the postgres role happens
+-- to own cron, but on the main production project the schema is owned by
+-- `supabase_admin`, so this statement fails with "must be owner of schema
+-- cron" (SQLSTATE 42501) and aborts every subsequent migration in the
+-- pipeline.
+--
+-- Wrap in a DO block that swallows insufficient_privilege so the comment
+-- still lands when permissions allow, and the migration succeeds either
+-- way. The actual cron jobs (translation-worker-tick + daily reset) are
+-- already scheduled in section 2 above — that's what matters for runtime.
 
-COMMENT ON SCHEMA cron IS
-  'Krafta cron jobs:
-   - translation-worker-tick      (every minute) — calls translate-worker edge function
-   - translation-quota-daily-reset (00:00 UTC daily) — resets catalog_translation_quotas.used_today
-   plus any pre-existing jobs from embedding/search infrastructure.';
+DO $$
+BEGIN
+  EXECUTE $cmt$
+    COMMENT ON SCHEMA cron IS
+      'Krafta cron jobs:
+       - translation-worker-tick      (every minute) — calls translate-worker edge function
+       - translation-quota-daily-reset (00:00 UTC daily) — resets catalog_translation_quotas.used_today
+       plus any pre-existing jobs from embedding/search infrastructure.'
+  $cmt$;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'Skipped COMMENT ON SCHEMA cron — caller is not the schema owner';
+END
+$$;
