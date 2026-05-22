@@ -38,7 +38,7 @@ type CartPlacedStepProps = {
 export function CartPlacedStep({
   currencySettings = defaultCurrencySettings,
 }: CartPlacedStepProps) {
-  const { close, placedOrder, placedOrderId } = useCart();
+  const { close, placedOrder, placedOrderId, setStep } = useCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const t = (
     key: StorefrontMessageKey,
@@ -112,8 +112,28 @@ export function CartPlacedStep({
         </div>
       </ScrollArea>
 
-      <div className="border-t border-border/60 px-4 pb-6 pt-4">
-        <Button type="button" size="lg" className="w-full" onClick={close}>
+      <div className="flex gap-2 border-t border-border/60 px-4 pb-6 pt-4">
+        {/* Order more: keeps the drawer open and bounces back to the
+            cart-list step. The cart is already empty (placeOrder cleared
+            it locally + the server promoted the draft to 'open'), so the
+            customer lands on the empty-state hint and can start a new
+            order. Dine-in lock survives via sessionStorage, so the next
+            Place button still pre-fills the same table. */}
+        <Button
+          type="button"
+          size="lg"
+          variant="outline"
+          className="flex-1"
+          onClick={() => setStep("cart")}
+        >
+          {t("placed.order_more")}
+        </Button>
+        <Button
+          type="button"
+          size="lg"
+          className="flex-1"
+          onClick={close}
+        >
           {t("placed.done")}
         </Button>
       </div>

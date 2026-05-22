@@ -143,8 +143,29 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         })
         .select("id")
         .single();
-      if (createSessionError) throw new Error(createSessionError.message);
-      tableSessionId = createdSession.id;
+      if (createSessionError) {
+        // 23505 = a concurrent QR scan won the unique-index race. The
+        // partial UNIQUE INDEX on (venue_id, table_label) WHERE
+        // status='open' guarantees at most one open session per table,
+        // so the loser just re-SELECTs the winner's row instead of
+        // failing the order.
+        if (createSessionError.code === "23505") {
+          const { data: raced, error: racedError } = await supabase
+            .schema("commerce")
+            .from("table_sessions")
+            .select("id")
+            .eq("venue_id", input.venueId)
+            .eq("table_label", tableLabel)
+            .eq("status", "open")
+            .single();
+          if (racedError) throw new Error(racedError.message);
+          tableSessionId = raced.id;
+        } else {
+          throw new Error(createSessionError.message);
+        }
+      } else {
+        tableSessionId = createdSession.id;
+      }
     }
 
     const { data: guestSession, error: guestError } = await supabase
