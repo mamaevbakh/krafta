@@ -539,6 +539,7 @@ export type Database = {
         Row: {
           base_price_cents_delta: number
           catalog_modifier_id: string | null
+          catalog_modifier_list_id: string | null
           catalog_version: number | null
           created_at: string
           id: string
@@ -549,12 +550,14 @@ export type Database = {
           ordinal: number
           org_id: string
           quantity: number
+          text_value: string | null
           uid: string
           updated_at: string
         }
         Insert: {
           base_price_cents_delta?: number
           catalog_modifier_id?: string | null
+          catalog_modifier_list_id?: string | null
           catalog_version?: number | null
           created_at?: string
           id?: string
@@ -565,12 +568,14 @@ export type Database = {
           ordinal?: number
           org_id: string
           quantity?: number
+          text_value?: string | null
           uid: string
           updated_at?: string
         }
         Update: {
           base_price_cents_delta?: number
           catalog_modifier_id?: string | null
+          catalog_modifier_list_id?: string | null
           catalog_version?: number | null
           created_at?: string
           id?: string
@@ -581,10 +586,18 @@ export type Database = {
           ordinal?: number
           org_id?: string
           quantity?: number
+          text_value?: string | null
           uid?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "order_line_item_modifiers_catalog_modifier_list_id_fkey"
+            columns: ["catalog_modifier_list_id"]
+            isOneToOne: false
+            referencedRelation: "modifier_lists"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "order_line_item_modifiers_line_item_id_fkey"
             columns: ["line_item_id"]

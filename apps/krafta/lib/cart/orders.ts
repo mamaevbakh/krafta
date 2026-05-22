@@ -7,9 +7,15 @@ import { modifierSignature, type ModifierSelection } from "./modifier-signature"
 export type CartLineItemModifier = {
   id: string;
   catalog_modifier_id: string | null;
+  /** Parent modifier_list id. Always set on rows written after KRA-96.
+   *  NULL on legacy rows from before the migration; cart drawer falls
+   *  back to other fields when displaying those. */
+  catalog_modifier_list_id: string | null;
   name: string;
   base_price_cents_delta: number;
   quantity: number;
+  /** Text-mode only: the customer-typed string. NULL for list-mode rows. */
+  text_value: string | null;
 };
 
 export type CartLineItem = {
@@ -110,13 +116,22 @@ type AddLineItemInput = {
 // Resolved snapshot of a modifier ready to be written to
 // commerce.order_line_item_modifiers. Built from the catalog's modifier rows
 // (server queries them fresh) so the snapshot can't be forged client-side.
+//
+// Two flavors:
+//   - list-mode: catalog_modifier_id + catalog_modifier_list_id both set,
+//     text_value=null
+//   - text-mode: catalog_modifier_id=null, catalog_modifier_list_id set,
+//     text_value=<customer typed string>, base_price_cents_delta=0,
+//     quantity=1
 type ResolvedModifier = {
-  catalog_modifier_id: string;
+  catalog_modifier_id: string | null;
+  catalog_modifier_list_id: string;
   catalog_version: number;
   name: string;
   base_price_cents_delta: number;
   quantity: number;
   ordinal: number;
+  text_value: string | null;
 };
 
 /**
@@ -177,9 +192,16 @@ export async function addLineItem(
     input.modifiers ?? [],
   );
 
+  // Recompute the signature on the SERVER side from the resolved snapshot
+  // (catalog-fresh) rather than trusting the client-passed selections.
+  // Auto-applied modifiers from hidden lists become part of the signature
+  // here just like they will on the line; that way two adds of the same
+  // item — both with the same hidden defaults — still merge.
   const modifierSelections: ModifierSelection[] = resolvedModifiers.map((m) => ({
+    listId: m.catalog_modifier_list_id,
     modifierId: m.catalog_modifier_id,
     quantity: m.quantity,
+    text_value: m.text_value,
   }));
   const signature = modifierSignature(modifierSelections);
   const modifierDeltaSum = resolvedModifiers.reduce(
@@ -206,20 +228,28 @@ export async function addLineItem(
     const { data: candidateMods, error: candidateModsError } = await supabase
       .schema("commerce")
       .from("order_line_item_modifiers")
-      .select("line_item_id, catalog_modifier_id, quantity")
+      .select(
+        "line_item_id, catalog_modifier_id, catalog_modifier_list_id, quantity, text_value",
+      )
       .in("line_item_id", candidateIds);
     if (candidateModsError) throw new Error(candidateModsError.message);
 
-    const modsByLineId = new Map<
-      string,
-      Array<{ modifierId: string; quantity: number }>
-    >();
+    const modsByLineId = new Map<string, ModifierSelection[]>();
     for (const row of candidateMods ?? []) {
-      if (!row.catalog_modifier_id) continue;
+      // Skip rows that are missing the list_id — pre-KRA-96 legacy rows can
+      // have catalog_modifier_list_id=NULL. We can still derive it from
+      // catalog_modifier_id for list-mode rows, but for the purposes of the
+      // signature comparison the cleanest thing is to skip them: a legacy
+      // line will simply never match a fresh signature, so the new add
+      // becomes a new cart line. The customer gets a (mildly redundant) new
+      // line; not great but not a correctness problem.
+      if (!row.catalog_modifier_list_id) continue;
       const list = modsByLineId.get(row.line_item_id) ?? [];
       list.push({
+        listId: row.catalog_modifier_list_id,
         modifierId: row.catalog_modifier_id,
         quantity: Number(row.quantity),
+        text_value: row.text_value,
       });
       modsByLineId.set(row.line_item_id, list);
     }
@@ -282,11 +312,13 @@ export async function addLineItem(
       line_item_id: created.id,
       uid: `${uid}-${index}`,
       catalog_modifier_id: mod.catalog_modifier_id,
+      catalog_modifier_list_id: mod.catalog_modifier_list_id,
       catalog_version: mod.catalog_version,
       name: mod.name,
       base_price_cents_delta: mod.base_price_cents_delta,
       quantity: mod.quantity,
       ordinal: mod.ordinal,
+      text_value: mod.text_value,
     }));
     const { error: modInsertError } = await supabase
       .schema("commerce")
@@ -321,7 +353,7 @@ async function resolveModifierSelections(
   const { data: imlRows, error } = await supabase
     .from("item_modifier_lists")
     .select(
-      "modifier_list_id, min_selected_override, max_selected_override, hidden_from_customer_override, modifier_lists!inner(id, min_selected, max_selected, is_active, modifiers(id, name, price_cents, ordinal, on_by_default, is_active, version))",
+      "modifier_list_id, min_selected_override, max_selected_override, hidden_from_customer_override, modifier_lists!inner(id, name, min_selected, max_selected, is_active, modifier_type, text_required, max_length, ordinal, version, modifiers(id, name, price_cents, ordinal, on_by_default, is_active, version))",
     )
     .eq("item_id", itemId)
     .eq("is_active", true);
@@ -334,9 +366,15 @@ async function resolveModifierSelections(
     hidden_from_customer_override: boolean;
     modifier_lists: {
       id: string;
+      name: string;
       min_selected: number;
       max_selected: number | null;
       is_active: boolean;
+      modifier_type: "list" | "text";
+      text_required: boolean;
+      max_length: number | null;
+      ordinal: number;
+      version: number;
       modifiers: Array<{
         id: string;
         name: string;
@@ -350,85 +388,157 @@ async function resolveModifierSelections(
   };
   const imls = (imlRows ?? []) as unknown as IMLRow[];
 
+  // Lookup tables: modifier_id → (list_id, modifier row) for list-mode;
+  // list_id → IML row for both modes (text-mode validation needs it too).
   const modifierLookup = new Map<
     string,
     { listId: string; mod: IMLRow["modifier_lists"]["modifiers"][number] }
   >();
+  const imlByListId = new Map<string, IMLRow>();
   for (const iml of imls) {
     if (!iml.modifier_lists.is_active) continue;
+    imlByListId.set(iml.modifier_lists.id, iml);
     for (const mod of iml.modifier_lists.modifiers) {
       if (!mod.is_active) continue;
       modifierLookup.set(mod.id, { listId: iml.modifier_lists.id, mod });
     }
   }
 
-  // Group user selections by list and validate per-list bounds against
-  // hidden lists separately — the customer cannot supply selections for a
-  // hidden list, so any such input is rejected as tampering.
-  const selectionsByList = new Map<string, ModifierSelection[]>();
+  // Group user selections by list, splitting list-mode and text-mode into
+  // separate buckets so per-list validation is one branch per kind. Hidden
+  // lists never accept customer input — supplying one is treated as
+  // tampering.
+  const listSelectionsByList = new Map<string, ModifierSelection[]>();
+  const textSelectionByList = new Map<string, ModifierSelection>();
   for (const sel of selections) {
     if (sel.quantity <= 0) continue;
-    const entry = modifierLookup.get(sel.modifierId);
-    if (!entry) {
-      throw new Error("Selected modifier is not available for this item.");
-    }
-    const iml = imls.find((row) => row.modifier_list_id === entry.listId);
+    const iml = imlByListId.get(sel.listId);
     if (!iml) {
       throw new Error("Selected modifier is not available for this item.");
     }
     if (iml.hidden_from_customer_override) {
       throw new Error("Selected modifier is not available for this item.");
     }
-    const list = selectionsByList.get(entry.listId) ?? [];
+    if (iml.modifier_lists.modifier_type === "text") {
+      if (sel.modifierId !== null) {
+        throw new Error("Selected modifier is not available for this item.");
+      }
+      // Text-mode: at most one selection per list (the customer types one
+      // string per text field). If multiple come in, treat that as
+      // tampering rather than silently merging.
+      if (textSelectionByList.has(sel.listId)) {
+        throw new Error("Selected modifier is not available for this item.");
+      }
+      textSelectionByList.set(sel.listId, sel);
+      continue;
+    }
+    // List-mode: the modifierId must reference a row in this list.
+    if (sel.modifierId === null) {
+      throw new Error("Selected modifier is not available for this item.");
+    }
+    const entry = modifierLookup.get(sel.modifierId);
+    if (!entry || entry.listId !== sel.listId) {
+      throw new Error("Selected modifier is not available for this item.");
+    }
+    const list = listSelectionsByList.get(sel.listId) ?? [];
     list.push(sel);
-    selectionsByList.set(entry.listId, list);
+    listSelectionsByList.set(sel.listId, list);
   }
 
-  // Enforce min/max on customer-visible lists.
+  // Per-list constraint enforcement on customer-visible lists.
   for (const iml of imls) {
     if (iml.hidden_from_customer_override) continue;
     const list = iml.modifier_lists;
+    if (list.modifier_type === "text") {
+      const sel = textSelectionByList.get(list.id);
+      const trimmed = sel?.text_value?.trim() ?? "";
+      const hasValue = trimmed.length > 0;
+      if (list.text_required && !hasValue) {
+        throw new Error("Please make the required modifier selections.");
+      }
+      if (
+        sel &&
+        list.max_length !== null &&
+        sel.text_value !== null &&
+        sel.text_value.length > list.max_length
+      ) {
+        throw new Error("Text modifier exceeds maximum length.");
+      }
+      continue;
+    }
+    // list-mode: count DISTINCT selections. Per-modifier quantity is
+    // independent and bounded by the client; here we only validate the
+    // catalog-level min/max for the list.
     const minSelected = iml.min_selected_override ?? list.min_selected;
     const maxSelected = iml.max_selected_override ?? list.max_selected;
-    const sels = selectionsByList.get(list.id) ?? [];
-    const count = sels.reduce((sum, s) => sum + s.quantity, 0);
-    if (count < minSelected) {
+    const sels = listSelectionsByList.get(list.id) ?? [];
+    const distinctCount = sels.length;
+    if (distinctCount < minSelected) {
       throw new Error("Please make the required modifier selections.");
     }
-    if (maxSelected !== null && count > maxSelected) {
+    if (maxSelected !== null && distinctCount > maxSelected) {
       throw new Error("Too many modifiers selected.");
     }
   }
 
-  // Assemble the resolved set: customer picks + auto-applied defaults from
-  // hidden lists. The customer cannot touch the hidden lists, so any conflict
-  // is impossible by construction.
+  // Assemble the resolved set: customer picks (list + text) + auto-applied
+  // defaults from hidden lists. The customer cannot touch the hidden lists,
+  // so any conflict is impossible by construction.
   const resolved: ResolvedModifier[] = [];
-  for (const sel of selections) {
-    if (sel.quantity <= 0) continue;
-    const entry = modifierLookup.get(sel.modifierId);
-    if (!entry) continue;
+  // Customer list-mode picks
+  for (const sels of listSelectionsByList.values()) {
+    for (const sel of sels) {
+      if (sel.quantity <= 0 || sel.modifierId === null) continue;
+      const entry = modifierLookup.get(sel.modifierId);
+      if (!entry) continue;
+      resolved.push({
+        catalog_modifier_id: entry.mod.id,
+        catalog_modifier_list_id: entry.listId,
+        catalog_version: entry.mod.version,
+        name: entry.mod.name,
+        base_price_cents_delta: entry.mod.price_cents,
+        quantity: sel.quantity,
+        ordinal: entry.mod.ordinal,
+        text_value: null,
+      });
+    }
+  }
+  // Customer text-mode picks. Use the list's localized snapshot name
+  // wasn't possible server-side (we don't have the customer's locale here),
+  // so the canonical list.name is the snapshot — receipts and the cart
+  // drawer will display the typed text alongside it.
+  for (const [listId, sel] of textSelectionByList.entries()) {
+    const iml = imlByListId.get(listId);
+    if (!iml) continue;
+    const trimmed = sel.text_value?.trim() ?? "";
+    if (trimmed.length === 0) continue; // optional-text empty → skip
     resolved.push({
-      catalog_modifier_id: entry.mod.id,
-      catalog_version: entry.mod.version,
-      name: entry.mod.name,
-      base_price_cents_delta: entry.mod.price_cents,
-      quantity: sel.quantity,
-      ordinal: entry.mod.ordinal,
+      catalog_modifier_id: null,
+      catalog_modifier_list_id: listId,
+      catalog_version: iml.modifier_lists.version,
+      name: iml.modifier_lists.name,
+      base_price_cents_delta: 0,
+      quantity: 1,
+      ordinal: iml.modifier_lists.ordinal,
+      text_value: trimmed,
     });
   }
+  // Auto-applied on_by_default modifiers from hidden lists
   for (const iml of imls) {
     if (!iml.hidden_from_customer_override) continue;
     if (!iml.modifier_lists.is_active) continue;
+    if (iml.modifier_lists.modifier_type === "text") continue; // hidden+text makes no sense
     for (const mod of iml.modifier_lists.modifiers) {
       if (!mod.is_active || !mod.on_by_default) continue;
       resolved.push({
         catalog_modifier_id: mod.id,
+        catalog_modifier_list_id: iml.modifier_lists.id,
         catalog_version: mod.version,
         name: mod.name,
         base_price_cents_delta: mod.price_cents,
         quantity: 1,
         ordinal: mod.ordinal,
+        text_value: null,
       });
     }
   }
@@ -531,7 +641,7 @@ export async function getCartSummary(input: {
       .schema("commerce")
       .from("order_line_item_modifiers")
       .select(
-        "id, line_item_id, catalog_modifier_id, name, base_price_cents_delta, quantity, ordinal",
+        "id, line_item_id, catalog_modifier_id, catalog_modifier_list_id, name, base_price_cents_delta, quantity, ordinal, text_value",
       )
       .in("line_item_id", lineIds)
       .order("ordinal", { ascending: true });
@@ -541,9 +651,11 @@ export async function getCartSummary(input: {
       list.push({
         id: row.id,
         catalog_modifier_id: row.catalog_modifier_id,
+        catalog_modifier_list_id: row.catalog_modifier_list_id,
         name: row.name,
         base_price_cents_delta: row.base_price_cents_delta,
         quantity: Number(row.quantity),
+        text_value: row.text_value,
       });
       acc.set(row.line_item_id, list);
       return acc;

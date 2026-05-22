@@ -93,6 +93,10 @@ export type PublicModifierList = {
   modifier_type: "list" | "text";
   min_selected: number;
   max_selected: number | null;
+  /** Text-mode only: when true, the customer MUST type a non-empty value. */
+  text_required: boolean;
+  /** Text-mode only: max character cap on the typed value. `null` = no limit. */
+  max_length: number | null;
   hidden_from_customer: boolean;
   ordinal: number;
   version: number;

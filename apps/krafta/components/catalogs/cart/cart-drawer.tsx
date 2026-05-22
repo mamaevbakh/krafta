@@ -114,23 +114,52 @@ function CartListStep({
                     ) : null}
                     {line.modifiers.length > 0 ? (
                       <ul className="mt-1 space-y-0.5">
-                        {line.modifiers.map((mod) => (
-                          <li
-                            key={mod.id}
-                            className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground"
-                          >
-                            <span className="truncate">+ {mod.name}</span>
-                            {mod.base_price_cents_delta > 0 ? (
-                              <span className="shrink-0 tabular-nums">
-                                +
-                                {formatPriceCents(
-                                  mod.base_price_cents_delta * mod.quantity,
-                                  currencySettings,
+                        {line.modifiers.map((mod) => {
+                          // Three display flavors:
+                          //  • text-mode: "Note: <typed text>" — no price,
+                          //    no qty (text-mode quantity is always 1).
+                          //  • list-mode qty=1: "+ Pepperoni" (+ price)
+                          //  • list-mode qty>1: "+ Pepperoni × 3" (+ price)
+                          const isText = mod.text_value !== null;
+                          const showQty = !isText && mod.quantity > 1;
+                          return (
+                            <li
+                              key={mod.id}
+                              className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground"
+                            >
+                              <span className="min-w-0 truncate">
+                                {isText ? (
+                                  <>
+                                    <span className="font-medium">
+                                      {mod.name}:
+                                    </span>{" "}
+                                    <span className="italic">
+                                      “{mod.text_value}”
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    + {mod.name}
+                                    {showQty ? (
+                                      <span className="ml-1 tabular-nums">
+                                        × {mod.quantity}
+                                      </span>
+                                    ) : null}
+                                  </>
                                 )}
                               </span>
-                            ) : null}
-                          </li>
-                        ))}
+                              {!isText && mod.base_price_cents_delta > 0 ? (
+                                <span className="shrink-0 tabular-nums">
+                                  +
+                                  {formatPriceCents(
+                                    mod.base_price_cents_delta * mod.quantity,
+                                    currencySettings,
+                                  )}
+                                </span>
+                              ) : null}
+                            </li>
+                          );
+                        })}
                       </ul>
                     ) : null}
                     <p className="mt-0.5 text-xs text-muted-foreground">

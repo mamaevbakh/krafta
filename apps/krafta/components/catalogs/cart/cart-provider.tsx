@@ -30,7 +30,6 @@ import {
   type ModifierSelection,
 } from "@/lib/cart/modifier-signature";
 import type { PublicTax } from "@/lib/catalogs/types";
-import type { PlaceOrderInput } from "@/lib/cart/checkout";
 
 export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
 export type CartStep = "cart" | "checkout" | "placed";
@@ -116,12 +115,18 @@ type CartContextValue = {
      * Selected modifiers for this add. Optional — items with no modifier
      * lists or items where the customer made no picks send an empty/missing
      * array. Combined with item+variation, this drives cart-line dedup.
+     *
+     * Shape supports both list-mode and text-mode rows (KRA-96):
+     *  - list-mode: modifierListId + modifierId both set, text_value=null
+     *  - text-mode: modifierListId set, modifierId=null, text_value=string
      */
     modifiers?: Array<{
-      modifierId: string;
+      modifierListId: string;
+      modifierId: string | null;
       quantity: number;
       name: string;
       basePriceCentsDelta: number;
+      text_value: string | null;
     }>;
   }) => Promise<void>;
   updateQuantity: (lineItemId: string, quantity: number) => Promise<void>;
@@ -203,10 +208,18 @@ function recomputeSubtotal(lineItems: CartLineItem[]): number {
 
 function lineModifierSig(line: CartLineItem): string {
   return modifierSignature(
-    line.modifiers.map((m) => ({
-      modifierId: m.catalog_modifier_id ?? "",
-      quantity: m.quantity,
-    })),
+    line.modifiers
+      // Drop rows that have no list_id — those are pre-KRA-96 legacy rows
+      // and won't appear on cart lines we just created locally. Including
+      // them with listId="" would only matter for pre-existing rows on
+      // the server, which dedup is permissive about anyway.
+      .filter((m) => m.catalog_modifier_list_id !== null)
+      .map((m) => ({
+        listId: m.catalog_modifier_list_id as string,
+        modifierId: m.catalog_modifier_id,
+        quantity: m.quantity,
+        text_value: m.text_value,
+      })),
   );
 }
 
@@ -418,15 +431,29 @@ export function CartProvider({
       modifiers: inputModifiers,
     }) => {
       const modifierSelections: ModifierSelection[] = (inputModifiers ?? []).map(
-        (m) => ({ modifierId: m.modifierId, quantity: m.quantity }),
+        (m) => ({
+          listId: m.modifierListId,
+          modifierId: m.modifierId,
+          quantity: m.quantity,
+          text_value: m.text_value,
+        }),
       );
       const lineModifiers: CartLineItemModifier[] = (inputModifiers ?? []).map(
-        (m) => ({
-          id: `local-mod-${m.modifierId}`,
+        (m, index) => ({
+          // Local ids are arbitrary — Set the kind (m/t) + something
+          // unique-ish so React keys don't collide between list-mode and
+          // text-mode rows on the same line. Server reconcile will replace
+          // these with real DB ids.
+          id:
+            m.modifierId !== null
+              ? `local-mod-${m.modifierId}`
+              : `local-mod-text-${m.modifierListId}-${index}`,
           catalog_modifier_id: m.modifierId,
+          catalog_modifier_list_id: m.modifierListId,
           name: m.name,
           base_price_cents_delta: m.basePriceCentsDelta,
           quantity: m.quantity,
+          text_value: m.text_value,
         }),
       );
       const sig = modifierSignature(modifierSelections);

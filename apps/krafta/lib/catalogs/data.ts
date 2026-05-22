@@ -223,9 +223,15 @@ export async function getCatalogStructure(
   // Modifier data: three tables, all denormalize catalog_id so we can fetch
   // each scoped to the active catalog in parallel with the rest of the
   // catalog structure. Assembly into PublicItem.modifier_lists happens below.
+  // Fetch ALL active modifier lists for the catalog, not just list-mode.
+  // KRA-96 lit up the text-mode (free-text) rendering branch in the
+  // picker; without dropping the modifier_type=eq.list filter the data
+  // layer would silently exclude text-mode lists and the picker would
+  // never see them. text_required + max_length are the schema knobs the
+  // text-mode branch reads to enforce the merchant's constraints.
   const modifierListsUrl = `${supabaseUrl}/rest/v1/modifier_lists?catalog_id=eq.${encodeURIComponent(
     catalogId,
-  )}&is_active=eq.true&modifier_type=eq.list&select=id,name,modifier_type,min_selected,max_selected,version`;
+  )}&is_active=eq.true&select=id,name,modifier_type,min_selected,max_selected,text_required,max_length,version`;
   const modifiersUrl = `${supabaseUrl}/rest/v1/modifiers?catalog_id=eq.${encodeURIComponent(
     catalogId,
   )}&is_active=eq.true&select=id,modifier_list_id,name,price_cents,ordinal,on_by_default,version&order=ordinal.asc`;
@@ -521,6 +527,8 @@ export async function getCatalogStructure(
     modifier_type: "list" | "text";
     min_selected: number;
     max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
     version: number;
   };
   type ModifierRow = {
@@ -719,6 +727,8 @@ export async function getCatalogStructure(
         modifier_type: list.modifier_type,
         min_selected: iml.min_selected_override ?? list.min_selected,
         max_selected: iml.max_selected_override ?? list.max_selected,
+        text_required: list.text_required,
+        max_length: list.max_length,
         hidden_from_customer: iml.hidden_from_customer_override,
         ordinal: iml.ordinal,
         version: list.version,

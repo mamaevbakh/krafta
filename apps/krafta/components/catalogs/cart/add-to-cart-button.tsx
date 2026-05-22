@@ -14,11 +14,17 @@ type AddToCartButtonProps = {
   basePriceCents: number;
   variationId?: string;
   variationName?: string | null;
+  /**
+   * Selected modifiers (KRA-96 shape). Supports both list-mode and
+   * text-mode rows — see CartProvider.addItem for the full shape doc.
+   */
   modifiers?: Array<{
-    modifierId: string;
+    modifierListId: string;
+    modifierId: string | null;
     quantity: number;
     name: string;
     basePriceCentsDelta: number;
+    text_value: string | null;
   }>;
   disabled?: boolean;
   className?: string;
