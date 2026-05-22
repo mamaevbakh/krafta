@@ -319,6 +319,15 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     tipCents,
   });
 
+  // Tip cap pre-check (KRA-77). The DB has a CHECK constraint enforcing
+  // tip_cents * 2 <= amount_cents on order_payments — we surface the
+  // failure as a clean error code the client maps to the localized
+  // errors.tip_too_high copy, instead of letting a raw 23514 bubble.
+  const amountForTipCheck = subtotalCents + pricing.additiveFeesCents;
+  if (tipCents * 2 > amountForTipCheck) {
+    throw new Error("tip_too_high");
+  }
+
   // Insert order_taxes (one per active tax). uid pattern keeps applied-tax
   // references stable: "<tax_id>" is sufficient within an order since each
   // tax appears at most once per order.

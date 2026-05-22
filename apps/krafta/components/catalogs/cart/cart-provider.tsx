@@ -786,10 +786,24 @@ export function CartProvider({
         setSummary(EMPTY_SUMMARY);
         return { ok: true } as const;
       } catch (err) {
+        // Map server-thrown machine codes to localized copy so the toast
+        // body matches the customer's storefront locale rather than
+        // surfacing the raw `tip_too_high` key.
+        const rawMessage =
+          err instanceof Error ? err.message : null;
+        const knownCodes: Record<string, StorefrontMessageKey> = {
+          tip_too_high: "errors.tip_too_high",
+          tip_without_items: "errors.tip_without_items",
+          phone_invalid: "errors.phone_invalid",
+          cart_empty: "errors.cart_empty",
+          scheduled_time_too_soon: "errors.scheduled_time_too_soon",
+          order_expired: "errors.order_expired",
+          table_session_expired: "errors.table_session_expired",
+        };
         const message =
-          err instanceof Error
-            ? err.message
-            : tRef.current("errors.place_order_failed");
+          rawMessage && rawMessage in knownCodes
+            ? tRef.current(knownCodes[rawMessage]!)
+            : (rawMessage ?? tRef.current("errors.place_order_failed"));
         toast.error(message);
         return { ok: false, error: message } as const;
       } finally {
