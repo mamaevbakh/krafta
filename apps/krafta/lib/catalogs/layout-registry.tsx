@@ -6,6 +6,7 @@ import type {
   PublicItem,
 } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
 
 
 // Headers
@@ -49,6 +50,13 @@ export type HeaderProps = {
   headerSettings: CatalogLayoutSettings["header"];
   logoUrl: string | null;
   tags: string[] | null;
+  /** Enabled locale rows from getCatalogLocales(). Headers render the
+   *  LocaleSwitcher from this; an empty / single-element array yields
+   *  no visible switcher. */
+  locales: PublicCatalogLocaleOption[];
+  /** Effective active locale from the page root. Drives the switcher's
+   *  current selection. */
+  activeLocale: string;
 };
 
 export type CategoryNavProps = LocaleProps & {

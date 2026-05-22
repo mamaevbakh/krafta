@@ -14,10 +14,28 @@ import type {
 // Catalog locale metadata surfaced from getCatalogLocales so the storefront
 // can resolve the active locale + carry the right defaultLocale into
 // pickLocalizedField. `enabled` is the merchant's enabled set (used to
-// validate a ?lang= request — invalid locales fall back to default).
+// validate a ?lang= request — invalid locales fall back to default) and
+// also drives the language switcher in the header.
+//
+// `display_name` is the human-readable label the switcher shows (the
+// merchant set it on `catalog_locales.display_name` from the dashboard —
+// e.g. "Русский", "O‘zbekcha"). `text_direction` is "ltr" or "rtl" and
+// is reserved for future RTL-aware rendering; it's surfaced here so
+// callers don't need a second fetch.
+export type PublicCatalogLocaleOption = {
+  locale: string;
+  display_name: string | null;
+  text_direction: "ltr" | "rtl";
+  is_default: boolean;
+};
 export type PublicCatalogLocales = {
   default: string | null;
   enabled: string[];
+  /** Full row metadata for each enabled locale, ordered by sort_order
+   *  (the same order the dashboard uses). The switcher renders this
+   *  array directly; resolveStorefrontLocale only consumes `enabled` +
+   *  `default`. */
+  options: PublicCatalogLocaleOption[];
 };
 
 export type PublicVenue = {
@@ -147,22 +165,33 @@ export async function getCatalogLocales(
 
   const url = `${supabaseUrl}/rest/v1/catalog_locales?catalog_id=eq.${encodeURIComponent(
     catalogId,
-  )}&is_enabled=eq.true&select=locale,is_default,sort_order&order=sort_order.asc`;
+  )}&is_enabled=eq.true&select=locale,is_default,sort_order,display_name,text_direction&order=sort_order.asc`;
 
   const response = await fetch(url, {
     headers: supabaseHeaders,
     next: { tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`] },
     cache: "force-cache",
   });
-  if (!response.ok) return { default: null, enabled: [] };
+  if (!response.ok) return { default: null, enabled: [], options: [] };
   const rows = (await response.json()) as Array<{
     locale: string;
     is_default: boolean;
+    display_name: string | null;
+    text_direction: string | null;
   }>;
   const enabled = rows.map((r) => r.locale);
   const defaultLocale =
     rows.find((r) => r.is_default)?.locale ?? rows[0]?.locale ?? null;
-  return { default: defaultLocale, enabled };
+  // Narrow text_direction to the union the type system expects — the DB
+  // CHECK constraint guarantees one of "ltr" / "rtl" but PostgREST surfaces
+  // it as plain string.
+  const options: PublicCatalogLocaleOption[] = rows.map((r) => ({
+    locale: r.locale,
+    display_name: r.display_name,
+    text_direction: r.text_direction === "rtl" ? "rtl" : "ltr",
+    is_default: r.is_default,
+  }));
+  return { default: defaultLocale, enabled, options };
 }
 
 // `activeLocale` (optional) — when provided AND distinct from the catalog's

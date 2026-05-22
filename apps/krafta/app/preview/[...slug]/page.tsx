@@ -96,6 +96,7 @@ async function PreviewCatalogContent({
       currencyOverride={currencyOverride}
       activeLocale={activeLocale}
       defaultLocale={defaultLocale}
+      locales={catalogLocales.options}
     />
   );
 }

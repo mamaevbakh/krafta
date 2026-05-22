@@ -1,12 +1,17 @@
 import Image from "next/image";
 import type { JSX } from "react";
 
+import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
+import { LocaleSwitcher } from "./locale-switcher";
+
 type CatalogHeaderCenterProps = {
   catalogName: string;
   description?: string | null;
   logoUrl?: string | null;
   tags?: string[] | null;
   headerSettings?: unknown;
+  locales?: PublicCatalogLocaleOption[];
+  activeLocale?: string;
 };
 
 export function CatalogHeaderCenter({
@@ -14,9 +19,19 @@ export function CatalogHeaderCenter({
   description,
   tags,
   logoUrl,
+  locales = [],
+  activeLocale = "",
 }: CatalogHeaderCenterProps): JSX.Element {
   return (
-    <header className="flex flex-col items-center space-y-3 text-center">
+    <header className="relative flex flex-col items-center space-y-3 text-center">
+      {/* The header layout is centered, so the switcher floats in the
+          top-right corner instead of inline with the title. Customers
+          scan the centered identity first; the switcher stays
+          discoverable but visually subordinate. */}
+      <div className="absolute right-0 top-0">
+        <LocaleSwitcher options={locales} activeLocale={activeLocale} />
+      </div>
+
       {logoUrl && (
         <div className="relative h-12 w-12 overflow-hidden rounded-sm bg-muted">
           <Image

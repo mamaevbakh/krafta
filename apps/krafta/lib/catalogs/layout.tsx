@@ -5,7 +5,10 @@ import type {
   PublicCategoryWithItems,
   PublicTax,
 } from "@/lib/catalogs/types";
-import type { PublicVenue } from "@/lib/catalogs/data";
+import type {
+  PublicCatalogLocaleOption,
+  PublicVenue,
+} from "@/lib/catalogs/data";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import {
   normalizeLayoutSettings,
@@ -46,6 +49,10 @@ type Props = {
   /** The catalog's default locale (canonical column source). Same
    *  source as activeLocale's fallback. */
   defaultLocale?: string;
+  /** Enabled locale rows (with display_name + text_direction). Threaded
+   *  through to the header so the language switcher knows which options
+   *  to render. Empty/single-element → switcher hides. */
+  locales?: PublicCatalogLocaleOption[];
 };
 
 // map “columns” → Tailwind grid classes (md+)
@@ -75,6 +82,7 @@ export function CatalogLayout({
   currencyOverride,
   activeLocale = "",
   defaultLocale = "",
+  locales = [],
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
@@ -149,6 +157,8 @@ export function CatalogLayout({
             logoUrl={logoUrl}
             description={catalog.description}
             tags={catalog.tags}
+            locales={locales}
+            activeLocale={activeLocale}
           />
 
           {CategoryNav && (

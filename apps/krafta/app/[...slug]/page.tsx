@@ -80,6 +80,7 @@ async function CatalogPageContent({
       baseHref={`/${catalog.slug}`}
       activeLocale={activeLocale}
       defaultLocale={defaultLocale}
+      locales={catalogLocales.options}
     />
   );
 }
