@@ -72,9 +72,17 @@
  *     the image goes edge-to-edge from the modal's top edge; the
  *     buttons stay pinned to top-right as the customer scrolls. Both
  *     buttons cluster on the right so neither sits in iOS's left-edge
- *     swipe-back zone. Backdrop-blur + 85% opaque background keeps
- *     them readable over the image AND over the body in both light
- *     and dark modes — no contrast switch needed.
+ *     swipe-back zone.
+ *
+ *     Style: dark backdrop + white icon, ALWAYS (not theme-adaptive).
+ *     This is the media-button convention used by YouTube, Instagram,
+ *     Apple Photos, Google Photos. Theme-adaptive buttons would blend
+ *     with white images in dark mode and dark images in light mode;
+ *     the always-dark style with a faint white border + drop shadow
+ *     reads cleanly over any photo brightness. When the customer
+ *     scrolls past the image and the buttons end up over body content,
+ *     they read as media-overlay chrome rather than page chrome —
+ *     acceptable trade for the bulletproof image contrast.
  *
  *   • Add-to-cart button is always enabled. When a required modifier
  *     list isn't filled, clicking scrolls to the first invalid list and
@@ -288,17 +296,17 @@ export function ItemDetailFullscreen({
           image starts edge-to-edge from the top of the modal. The
           buttons are absolutely positioned inside the anchor so they
           stay pinned to the top-right corner as the customer scrolls.
-          Glassmorphic style (bg-background/85 + backdrop-blur-md +
-          shadow-sm) so they read cleanly over the image OR the body,
-          in light OR dark mode. */}
+          Always-dark glassmorphic style (bg-black/50 + text-white +
+          border-white/15) reads cleanly over any image brightness —
+          this is the YouTube / Instagram / Apple Photos media-button
+          convention. backdrop-blur + shadow keep the floating feel. */}
       <div className="sticky top-0 z-20 h-0">
         <div className="absolute right-3 top-3 flex items-center gap-2">
           <Button
             type="button"
-            variant="outline"
             size="icon"
             onClick={handleShare}
-            className="h-10 w-10 rounded-full border-border/40 bg-background/85 shadow-sm backdrop-blur-md"
+            className="h-10 w-10 rounded-full border border-white/15 bg-black/50 text-white shadow-md backdrop-blur-md hover:bg-black/65 hover:text-white"
             aria-label="Share"
           >
             <Share2 className="size-4" />
@@ -306,10 +314,9 @@ export function ItemDetailFullscreen({
           {onClose ? (
             <Button
               type="button"
-              variant="outline"
               size="icon"
               onClick={onClose}
-              className="h-10 w-10 rounded-full border-border/40 bg-background/85 shadow-sm backdrop-blur-md"
+              className="h-10 w-10 rounded-full border border-white/15 bg-black/50 text-white shadow-md backdrop-blur-md hover:bg-black/65 hover:text-white"
               aria-label={closeLabelFor(activeLocale)}
             >
               <XIcon className="size-5" />
@@ -317,9 +324,8 @@ export function ItemDetailFullscreen({
           ) : (
             <Button
               asChild
-              variant="outline"
               size="icon"
-              className="h-10 w-10 rounded-full border-border/40 bg-background/85 shadow-sm backdrop-blur-md"
+              className="h-10 w-10 rounded-full border border-white/15 bg-black/50 text-white shadow-md backdrop-blur-md hover:bg-black/65 hover:text-white"
             >
               <Link href={backHref ?? "#"} aria-label={closeLabelFor(activeLocale)}>
                 <XIcon className="size-5" />
