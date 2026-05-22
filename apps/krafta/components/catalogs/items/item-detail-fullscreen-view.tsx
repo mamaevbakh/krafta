@@ -26,20 +26,26 @@
  *
  * Design decisions vs. KRA-94 v1:
  *
- *   • Image container ADAPTS to each photo's natural aspect ratio
- *     (measured client-side via onLoad), capped at 55dvh. With the
- *     container's ratio matching the image's own, object-contain shows
- *     the WHOLE photo — no cropping, no letterboxing in the common
- *     case. The 55dvh cap still protects "price above the fold" for
- *     extreme portraits (9:16 etc.): when the cap kicks in, the image
- *     scales down to fit the capped height with bg-muted bars on the
- *     sides of the container — the full photo remains visible.
+ *   • Image container shape: the catalog's configured aspect ratio is
+ *     the FLOOR. The container will adopt the photo's natural ratio
+ *     when natural is wider than the catalog setting (landscape and
+ *     square photos get their own proportions); when natural is
+ *     narrower (tall portraits), the container clamps to the catalog
+ *     ratio and the image uses object-cover with object-position: top
+ *     to fill the container — head and torso preserved, bottom of the
+ *     frame cropped.
  *
- *     Why client-side measurement instead of stored metadata: zero
- *     schema change, zero migration. The cost is a brief
- *     bg-muted placeholder on first paint before the natural ratio
- *     resolves; the catalog's configured ratio is the fallback during
- *     that window so the layout doesn't jolt.
+ *     Why catalog config as floor, not natural always: pure adaptive
+ *     sizing made tall portraits go small with side bars on small
+ *     phones (iPhone SE 55dvh cap × 1:2 image = 50% of modal width).
+ *     Clamping to the merchant's configured ratio keeps the image
+ *     filling the modal width on every viewport.
+ *
+ *   • min-height: 35dvh, max-height: 55dvh. Image area is always at
+ *     least 35% of the viewport (no postage-stamp images on small
+ *     phones) and never more than 55% (price stays above the fold).
+ *     35-55% matches the range Apple Store / Square / Doordash /
+ *     Shopify all sit in.
  *
  *   • Title + category eyebrow moved out of the image overlay into the
  *     white body. The old white-on-dark-gradient pattern was unreadable
@@ -319,39 +325,63 @@ export function ItemDetailFullscreen({
         </div>
       </div>
 
-      {/* Image — container adopts the image's natural aspect ratio
-          (measured on load), capped at 55dvh height. With the
-          container shaped like the image, object-contain shows the
-          full photo without cropping. Skipped entirely when no
-          imageUrl. */}
-      {imageUrl && (
-        <div
-          className="relative w-full overflow-hidden bg-muted"
-          style={{
-            aspectRatio: naturalImageRatio ?? ratio,
-            maxHeight: "55dvh",
-          }}
-        >
-          <Image
-            src={imageUrl}
-            alt={localizedImageAlt ?? localizedName}
-            fill
-            sizes="(max-width: 640px) 100vw, 480px"
-            className="h-full w-full object-contain"
-            priority
-            onLoad={(event) => {
-              // Read natural dimensions off the <img> element to size
-              // the container exactly to the photo. Guard against
-              // 0/0 (some Next.js placeholder transitions report
-              // intermediate states before the real image lands).
-              const img = event.currentTarget;
-              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                setNaturalImageRatio(img.naturalWidth / img.naturalHeight);
-              }
-            }}
-          />
-        </div>
-      )}
+      {/* Image — catalog's configured aspect ratio is the FLOOR. The
+          container expands to a wider ratio when the photo's natural
+          ratio is wider (landscape, square); for tall portraits the
+          container holds the catalog shape and the image crops to fill
+          via object-cover with object-position: top (head + torso
+          preserved, bottom cropped). min-height keeps the image area
+          respectable on small phones; max-height keeps the price
+          above the fold on tall phones. */}
+      {imageUrl &&
+        (() => {
+          // Catalog ratio is the merchant's per-catalog setting,
+          // surfaced via itemAspectRatio. Default 4/5 for catalogs
+          // that haven't been configured.
+          const catalogRatio = ratio;
+          const displayRatio = naturalImageRatio
+            ? Math.max(naturalImageRatio, catalogRatio)
+            : catalogRatio;
+          // Cropping is only needed when the natural image is
+          // SKINNIER than the container (tall portrait clamped). When
+          // natural >= catalog, container matches image, no crop, no
+          // letterbox. object-cover is safe in both cases.
+          const willCrop =
+            naturalImageRatio !== null && naturalImageRatio < catalogRatio;
+          return (
+            <div
+              className="relative w-full overflow-hidden bg-muted"
+              style={{
+                aspectRatio: displayRatio,
+                minHeight: "35dvh",
+                maxHeight: "55dvh",
+              }}
+            >
+              <Image
+                src={imageUrl}
+                alt={localizedImageAlt ?? localizedName}
+                fill
+                sizes="(max-width: 640px) 100vw, 480px"
+                className="h-full w-full object-cover"
+                // "center top" for clamped portraits — keep head/top
+                // of frame, crop the bottom. For images that match
+                // the container shape, object-position is a no-op.
+                style={{
+                  objectPosition: willCrop ? "center top" : "center",
+                }}
+                priority
+                onLoad={(event) => {
+                  const img = event.currentTarget;
+                  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    setNaturalImageRatio(
+                      img.naturalWidth / img.naturalHeight,
+                    );
+                  }
+                }}
+              />
+            </div>
+          );
+        })()}
 
       {/* Body — title, price, description, modifiers. pb-28 reserves
           space for the sticky CTA at the bottom. */}
