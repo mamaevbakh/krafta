@@ -41,9 +41,20 @@ export function formatPriceCents(
   const label = currency.label ?? "";
   if (!label) return number;
 
+  // F-8 (storefront audit): drop the space between symbol and number for
+  // single-character symbol labels in prefix position. `$1,234.00` and
+  // `€1,234.00` are the conventional Latin formats; `$ 1,234.00` reads
+  // as a typo. Word-like labels ("USD", "сум", "leke") still get a
+  // space — those need to breathe regardless of position. Suffix labels
+  // always get a space ("1234 сум", "1234 ₽") since both word and
+  // symbol forms read better with separation when trailing.
+  const labelIsSymbol = /^[^\p{L}\p{N}]/u.test(label);
+  const joiner =
+    currency.labelPosition === "prefix" && labelIsSymbol ? "" : " ";
+
   return currency.labelPosition === "suffix"
-    ? `${number} ${label}`
-    : `${label} ${number}`;
+    ? `${number}${joiner}${label}`
+    : `${label}${joiner}${number}`;
 }
 
 /**
