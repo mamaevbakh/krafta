@@ -2344,6 +2344,53 @@ export type Database = {
           },
         ]
       }
+      catalog_translations: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_ai_translated: boolean
+          last_edited_by: string | null
+          locale: string
+          name: string
+          source_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale: string
+          name: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale?: string
+          name?: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_translations_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalog_item_type_feature_requests: {
         Row: {
           catalog_id: string
@@ -2533,6 +2580,7 @@ export type Database = {
       catalogs: {
         Row: {
           created_at: string
+          current_source_hash: string | null
           description: string | null
           id: string
           logo_path: string | null
@@ -2550,6 +2598,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_source_hash?: string | null
           description?: string | null
           id?: string
           logo_path?: string | null
@@ -2567,6 +2616,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_source_hash?: string | null
           description?: string | null
           id?: string
           logo_path?: string | null
@@ -3919,6 +3969,7 @@ export type Database = {
         | "modifier"
         | "modifier_list"
         | "category"
+        | "catalog"
       translation_job_status:
         | "queued"
         | "running"
@@ -4135,6 +4186,7 @@ export const Constants = {
         "modifier",
         "modifier_list",
         "category",
+        "catalog",
       ],
       translation_job_status: [
         "queued",

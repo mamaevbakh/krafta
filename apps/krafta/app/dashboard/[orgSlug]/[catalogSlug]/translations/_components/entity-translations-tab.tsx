@@ -64,7 +64,12 @@ export type EntityRowForTable = {
 
 export type EntityTranslationsTabProps = {
   catalogId: string;
-  entityKind: "variation" | "modifier" | "modifier_list" | "category";
+  entityKind:
+    | "variation"
+    | "modifier"
+    | "modifier_list"
+    | "category"
+    | "catalog";
   entityLabel: string;
   /** Plural noun for empty states ("variations", "categories", …). */
   entityLabelPlural: string;

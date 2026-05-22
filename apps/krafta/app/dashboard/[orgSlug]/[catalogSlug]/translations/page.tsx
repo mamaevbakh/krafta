@@ -32,7 +32,7 @@ export default async function TranslationsPage({ params }: PageProps) {
 
   const { data: catalog } = await supabase
     .from("catalogs")
-    .select("id, org_id, name, slug")
+    .select("id, org_id, name, slug, description, current_source_hash")
     .eq("slug", catalogSlug)
     .maybeSingle();
 
@@ -55,6 +55,7 @@ export default async function TranslationsPage({ params }: PageProps) {
     variationsResponse,
     modifierListsResponse,
     modifiersResponse,
+    catalogTranslationsResponse,
     completenessResponse,
     quotaResponse,
   ] = await Promise.all([
@@ -111,6 +112,16 @@ export default async function TranslationsPage({ params }: PageProps) {
       )
       .eq("catalog_id", catalog.id)
       .order("ordinal", { ascending: true }),
+    // KRA-98: catalog meta translation. One row per (catalog × locale)
+    // in catalog_translations; nothing fancy needed — fetch all rows for
+    // this catalog and we'll fold them into the synthetic single-row
+    // EntityForDialog payload below.
+    supabase
+      .from("catalog_translations")
+      .select(
+        "id, locale, name, description, is_ai_translated, source_hash",
+      )
+      .eq("catalog_id", catalog.id),
     supabase
       .from("translation_completeness_view")
       .select(
@@ -199,6 +210,28 @@ export default async function TranslationsPage({ params }: PageProps) {
     })),
   }));
 
+  // KRA-98: synthesise the catalog meta row in the same EntityRowForTable
+  // shape the four Phase 2 tabs use. There's exactly one catalog row per
+  // page (the one we just loaded above), so we wrap it as a 1-item array
+  // and the generic EntityTranslationsTab can render it without any
+  // catalog-specific branches.
+  const catalogMetaRow = {
+    id: catalog.id,
+    name: catalog.name,
+    description: catalog.description,
+    context: null as string | null,
+    is_active: true,
+    current_source_hash: catalog.current_source_hash,
+    translations: (catalogTranslationsResponse.data ?? []).map((t) => ({
+      id: t.id,
+      locale: t.locale,
+      name: t.name,
+      description: t.description,
+      is_ai_translated: t.is_ai_translated,
+      source_hash: t.source_hash,
+    })),
+  };
+
   const categories = (categoriesResponse.data ?? []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -227,6 +260,7 @@ export default async function TranslationsPage({ params }: PageProps) {
       variations={variations}
       modifiers={modifiers}
       modifierLists={modifierLists}
+      catalogMeta={catalogMetaRow}
       completeness={completenessResponse.data ?? []}
       quota={quotaResponse.data ?? null}
     />

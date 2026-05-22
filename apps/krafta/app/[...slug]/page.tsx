@@ -5,11 +5,13 @@ import { notFound } from "next/navigation";
 import {
   getCatalogBySlug,
   getCatalogLocales,
+  getCatalogMetaTranslation,
   getCatalogStructure,
   getCatalogTaxes,
   getVenueByCatalogId,
 } from "@/lib/catalogs/data";
 import { CatalogLayout } from "@/lib/catalogs/layout";
+import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { resolveStorefrontLocale } from "@/lib/catalogs/storefront-locale";
 
 type CatalogRouteParams = {
@@ -63,15 +65,65 @@ async function CatalogPageContent({
     }) ?? "";
   const defaultLocale = catalogLocales.default ?? "";
 
-  const [categoriesWithItems, venue, taxes] = await Promise.all([
-    getCatalogStructure(catalog.id, activeLocale || undefined),
-    getVenueByCatalogId(catalog.id),
-    getCatalogTaxes(catalog.id),
-  ]);
+  // KRA-98: catalog meta translation. Only fetch when the customer is
+  // viewing a non-default locale — same short-circuit pickLocalizedField
+  // would do internally. Skipping the request entirely on the default
+  // locale keeps the storefront's cold-render cost flat for the most
+  // common case (single-locale catalogs).
+  const wantCatalogMetaTranslation =
+    !!activeLocale && !!defaultLocale && activeLocale !== defaultLocale;
+
+  const [categoriesWithItems, venue, taxes, catalogMetaTranslations] =
+    await Promise.all([
+      getCatalogStructure(catalog.id, activeLocale || undefined),
+      getVenueByCatalogId(catalog.id),
+      getCatalogTaxes(catalog.id),
+      wantCatalogMetaTranslation
+        ? getCatalogMetaTranslation(catalog.id, activeLocale)
+        : Promise.resolve([]),
+    ]);
+
+  // Resolve catalog name + description against the active locale. Same
+  // pickLocalizedField the per-item renderers use — the resolver returns
+  // the canonical value with isFallback=false when activeLocale ===
+  // defaultLocale, so the storefront's existing default-locale behaviour
+  // is preserved bit-for-bit.
+  const resolvedCatalogName = pickLocalizedField({
+    translations: catalogMetaTranslations,
+    defaults: {
+      name: catalog.name,
+      description: catalog.description ?? null,
+      image_alt: null,
+    },
+    activeLocale,
+    defaultLocale,
+    field: "name",
+  }).value;
+  const resolvedCatalogDescription = pickLocalizedField({
+    translations: catalogMetaTranslations,
+    defaults: {
+      name: catalog.name,
+      description: catalog.description ?? null,
+      image_alt: null,
+    },
+    activeLocale,
+    defaultLocale,
+    field: "description",
+  }).value;
+
+  // Hand a thinly-overridden catalog object to the layout so the existing
+  // `catalog={catalog}` consumers (logo, tags, slug) keep their reads and
+  // the Header just sees the already-localized name + description in the
+  // `catalogName=` / `description=` props.
+  const localizedCatalog = {
+    ...catalog,
+    name: resolvedCatalogName || catalog.name,
+    description: resolvedCatalogDescription || catalog.description,
+  };
 
   return (
     <CatalogLayout
-      catalog={catalog}
+      catalog={localizedCatalog}
       categoriesWithItems={categoriesWithItems}
       venue={venue}
       taxes={taxes}

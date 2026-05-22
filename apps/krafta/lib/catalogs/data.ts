@@ -89,6 +89,51 @@ export async function getCatalogBySlug(
   return catalog;
 }
 
+// KRA-98: fetch the catalog meta translation row for a specific locale.
+// Returns an empty array when there's no row for that locale yet (the
+// storefront then falls back to catalogs.name + catalogs.description via
+// pickLocalizedField). Keeps the shape compatible with the i18n helper's
+// TranslationRow contract — `image_alt` is always null because catalogs
+// don't carry one, but the field is on the union so the resolver can
+// query it without branching.
+export async function getCatalogMetaTranslation(
+  catalogId: string,
+  locale: string,
+): Promise<Array<{
+  locale: string;
+  name: string | null;
+  description: string | null;
+  image_alt: null;
+}>> {
+  "use cache";
+  cacheTag(`catalog:${catalogId}`, `catalog-structure:${catalogId}`);
+
+  const url =
+    `${supabaseUrl}/rest/v1/catalog_translations` +
+    `?catalog_id=eq.${encodeURIComponent(catalogId)}` +
+    `&locale=eq.${encodeURIComponent(locale)}` +
+    `&select=locale,name,description`;
+  const response = await fetch(url, {
+    headers: supabaseHeaders,
+    next: {
+      tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+    },
+    cache: "force-cache",
+  });
+  if (!response.ok) return [];
+  const rows = (await response.json()) as Array<{
+    locale: string;
+    name: string | null;
+    description: string | null;
+  }>;
+  return rows.map((r) => ({
+    locale: r.locale,
+    name: r.name,
+    description: r.description,
+    image_alt: null,
+  }));
+}
+
 export async function getVenueByCatalogId(
   catalogId: string,
 ): Promise<PublicVenue | null> {

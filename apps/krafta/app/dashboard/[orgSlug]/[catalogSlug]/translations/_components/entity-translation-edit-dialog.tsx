@@ -79,7 +79,12 @@ export type EntityTranslationEditDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Which entity kind drives the translation table + enqueue payload. */
-  entityKind: "variation" | "modifier" | "modifier_list" | "category";
+  entityKind:
+    | "variation"
+    | "modifier"
+    | "modifier_list"
+    | "category"
+    | "catalog";
   /** Which fields of the entity are user-editable. "name" always; "description"
    *  only for categories (and future entities with descriptions). */
   fields: ReadonlyArray<EntityFieldKey>;

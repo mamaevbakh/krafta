@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { Globe } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import { LanguagesSidebar, type CatalogLocale } from "./languages-sidebar";
@@ -83,6 +82,11 @@ export type TranslationsPanelProps = {
   variations: EntityRowForTable[];
   modifiers: EntityRowForTable[];
   modifierLists: EntityRowForTable[];
+  /** KRA-98: catalog meta translation payload. Single source row (the
+   *  catalog itself) wrapped in the EntityRowForTable shape so the Catalog
+   *  tab can lean on the same generic EntityTranslationsTab the four
+   *  Phase 2 tabs use. */
+  catalogMeta: EntityRowForTable;
   completeness: CompletenessRow[];
   quota: Quota | null;
 };
@@ -97,6 +101,7 @@ export function TranslationsPanel({
   variations,
   modifiers,
   modifierLists,
+  catalogMeta,
   completeness,
   quota,
 }: TranslationsPanelProps) {
@@ -189,8 +194,19 @@ export function TranslationsPanel({
           translations: m.translations,
         })),
       },
+      // KRA-98: include the single-row catalog meta payload so "Translate
+      // everything missing" actually translates everything — including the
+      // storefront's shop name + description.
+      {
+        kind: "catalog" as const,
+        singularLabel: "catalog meta",
+        pluralLabel: "catalog meta",
+        rows: [
+          { id: catalogMeta.id, translations: catalogMeta.translations },
+        ],
+      },
     ];
-  }, [items, categories, variations, modifierLists, modifiers]);
+  }, [items, categories, variations, modifierLists, modifiers, catalogMeta]);
 
   // Build per-locale completeness for the Overview tab + hero band.
   //
@@ -227,6 +243,10 @@ export function TranslationsPanel({
       ...variations.map((v) => ({ translations: v.translations })),
       ...modifierLists.map((m) => ({ translations: m.translations })),
       ...modifiers.map((m) => ({ translations: m.translations })),
+      // KRA-98: count the single catalog meta row in the same denominator.
+      // Adds one to total per target locale; flips to translated when a
+      // catalog_translations row exists for that locale.
+      { translations: catalogMeta.translations },
     ];
 
     for (const locale of targetLocales) {
@@ -244,7 +264,15 @@ export function TranslationsPanel({
       });
     }
     return { byLocale };
-  }, [items, categories, variations, modifierLists, modifiers, targetLocales]);
+  }, [
+    items,
+    categories,
+    variations,
+    modifierLists,
+    modifiers,
+    catalogMeta,
+    targetLocales,
+  ]);
 
   // Total translatable source rows across the whole catalog. KRA-97:
   // previously this was `items.length` only, so the hero band's "X of Y
@@ -257,7 +285,9 @@ export function TranslationsPanel({
     categories.length +
     variations.length +
     modifierLists.length +
-    modifiers.length;
+    modifiers.length +
+    // KRA-98: +1 for the always-present catalog meta row.
+    1;
 
   // Aggregate totals for the persistent header hero band. Sums per-locale
   // buckets across every target language so the merchant sees "your
@@ -560,14 +590,22 @@ export function TranslationsPanel({
                     >
                       Modifiers
                     </TabsTrigger>
-                    {/* "Catalog" (shop name + description) tab stays
-                        deferred — Phase 2 spec says ship only if demand
-                        evidence emerges. The DisabledTab placeholder
-                        documents the gap without taking up active surface. */}
-                    <DisabledTab
-                      label="Catalog"
-                      reason="Catalog meta (shop name + description) ships once a merchant asks for it. The workbench will turn it on then."
-                    />
+                    {/* KRA-98: "Catalog" tab (storefront shop name +
+                        description). Sits last in the strip so the
+                        merchant's first read is still the high-volume
+                        item-level work. The DisabledTab placeholder it
+                        replaced documented the gap; we leave the
+                        comment trail here so future archaeologists see
+                        why it sat dark through Phase 2. */}
+                    <TabsTrigger
+                      value="catalog"
+                      className={cn(
+                        "rounded-full px-3",
+                        "data-[state=active]:bg-foreground data-[state=active]:text-background",
+                      )}
+                    >
+                      Catalog
+                    </TabsTrigger>
                   </TabsList>
                 </div>
               </div>
@@ -695,6 +733,35 @@ export function TranslationsPanel({
                   />
                 )}
               </TabsContent>
+
+              {/* KRA-98: Catalog meta tab. One row per catalog (the
+                  catalog itself), wrapped in the same EntityRowForTable
+                  shape the other entity tabs use so the merchant gets a
+                  consistent "table → click row → fullscreen dialog"
+                  flow. fields=["name", "description"] mirrors the
+                  Category tab — those are the two fields catalogs.* can
+                  carry into the storefront. */}
+              <TabsContent
+                value="catalog"
+                className="flex-1 overflow-auto p-4 md:p-6"
+              >
+                {enabledLocales.length <= 1 ? (
+                  <NoTargetLocalesEmpty hasDefaultLocale={defaultLocale !== null} />
+                ) : (
+                  <EntityTranslationsTab
+                    catalogId={catalogId}
+                    entityKind="catalog"
+                    entityLabel="catalog"
+                    entityLabelPlural="catalog meta"
+                    fields={["name", "description"] as const}
+                    rows={[catalogMeta]}
+                    defaultLocale={defaultLocale}
+                    targetLocales={targetLocales}
+                    busyLocales={busyLocales}
+                    onMutation={refreshAfterMutation}
+                  />
+                )}
+              </TabsContent>
             </Tabs>
           </main>
         </div>
@@ -708,39 +775,12 @@ export function TranslationsPanel({
 // per-day chip. Today's count is still tracked in catalog_translation_
 // quotas.used_today for future cost-tracking surfaces.
 
-// ============================================================================
-// DisabledTab — visual placeholder for Phase 2 entity kinds
-// ============================================================================
-
-function DisabledTab({ label, reason }: { label: string; reason: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className={cn(
-            // Match the active TabsTrigger height (Radix renders triggers
-            // at h-9 by default) so disabled placeholders sit at the same
-            // baseline inside the pill — no half-pixel jog.
-            "inline-flex h-9 cursor-not-allowed select-none items-center gap-1.5 rounded-full px-3 text-sm",
-            "text-muted-foreground/60",
-          )}
-          aria-disabled="true"
-          role="button"
-          tabIndex={-1}
-        >
-          {label}
-          <Badge
-            variant="outline"
-            className="h-4 rounded-full px-1.5 text-[10px] font-normal"
-          >
-            Soon
-          </Badge>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{reason}</TooltipContent>
-    </Tooltip>
-  );
-}
+// DisabledTab was removed in KRA-98 — every entity kind on the strip now
+// has a real, mounted tab. The helper lived here through KRA-94/97 to
+// document the "Catalog" placeholder; with Catalog wired we no longer
+// need it and dragging it around as dead code burns import surface
+// (Tooltip, Badge) for no benefit. Restore from git history if a future
+// tab needs to be deferred again.
 
 // ============================================================================
 // Empty state when the merchant hasn't added a target locale yet

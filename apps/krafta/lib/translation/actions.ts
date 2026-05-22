@@ -224,12 +224,18 @@ export async function updateItemSourceText(
 
 const updateEntitySourceTextSchema = z.object({
   catalogId: uuidSchema,
-  entityKind: z.enum(["variation", "modifier", "modifier_list", "category"] as const),
+  entityKind: z.enum([
+    "variation",
+    "modifier",
+    "modifier_list",
+    "category",
+    "catalog",
+  ] as const),
   entityId: uuidSchema,
   /** Required. Trimmed; empty string fails validation. */
   name: z.string().trim().min(1).max(500),
   /** Optional. Only honored when the entity kind has a description column
-   *  (currently `category` only). Pass `null` to clear. */
+   *  (currently `category` and `catalog`). Pass `null` to clear. */
   description: z.string().trim().nullable().optional(),
 });
 
@@ -310,6 +316,22 @@ export async function updateEntitySourceText(
         .update({ name })
         .eq("id", entityId)
         .eq("catalog_id", catalogId);
+      error = res.error;
+      break;
+    }
+    case "catalog": {
+      // catalog meta has both name + description. The "entity" IS the
+      // catalog, so entityId must equal catalogId — guard against tampering
+      // by pinning both to the same value below.
+      const payload: Record<string, string | null> = { name };
+      if (description !== undefined) {
+        payload.description = description;
+      }
+      const res = await supabase
+        .from("catalogs")
+        .update(payload)
+        .eq("id", entityId)
+        .eq("id", catalogId);
       error = res.error;
       break;
     }
@@ -640,7 +662,8 @@ type TranslationTableName =
   | "variation_translations"
   | "modifier_translations"
   | "modifier_list_translations"
-  | "catalog_category_translations";
+  | "catalog_category_translations"
+  | "catalog_translations";
 
 function translationTableFor(entityKind: EntityKind): TranslationTableName {
   switch (entityKind) {
@@ -654,6 +677,8 @@ function translationTableFor(entityKind: EntityKind): TranslationTableName {
       return "modifier_list_translations";
     case "category":
       return "catalog_category_translations";
+    case "catalog":
+      return "catalog_translations";
   }
 }
 
@@ -669,5 +694,9 @@ function translationFkColumnFor(entityKind: EntityKind): string {
       return "modifier_list_id";
     case "category":
       return "category_id";
+    case "catalog":
+      // For catalog meta, the translation row's FK back to the parent
+      // IS the catalog_id — there's no separate child entity.
+      return "catalog_id";
   }
 }

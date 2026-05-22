@@ -37,6 +37,7 @@ export const ENTITY_KINDS = [
   "modifier",
   "modifier_list",
   "category",
+  "catalog",
 ] as const;
 
 export type EntityKind = (typeof ENTITY_KINDS)[number];
@@ -52,6 +53,9 @@ export const FIELDS_BY_ENTITY: Record<EntityKind, readonly string[]> = {
   modifier: ["name"],
   modifier_list: ["name"],
   category: ["name", "description"],
+  // catalog meta = the storefront's shop name + description (KRA-98).
+  // One row per catalog; no FK to a child entity.
+  catalog: ["name", "description"],
 } as const;
 
 /** Which fields are nullable in the output. `name` is always required. */

@@ -118,7 +118,8 @@ type EntityKind =
   | "variation"
   | "modifier"
   | "modifier_list"
-  | "category";
+  | "category"
+  | "catalog";
 
 const FIELDS_BY_ENTITY: Record<EntityKind, readonly string[]> = {
   item: ["name", "description", "image_alt"],
@@ -126,6 +127,10 @@ const FIELDS_BY_ENTITY: Record<EntityKind, readonly string[]> = {
   modifier: ["name"],
   modifier_list: ["name"],
   category: ["name", "description"],
+  // KRA-98: catalog meta translation = the storefront's shop name +
+  // description. One row per catalog (no child entity), so the worker's
+  // "parent row" IS the catalog itself.
+  catalog: ["name", "description"],
 };
 
 const NULLABLE_FIELDS = new Set(["description", "image_alt"]);
@@ -136,6 +141,7 @@ const TRANSLATION_TABLE: Record<EntityKind, string> = {
   modifier: "modifier_translations",
   modifier_list: "modifier_list_translations",
   category: "catalog_category_translations",
+  catalog: "catalog_translations",
 };
 
 const PARENT_TABLE: Record<EntityKind, string> = {
@@ -144,6 +150,7 @@ const PARENT_TABLE: Record<EntityKind, string> = {
   modifier: "modifiers",
   modifier_list: "modifier_lists",
   category: "catalog_categories",
+  catalog: "catalogs",
 };
 
 const TRANSLATION_PK_COLUMN: Record<EntityKind, string> = {
@@ -152,6 +159,9 @@ const TRANSLATION_PK_COLUMN: Record<EntityKind, string> = {
   modifier: "modifier_id",
   modifier_list: "modifier_list_id",
   category: "category_id",
+  // For catalog meta the FK back to the parent IS the catalog_id — see
+  // catalog_translations.catalog_id in 20260522110000_kra98_catalog_translations.sql.
+  catalog: "catalog_id",
 };
 
 function outputSchemaFor(entityKind: EntityKind) {
