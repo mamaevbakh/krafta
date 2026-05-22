@@ -45,7 +45,7 @@ export function BigPhotoCard({
             {description}
           </p>
         )}
-        <span className="shrink-0 whitespace-nowrap text-sm font-semibold">
+        <span className="shrink-0 whitespace-nowrap font-mono text-sm font-semibold tabular-nums">
           {formatPriceCents(item.price_cents, currencySettings)}
         </span>
         </div>

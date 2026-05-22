@@ -149,7 +149,7 @@ function CartListStep({
                                 )}
                               </span>
                               {!isText && mod.base_price_cents_delta > 0 ? (
-                                <span className="shrink-0 tabular-nums">
+                                <span className="shrink-0 font-mono tabular-nums">
                                   +
                                   {formatPriceCents(
                                     mod.base_price_cents_delta * mod.quantity,
@@ -162,11 +162,11 @@ function CartListStep({
                         })}
                       </ul>
                     ) : null}
-                    <p className="mt-0.5 text-xs text-muted-foreground">
+                    <p className="mt-0.5 font-mono text-xs text-muted-foreground tabular-nums">
                       {formatPriceCents(line.base_price_cents, currencySettings)}
                     </p>
                   </div>
-                  <p className="shrink-0 text-sm font-medium text-foreground tabular-nums">
+                  <p className="shrink-0 font-mono text-sm font-medium text-foreground tabular-nums">
                     {formatPriceCents(line.total_price_cents, currencySettings)}
                   </p>
                 </div>

@@ -548,7 +548,7 @@ function ModifierRow({
           />
         ) : null}
         {unit > 0 ? (
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="font-mono text-xs text-muted-foreground tabular-nums">
             +{formatPrice(showQuantity && selected ? total : unit)}
             {showQuantity && selected && quantity > 1 ? (
               <span className="ml-1 text-[10px] text-muted-foreground/70">

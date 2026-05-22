@@ -96,7 +96,7 @@ export function CardMarkup({
               KRA-35 PR1 so the byte-identical promise stays intact. The
               Library Canvas (PR2) and InlineCurrency primitive will use
               font-mono tabular-nums from the start. */}
-          <span className="text-sm font-semibold leading-none whitespace-nowrap">
+          <span className="whitespace-nowrap font-mono text-sm font-semibold leading-none tabular-nums">
             {formatPriceCents(item.price_cents, currencySettings)}
           </span>
         </div>

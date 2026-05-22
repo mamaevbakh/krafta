@@ -51,7 +51,7 @@ export function GlassBlurCard({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs backdrop-blur-md">
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 font-mono text-xs tabular-nums backdrop-blur-md">
               {formatPriceCents(item.price_cents, currencySettings)}
             </span>
             <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs backdrop-blur-md">

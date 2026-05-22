@@ -261,7 +261,7 @@ function SummaryBlock({
             <span className="min-w-0 flex-1 truncate text-foreground">
               {line.quantity} × {line.name}
             </span>
-            <span className="shrink-0 tabular-nums text-foreground">
+            <span className="shrink-0 font-mono tabular-nums text-foreground">
               {formatPriceCents(line.total_price_cents, currencySettings)}
             </span>
           </li>
@@ -270,7 +270,7 @@ function SummaryBlock({
       <Separator />
       <div className="flex items-center justify-between px-4 py-3 text-sm">
         <span className="text-muted-foreground">Subtotal</span>
-        <span className="text-base font-semibold tabular-nums text-foreground">
+        <span className="font-mono text-base font-semibold tabular-nums text-foreground">
           {formatPriceCents(snapshot.subtotalCents, currencySettings)}
         </span>
       </div>
