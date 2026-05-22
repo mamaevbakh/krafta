@@ -112,7 +112,10 @@ import { ItemTypeSelect } from "./item-type-select";
 import { PhotoUploader } from "./photo-uploader";
 import { DraftEditorForm } from "./draft-editor-form";
 import { AdvancedSection } from "./advanced-section";
-import { ModifierListsPicker } from "./modifier-lists-picker";
+import {
+  ModifierListsAttachment,
+  type ModifierAttachment,
+} from "./modifier-lists-attachment";
 import {
   isCatalogItemProductType,
   type CatalogItemProductType,
@@ -144,17 +147,36 @@ export type EditorSheetProps = {
   categories: CatalogCategory[];
   media: ItemMedia[];
   translations: ItemTranslation[];
-  /** KRA-85 follow-up — full modifier-list set for the catalog, drives
-   *  the ModifierListsPicker inside the editor. */
+  /** KRA-85 follow-up — full modifier-list set for the catalog (with
+   *  nested choices + min/max defaults), drives the Square-inspired
+   *  attachment UI inside the editor. */
   modifierLists: Array<{
     id: string;
     name: string;
     modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
     is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
   }>;
-  /** KRA-85 follow-up — current (item × list) attachments. The editor
-   *  derives `initialAttachedIds` by filtering on the selected item's id. */
-  itemModifierLists: Array<{ item_id: string; modifier_list_id: string }>;
+  /** KRA-85 follow-up — current (item × list) attachments with per-item
+   *  override columns. Editor derives the row attachments by filtering
+   *  on the selected item's id. */
+  itemModifierLists: Array<{
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }>;
   orgId: string;
   catalogId: string;
   catalogSlug: string;
@@ -343,9 +365,26 @@ type EditorFormProps = {
     id: string;
     name: string;
     modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
     is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
   }>;
-  itemModifierLists: Array<{ item_id: string; modifier_list_id: string }>;
+  itemModifierLists: Array<{
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }>;
   orgId: string;
   catalogId: string;
   catalogSlug: string;
@@ -466,30 +505,33 @@ function EditorForm({
   const [slug, setSlug] = React.useState(item.slug);
 
   // ---------------------------------------------------------------------
-  // KRA-85 follow-up — modifier-list attachment state.
-  //
-  // initial = the (item × list) pairs from the snapshot, filtered to this
-  // item, sorted by stable order. Picker is controlled; merchant adds /
-  // removes; the changeset rides along with Save as updateItem's new
-  // `modifierListIds` field.
+  // KRA-85 follow-up — modifier-list attachment state with per-item
+  // overrides (min/max/hidden) + ordinal. Square-inspired UX: the
+  // attachment component owns the row reordering + per-row settings
+  // popover; we just round-trip the changeset through Save.
   // ---------------------------------------------------------------------
-  const initialModifierListIds = React.useMemo(
+  const initialAttachments = React.useMemo<ModifierAttachment[]>(
     () =>
       itemModifierLists
         .filter((pair) => pair.item_id === item.id)
-        .map((pair) => pair.modifier_list_id),
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map((pair) => ({
+          modifierListId: pair.modifier_list_id,
+          ordinal: pair.ordinal,
+          minSelectedOverride: pair.min_selected_override,
+          maxSelectedOverride: pair.max_selected_override,
+          hiddenFromCustomerOverride: pair.hidden_from_customer_override,
+        })),
     [itemModifierLists, item.id],
   );
-  const [modifierListIds, setModifierListIds] = React.useState<string[]>(
-    initialModifierListIds,
-  );
+  const [modifierAttachments, setModifierAttachments] = React.useState<
+    ModifierAttachment[]
+  >(initialAttachments);
 
-  // Re-seed if the item id changes — same key={item.id} pattern as the
-  // rest of the form, so this is mostly a safety net for prop refreshes
-  // while the same item stays open.
+  // Re-seed if the underlying snapshot changes (RSC refresh, item swap).
   React.useEffect(() => {
-    setModifierListIds(initialModifierListIds);
-  }, [initialModifierListIds]);
+    setModifierAttachments(initialAttachments);
+  }, [initialAttachments]);
 
   // ---------------------------------------------------------------------
   // KRA-86 — variations state (single source of truth via the hook).
@@ -510,12 +552,15 @@ function EditorForm({
   const isDefaultLocaleEditable = activeLocale === defaultLocale;
   const hasMultipleVariations = variationsState.local.length >= 2;
 
-  // Dirty = any field changed from its initial value.
-  const modifierListIdsDirty = React.useMemo(() => {
-    if (modifierListIds.length !== initialModifierListIds.length) return true;
-    const initialSet = new Set(initialModifierListIds);
-    return modifierListIds.some((id) => !initialSet.has(id));
-  }, [modifierListIds, initialModifierListIds]);
+  // Dirty = any field changed from its initial value. Modifier attachments
+  // serialize cheaply enough that JSON diff is the clearest test —
+  // catches reordering, per-row override edits, and add/remove all at once.
+  const modifierAttachmentsDirty = React.useMemo(
+    () =>
+      JSON.stringify(modifierAttachments) !==
+      JSON.stringify(initialAttachments),
+    [modifierAttachments, initialAttachments],
+  );
 
   const isDirty =
     name !== initialName ||
@@ -525,7 +570,7 @@ function EditorForm({
     productType !== item.product_type ||
     slug !== item.slug ||
     variationsState.isDirty ||
-    modifierListIdsDirty;
+    modifierAttachmentsDirty;
 
   // ---------------------------------------------------------------------
   // Save state machine
@@ -595,10 +640,10 @@ function EditorForm({
       // round-trips the current rows unchanged through the RPC, which
       // is idempotent.
       variationChanges: variationsState.changes,
-      // KRA-85 follow-up — full modifier-list set after this save. The
-      // server replaces the item_modifier_lists row set with this list,
-      // inserting new pairs and deleting removed ones in one pass.
-      modifierListIds,
+      // KRA-85 follow-up — full modifier-list attachment set after this
+      // save. Each entry carries ordinal + per-item overrides; the server
+      // replaces item_modifier_lists row set in one pass.
+      modifierAttachments,
     });
 
     if (!result.ok) {
@@ -657,7 +702,7 @@ function EditorForm({
     router,
     onRequestClose,
     variationsState.changes,
-    modifierListIds,
+    modifierAttachments,
   ]);
 
   // ---------------------------------------------------------------------
@@ -1070,25 +1115,17 @@ function EditorForm({
               />
             </div>
 
-            {/* Modifier lists — attached state lives in modifierListIds,
-                Save flushes via updateItem's modifierListIds field. Picker
-                is controlled; merchant adds via popover + Command list,
-                detaches via X on each chip. */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">Modifier lists</Label>
-              <ModifierListsPicker
-                available={modifierLists}
-                attachedIds={modifierListIds}
-                onChange={setModifierListIds}
-                disabled={saveStatus === "saving"}
-                manageHref={modifiersManageHref}
-              />
-              <FieldDescription>
-                Sizes, toppings, prep notes — pick from any modifier list
-                in this catalog. Build new ones in{" "}
-                <span className="font-medium">Items → Modifiers</span>.
-              </FieldDescription>
-            </div>
+            {/* Square-inspired modifier attachments. Component owns its
+                own header ("Modifiers" + Edit button) + rows. Save flushes
+                via updateItem.modifierAttachments which carries ordinal +
+                per-item overrides on top of the set membership. */}
+            <ModifierListsAttachment
+              available={modifierLists}
+              attachments={modifierAttachments}
+              onChange={setModifierAttachments}
+              disabled={saveStatus === "saving"}
+              manageHref={modifiersManageHref}
+            />
 
             {/* Advanced — collapsible power-user knobs. Currently just
                 the Slug field; future ones (custom metadata, SKU when

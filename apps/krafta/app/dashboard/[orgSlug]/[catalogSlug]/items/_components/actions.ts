@@ -154,23 +154,40 @@ async function synthesizeDefaultVariationUpdate(args: {
 }
 
 /**
+ * Per-item modifier-list attachment payload. Mirrors the editable
+ * columns on `item_modifier_lists`. Square-inspired UX added the
+ * per-item override knobs in the editor — keep them at the API
+ * boundary so the form can express them in one shot.
+ */
+export type ItemModifierAttachmentInput = {
+  modifierListId: string;
+  /** 0-based position; the editor's drag-reorder sets this. */
+  ordinal: number;
+  /** Null = use the list's catalog-wide default. */
+  minSelectedOverride: number | null;
+  maxSelectedOverride: number | null;
+  /** True = applied server-side but hidden from customer-facing menu. */
+  hiddenFromCustomerOverride: boolean;
+};
+
+/**
  * Sync the modifier-list set attached to an item — KRA-85 follow-up.
  *
  * Called from createItem (after the items row exists) and updateItem.
- * Replace-the-set semantics: compute the diff against the current
- * `item_modifier_lists` rows, insert the new pairs, delete the removed
- * pairs. Inserts default `is_active=true` so any existing inactive pair
- * the merchant re-attaches comes back live.
+ * Replace-the-set semantics with override-aware UPDATE:
+ *   - For each desired attachment that already exists, UPDATE the row
+ *     to match the new ordinal + overrides (no-op when unchanged).
+ *   - INSERT rows for fresh attachments.
+ *   - DELETE rows for any list_id no longer in the desired set.
  *
- * Returns `{ ok: false, error }` on any failure so the caller can
- * propagate. Doesn't bust the catalog cache — the wrapping action does
- * that once at the end.
+ * Doesn't bust the catalog cache — the wrapping action does that once
+ * at the end.
  */
 async function syncItemModifierLists(args: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   itemId: string;
   catalogId: string;
-  desiredListIds: string[];
+  desired: ItemModifierAttachmentInput[];
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: existing, error: fetchError } = await args.supabase
     .from("item_modifier_lists")
@@ -183,26 +200,17 @@ async function syncItemModifierLists(args: {
   const existingIds = new Set(
     (existing ?? []).map((r) => r.modifier_list_id),
   );
-  const desiredIds = new Set(args.desiredListIds);
+  const desiredById = new Map(
+    args.desired.map((a) => [a.modifierListId, a] as const),
+  );
 
-  const toInsert = [...desiredIds].filter((id) => !existingIds.has(id));
-  const toDelete = [...existingIds].filter((id) => !desiredIds.has(id));
-
-  if (toInsert.length > 0) {
-    const { error: insertError } = await args.supabase
-      .from("item_modifier_lists")
-      .insert(
-        toInsert.map((modifierListId) => ({
-          item_id: args.itemId,
-          modifier_list_id: modifierListId,
-          catalog_id: args.catalogId,
-          is_active: true,
-        })),
-      );
-    if (insertError) {
-      return { ok: false, error: insertError.message };
-    }
-  }
+  const toInsert = args.desired.filter(
+    (a) => !existingIds.has(a.modifierListId),
+  );
+  const toUpdate = args.desired.filter((a) =>
+    existingIds.has(a.modifierListId),
+  );
+  const toDelete = [...existingIds].filter((id) => !desiredById.has(id));
 
   if (toDelete.length > 0) {
     const { error: deleteError } = await args.supabase
@@ -212,6 +220,46 @@ async function syncItemModifierLists(args: {
       .in("modifier_list_id", toDelete);
     if (deleteError) {
       return { ok: false, error: deleteError.message };
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error: insertError } = await args.supabase
+      .from("item_modifier_lists")
+      .insert(
+        toInsert.map((a) => ({
+          item_id: args.itemId,
+          modifier_list_id: a.modifierListId,
+          catalog_id: args.catalogId,
+          ordinal: a.ordinal,
+          min_selected_override: a.minSelectedOverride,
+          max_selected_override: a.maxSelectedOverride,
+          hidden_from_customer_override: a.hiddenFromCustomerOverride,
+          is_active: true,
+        })),
+      );
+    if (insertError) {
+      return { ok: false, error: insertError.message };
+    }
+  }
+
+  // Updates fire as one UPDATE per row — modifier-list sets on a given
+  // item are typically <10, so the round-trip overhead is fine. If this
+  // becomes hot we can collapse to a single CASE-based UPDATE via RPC.
+  for (const a of toUpdate) {
+    const { error: updateError } = await args.supabase
+      .from("item_modifier_lists")
+      .update({
+        ordinal: a.ordinal,
+        min_selected_override: a.minSelectedOverride,
+        max_selected_override: a.maxSelectedOverride,
+        hidden_from_customer_override: a.hiddenFromCustomerOverride,
+        is_active: true,
+      })
+      .eq("item_id", args.itemId)
+      .eq("modifier_list_id", a.modifierListId);
+    if (updateError) {
+      return { ok: false, error: updateError.message };
     }
   }
 
@@ -253,10 +301,11 @@ export async function createItem(params: {
     bytes?: number | null;
     alt?: string | null;
   }>;
-  /** KRA-85 follow-up: modifier-list ids to attach during the create
-   *  gesture. Inserted as item_modifier_lists rows after the items row
-   *  exists. Empty / omitted leaves the item with no attached lists. */
-  modifierListIds?: string[];
+  /** KRA-85 follow-up: per-item modifier-list attachments to insert
+   *  during the create gesture. Each carries ordinal + per-item override
+   *  values (min/max/hidden). Empty / omitted leaves the item with no
+   *  attached lists. */
+  modifierAttachments?: ItemModifierAttachmentInput[];
 }) {
   const supabase = await createClient();
 
@@ -437,12 +486,15 @@ export async function createItem(params: {
   // KRA-85 follow-up: attach the requested modifier lists. Done after the
   // items + variations rows exist so the FK + denormalized catalog_id
   // sync trigger have parents to reference.
-  if (params.modifierListIds && params.modifierListIds.length > 0) {
+  if (
+    params.modifierAttachments &&
+    params.modifierAttachments.length > 0
+  ) {
     const syncResult = await syncItemModifierLists({
       supabase,
       itemId: item.id,
       catalogId: params.catalogId,
-      desiredListIds: params.modifierListIds,
+      desired: params.modifierAttachments,
     });
     if (!syncResult.ok) {
       return { ok: false, error: syncResult.error };
@@ -478,12 +530,12 @@ export async function updateItem(params: {
   /** KRA-86 — atomic variations changes. Optional. When present, dispatched
    *  inside the same super-RPC call as the item field UPDATE. */
   variationChanges?: ItemVariationChange[];
-  /** KRA-85 follow-up: full set of modifier-list ids that should be
-   *  attached to this item after the save. Replace-the-set semantics —
-   *  any list currently attached but not in this array gets detached.
-   *  Pass `undefined` to leave the existing attachments untouched (legacy
-   *  callers don't need to know about this field). */
-  modifierListIds?: string[];
+  /** KRA-85 follow-up: full set of modifier-list attachments for this
+   *  item after the save. Replace-the-set semantics — any list currently
+   *  attached but not in this array gets detached. Pass `undefined` to
+   *  leave existing attachments untouched (legacy callers without
+   *  modifier UI don't need to know about this field). */
+  modifierAttachments?: ItemModifierAttachmentInput[];
 }) {
   const supabase = await createClient();
 
@@ -640,12 +692,12 @@ export async function updateItem(params: {
   // KRA-85 follow-up: replace the attached modifier-list set if the
   // caller passed one. `undefined` leaves attachments untouched so
   // legacy code paths keep working unchanged.
-  if (params.modifierListIds !== undefined) {
+  if (params.modifierAttachments !== undefined) {
     const syncResult = await syncItemModifierLists({
       supabase,
       itemId: params.itemId,
       catalogId: params.catalogId,
-      desiredListIds: params.modifierListIds,
+      desired: params.modifierAttachments,
     });
     if (!syncResult.ok) {
       return { ok: false, error: syncResult.error };

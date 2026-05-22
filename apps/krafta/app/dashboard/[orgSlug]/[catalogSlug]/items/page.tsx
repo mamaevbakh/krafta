@@ -56,13 +56,42 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     position: number;
     is_primary: boolean;
   }[] = [];
+  // KRA-85 follow-up — Square-inspired modifier UX.
+  // The richer row preview ("Choco, Strawberry, Lemon" subtitle + min/max
+  // chip) needs more than just the bare list rows, so we fetch:
+  //   - modifier_lists with min/max + text-mode constraints + nested
+  //     modifiers (name + ordinal + is_active) so the choice preview can
+  //     render the first few names per attached list
+  //   - item_modifier_lists carrying ordinal + per-item override columns
+  //     (min_selected_override, max_selected_override,
+  //     hidden_from_customer_override). The override columns let the
+  //     editor's per-row settings tweak min/max for THIS item without
+  //     touching the list's catalog-wide defaults — matches Square's
+  //     "customize for this item" affordance.
   let modifierLists: {
     id: string;
     name: string;
     modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
     is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
   }[] = [];
-  let itemModifierLists: { item_id: string; modifier_list_id: string }[] = [];
+  let itemModifierLists: {
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }[] = [];
   if (catalog?.id) {
     const [itemsResponse, categoriesResponse, localesResponse] =
       await Promise.all([
@@ -163,15 +192,25 @@ export default async function DashboardItemsPage({ params }: PageProps) {
           .order("position", { ascending: true }),
         supabase
           .from("modifier_lists")
-          .select("id, name, modifier_type, is_active")
+          .select(
+            `id, name, modifier_type, min_selected, max_selected,
+             text_required, max_length, is_active,
+             modifiers!modifiers_modifier_list_id_fkey(id, name, ordinal, is_active)`,
+          )
           .eq("catalog_id", catalog.id)
-          .order("name", { ascending: true }),
+          .order("name", { ascending: true })
+          .order("ordinal", { referencedTable: "modifiers", ascending: true }),
         supabase
           .from("item_modifier_lists")
-          .select("item_id, modifier_list_id")
+          .select(
+            `item_id, modifier_list_id, ordinal,
+             min_selected_override, max_selected_override,
+             hidden_from_customer_override`,
+          )
           .eq("catalog_id", catalog.id)
           .eq("is_active", true)
-          .in("item_id", itemIds),
+          .in("item_id", itemIds)
+          .order("ordinal", { ascending: true }),
       ]);
 
       translations = translationsResponse.data ?? [];

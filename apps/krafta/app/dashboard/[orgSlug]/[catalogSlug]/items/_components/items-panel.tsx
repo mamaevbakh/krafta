@@ -81,9 +81,26 @@ type ItemsPanelProps = {
     id: string;
     name: string;
     modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
     is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
   }>;
-  itemModifierLists: Array<{ item_id: string; modifier_list_id: string }>;
+  itemModifierLists: Array<{
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }>;
   currencySettings: CurrencySettings;
 };
 

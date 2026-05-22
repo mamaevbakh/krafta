@@ -77,7 +77,10 @@ import { useCanvasLocale } from "./locale-context";
 import { createItem, setItemActive } from "./actions";
 import { ItemTypeSelect } from "./item-type-select";
 import { AdvancedSection } from "./advanced-section";
-import { ModifierListsPicker } from "./modifier-lists-picker";
+import {
+  ModifierListsAttachment,
+  type ModifierAttachment,
+} from "./modifier-lists-attachment";
 import {
   PhotoUploader,
   type PhotoUploaderMedia,
@@ -97,12 +100,22 @@ export type DraftEditorFormProps = {
   initialCategoryId: string;
   categories: CatalogCategory[];
   /** KRA-85 follow-up — catalog's modifier lists, drives the
-   *  ModifierListsPicker in the create flow. */
+   *  ModifierListsAttachment in the create flow. */
   modifierLists: Array<{
     id: string;
     name: string;
     modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
     is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
   }>;
   orgId: string;
   catalogId: string;
@@ -164,10 +177,13 @@ export function DraftEditorForm({
   );
   const [isActive, setIsActive] = React.useState(true);
   const [photos, setPhotos] = React.useState<PhotoUploaderMedia[]>([]);
-  // KRA-85 follow-up — modifier lists the merchant picked at create
-  // time. Sent to createItem.modifierListIds; the server inserts the
-  // item_modifier_lists rows after the items row exists.
-  const [modifierListIds, setModifierListIds] = React.useState<string[]>([]);
+  // KRA-85 follow-up — modifier attachments the merchant picked at
+  // create time (with overrides + ordinal). Sent to
+  // createItem.modifierAttachments; server inserts item_modifier_lists
+  // rows after the items row exists.
+  const [modifierAttachments, setModifierAttachments] = React.useState<
+    ModifierAttachment[]
+  >([]);
 
   // Variations seed: synthetic default row so the top-level Price
   // field has something to bind to. The id is a synthetic UUID — on
@@ -208,7 +224,7 @@ export function DraftEditorForm({
     !isActive ||
     photos.length > 0 ||
     variationsState.isDirty ||
-    modifierListIds.length > 0;
+    modifierAttachments.length > 0;
 
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -272,10 +288,10 @@ export function DraftEditorForm({
       variations,
       photoUploads,
       // KRA-85 follow-up — attach the lists the merchant picked during
-      // create. Server inserts item_modifier_lists pairs after items
-      // and item_variations land.
-      modifierListIds:
-        modifierListIds.length > 0 ? modifierListIds : undefined,
+      // create, with overrides + ordinal. Server inserts the pairs
+      // after items + variations land.
+      modifierAttachments:
+        modifierAttachments.length > 0 ? modifierAttachments : undefined,
     });
 
     if (!result.ok) {
@@ -315,7 +331,7 @@ export function DraftEditorForm({
     catalogSlug,
     router,
     onRequestClose,
-    modifierListIds,
+    modifierAttachments,
   ]);
 
   // -------------------------------------------------------------------
@@ -502,23 +518,16 @@ export function DraftEditorForm({
                 />
               </div>
 
-              {/* Modifier lists — KRA-85 follow-up. Same picker the
-                  edit form uses; create flow seeds with an empty
-                  attached set. */}
-              <div className="flex flex-col gap-2">
-                <Label className="text-sm font-medium">Modifier lists</Label>
-                <ModifierListsPicker
-                  available={modifierLists}
-                  attachedIds={modifierListIds}
-                  onChange={setModifierListIds}
-                  disabled={saveStatus === "saving"}
-                  manageHref={modifiersManageHref}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Sizes, toppings, prep notes — pick from any modifier list
-                  in this catalog.
-                </p>
-              </div>
+              {/* Modifier attachments — Square-inspired UX. Same
+                  component the edit form uses; create flow seeds with
+                  no attachments. */}
+              <ModifierListsAttachment
+                available={modifierLists}
+                attachments={modifierAttachments}
+                onChange={setModifierAttachments}
+                disabled={saveStatus === "saving"}
+                manageHref={modifiersManageHref}
+              />
 
               <AdvancedSection
                 slug={slug}
