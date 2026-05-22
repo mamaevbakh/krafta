@@ -626,73 +626,39 @@ export async function updateItem(params: {
     );
 
   if (translations.length) {
-    const { data: existingTranslations, error: existingError } = await supabase
+    // Single bulk UPSERT keyed on the (item_id, locale) UNIQUE constraint.
+    //
+    // The earlier split-into-update-vs-insert + Promise.all path raced
+    // against itself: each .update() was a separate Supabase HTTP request
+    // and therefore a separate Postgres transaction. Each transaction
+    // fired the `trg_catalog_search_sync_item_translation` AFTER trigger,
+    // which calls `catalog_search_sync_item_document(item_id)` — a
+    // DELETE+INSERT cycle over `catalog_search_documents`. Two of those
+    // running concurrently would each DELETE the rows they saw at start,
+    // then INSERT — and the second INSERT would hit the unique constraint
+    // `catalog_search_documents_unique_source_in_catalog` because the
+    // first transaction's INSERT had already committed.
+    //
+    // Collapsing to a single .upsert() puts every row in one transaction,
+    // so the trigger fires per row WITHIN the same transaction and the
+    // DELETE in trigger call N sees the INSERTs from call N-1. No race.
+    const upsertRows = translations.map((translation) => ({
+      item_id: params.itemId,
+      locale: translation.locale,
+      name: translation.name,
+      description: translation.description,
+      image_alt: translation.image_alt,
+    }));
+
+    const { error: upsertError } = await supabase
       .from("item_translations")
-      .select("id, locale")
-      .eq("item_id", params.itemId);
+      .upsert(upsertRows, { onConflict: "item_id,locale" });
 
-    if (existingError) {
-      return { ok: false, error: existingError.message };
-    }
-
-    const existingByLocale = new Map(
-      (existingTranslations ?? []).map((row) => [row.locale, row.id]),
-    );
-
-    const updates = translations
-      .filter((translation) => existingByLocale.has(translation.locale))
-      .map((translation) => ({
-        id: existingByLocale.get(translation.locale) as string,
-        item_id: params.itemId,
-        name: translation.name,
-        description: translation.description,
-        image_alt: translation.image_alt,
-      }));
-
-    const inserts = translations
-      .filter((translation) => !existingByLocale.has(translation.locale))
-      .map((translation) => ({
-        item_id: params.itemId,
-        locale: translation.locale,
-        name: translation.name,
-        description: translation.description,
-        image_alt: translation.image_alt,
-      }));
-
-    if (updates.length) {
-      const updateResults = await Promise.all(
-        updates.map((update) =>
-          supabase
-            .from("item_translations")
-            .update({
-              name: update.name,
-              description: update.description,
-              image_alt: update.image_alt,
-            })
-            .eq("id", update.id),
-        ),
-      );
-
-      const updateError = updateResults.find((result) => result.error)?.error;
-      if (updateError) {
-        return {
-          ok: false,
-          error: updateError.message ?? "Failed to update item translations.",
-        };
-      }
-    }
-
-    if (inserts.length) {
-      const { error: insertError } = await supabase
-        .from("item_translations")
-        .insert(inserts);
-
-      if (insertError) {
-        return {
-          ok: false,
-          error: insertError.message ?? "Failed to insert item translations.",
-        };
-      }
+    if (upsertError) {
+      return {
+        ok: false,
+        error: upsertError.message ?? "Failed to save item translations.",
+      };
     }
   }
 
