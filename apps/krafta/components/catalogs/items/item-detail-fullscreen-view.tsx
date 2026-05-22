@@ -29,11 +29,22 @@
  *   • Image container shape: ALWAYS the catalog's configured aspect
  *     ratio (from `settings_layout.itemCard.aspectRatio` on the
  *     catalog, surfaced as `itemAspectRatio`). The merchant picked
- *     that ratio for a reason; every item on the storefront should
- *     present in the same shape. Photos use object-cover with
- *     object-position: center top to fill the container — landscape
- *     photos crop on the sides, tall portraits crop the bottom, head
- *     and brand-identifying detail at the top is always preserved.
+ *     that ratio for the grid; the detail view honors it so every
+ *     item presents in the same shape.
+ *
+ *   • Image fit: object-contain. The detail view's contract with the
+ *     customer is "show me the WHOLE product photo". A portrait shot
+ *     of a model in a 3:4 container gets letterbox bars on the sides
+ *     (image fills height, narrower than container). A landscape
+ *     bracelet shot in a 3:4 container gets letterbox top + bottom
+ *     (image fills width, shorter than container). The bg-muted bars
+ *     are quiet and chrome-neutral. This is Amazon's / Shopify's
+ *     default for product detail — accept the bars, never crop.
+ *
+ *     For the catalog GRID, individual card variants use object-cover
+ *     to keep the grid visually uniform — different contract, same
+ *     ratio, different fit mode. The two surfaces serve different
+ *     jobs.
  *
  *     NOTE: we use raw CSS `aspect-ratio` here instead of the shadcn
  *     `<AspectRatio>` primitive. Radix's primitive uses the
@@ -320,14 +331,13 @@ export function ItemDetailFullscreen({
 
       {/* Image — strict catalog aspect ratio (raw CSS aspect-ratio so
           min/max-height actually clamp; the shadcn AspectRatio
-          primitive uses padding-bottom and won't respect those). Every
-          item presents in the merchant's configured shape (3:4, 4:5,
-          1:1, 16:9, whatever). object-cover with object-position
-          "center top" fills the container — landscape photos crop
-          equally on left+right, tall portraits crop the bottom of the
-          frame (top + brand identifying detail preserved). min-height
-          + max-height clamp the container so the image area is always
-          a respectable 35-55% of the viewport. */}
+          primitive uses padding-bottom and won't respect those). The
+          container is always the merchant's configured shape (3:4,
+          4:5, 1:1, 16:9, whatever). The IMAGE uses object-contain so
+          the full photo is always visible — bg-muted bars fill any
+          gap when the photo's natural ratio doesn't match the
+          container's. The min/max-height pair clamps the area to
+          35-55% of the viewport. */}
       {imageUrl && (
         <div
           className="relative w-full overflow-hidden bg-muted"
@@ -342,8 +352,7 @@ export function ItemDetailFullscreen({
             alt={localizedImageAlt ?? localizedName}
             fill
             sizes="(max-width: 640px) 100vw, 480px"
-            className="h-full w-full object-cover"
-            style={{ objectPosition: "center top" }}
+            className="h-full w-full object-contain"
             priority
           />
         </div>
