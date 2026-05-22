@@ -77,7 +77,7 @@ export function CardMarkup({
       {/* Text + price */}
       <div className="flex flex-1 items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="line-clamp-2 text-sm font-medium">
+          <span className="line-clamp-2 text-base font-medium sm:text-sm">
             {name}
           </span>
 

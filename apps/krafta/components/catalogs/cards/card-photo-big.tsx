@@ -38,7 +38,7 @@ export function BigPhotoCard({
       )}
 
       <div className="space-y-1 px-3 py-2">
-        <h3 className="truncate text-sm font-medium">{name}</h3>
+        <h3 className="truncate text-base font-medium sm:text-sm">{name}</h3>
 
         {description && (
           <p className="line-clamp-2 text-xs text-muted-foreground">
