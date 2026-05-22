@@ -613,7 +613,7 @@ export function CatalogSearch({
                             </span>
                           )}
                         </div>
-                        <div className="ml-2 shrink-0 text-sm font-semibold">
+                        <div className="ml-2 shrink-0 font-mono text-sm font-semibold tabular-nums">
                           {formatPriceCents(match.item.price_cents, currencySettings)}
                         </div>
                       </button>

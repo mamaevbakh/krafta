@@ -66,7 +66,7 @@ export function PricingBreakdown({
       ) : null}
       <div className="flex items-baseline justify-between pt-1">
         <span className="text-sm text-muted-foreground">Total</span>
-        <span className="text-base font-semibold tabular-nums text-foreground">
+        <span className="font-mono text-base font-semibold tabular-nums text-foreground">
           {formatPriceCents(pricing.totalCents, currencySettings)}
         </span>
       </div>
@@ -90,7 +90,7 @@ function Row({
       <span className={muted ? "text-muted-foreground" : "text-foreground"}>
         {label}
       </span>
-      <span className="tabular-nums text-foreground">
+      <span className="font-mono tabular-nums text-foreground">
         {formatPriceCents(valueCents, currencySettings)}
       </span>
     </div>

@@ -11,6 +11,7 @@ export function GlassBlurCard({
   currencySettings,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5;
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
@@ -29,6 +30,7 @@ export function GlassBlurCard({
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
               className="h-full w-full object-cover"
+              priority={priority}
             />
           </AspectRatio>
         )}
@@ -51,7 +53,7 @@ export function GlassBlurCard({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs backdrop-blur-md">
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 font-mono text-xs tabular-nums backdrop-blur-md">
               {formatPriceCents(item.price_cents, currencySettings)}
             </span>
             <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs backdrop-blur-md">

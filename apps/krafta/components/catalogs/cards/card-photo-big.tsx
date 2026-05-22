@@ -12,6 +12,7 @@ export function BigPhotoCard({
   currencySettings,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5; // fallback if missing
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
@@ -33,19 +34,20 @@ export function BigPhotoCard({
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="h-full w-full object-cover dark:brightness-[0.9]"
+            priority={priority}
           />
         </AspectRatio>
       )}
 
       <div className="space-y-1 px-3 py-2">
-        <h3 className="truncate text-sm font-medium">{name}</h3>
+        <h3 className="truncate text-base font-medium sm:text-sm">{name}</h3>
 
         {description && (
           <p className="line-clamp-2 text-xs text-muted-foreground">
             {description}
           </p>
         )}
-        <span className="shrink-0 whitespace-nowrap text-sm font-semibold">
+        <span className="shrink-0 whitespace-nowrap font-mono text-sm font-semibold tabular-nums">
           {formatPriceCents(item.price_cents, currencySettings)}
         </span>
         </div>

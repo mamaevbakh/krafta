@@ -77,6 +77,11 @@ export type ItemCardProps = LocaleProps & {
   imageAspectRatio?: number;
   columns?: number;
   currencySettings?: CurrencySettings;
+  /** Hint that this card is likely in the first viewport. Card variants
+   *  forward this to next/image as `priority`, which tells the browser
+   *  to fetch the image early (preload tag, no lazy-load). Set on the
+   *  first handful of items by the layout to improve LCP. */
+  priority?: boolean;
 };
 
 export type ItemDetailProps = LocaleProps & {

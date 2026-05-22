@@ -108,7 +108,7 @@ export function LocaleSwitcher({
         // give it a little breathing room for "Русский" / "O‘zbekcha"
         // labels. Headers position this in a corner so we cap the
         // visual width.
-        className="h-8 w-auto min-w-[7.5rem] gap-2 px-3 text-xs"
+        className="h-11 w-auto min-w-[7.5rem] gap-2 px-3 text-xs sm:h-8"
         contentClassName="min-w-[12rem]"
       />
     </div>

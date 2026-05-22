@@ -7,6 +7,7 @@ export function PhotoRowCard({
   imageUrl,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
     activeLocale,
@@ -24,13 +25,14 @@ export function PhotoRowCard({
             fill
             sizes="96px"
             className="object-cover"
+            priority={priority}
           />
         </div>
       )}
 
       {/* Text */}
       <div className="flex min-w-0 flex-col justify-center">
-        <span className="line-clamp-2 text-sm font-medium">{name}</span>
+        <span className="line-clamp-2 text-base font-medium sm:text-sm">{name}</span>
 
         {description && (
           <span className="mt-1 line-clamp-3 text-xs text-muted-foreground">

@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 const TOP_OFFSET_PX = 60;
@@ -298,13 +299,13 @@ export function CategoryNavTabs({
             data-category="all"
             onClick={() => handleCategoryClick(null)}
             className={cn(
-              "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
+              "inline-flex min-h-11 items-center whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition sm:min-h-9",
               currentSlug === null
                 ? "border-foreground bg-foreground text-background"
                 : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
             )}
           >
-            Все
+            {getStorefrontMessage("all", { activeLocale, defaultLocale })}
           </button>
 
           {categories.map((category) => {
@@ -329,7 +330,7 @@ export function CategoryNavTabs({
                 data-category={slug}
                 onClick={() => handleCategoryClick(slug)}
                 className={cn(
-                  "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
+                  "inline-flex min-h-11 items-center whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition sm:min-h-9",
                   isActive
                     ? "border-foreground bg-foreground text-background"
                     : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",

@@ -53,6 +53,7 @@ export function CardMarkup({
   currencySettings,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
     activeLocale,
@@ -70,6 +71,7 @@ export function CardMarkup({
             fill
             sizes="64px"
             className="object-cover"
+            priority={priority}
           />
         </div>
       )}
@@ -77,7 +79,7 @@ export function CardMarkup({
       {/* Text + price */}
       <div className="flex flex-1 items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="line-clamp-2 text-sm font-medium">
+          <span className="line-clamp-2 text-base font-medium sm:text-sm">
             {name}
           </span>
 
@@ -96,7 +98,7 @@ export function CardMarkup({
               KRA-35 PR1 so the byte-identical promise stays intact. The
               Library Canvas (PR2) and InlineCurrency primitive will use
               font-mono tabular-nums from the start. */}
-          <span className="text-sm font-semibold leading-none whitespace-nowrap">
+          <span className="whitespace-nowrap font-mono text-sm font-semibold leading-none tabular-nums">
             {formatPriceCents(item.price_cents, currencySettings)}
           </span>
         </div>
