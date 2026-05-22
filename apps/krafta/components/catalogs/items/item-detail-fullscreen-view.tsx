@@ -26,26 +26,28 @@
  *
  * Design decisions vs. KRA-94 v1:
  *
- *   • Image container shape: the catalog's configured aspect ratio is
- *     the FLOOR. The container will adopt the photo's natural ratio
- *     when natural is wider than the catalog setting (landscape and
- *     square photos get their own proportions); when natural is
- *     narrower (tall portraits), the container clamps to the catalog
- *     ratio and the image uses object-cover with object-position: top
- *     to fill the container — head and torso preserved, bottom of the
- *     frame cropped.
+ *   • Image container shape: ALWAYS the catalog's configured aspect
+ *     ratio (from `settings_layout.itemCard.aspectRatio` on the
+ *     catalog, surfaced as `itemAspectRatio`). The merchant picked
+ *     that ratio for a reason; every item on the storefront should
+ *     present in the same shape. Photos use object-cover with
+ *     object-position: center top to fill the container — landscape
+ *     photos crop on the sides, tall portraits crop the bottom, head
+ *     and brand-identifying detail at the top is always preserved.
  *
- *     Why catalog config as floor, not natural always: pure adaptive
- *     sizing made tall portraits go small with side bars on small
- *     phones (iPhone SE 55dvh cap × 1:2 image = 50% of modal width).
- *     Clamping to the merchant's configured ratio keeps the image
- *     filling the modal width on every viewport.
+ *     NOTE: we use raw CSS `aspect-ratio` here instead of the shadcn
+ *     `<AspectRatio>` primitive. Radix's primitive uses the
+ *     padding-bottom trick (paddingBottom: 100/ratio%) which locks
+ *     the wrapper's height to `width × (1/ratio)` and IGNORES
+ *     min/max-height. CSS aspect-ratio property does the right
+ *     thing — when min/max-height kicks in, the box adapts and the
+ *     ratio is treated as a preference, not a hard constraint.
  *
- *   • min-height: 35dvh, max-height: 55dvh. Image area is always at
- *     least 35% of the viewport (no postage-stamp images on small
- *     phones) and never more than 55% (price stays above the fold).
- *     35-55% matches the range Apple Store / Square / Doordash /
- *     Shopify all sit in.
+ *   • min-height: 35dvh, max-height: 55dvh on the container. Image
+ *     area is always at least 35% of the viewport (no postage-stamp
+ *     images on iPhone SE — the previous bug) and never more than
+ *     55% (price stays above the fold on tall phones). 35-55% matches
+ *     the range Apple Store / Square / Doordash / Shopify all sit in.
  *
  *   • Title + category eyebrow moved out of the image overlay into the
  *     white body. The old white-on-dark-gradient pattern was unreadable
@@ -186,15 +188,6 @@ export function ItemDetailFullscreen({
     [],
   );
 
-  // Natural aspect ratio of the loaded image. null until Next.js fires
-  // onLoad and we read naturalWidth/naturalHeight off the DOM node.
-  // While null, the container falls back to the catalog's configured
-  // `ratio` so the layout has a sensible shape during the brief
-  // placeholder phase.
-  const [naturalImageRatio, setNaturalImageRatio] = useState<number | null>(
-    null,
-  );
-
   // Flash state for the "scroll to first invalid required list" affordance.
   // Set when the customer presses Add and validation fails; cleared after
   // ~900ms so the destructive ring fades rather than flickers.
@@ -325,63 +318,36 @@ export function ItemDetailFullscreen({
         </div>
       </div>
 
-      {/* Image — catalog's configured aspect ratio is the FLOOR. The
-          container expands to a wider ratio when the photo's natural
-          ratio is wider (landscape, square); for tall portraits the
-          container holds the catalog shape and the image crops to fill
-          via object-cover with object-position: top (head + torso
-          preserved, bottom cropped). min-height keeps the image area
-          respectable on small phones; max-height keeps the price
-          above the fold on tall phones. */}
-      {imageUrl &&
-        (() => {
-          // Catalog ratio is the merchant's per-catalog setting,
-          // surfaced via itemAspectRatio. Default 4/5 for catalogs
-          // that haven't been configured.
-          const catalogRatio = ratio;
-          const displayRatio = naturalImageRatio
-            ? Math.max(naturalImageRatio, catalogRatio)
-            : catalogRatio;
-          // Cropping is only needed when the natural image is
-          // SKINNIER than the container (tall portrait clamped). When
-          // natural >= catalog, container matches image, no crop, no
-          // letterbox. object-cover is safe in both cases.
-          const willCrop =
-            naturalImageRatio !== null && naturalImageRatio < catalogRatio;
-          return (
-            <div
-              className="relative w-full overflow-hidden bg-muted"
-              style={{
-                aspectRatio: displayRatio,
-                minHeight: "35dvh",
-                maxHeight: "55dvh",
-              }}
-            >
-              <Image
-                src={imageUrl}
-                alt={localizedImageAlt ?? localizedName}
-                fill
-                sizes="(max-width: 640px) 100vw, 480px"
-                className="h-full w-full object-cover"
-                // "center top" for clamped portraits — keep head/top
-                // of frame, crop the bottom. For images that match
-                // the container shape, object-position is a no-op.
-                style={{
-                  objectPosition: willCrop ? "center top" : "center",
-                }}
-                priority
-                onLoad={(event) => {
-                  const img = event.currentTarget;
-                  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                    setNaturalImageRatio(
-                      img.naturalWidth / img.naturalHeight,
-                    );
-                  }
-                }}
-              />
-            </div>
-          );
-        })()}
+      {/* Image — strict catalog aspect ratio (raw CSS aspect-ratio so
+          min/max-height actually clamp; the shadcn AspectRatio
+          primitive uses padding-bottom and won't respect those). Every
+          item presents in the merchant's configured shape (3:4, 4:5,
+          1:1, 16:9, whatever). object-cover with object-position
+          "center top" fills the container — landscape photos crop
+          equally on left+right, tall portraits crop the bottom of the
+          frame (top + brand identifying detail preserved). min-height
+          + max-height clamp the container so the image area is always
+          a respectable 35-55% of the viewport. */}
+      {imageUrl && (
+        <div
+          className="relative w-full overflow-hidden bg-muted"
+          style={{
+            aspectRatio: ratio,
+            minHeight: "35dvh",
+            maxHeight: "55dvh",
+          }}
+        >
+          <Image
+            src={imageUrl}
+            alt={localizedImageAlt ?? localizedName}
+            fill
+            sizes="(max-width: 640px) 100vw, 480px"
+            className="h-full w-full object-cover"
+            style={{ objectPosition: "center top" }}
+            priority
+          />
+        </div>
+      )}
 
       {/* Body — title, price, description, modifiers. pb-28 reserves
           space for the sticky CTA at the bottom. */}
