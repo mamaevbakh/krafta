@@ -29,7 +29,12 @@ import {
   modifierSignature,
   type ModifierSelection,
 } from "@/lib/cart/modifier-signature";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import type { PublicTax } from "@/lib/catalogs/types";
+import {
+  getStorefrontMessage,
+  type StorefrontMessageKey,
+} from "@/lib/locales/messages";
 
 export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
 export type CartStep = "cart" | "checkout" | "placed";
@@ -361,6 +366,13 @@ export function CartProvider({
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [tipCents, setTipCents] = useState<number>(0);
 
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  // Stash translator in a ref so the memoized server-action callbacks below
+  // don't need it in their dep arrays — toast bodies just read the latest.
+  const tRef = useRef<(key: StorefrontMessageKey) => string>(() => "");
+  tRef.current = (key: StorefrontMessageKey) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
+
   // Reset tip when the cart empties to zero — prevents a leftover tip from a
   // previous order applying to a fresh cart the customer just started.
   useEffect(() => {
@@ -425,11 +437,14 @@ export function CartProvider({
       itemId,
       variationId,
       quantity = 1,
-      name = "Adding…",
+      name,
       basePriceCents = 0,
       variationName = null,
       modifiers: inputModifiers,
     }) => {
+      // Localized placeholder for the optimistic line label while the server
+      // round-trip is in flight. Callers normally pass `name` explicitly.
+      const resolvedName = name ?? tRef.current("add_to_cart.adding");
       const modifierSelections: ModifierSelection[] = (inputModifiers ?? []).map(
         (m) => ({
           listId: m.modifierListId,
@@ -464,7 +479,7 @@ export function CartProvider({
           itemId,
           variationId: variationId ?? null,
           quantity,
-          name,
+          name: resolvedName,
           variationName,
           basePriceCents,
           modifiers: lineModifiers,
@@ -509,7 +524,9 @@ export function CartProvider({
           }
         } catch (err) {
           toast.error(
-            err instanceof Error ? err.message : "Could not save cart change.",
+            err instanceof Error
+              ? err.message
+              : tRef.current("errors.cart_save_failed"),
           );
           refresh();
         }
@@ -550,7 +567,9 @@ export function CartProvider({
           }
         } catch (err) {
           toast.error(
-            err instanceof Error ? err.message : "Could not save cart change.",
+            err instanceof Error
+              ? err.message
+              : tRef.current("errors.cart_save_failed"),
           );
           refresh();
         }
@@ -578,7 +597,9 @@ export function CartProvider({
         setSummary(next);
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Could not save cart change.",
+          err instanceof Error
+            ? err.message
+            : tRef.current("errors.cart_save_failed"),
         );
         refresh();
       }
@@ -595,7 +616,9 @@ export function CartProvider({
       setSummary(next);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not save cart change.",
+        err instanceof Error
+          ? err.message
+          : tRef.current("errors.cart_save_failed"),
       );
       refresh();
     }
@@ -690,7 +713,9 @@ export function CartProvider({
         return { ok: true } as const;
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Could not place order.";
+          err instanceof Error
+            ? err.message
+            : tRef.current("errors.place_order_failed");
         toast.error(message);
         return { ok: false, error: message } as const;
       } finally {

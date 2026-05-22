@@ -120,6 +120,8 @@ export type StorefrontMessageKey =
   | "errors.tip_without_items"
   | "errors.phone_invalid"
   | "errors.try_again"
+  | "errors.cart_save_failed"
+  | "errors.place_order_failed"
   // Share / copy (item-detail-fullscreen-view)
   | "share.link_copied"
   | "share.copy_fallback"
@@ -221,6 +223,8 @@ const EN: MessageTable = {
   "errors.phone_invalid":
     "Enter a valid Uzbek phone number (+998 XX XXX XX XX).",
   "errors.try_again": "Try again",
+  "errors.cart_save_failed": "Could not save cart change.",
+  "errors.place_order_failed": "Could not place your order. Try again.",
 
   "share.link_copied": "Link copied",
   "share.copy_fallback": "Paste it anywhere to share.",
@@ -313,6 +317,9 @@ const RU: MessageTable = {
   "errors.phone_invalid":
     "Введите корректный узбекский номер (+998 XX XXX XX XX).",
   "errors.try_again": "Повторить",
+  "errors.cart_save_failed": "Не удалось сохранить изменения корзины.",
+  "errors.place_order_failed":
+    "Не удалось оформить заказ. Попробуйте снова.",
 
   "share.link_copied": "Ссылка скопирована",
   "share.copy_fallback": "Вставьте, чтобы поделиться.",
@@ -407,6 +414,9 @@ const UZ_LATN: MessageTable = {
   "errors.phone_invalid":
     "To‘g‘ri o‘zbek raqamini kiriting (+998 XX XXX XX XX).",
   "errors.try_again": "Qayta urinish",
+  "errors.cart_save_failed": "Savatcha o‘zgarishini saqlab bo‘lmadi.",
+  "errors.place_order_failed":
+    "Buyurtmani yuborib bo‘lmadi. Qayta urinib ko‘ring.",
 
   "share.link_copied": "Havola nusxalandi",
   "share.copy_fallback": "Ulashish uchun joylashtiring.",

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
@@ -17,6 +16,8 @@ import {
   defaultCurrencySettings,
 } from "@/lib/catalogs/settings/currency";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 import { useCart } from "./cart-provider";
@@ -72,22 +73,24 @@ function CartListStep({
     setStep,
     taxes,
   } = useCart();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (key: Parameters<typeof getStorefrontMessage>[0]) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
 
   const isEmpty = summary.lineItems.length === 0;
 
   return (
     <div className="flex h-full flex-col">
+      {/* Stripped the filler "Review your items before placing the order"
+          description (design review call). Title carries the surface. */}
       <DrawerHeader className="text-left">
-        <DrawerTitle>Your cart</DrawerTitle>
-        <DrawerDescription>
-          Review your items before placing the order.
-        </DrawerDescription>
+        <DrawerTitle>{t("cart.title")}</DrawerTitle>
       </DrawerHeader>
 
       <ScrollArea className="flex-1 overflow-y-auto px-4">
         {isHydrating ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
-            Loading…
+            …
           </p>
         ) : isEmpty ? (
           <div className="py-12 text-center">
@@ -95,7 +98,7 @@ function CartListStep({
               aria-hidden
               className="mx-auto mb-3 h-8 w-8 text-muted-foreground"
             />
-            <p className="text-sm text-muted-foreground">Your cart is empty.</p>
+            <p className="text-sm text-muted-foreground">{t("cart.empty")}</p>
           </div>
         ) : (
           <ul className="divide-y divide-border/60">
@@ -178,11 +181,14 @@ function CartListStep({
                       variant="outline"
                       className="h-8 w-8"
                       onClick={() => updateQuantity(line.id, line.quantity - 1)}
-                      aria-label="Decrease quantity"
+                      aria-label={t("aria.decrease_quantity")}
                     >
                       <Minus className="h-3.5 w-3.5" />
                     </Button>
-                    <span className="min-w-7 text-center text-sm tabular-nums">
+                    <span
+                      className="min-w-7 text-center text-sm tabular-nums"
+                      aria-live="polite"
+                    >
                       {line.quantity}
                     </span>
                     <Button
@@ -191,7 +197,7 @@ function CartListStep({
                       variant="outline"
                       className="h-8 w-8"
                       onClick={() => updateQuantity(line.id, line.quantity + 1)}
-                      aria-label="Increase quantity"
+                      aria-label={t("aria.increase_quantity")}
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
@@ -202,10 +208,9 @@ function CartListStep({
                     variant="ghost"
                     className="text-muted-foreground"
                     onClick={() => removeItem(line.id)}
-                    aria-label="Remove item"
+                    aria-label={t("aria.remove_item")}
                   >
                     <Trash2 className="mr-1 h-3.5 w-3.5" />
-                    Remove
                   </Button>
                 </div>
               </li>
@@ -229,7 +234,7 @@ function CartListStep({
               className="w-full"
               onClick={() => setStep("checkout")}
             >
-              Continue
+              {t("cart.continue")}
             </Button>
           </div>
         </>

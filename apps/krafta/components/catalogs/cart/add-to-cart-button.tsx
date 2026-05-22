@@ -4,6 +4,8 @@ import { ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 import { useCart } from "./cart-provider";
@@ -52,6 +54,11 @@ export function AddToCartButton({
   preFlight,
 }: AddToCartButtonProps) {
   const { addItem, open } = useCart();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (
+    key: Parameters<typeof getStorefrontMessage>[0],
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
   const handleClick = async () => {
     if (preFlight && !preFlight()) return;
@@ -64,8 +71,8 @@ export function AddToCartButton({
         variationName,
         modifiers,
       });
-      toast.success(`${itemName} added to cart`, {
-        action: { label: "View", onClick: () => open() },
+      toast.success(t("add_to_cart.added", { name: itemName }), {
+        action: { label: t("add_to_cart.view"), onClick: () => open() },
       });
     } catch {
       // toast is already shown by the provider
@@ -81,7 +88,7 @@ export function AddToCartButton({
       className={cn("w-full", className)}
     >
       <ShoppingBag className="mr-2 h-4 w-4" />
-      Add to cart
+      {t("add_to_cart.label")}
     </Button>
   );
 }

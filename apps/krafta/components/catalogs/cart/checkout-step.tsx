@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/drawer";
 import {
   Field,
-  FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldSet,
@@ -22,6 +21,11 @@ import {
   type CurrencySettings,
   defaultCurrencySettings,
 } from "@/lib/catalogs/settings/currency";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import {
+  getStorefrontMessage,
+  type StorefrontMessageKey,
+} from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 import {
@@ -30,10 +34,12 @@ import {
 } from "./cart-provider";
 import { PricingBreakdown } from "./pricing-breakdown";
 
-const MODE_LABELS: Record<CartFulfillmentMode, string> = {
-  dine_in: "Dine-in",
-  pickup: "Pickup",
-  delivery: "Delivery",
+// Mode labels now resolved via the i18n catalog at render time (S1).
+// The const stays as a type-safe key map so we keep ordering/iteration.
+const MODE_MESSAGE_KEYS: Record<CartFulfillmentMode, StorefrontMessageKey> = {
+  dine_in: "checkout.mode.dine_in",
+  pickup: "checkout.mode.pickup",
+  delivery: "checkout.mode.delivery",
 };
 
 const MODE_ICONS: Record<CartFulfillmentMode, LucideIcon> = {
@@ -66,6 +72,11 @@ export function CartCheckoutStep({
     tipCents,
     setTipCents,
   } = useCart();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (
+    key: StorefrontMessageKey,
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
   // Picker shows pickup/delivery in popularity order. dine_in is excluded
   // here on purpose — it's QR-only (intent inferred from the scan, no
@@ -165,9 +176,9 @@ export function CartCheckoutStep({
     <div className="flex h-full flex-col">
       {/* sr-only title satisfies Radix Dialog a11y; the visible UI carries
           its own headings (Back button + per-mode field labels). */}
-      <DrawerTitle className="sr-only">Checkout</DrawerTitle>
+      <DrawerTitle className="sr-only">{t("checkout.title")}</DrawerTitle>
       <DrawerDescription className="sr-only">
-        Pick a mode and provide the details to place the order.
+        {t("checkout.title")}
       </DrawerDescription>
       <div className="flex items-center gap-2 px-4 pb-2 pt-1">
         <Button
@@ -177,7 +188,7 @@ export function CartCheckoutStep({
           className="text-muted-foreground"
           onClick={() => setStep("cart")}
         >
-          <ArrowLeft className="mr-1 h-4 w-4" /> Back
+          <ArrowLeft className="mr-1 h-4 w-4" /> {t("checkout.back")}
         </Button>
       </div>
 
@@ -185,7 +196,7 @@ export function CartCheckoutStep({
         {pickerOptions.length > 1 ? (
           <div
             role="radiogroup"
-            aria-label="Order method"
+            aria-label={t("checkout.title")}
             className="flex gap-2"
           >
             {pickerOptions.map((option) => {
@@ -206,7 +217,7 @@ export function CartCheckoutStep({
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden />
-                  {MODE_LABELS[option]}
+                  {t(MODE_MESSAGE_KEYS[option])}
                 </button>
               );
             })}
@@ -217,18 +228,16 @@ export function CartCheckoutStep({
           <FieldSet>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="dine-in-table">Table</FieldLabel>
+                <FieldLabel htmlFor="dine-in-table">
+                  {t("checkout.table.label")}
+                </FieldLabel>
                 <Input
                   id="dine-in-table"
                   value={tableLabel}
                   onChange={(event) => setTableLabel(event.target.value)}
-                  placeholder="Table 5"
+                  placeholder={t("checkout.table.placeholder")}
                   autoComplete="off"
                 />
-                <FieldDescription>
-                  Where should the order go? Pre-filled when you scan a table
-                  QR.
-                </FieldDescription>
               </Field>
             </FieldGroup>
           </FieldSet>
@@ -238,15 +247,15 @@ export function CartCheckoutStep({
           <FieldSet>
             <FieldGroup>
               <Field>
-                <FieldLabel>When</FieldLabel>
+                <FieldLabel>{t("checkout.schedule.when")}</FieldLabel>
                 <div className="grid grid-cols-2 gap-2">
                   <ScheduleToggle
-                    label="As soon as possible"
+                    label={t("checkout.schedule.asap")}
                     selected={pickupSchedule === "asap"}
                     onClick={() => setPickupSchedule("asap")}
                   />
                   <ScheduleToggle
-                    label="Schedule"
+                    label={t("checkout.schedule.scheduled")}
                     selected={pickupSchedule === "scheduled"}
                     onClick={() => setPickupSchedule("scheduled")}
                   />
@@ -254,7 +263,9 @@ export function CartCheckoutStep({
               </Field>
               {pickupSchedule === "scheduled" ? (
                 <Field>
-                  <FieldLabel htmlFor="pickup-at">Pickup time</FieldLabel>
+                  <FieldLabel htmlFor="pickup-at">
+                    {t("checkout.schedule.scheduled")}
+                  </FieldLabel>
                   <Input
                     id="pickup-at"
                     type="datetime-local"
@@ -264,31 +275,37 @@ export function CartCheckoutStep({
                 </Field>
               ) : null}
               <Field>
-                <FieldLabel htmlFor="pickup-name">Name (optional)</FieldLabel>
+                <FieldLabel htmlFor="pickup-name">
+                  {t("checkout.recipient.label")}
+                </FieldLabel>
                 <Input
                   id="pickup-name"
                   value={pickupName}
                   onChange={(event) => setPickupName(event.target.value)}
-                  placeholder="Who's picking up?"
+                  placeholder={t("checkout.recipient.placeholder")}
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="pickup-phone">Phone (optional)</FieldLabel>
+                <FieldLabel htmlFor="pickup-phone">
+                  {t("checkout.phone.label")}
+                </FieldLabel>
                 <Input
                   id="pickup-phone"
                   inputMode="tel"
                   value={pickupPhone}
                   onChange={(event) => setPickupPhone(event.target.value)}
-                  placeholder="+998…"
+                  placeholder={t("checkout.phone.placeholder")}
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="pickup-note">Note (optional)</FieldLabel>
+                <FieldLabel htmlFor="pickup-note">
+                  {t("checkout.note.label")}
+                </FieldLabel>
                 <Textarea
                   id="pickup-note"
                   value={pickupNote}
                   onChange={(event) => setPickupNote(event.target.value)}
-                  placeholder="Anything we should know?"
+                  placeholder={t("checkout.note.placeholder")}
                   className="min-h-[72px] resize-none"
                 />
               </Field>
@@ -300,44 +317,50 @@ export function CartCheckoutStep({
           <FieldSet>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="delivery-address">Address</FieldLabel>
+                <FieldLabel htmlFor="delivery-address">
+                  {t("checkout.address.label")}
+                </FieldLabel>
                 <Textarea
                   id="delivery-address"
                   value={deliveryAddress}
                   onChange={(event) => setDeliveryAddress(event.target.value)}
-                  placeholder="Street, building, apartment…"
+                  placeholder={t("checkout.address.placeholder")}
                   className="min-h-[88px] resize-none"
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="delivery-name">Recipient name</FieldLabel>
+                <FieldLabel htmlFor="delivery-name">
+                  {t("checkout.recipient.label")}
+                </FieldLabel>
                 <Input
                   id="delivery-name"
                   value={deliveryName}
                   onChange={(event) => setDeliveryName(event.target.value)}
-                  placeholder="Who's receiving the order?"
+                  placeholder={t("checkout.recipient.placeholder")}
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="delivery-phone">Phone</FieldLabel>
+                <FieldLabel htmlFor="delivery-phone">
+                  {t("checkout.phone.label")}
+                </FieldLabel>
                 <Input
                   id="delivery-phone"
                   inputMode="tel"
                   value={deliveryPhone}
                   onChange={(event) => setDeliveryPhone(event.target.value)}
-                  placeholder="+998…"
+                  placeholder={t("checkout.phone.placeholder")}
                 />
               </Field>
               <Field>
-                <FieldLabel>When</FieldLabel>
+                <FieldLabel>{t("checkout.schedule.when")}</FieldLabel>
                 <div className="grid grid-cols-2 gap-2">
                   <ScheduleToggle
-                    label="As soon as possible"
+                    label={t("checkout.schedule.asap")}
                     selected={deliverySchedule === "asap"}
                     onClick={() => setDeliverySchedule("asap")}
                   />
                   <ScheduleToggle
-                    label="Schedule"
+                    label={t("checkout.schedule.scheduled")}
                     selected={deliverySchedule === "scheduled"}
                     onClick={() => setDeliverySchedule("scheduled")}
                   />
@@ -345,7 +368,9 @@ export function CartCheckoutStep({
               </Field>
               {deliverySchedule === "scheduled" ? (
                 <Field>
-                  <FieldLabel htmlFor="delivery-at">Delivery time</FieldLabel>
+                  <FieldLabel htmlFor="delivery-at">
+                    {t("checkout.schedule.scheduled")}
+                  </FieldLabel>
                   <Input
                     id="delivery-at"
                     type="datetime-local"
@@ -355,12 +380,14 @@ export function CartCheckoutStep({
                 </Field>
               ) : null}
               <Field>
-                <FieldLabel htmlFor="delivery-note">Note (optional)</FieldLabel>
+                <FieldLabel htmlFor="delivery-note">
+                  {t("checkout.note.label")}
+                </FieldLabel>
                 <Textarea
                   id="delivery-note"
                   value={deliveryNote}
                   onChange={(event) => setDeliveryNote(event.target.value)}
-                  placeholder="Doorbell, building entrance, etc."
+                  placeholder={t("checkout.note.placeholder")}
                   className="min-h-[72px] resize-none"
                 />
               </Field>
@@ -391,7 +418,7 @@ export function CartCheckoutStep({
           disabled={!canSubmit}
           onClick={handleSubmit}
         >
-          {isPlacingOrder ? "Placing…" : "Place order"}
+          {isPlacingOrder ? t("checkout.placing") : t("checkout.place_order")}
         </Button>
       </div>
     </div>
@@ -416,6 +443,11 @@ function TipControl({
   setTipCents: (next: number) => void;
   currencySettings: CurrencySettings;
 }) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (
+    key: StorefrontMessageKey,
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
   const [mode, setModeState] = useState<"preset" | "custom">("preset");
   // Preset percentage that the tip matches, if any. Computed defensively each
   // render so a re-add that changes subtotal doesn't strand the chip
@@ -455,11 +487,16 @@ function TipControl({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-foreground">Tip</p>
+      <p className="text-sm font-medium text-foreground">
+        {t("checkout.tip.label")}
+      </p>
       <div className="grid grid-cols-5 gap-2">
         {TIP_PRESET_PERCENTAGES.map((pct) => {
           const isActive = mode === "preset" && matchingPreset === pct;
-          const label = pct === 0 ? "No tip" : `${Math.round(pct * 100)}%`;
+          const label =
+            pct === 0
+              ? t("checkout.tip.none")
+              : t("checkout.tip.preset", { percent: Math.round(pct * 100) });
           return (
             <button
               key={pct}
