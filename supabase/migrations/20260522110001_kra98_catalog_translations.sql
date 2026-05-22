@@ -25,12 +25,13 @@
 -- 1. ENUM extension
 -- =============================================================================
 --
--- ALTER TYPE ... ADD VALUE must run outside a transaction in older Postgres,
--- but Supabase's migration runner already wraps each migration in its own
--- transaction and the modern Postgres (>= 12) allows ALTER TYPE inside a
--- transaction. This statement runs cleanly on Supabase's stack.
-
-ALTER TYPE public.translatable_entity_kind ADD VALUE IF NOT EXISTS 'catalog';
+-- Moved to the companion 20260522110000_kra98_catalog_translations_enum.sql
+-- migration. Postgres rejects any reference to a newly-ADDed enum value
+-- inside the same transaction (SQLSTATE 55P04 "unsafe use of new value"),
+-- and the view at the bottom of this file references
+-- `'catalog'::public.translatable_entity_kind`. Splitting the ALTER TYPE
+-- into a standalone file lets that statement commit first, so by the time
+-- this file runs `'catalog'` is a usable enum literal.
 
 -- =============================================================================
 -- 2. catalog_translations table
