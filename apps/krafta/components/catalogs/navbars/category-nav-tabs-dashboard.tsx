@@ -11,6 +11,7 @@ import {
 import { motion } from "framer-motion";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 const TOP_OFFSET_PX = 60;
@@ -297,7 +298,11 @@ export function CategoryNavTabsDashboard({
           className="no-scrollbar flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
         >
           {[
-            { id: "all", label: "Все", slug: null as string | null },
+            {
+              id: "all",
+              label: getStorefrontMessage("all", { activeLocale, defaultLocale }),
+              slug: null as string | null,
+            },
             ...categories.map((category) => ({
               id: category.id,
               label: pickLocalizedField({

@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 const TOP_OFFSET_PX = 60;
@@ -304,7 +305,7 @@ export function CategoryNavTabs({
                 : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
             )}
           >
-            Все
+            {getStorefrontMessage("all", { activeLocale, defaultLocale })}
           </button>
 
           {categories.map((category) => {
