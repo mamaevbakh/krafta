@@ -298,7 +298,7 @@ export function CategoryNavTabs({
             data-category="all"
             onClick={() => handleCategoryClick(null)}
             className={cn(
-              "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
+              "inline-flex min-h-11 items-center whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition sm:min-h-9",
               currentSlug === null
                 ? "border-foreground bg-foreground text-background"
                 : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
@@ -329,7 +329,7 @@ export function CategoryNavTabs({
                 data-category={slug}
                 onClick={() => handleCategoryClick(slug)}
                 className={cn(
-                  "whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
+                  "inline-flex min-h-11 items-center whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition sm:min-h-9",
                   isActive
                     ? "border-foreground bg-foreground text-background"
                     : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",

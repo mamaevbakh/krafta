@@ -323,7 +323,7 @@ export function CategoryNavTabsMotion({
                 data-category={slugValue}
                 onClick={() => handleCategoryClick(tab.slug)}
                 className={cn(
-                  "relative whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition",
+                  "relative inline-flex min-h-11 items-center whitespace-nowrap rounded-xs border px-3 py-1 text-sm transition sm:min-h-9",
                   isActive
                     ? "border-transparent text-foreground"
                     : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",

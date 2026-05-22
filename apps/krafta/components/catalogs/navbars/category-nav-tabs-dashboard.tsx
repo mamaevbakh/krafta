@@ -323,7 +323,7 @@ export function CategoryNavTabsDashboard({
                 data-category={slugValue}
                 onClick={() => handleCategoryClick(tab.slug)}
                 className={cn(
-                  "relative whitespace-nowrap px-3 py-1 text-sm transition",
+                  "relative inline-flex min-h-11 items-center whitespace-nowrap px-3 py-1 text-sm transition sm:min-h-9",
                   isActive
                     ? "text-foreground"
                     : "text-muted-foreground hover:text-foreground",
