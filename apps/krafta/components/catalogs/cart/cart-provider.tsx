@@ -816,10 +816,35 @@ export function CartProvider({
           order_expired: "errors.order_expired",
           table_session_expired: "errors.table_session_expired",
         };
-        const message =
-          rawMessage && rawMessage in knownCodes
-            ? tRef.current(knownCodes[rawMessage]!)
-            : (rawMessage ?? tRef.current("errors.place_order_failed"));
+        // Price-drift (S11). The server throws "price_changed:Name1, Name2"
+        // when any line item's snapshotted base_price_cents diverges from
+        // the live catalog variation price. We refresh() the cart so the
+        // customer sees the updated prices in the cart list when they
+        // close the toast, then they re-attempt.
+        let message: string;
+        if (rawMessage && rawMessage.startsWith("price_changed")) {
+          // errors.price_changed expects {name}, {old}, {new}. We only
+          // have the affected names from the server (cheap to compute);
+          // a richer payload could include old/new cents at the cost
+          // of more server round-trips. For v1 we use the name list
+          // and let the customer re-check the cart row's updated price.
+          const names =
+            rawMessage.split(":")[1]?.trim() || "";
+          message = tRef.current("errors.price_changed").replace(
+            /\{name\}/g,
+            names,
+          );
+          // Fire-and-forget: the catch returns immediately; refresh
+          // hydrates new prices in the background so the cart row's
+          // total reflects reality next time the customer looks.
+          refresh().catch(() => {
+            /* noop — refresh's own catch surfaces a toast if needed */
+          });
+        } else if (rawMessage && rawMessage in knownCodes) {
+          message = tRef.current(knownCodes[rawMessage]!);
+        } else {
+          message = rawMessage ?? tRef.current("errors.place_order_failed");
+        }
         toast.error(message);
         return { ok: false, error: message } as const;
       } finally {
@@ -827,7 +852,16 @@ export function CartProvider({
         placeInFlightRef.current = false;
       }
     },
-    [catalogPath, flush, orgId, summary.lineItems, summary.subtotalCents, tipCents, venueId],
+    [
+      catalogPath,
+      flush,
+      orgId,
+      refresh,
+      summary.lineItems,
+      summary.subtotalCents,
+      tipCents,
+      venueId,
+    ],
   );
 
   const itemCount = summary.lineItems.reduce(
