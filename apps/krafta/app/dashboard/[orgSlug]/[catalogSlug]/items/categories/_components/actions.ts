@@ -2,10 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
-import {
-  deleteSearchDocumentsBySourceIds,
-  syncCategorySearchDocuments,
-} from "@/lib/catalogs/search-documents";
+// syncCategorySearchDocuments removed as a caller — DB triggers handle
+// the sync. deleteSearchDocumentsBySourceIds kept for delete cleanup.
+import { deleteSearchDocumentsBySourceIds } from "@/lib/catalogs/search-documents";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 
@@ -151,7 +150,10 @@ export async function createCategory(params: {
     }
   }
 
-  await syncCategorySearchDocuments({ categoryId: category.id, client: supabase });
+  // Search-document sync handled by the DB trigger on catalog_categories +
+  // catalog_category_translations (KRA-90 patched the function the same way
+  // KRA-88 patched the item version). App-level call was redundant and
+  // caught the same duplicate-key bug — removed in lockstep with items.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -284,10 +286,7 @@ export async function updateCategory(params: {
     }
   }
 
-  await syncCategorySearchDocuments({
-    categoryId: params.categoryId,
-    client: supabase,
-  });
+  // Search-document sync via DB trigger — see createCategory above.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,

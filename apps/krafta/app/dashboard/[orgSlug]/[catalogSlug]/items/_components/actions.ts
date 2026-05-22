@@ -2,10 +2,10 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
-import {
-  deleteSearchDocumentsBySourceIds,
-  syncItemSearchDocuments,
-} from "@/lib/catalogs/search-documents";
+// syncItemSearchDocuments removed as a caller — the DB triggers on
+// items + item_translations handle it. deleteSearchDocumentsBySourceIds
+// stays for the delete-time defensive cleanup.
+import { deleteSearchDocumentsBySourceIds } from "@/lib/catalogs/search-documents";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
@@ -501,7 +501,14 @@ export async function createItem(params: {
     }
   }
 
-  await syncItemSearchDocuments({ itemId: item.id, client: supabase });
+  // Search-document sync is handled by DB triggers (KRA-88's
+  // catalog_search_sync_item_document fires AFTER UPDATE / AFTER INSERT
+  // on items + item_translations). The application-level call we used
+  // to make here was redundant — and worse, when the user's session
+  // had no DELETE policy on catalog_search_documents, the DELETE leg
+  // silently no-op'd while the INSERT leg hit the trigger's freshly-
+  // inserted rows → duplicate-key constraint violation. Leaving the
+  // sync to the DB triggers eliminates the double-write entirely.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -704,7 +711,10 @@ export async function updateItem(params: {
     }
   }
 
-  await syncItemSearchDocuments({ itemId: params.itemId, client: supabase });
+  // Search-document sync handled by the DB trigger on items +
+  // item_translations (see createItem for the full rationale). The
+  // previous app-level call here was the cause of the duplicate-key
+  // error merchants saw when saving an item edit.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -1079,11 +1089,11 @@ export async function duplicateItem(params: {
     } as const;
   }
 
-  // Sync search docs for the clone so it appears in search immediately.
-  // The RPC clones translations but search indexing happens app-side
-  // (syncItemSearchDocuments reads items + translations and upserts the
-  // search row).
-  await syncItemSearchDocuments({ itemId: newItemId, client: supabase });
+  // Search-document sync runs via DB triggers on items +
+  // item_translations (KRA-88's catalog_search_sync_item_document
+  // is SECURITY DEFINER and fires AFTER INSERT). The RPC's inserts
+  // for the clone trigger the same path automatically — no app-level
+  // call needed, and doing it here used to cause duplicate-key errors.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -1224,14 +1234,10 @@ export async function updateItemField(params: {
     }
   }
 
-  // Search index needs a refresh on name/description changes regardless of
-  // which table the write landed in.
-  if (params.field === "name" || params.field === "description") {
-    await syncItemSearchDocuments({
-      itemId: params.itemId,
-      client: supabase,
-    });
-  }
+  // Search index sync happens automatically via the DB trigger on
+  // items / item_translations — the UPDATE / upsert above fires it.
+  // No app-level call needed (and using one caused duplicate-key
+  // errors when the trigger's inserts collided with the app's).
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,

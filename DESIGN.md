@@ -267,3 +267,105 @@ A design choice that violates any of these is a regression. Reject in code revie
 | 2026-05-20 | Iter 2 D2C — explicit Save replaces autosave | POS/commerce surfaces favor an explicit Save button over autosave + per-field chips. Merchants expect to deliberately commit changes; autosave creates anxiety more than convenience. Save batches all dirty fields into one updateItem call. Closing the EditorSheet with dirty state triggers an AlertDialog confirmation. |
 | 2026-05-20 | Iter 2 D5 — view toggle bottom-floating pill | Canvas/Table view toggle restyled as fixed-position floating pill at bottom-center (rounded-full, backdrop blur, functional shadow-sm). Removed the top strip from iter 1. Hidden on mobile (mobile is always Canvas). |
 | 2026-05-20 | Iter 2 D4 + Pass 1 D1A — collapsible categories + subordinate-inset rail | Each CategorySection gets a chevron toggle; collapse state persists per (catalog, category) in localStorage. New CategoryRail (180px sticky list of category names, click to scroll) lives in the canvas page's left padding — no border-r, no separate surface color, so it reads as "document gutter" rather than competing with the dashboard sidebar. Hidden ≤ xl (1280px). |
+| 2026-05-22 | Square POS dashboard adopted as canonical design reference | When designing merchant-facing catalog / POS / editor surfaces, look at Square's equivalent screen FIRST. Generic shadcn defaults are the floor; Square's patterns are the ceiling. Concrete patterns absorbed listed in the "Design references" section below. |
+
+## Design references
+
+When designing **merchant-facing catalog / POS surfaces** — item editor, modifiers,
+variations, categories, table view, KDS, anywhere the merchant is configuring their
+shop — **Square's POS dashboard is the canonical reference.** Beats generic shadcn
+defaults across the board. When the user asks for a richer / better UI than what
+you've proposed, the answer is usually "look at how Square does it."
+
+### Patterns we've absorbed
+
+These are the specific Square shapes already implemented in the codebase. Reach
+for them by name before inventing new ones.
+
+#### Row-based attachment editor (with overrides)
+
+The `ModifierListsAttachment` pattern (`items/_components/modifier-lists-attachment.tsx`):
+
+- Each attached entity = a **full row**, not a chip. Anatomy:
+  `drag handle | name (bold) + subtitle preview (e.g. "Choco, Strawberry, Lemon") | right-aligned min/max chip ("1 min/10 max", "Optional", "Required") | gear icon (per-row overrides) | trash icon (detach)`
+- **Header** carries an `Edit` button when populated, a small `Add` pill when empty.
+- Per-row **gear popover** for overriding entity-level defaults on this row only.
+  Each input shows the parent default ("default: N") so the merchant sees what
+  they're overriding. A `Reset to default` clears all overrides at once.
+- **Drag-reorder** via dnd-kit when an `ordinal` column exists on the join table.
+  Persist on Save by recomputing ordinals from array index.
+- **Customization signal**: when any override is set, the row shows a "Customized"
+  or "Hidden from customers" badge. Subtle, not loud.
+
+Use for: modifiers attached to items, variations attached to items, any
+many-to-many editable join with per-row metadata.
+
+#### Add-to-set Dialog (not popover combobox)
+
+The `AddModifiersDialog` pattern (same file):
+
+- Centered shadcn `Dialog`, not a Command popover. The popover-combobox is wrong
+  for sets of >5 items — Square uses a full-bleed Dialog every time.
+- **Top-left X** close (icon button, ghost), **top-right black "Done" pill**.
+  `Done` commits the checkbox selection; X discards.
+- Checkbox list with **bold name + truncated subtitle** ("Choco, Strawberry,
+  Lemon"). Whole row is clickable (label wraps the checkbox).
+- Empty state links to the management page where the merchant can create more.
+- Use `modal` prop on `Popover` root when nested inside a vaul `Drawer` — without
+  it the Drawer's focus trap eats scroll-wheel events.
+
+#### Fullscreen editor Dialog
+
+Override `DialogContent` to flip shadcn's centered `max-w-lg` default into a
+viewport-filling editor:
+
+```tsx
+<DialogContent
+  showCloseButton={false}
+  className={cn(
+    "top-0 left-0 translate-x-0 translate-y-0",
+    "h-screen w-screen max-w-none sm:max-w-none",
+    "rounded-none border-0 p-0 gap-0 flex flex-col",
+  )}
+>
+```
+
+Render a custom header with title + dirty-count badge + Save + custom X. Wire
+the X through a dirty-state confirm. Live in
+`translations/_components/translation-edit-dialog.tsx` and
+`items/modifiers/_components/modifier-list-editor-dialog.tsx`.
+
+#### Empty-state header pattern
+
+When a section has no content yet (no modifiers, no variations):
+
+```
+┌──────────────────────────────────────────────────┐
+│ Modifiers                                  [Add] │
+│ Allow customizations such as add-ons or          │
+│ special requests.                                │
+└──────────────────────────────────────────────────┘
+```
+
+Title left, subtitle one line below in muted text, small `Add` pill (h-8,
+rounded-full) top-right. No card border around the empty state itself.
+
+#### Currency-aware price input
+
+Wrap an `InputGroup` with `InputGroupInput` + `InputGroupAddon` showing the
+currency label (`UZS` suffix for sum, `$` prefix for USD). Format with
+`formatPriceInputValue` + `parsePriceInput` from `lib/catalogs/pricing.ts` so the
+merchant reads "3,000 UZS" or "$15.00" depending on the catalog's settings. Same
+helpers the variations editor uses — don't hand-roll currency formatting.
+
+### How to think about it
+
+When in doubt, look at Square's equivalent screen first. If our schema has
+columns sitting unused (override columns, ordinal, per-row toggles like
+`hidden_from_customer_override`), that's almost always a Square pattern we
+haven't built yet — activate them in the UI.
+
+**Pasting a Square screenshot directly into a request is the highest-bandwidth
+input.** The agent matches the spacing, button shapes, header layout etc. much
+closer from an image than from prose. Drop a screenshot before asking for a
+redesign.
