@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -99,6 +100,19 @@ type CartContextValue = {
   /** Current step inside the drawer: cart list, checkout fields, or confirmation. */
   step: CartStep;
   setStep: (next: CartStep) => void;
+  /**
+   * QR-driven dine-in lock: when a customer scans a table QR with
+   * `?mode=dine_in&table=…`, we pin them to dine-in for the rest of the
+   * tab session. CheckoutStep hides the pickup/delivery picker and
+   * pre-fills the table number; CartListStep shows a small pill.
+   *
+   * `null` when no QR context is present (free-form pickup/delivery
+   * picker behavior).
+   */
+  dineInLock: { tableLabel: string } | null;
+  /** Clear the dine-in lock — exposed for QA / "switch to delivery" flows
+   *  we may want later. Not surfaced in v1 UI. */
+  clearDineInLock: () => void;
   /** Order id stamped on the confirmation step after a successful place. */
   placedOrderId: string | null;
   /**
@@ -365,6 +379,66 @@ export function CartProvider({
   );
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [tipCents, setTipCents] = useState<number>(0);
+  const [dineInLock, setDineInLock] = useState<{ tableLabel: string } | null>(
+    null,
+  );
+
+  // QR-driven dine-in lock hydration.
+  //
+  // Source of truth chain (highest → lowest priority):
+  //   1. URL params on first render: ?mode=dine_in&table={n}
+  //   2. sessionStorage for this venue (keyed per-venueId so two venues
+  //      open in the same tab don't cross-contaminate). Surviving refresh
+  //      is the whole point — customer scans QR, the page reloads to
+  //      pull catalog data, the lock must persist.
+  //   3. null — free-form mode picker.
+  //
+  // We intentionally do not write to URL; URL is a one-shot intent
+  // signal. The customer can keep navigating the catalog without
+  // dragging ?mode=…&table=… along.
+  const searchParams = useSearchParams();
+  const storageKey = `krafta.cart.dineIn.${venueId}`;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const modeParam = searchParams?.get("mode");
+    const tableParam = searchParams?.get("table");
+    if (modeParam === "dine_in" && tableParam && tableParam.trim().length > 0) {
+      const next = { tableLabel: tableParam.trim() };
+      setDineInLock(next);
+      try {
+        window.sessionStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // Quota / private browsing — non-fatal; the in-memory lock
+        // still works for this session.
+      }
+      return;
+    }
+    // No URL signal — hydrate from sessionStorage if present.
+    try {
+      const raw = window.sessionStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { tableLabel?: unknown };
+        if (typeof parsed.tableLabel === "string" && parsed.tableLabel) {
+          setDineInLock({ tableLabel: parsed.tableLabel });
+        }
+      }
+    } catch {
+      // Corrupted storage — ignore, fall back to no lock.
+    }
+    // venueId is captured via storageKey; searchParams is stable per render
+    // pair so this re-checks if the user navigates with a new ?mode= URL.
+  }, [searchParams, storageKey]);
+
+  const clearDineInLock = useCallback(() => {
+    setDineInLock(null);
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.removeItem(storageKey);
+      } catch {
+        // ignore
+      }
+    }
+  }, [storageKey]);
 
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   // Stash translator in a ref so the memoized server-action callbacks below
@@ -745,6 +819,8 @@ export function CartProvider({
       setTipCents,
       step,
       setStep,
+      dineInLock,
+      clearDineInLock,
       placedOrderId,
       placedOrder,
       isPlacingOrder,
@@ -759,6 +835,8 @@ export function CartProvider({
     [
       addItem,
       clear,
+      clearDineInLock,
+      dineInLock,
       flush,
       isHydrating,
       isOpen,

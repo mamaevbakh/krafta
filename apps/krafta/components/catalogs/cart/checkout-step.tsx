@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Package, Truck, Utensils } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -71,6 +71,7 @@ export function CartCheckoutStep({
     summary,
     tipCents,
     setTipCents,
+    dineInLock,
   } = useCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const t = (
@@ -88,13 +89,37 @@ export function CartCheckoutStep({
     return modes;
   }, [modes]);
 
-  const [mode, setMode] = useState<CartFulfillmentMode>(
-    () => pickerOptions[0] ?? "pickup",
+  const [mode, setMode] = useState<CartFulfillmentMode>(() =>
+    // Honor the QR-driven dine-in lock on first render so the customer
+    // sees the table form immediately, no flicker of pickup/delivery.
+    dineInLock ? "dine_in" : (pickerOptions[0] ?? "pickup"),
   );
+
+  // If the lock arrives after first render (e.g., the URL hydrated late
+  // because useSearchParams returned null on the SSR pass), snap the
+  // selected mode to dine_in. Same effect for `lock → cleared`: we drop
+  // back to the first picker option.
+  useEffect(() => {
+    if (dineInLock) setMode("dine_in");
+    else if (mode === "dine_in" && !modes.includes("dine_in")) {
+      setMode(pickerOptions[0] ?? "pickup");
+    }
+    // mode is intentionally NOT a dep: this is a "respond to lock
+    // toggling" effect, not a "every time mode changes" effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dineInLock, modes, pickerOptions]);
 
   // Per-mode form state. We keep one slot per mode so switching tabs
   // preserves what the user typed.
-  const [tableLabel, setTableLabel] = useState("");
+  const [tableLabel, setTableLabel] = useState(
+    () => dineInLock?.tableLabel ?? "",
+  );
+
+  // Keep tableLabel in sync with a late-arriving lock so the customer
+  // doesn't have to retype the table number after a QR-driven refresh.
+  useEffect(() => {
+    if (dineInLock?.tableLabel) setTableLabel(dineInLock.tableLabel);
+  }, [dineInLock]);
   const [pickupSchedule, setPickupSchedule] = useState<"asap" | "scheduled">(
     "asap",
   );
@@ -193,7 +218,11 @@ export function CartCheckoutStep({
       </div>
 
       <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-4">
-        {pickerOptions.length > 1 ? (
+        {/* When the customer arrived via a table QR, hide the
+            pickup/delivery picker entirely — their intent is locked. The
+            mode pill in the cart-list header still shows "Dine-in · Table
+            N" for context. */}
+        {!dineInLock && pickerOptions.length > 1 ? (
           <div
             role="radiogroup"
             aria-label={t("checkout.title")}

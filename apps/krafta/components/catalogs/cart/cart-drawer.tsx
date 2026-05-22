@@ -72,19 +72,29 @@ function CartListStep({
     removeItem,
     setStep,
     taxes,
+    dineInLock,
   } = useCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
-  const t = (key: Parameters<typeof getStorefrontMessage>[0]) =>
-    getStorefrontMessage(key, { activeLocale, defaultLocale });
+  const t = (
+    key: Parameters<typeof getStorefrontMessage>[0],
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
   const isEmpty = summary.lineItems.length === 0;
 
   return (
     <div className="flex h-full flex-col">
       {/* Stripped the filler "Review your items before placing the order"
-          description (design review call). Title carries the surface. */}
+          description (design review call). Title carries the surface.
+          When a customer scans a table QR, render a small pill below the
+          title so they know the cart is locked to dine-in for table N. */}
       <DrawerHeader className="text-left">
         <DrawerTitle>{t("cart.title")}</DrawerTitle>
+        {dineInLock ? (
+          <p className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-foreground">
+            {t("cart.mode_pill.dine_in", { table: dineInLock.tableLabel })}
+          </p>
+        ) : null}
       </DrawerHeader>
 
       <ScrollArea className="flex-1 overflow-y-auto px-4">

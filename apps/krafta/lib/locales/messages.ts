@@ -64,6 +64,9 @@ export type StorefrontMessageKey =
   // Plural-aware item count: "1 item" / "2 items" — pass count to
   // getStorefrontPlural() not getStorefrontMessage().
   | "cart.item_count_plural"
+  // QR-driven dine-in indicator shown above the cart list when the
+  // customer arrived via a table QR. Interpolates `{table}`.
+  | "cart.mode_pill.dine_in"
   // Checkout step
   | "checkout.title"
   | "checkout.back"
@@ -157,6 +160,7 @@ const EN: MessageTable = {
   "cart.tip": "Tip",
   "cart.modifier_pricing_hint": "Modifier prices are per item.",
   "cart.item_count_plural": "{count} items",
+  "cart.mode_pill.dine_in": "Dine-in · Table {table}",
 
   "checkout.title": "Checkout",
   "checkout.back": "Back",
@@ -250,6 +254,7 @@ const RU: MessageTable = {
   "cart.tip": "Чаевые",
   "cart.modifier_pricing_hint": "Цены модификаторов указаны за позицию.",
   "cart.item_count_plural": "{count} позиций",
+  "cart.mode_pill.dine_in": "В зале · Стол {table}",
 
   "checkout.title": "Оформление",
   "checkout.back": "Назад",
@@ -344,6 +349,7 @@ const UZ_LATN: MessageTable = {
   "cart.service_fee": "Xizmat haqi",
   "cart.tip": "Chaqimcha",
   "cart.modifier_pricing_hint": "Modifikator narxi har bir taom uchun.",
+  "cart.mode_pill.dine_in": "Zalda · {table}-stol",
   "cart.item_count_plural": "{count} ta taom",
 
   "checkout.title": "Buyurtma berish",
