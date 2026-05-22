@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { ItemDetailProps } from "@/lib/catalogs/layout-registry";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
+import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { AddToCartButton, useOptionalCart } from "@/components/catalogs/cart";
 import {
   ModifierPicker,
@@ -23,7 +24,50 @@ export function ItemDetailFullscreen({
   backHref,
   onClose,
   currencySettings,
+  activeLocale,
+  defaultLocale,
 }: ItemDetailProps) {
+  const itemDefaults = {
+    name: item.name,
+    description: item.description,
+    image_alt: item.image_alt,
+  };
+  const localizedName = pickLocalizedField({
+    translations: item.translations,
+    defaults: itemDefaults,
+    activeLocale,
+    defaultLocale,
+    field: "name",
+  }).value;
+  const localizedDescription =
+    pickLocalizedField({
+      translations: item.translations,
+      defaults: itemDefaults,
+      activeLocale,
+      defaultLocale,
+      field: "description",
+    }).value || null;
+  const localizedImageAlt =
+    pickLocalizedField({
+      translations: item.translations,
+      defaults: itemDefaults,
+      activeLocale,
+      defaultLocale,
+      field: "image_alt",
+    }).value || null;
+  const localizedCategoryName = category
+    ? pickLocalizedField({
+        translations: category.translations,
+        defaults: {
+          name: category.name,
+          description: category.description ?? null,
+          image_alt: null,
+        },
+        activeLocale,
+        defaultLocale,
+        field: "name",
+      }).value
+    : null;
   const ratio = itemAspectRatio ?? 4 / 5;
   const cart = useOptionalCart();
   // Picker state is owned here so AddToCartButton can read selections +
@@ -82,7 +126,7 @@ export function ItemDetailFullscreen({
           <AspectRatio ratio={ratio} className="bg-muted">
             <Image
               src={imageUrl}
-              alt={item.image_alt ?? item.name}
+              alt={localizedImageAlt ?? localizedName}
               fill
               sizes="(max-width: 640px) 100vw, 480px"
               className="h-full w-full object-cover"
@@ -129,13 +173,13 @@ export function ItemDetailFullscreen({
         </div>
 
         <div className="absolute inset-x-5 bottom-4 space-y-2 text-white">
-          {category && (
+          {localizedCategoryName && (
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/70">
-              {category.name}
+              {localizedCategoryName}
             </p>
           )}
           <h2 className="text-3xl font-semibold leading-tight">
-            {item.name}
+            {localizedName}
           </h2>
         </div>
       </div>
@@ -146,7 +190,7 @@ export function ItemDetailFullscreen({
             {formatPriceCents(item.price_cents, currencySettings)}
           </p>
           <p className="text-sm text-muted-foreground">
-            {item.description ??
+            {localizedDescription ??
               "A detail view designed for immersive browsing. You can add ingredients, preparation notes, or rich storytelling here later."}
           </p>
         </div>
@@ -168,7 +212,7 @@ export function ItemDetailFullscreen({
           {cart ? (
             <AddToCartButton
               itemId={item.id}
-              itemName={item.name}
+              itemName={localizedName}
               basePriceCents={item.price_cents}
               modifiers={pickerState.selections}
               disabled={!pickerState.isValid}

@@ -53,10 +53,26 @@ export type PublicCatalog = Pick<
   | "settings_behavior"
 >;
 
+// Translation rows attached to each translatable entity on the storefront.
+// One row per active locale carried through render so components can call
+// pickLocalizedField with the row + canonical defaults. The shape is the
+// same as i18n.ts's TranslationRow — non-applicable fields are nulled
+// (e.g. description=null for variations/modifiers, image_alt=null for
+// categories) so consumers can use one helper uniformly.
+export type PublicTranslationRow = {
+  locale: string;
+  name: string | null;
+  description: string | null;
+  image_alt: string | null;
+};
+
 export type PublicCatalogCategory = Pick<
   CatalogCategory,
   "id" | "slug" | "name" | "position"
->;
+> & {
+  description?: string | null;
+  translations: PublicTranslationRow[];
+};
 
 export type PublicModifier = {
   id: string;
@@ -65,6 +81,7 @@ export type PublicModifier = {
   ordinal: number;
   on_by_default: boolean;
   version: number;
+  translations: PublicTranslationRow[];
 };
 
 // Per-item view of a modifier_list, with overrides resolved against defaults.
@@ -80,6 +97,7 @@ export type PublicModifierList = {
   ordinal: number;
   version: number;
   modifiers: PublicModifier[];
+  translations: PublicTranslationRow[];
 };
 
 export type PublicItem = Pick<
@@ -95,6 +113,7 @@ export type PublicItem = Pick<
 > & {
   price_cents: number;
   modifier_lists: PublicModifierList[];
+  translations: PublicTranslationRow[];
 };
 
 export type PublicCategoryWithItems = PublicCatalogCategory & {

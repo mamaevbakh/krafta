@@ -1,8 +1,13 @@
 import type { JSX } from "react";
 import { notFound } from "next/navigation";
 
-import { getCatalogBySlug, getCatalogStructure } from "@/lib/catalogs/data";
+import {
+  getCatalogBySlug,
+  getCatalogLocales,
+  getCatalogStructure,
+} from "@/lib/catalogs/data";
 import { CatalogLayout } from "@/lib/catalogs/layout";
+import { resolveStorefrontLocale } from "@/lib/catalogs/storefront-locale";
 import type {
   CatalogLayoutOverride,
   CatalogLayoutSettings,
@@ -57,7 +62,22 @@ async function PreviewCatalogContent({
   const catalog = await getCatalogBySlug(catalogSlug);
   if (!catalog) notFound();
 
-  const categoriesWithItems = await getCatalogStructure(catalog.id);
+  // Same locale plumbing as the customer route — preview honors ?lang= so
+  // the merchant can sanity-check a translation before pointing customers
+  // at it.
+  const catalogLocales = await getCatalogLocales(catalog.id);
+  const activeLocale =
+    resolveStorefrontLocale({
+      requested: resolvedSearchParams.lang,
+      enabled: catalogLocales.enabled,
+      default: catalogLocales.default,
+    }) ?? "";
+  const defaultLocale = catalogLocales.default ?? "";
+
+  const categoriesWithItems = await getCatalogStructure(
+    catalog.id,
+    activeLocale || undefined,
+  );
   const layoutOverride = getPreviewLayoutOverride(
     resolvedSearchParams,
   );
@@ -74,6 +94,8 @@ async function PreviewCatalogContent({
       baseHref={`/preview/${catalog.slug}`}
       layoutOverride={layoutOverride}
       currencyOverride={currencyOverride}
+      activeLocale={activeLocale}
+      defaultLocale={defaultLocale}
     />
   );
 }

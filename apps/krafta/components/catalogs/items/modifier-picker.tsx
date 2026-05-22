@@ -7,6 +7,8 @@ import type {
   PublicModifierList,
 } from "@/lib/catalogs/types";
 import { Label } from "@/components/ui/label";
+import { pickLocalizedField } from "@/lib/catalogs/i18n";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { cn } from "@/lib/utils";
 
 export type PickedModifier = {
@@ -35,10 +37,51 @@ export function ModifierPicker({
   onChange,
   formatPrice,
 }: Props) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
   const visibleLists = useMemo(
     () => modifierLists.filter((list) => !list.hidden_from_customer),
     [modifierLists],
   );
+
+  // Per-modifier-list / per-modifier localized names. Pre-resolved here so
+  // both the render (legend / row label) and the add-to-cart snapshot path
+  // (which copies `mod.name` into the cart line) use the same string —
+  // otherwise the cart would show the canonical name while the picker
+  // shows the translation.
+  const localizedListNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const list of visibleLists) {
+      map.set(
+        list.id,
+        pickLocalizedField({
+          translations: list.translations,
+          defaults: { name: list.name, description: null, image_alt: null },
+          activeLocale,
+          defaultLocale,
+          field: "name",
+        }).value,
+      );
+    }
+    return map;
+  }, [visibleLists, activeLocale, defaultLocale]);
+  const localizedModifierNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const list of visibleLists) {
+      for (const mod of list.modifiers) {
+        map.set(
+          mod.id,
+          pickLocalizedField({
+            translations: mod.translations,
+            defaults: { name: mod.name, description: null, image_alt: null },
+            activeLocale,
+            defaultLocale,
+            field: "name",
+          }).value,
+        );
+      }
+    }
+    return map;
+  }, [visibleLists, activeLocale, defaultLocale]);
 
   // State: Map<modifier_list_id, Set<modifier_id>>. Single-select lists hold
   // at most one id; multi-select lists hold up to max_selected.
@@ -66,13 +109,13 @@ export function ModifierPicker({
         flat.push({
           modifierId: mod.id,
           quantity: 1,
-          name: mod.name,
+          name: localizedModifierNameById.get(mod.id) ?? mod.name,
           basePriceCentsDelta: mod.price_cents,
         });
       }
     }
     onChange({ selections: flat, isValid: valid });
-  }, [selectionsByList, visibleLists, onChange]);
+  }, [selectionsByList, visibleLists, onChange, localizedModifierNameById]);
 
   if (visibleLists.length === 0) return null;
 
@@ -86,7 +129,7 @@ export function ModifierPicker({
           <fieldset key={list.id} className="space-y-2">
             <legend className="flex w-full items-baseline justify-between">
               <span className="text-sm font-medium text-foreground">
-                {list.name}
+                {localizedListNameById.get(list.id) ?? list.name}
                 {required ? (
                   <span className="ml-1 text-destructive">*</span>
                 ) : null}
@@ -103,6 +146,7 @@ export function ModifierPicker({
                   selected={picked.has(mod.id)}
                   isSingleSelect={isSingleSelect}
                   formatPrice={formatPrice}
+                  displayName={localizedModifierNameById.get(mod.id) ?? mod.name}
                   onToggle={() =>
                     setSelectionsByList((prev) =>
                       toggle(prev, list, mod.id),
@@ -178,12 +222,14 @@ function ModifierRow({
   selected,
   isSingleSelect,
   formatPrice,
+  displayName,
   onToggle,
 }: {
   modifier: PublicModifier;
   selected: boolean;
   isSingleSelect: boolean;
   formatPrice: (cents: number) => string;
+  displayName: string;
   onToggle: () => void;
 }) {
   return (
@@ -202,7 +248,7 @@ function ModifierRow({
           onChange={onToggle}
           className="h-4 w-4 accent-foreground"
         />
-        <span className="text-foreground">{modifier.name}</span>
+        <span className="text-foreground">{displayName}</span>
       </span>
       {modifier.price_cents > 0 ? (
         <span className="text-xs text-muted-foreground tabular-nums">

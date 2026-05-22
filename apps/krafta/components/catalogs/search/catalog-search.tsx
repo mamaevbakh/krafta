@@ -21,6 +21,8 @@ import type {
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
+import { pickLocalizedField } from "@/lib/catalogs/i18n";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { useItemSheet } from "@/components/catalogs/items/item-detail-controller";
 import { DialogTitle } from "@radix-ui/react-dialog";
 
@@ -87,6 +89,7 @@ export function CatalogSearch({
   currencySettings,
 }: CatalogSearchProps) {
   const { openItem } = useItemSheet();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<SearchDocument[]>([]);
@@ -96,6 +99,95 @@ export function CatalogSearch({
   const requestIdRef = React.useRef(0);
   const loadingStartRef = React.useRef(0);
   const loadingTimerRef = React.useRef<number | null>(null);
+
+  // Localized display-name maps for the dropdown rendering AND for the
+  // title-based result resolver (which matches `result.title` against
+  // entity titles when the server response lacks an id). Indexing the
+  // localized title means a customer browsing in Russian who searches for
+  // "Кофе" will still match the right entity even if the search-document
+  // text is locale-specific upstream.
+  const localizedItemNameById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    categoriesWithItems.forEach((category) => {
+      category.items.forEach((item) => {
+        map.set(
+          item.id,
+          pickLocalizedField({
+            translations: item.translations,
+            defaults: {
+              name: item.name,
+              description: item.description,
+              image_alt: item.image_alt,
+            },
+            activeLocale,
+            defaultLocale,
+            field: "name",
+          }).value,
+        );
+      });
+    });
+    return map;
+  }, [categoriesWithItems, activeLocale, defaultLocale]);
+  const localizedItemDescriptionById = React.useMemo(() => {
+    const map = new Map<string, string | null>();
+    categoriesWithItems.forEach((category) => {
+      category.items.forEach((item) => {
+        const value = pickLocalizedField({
+          translations: item.translations,
+          defaults: {
+            name: item.name,
+            description: item.description,
+            image_alt: item.image_alt,
+          },
+          activeLocale,
+          defaultLocale,
+          field: "description",
+        }).value;
+        map.set(item.id, value || null);
+      });
+    });
+    return map;
+  }, [categoriesWithItems, activeLocale, defaultLocale]);
+  const localizedItemImageAltById = React.useMemo(() => {
+    const map = new Map<string, string | null>();
+    categoriesWithItems.forEach((category) => {
+      category.items.forEach((item) => {
+        const value = pickLocalizedField({
+          translations: item.translations,
+          defaults: {
+            name: item.name,
+            description: item.description,
+            image_alt: item.image_alt,
+          },
+          activeLocale,
+          defaultLocale,
+          field: "image_alt",
+        }).value;
+        map.set(item.id, value || null);
+      });
+    });
+    return map;
+  }, [categoriesWithItems, activeLocale, defaultLocale]);
+  const localizedCategoryNameById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    categoriesWithItems.forEach((category) => {
+      map.set(
+        category.id,
+        pickLocalizedField({
+          translations: category.translations,
+          defaults: {
+            name: category.name,
+            description: category.description ?? null,
+            image_alt: null,
+          },
+          activeLocale,
+          defaultLocale,
+          field: "name",
+        }).value,
+      );
+    });
+    return map;
+  }, [categoriesWithItems, activeLocale, defaultLocale]);
 
   const searchIndex = React.useMemo(() => {
     const categoryById = new Map<string, PublicCategoryWithItems>();
@@ -124,8 +216,15 @@ export function CatalogSearch({
       const categorySlug = category.slug ?? String(category.id);
       categoryBySlug.set(categorySlug, category);
 
+      // Index by canonical AND localized titles so search-document titles
+      // in either locale can resolve to the right entity.
       const categoryTitle = normalizeLabel(category.name);
       if (categoryTitle) categoryByTitle.set(categoryTitle, category);
+      const categoryLocalizedTitle = normalizeLabel(
+        localizedCategoryNameById.get(category.id) ?? category.name,
+      );
+      if (categoryLocalizedTitle)
+        categoryByTitle.set(categoryLocalizedTitle, category);
 
       category.items.forEach((item) => {
         itemById.set(item.id, item);
@@ -136,6 +235,10 @@ export function CatalogSearch({
 
         const itemTitle = normalizeLabel(item.name);
         if (itemTitle) itemByTitle.set(itemTitle, item);
+        const itemLocalizedTitle = normalizeLabel(
+          localizedItemNameById.get(item.id) ?? item.name,
+        );
+        if (itemLocalizedTitle) itemByTitle.set(itemLocalizedTitle, item);
       });
     });
 
@@ -148,7 +251,12 @@ export function CatalogSearch({
       itemByTitle,
       categorySlugForItemId,
     };
-  }, [categoriesWithItems, open]);
+  }, [
+    categoriesWithItems,
+    open,
+    localizedCategoryNameById,
+    localizedItemNameById,
+  ]);
 
   const {
     categoryById,
@@ -469,6 +577,13 @@ export function CatalogSearch({
                 <div className="space-y-3">
                   {resolvedResults.items.map((match) => {
                     const imageUrl = getItemImageUrl(match.item);
+                    const itemName =
+                      localizedItemNameById.get(match.item.id) ??
+                      match.item.name;
+                    const itemDescription =
+                      localizedItemDescriptionById.get(match.item.id) ?? null;
+                    const itemImageAlt =
+                      localizedItemImageAltById.get(match.item.id) ?? null;
 
                     return (
                       <button
@@ -481,7 +596,7 @@ export function CatalogSearch({
                           {imageUrl ? (
                             <Image
                               src={imageUrl}
-                              alt={match.item.image_alt ?? match.item.name}
+                              alt={itemImageAlt ?? itemName}
                               fill
                               sizes="48px"
                               className="object-cover"
@@ -490,11 +605,11 @@ export function CatalogSearch({
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="line-clamp-2 text-sm font-semibold">
-                            {match.item.name}
+                            {itemName}
                           </span>
-                          {match.item.description && (
+                          {itemDescription && (
                             <span className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                              {match.item.description}
+                              {itemDescription}
                             </span>
                           )}
                         </div>
@@ -522,7 +637,8 @@ export function CatalogSearch({
                       className="rounded-lg border border-border bg-card px-4 py-5 text-left transition hover:border-foreground/30"
                     >
                       <div className="text-base font-semibold">
-                        {category.name}
+                        {localizedCategoryNameById.get(category.id) ??
+                          category.name}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {category.items.length} items

@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
+import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { cn } from "@/lib/utils";
 
 const TOP_OFFSET_PX = 60;
@@ -185,6 +186,8 @@ export function CategoryNavTabs({
   activeCategoryId = null,
   activeCategorySlug = null,
   baseHref,
+  activeLocale,
+  defaultLocale,
 }: CategoryNavProps) {
   if (!categories.length) return null;
 
@@ -307,6 +310,17 @@ export function CategoryNavTabs({
           {categories.map((category) => {
             const slug = getSlug(category);
             const isActive = slug === currentSlug;
+            const label = pickLocalizedField({
+              translations: category.translations,
+              defaults: {
+                name: category.name,
+                description: category.description ?? null,
+                image_alt: null,
+              },
+              activeLocale,
+              defaultLocale,
+              field: "name",
+            }).value;
 
             return (
               <button
@@ -321,7 +335,7 @@ export function CategoryNavTabs({
                     : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
                 )}
               >
-                {category.name}
+                {label}
               </button>
             );
           })}

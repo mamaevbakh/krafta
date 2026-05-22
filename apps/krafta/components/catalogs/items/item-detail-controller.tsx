@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ItemDetailSheet } from "@/components/catalogs/items/item-detail-sheet-view";
 import { getItemImageUrl } from "@/lib/catalogs/media";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 
 const ItemDetailFullscreen = dynamic(() =>
   import("@/components/catalogs/items/item-detail-fullscreen-view").then(
@@ -62,6 +63,7 @@ export function ItemSheetProvider({
   itemDetailVariant = "item-sheet",
   currencySettings,
 }: ItemSheetProviderProps) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
   const isFullscreenDetail = itemDetailVariant === "item-fullscreen";
   const ItemDetailComponent =
     isFullscreenDetail ? ItemDetailFullscreen : ItemDetailSheet;
@@ -270,6 +272,8 @@ export function ItemSheetProvider({
               itemAspectRatio={itemAspectRatio}
               onClose={closeItem}
               currencySettings={currencySettings}
+              activeLocale={activeLocale}
+              defaultLocale={defaultLocale}
             />
           </div>
         )}
@@ -302,6 +306,8 @@ export function ItemSheetProvider({
             imageUrl={imageUrl}
             itemAspectRatio={itemAspectRatio}
             currencySettings={currencySettings}
+            activeLocale={activeLocale}
+            defaultLocale={defaultLocale}
           />
         )}
       </DrawerContent>
