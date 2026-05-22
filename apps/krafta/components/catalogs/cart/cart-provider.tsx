@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -29,7 +30,12 @@ import {
   modifierSignature,
   type ModifierSelection,
 } from "@/lib/cart/modifier-signature";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import type { PublicTax } from "@/lib/catalogs/types";
+import {
+  getStorefrontMessage,
+  type StorefrontMessageKey,
+} from "@/lib/locales/messages";
 
 export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
 export type CartStep = "cart" | "checkout" | "placed";
@@ -41,6 +47,7 @@ export type PlacedOrderSnapshot =
       fields: { tableLabel: string };
       lineItems: CartLineItem[];
       subtotalCents: number;
+      tipCents: number;
     }
   | {
       orderId: string;
@@ -54,6 +61,7 @@ export type PlacedOrderSnapshot =
       };
       lineItems: CartLineItem[];
       subtotalCents: number;
+      tipCents: number;
     }
   | {
       orderId: string;
@@ -67,6 +75,7 @@ export type PlacedOrderSnapshot =
       };
       lineItems: CartLineItem[];
       subtotalCents: number;
+      tipCents: number;
     };
 
 type CartContextValue = {
@@ -94,6 +103,26 @@ type CartContextValue = {
   /** Current step inside the drawer: cart list, checkout fields, or confirmation. */
   step: CartStep;
   setStep: (next: CartStep) => void;
+  /**
+   * QR-driven dine-in lock: when a customer scans a table QR with
+   * `?mode=dine_in&table=…`, we pin them to dine-in for the rest of the
+   * tab session. CheckoutStep hides the pickup/delivery picker and
+   * pre-fills the table number; CartListStep shows a small pill.
+   *
+   * `null` when no QR context is present (free-form pickup/delivery
+   * picker behavior).
+   */
+  dineInLock: { tableLabel: string } | null;
+  /** Clear the dine-in lock — exposed for QA / "switch to delivery" flows
+   *  we may want later. Not surfaced in v1 UI. */
+  clearDineInLock: () => void;
+  /**
+   * Soft mode hint from `?mode=pickup` or `?mode=delivery` URL params —
+   * just biases the initial picker selection in CheckoutStep without
+   * hiding the picker (KRA-79/84). dine_in arrives via dineInLock (a
+   * hard lock) and never appears here.
+   */
+  initialModeHint: "pickup" | "delivery" | null;
   /** Order id stamped on the confirmation step after a successful place. */
   placedOrderId: string | null;
   /**
@@ -360,6 +389,84 @@ export function CartProvider({
   );
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [tipCents, setTipCents] = useState<number>(0);
+  const [dineInLock, setDineInLock] = useState<{ tableLabel: string } | null>(
+    null,
+  );
+  const [initialModeHint, setInitialModeHint] = useState<
+    "pickup" | "delivery" | null
+  >(null);
+
+  // QR-driven dine-in lock hydration.
+  //
+  // Source of truth chain (highest → lowest priority):
+  //   1. URL params on first render: ?mode=dine_in&table={n}
+  //   2. sessionStorage for this venue (keyed per-venueId so two venues
+  //      open in the same tab don't cross-contaminate). Surviving refresh
+  //      is the whole point — customer scans QR, the page reloads to
+  //      pull catalog data, the lock must persist.
+  //   3. null — free-form mode picker.
+  //
+  // We intentionally do not write to URL; URL is a one-shot intent
+  // signal. The customer can keep navigating the catalog without
+  // dragging ?mode=…&table=… along.
+  const searchParams = useSearchParams();
+  const storageKey = `krafta.cart.dineIn.${venueId}`;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const modeParam = searchParams?.get("mode");
+    const tableParam = searchParams?.get("table");
+    if (modeParam === "dine_in" && tableParam && tableParam.trim().length > 0) {
+      const next = { tableLabel: tableParam.trim() };
+      setDineInLock(next);
+      try {
+        window.sessionStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // Quota / private browsing — non-fatal; the in-memory lock
+        // still works for this session.
+      }
+      return;
+    }
+    // Soft mode hint: ?mode=pickup or ?mode=delivery just biases the
+    // initial picker selection. No lock — the customer can still
+    // switch in the picker (KRA-79/84). dine_in is handled above as
+    // a hard lock and never reaches this branch.
+    if (modeParam === "pickup" || modeParam === "delivery") {
+      setInitialModeHint(modeParam);
+      return;
+    }
+    // No URL signal — hydrate from sessionStorage if present.
+    try {
+      const raw = window.sessionStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { tableLabel?: unknown };
+        if (typeof parsed.tableLabel === "string" && parsed.tableLabel) {
+          setDineInLock({ tableLabel: parsed.tableLabel });
+        }
+      }
+    } catch {
+      // Corrupted storage — ignore, fall back to no lock.
+    }
+    // venueId is captured via storageKey; searchParams is stable per render
+    // pair so this re-checks if the user navigates with a new ?mode= URL.
+  }, [searchParams, storageKey]);
+
+  const clearDineInLock = useCallback(() => {
+    setDineInLock(null);
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.removeItem(storageKey);
+      } catch {
+        // ignore
+      }
+    }
+  }, [storageKey]);
+
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  // Stash translator in a ref so the memoized server-action callbacks below
+  // don't need it in their dep arrays — toast bodies just read the latest.
+  const tRef = useRef<(key: StorefrontMessageKey) => string>(() => "");
+  tRef.current = (key: StorefrontMessageKey) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
 
   // Reset tip when the cart empties to zero — prevents a leftover tip from a
   // previous order applying to a fresh cart the customer just started.
@@ -425,11 +532,14 @@ export function CartProvider({
       itemId,
       variationId,
       quantity = 1,
-      name = "Adding…",
+      name,
       basePriceCents = 0,
       variationName = null,
       modifiers: inputModifiers,
     }) => {
+      // Localized placeholder for the optimistic line label while the server
+      // round-trip is in flight. Callers normally pass `name` explicitly.
+      const resolvedName = name ?? tRef.current("add_to_cart.adding");
       const modifierSelections: ModifierSelection[] = (inputModifiers ?? []).map(
         (m) => ({
           listId: m.modifierListId,
@@ -464,7 +574,7 @@ export function CartProvider({
           itemId,
           variationId: variationId ?? null,
           quantity,
-          name,
+          name: resolvedName,
           variationName,
           basePriceCents,
           modifiers: lineModifiers,
@@ -509,7 +619,9 @@ export function CartProvider({
           }
         } catch (err) {
           toast.error(
-            err instanceof Error ? err.message : "Could not save cart change.",
+            err instanceof Error
+              ? err.message
+              : tRef.current("errors.cart_save_failed"),
           );
           refresh();
         }
@@ -550,7 +662,9 @@ export function CartProvider({
           }
         } catch (err) {
           toast.error(
-            err instanceof Error ? err.message : "Could not save cart change.",
+            err instanceof Error
+              ? err.message
+              : tRef.current("errors.cart_save_failed"),
           );
           refresh();
         }
@@ -578,7 +692,9 @@ export function CartProvider({
         setSummary(next);
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Could not save cart change.",
+          err instanceof Error
+            ? err.message
+            : tRef.current("errors.cart_save_failed"),
         );
         refresh();
       }
@@ -595,7 +711,9 @@ export function CartProvider({
       setSummary(next);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not save cart change.",
+        err instanceof Error
+          ? err.message
+          : tRef.current("errors.cart_save_failed"),
       );
       refresh();
     }
@@ -653,8 +771,17 @@ export function CartProvider({
     await Promise.allSettled(pendingPromises);
   }, [catalogPath, orgId, summary.lineItems, venueId]);
 
+  // Synchronous double-tap guard. setIsPlacingOrder(true) is async — a
+  // user double-tapping faster than React schedules the re-render could
+  // sneak in a second submission. The ref makes the rejection synchronous.
+  const placeInFlightRef = useRef(false);
+
   const placeOrder: CartContextValue["placeOrder"] = useCallback(
     async (input) => {
+      if (placeInFlightRef.current) {
+        return { ok: false, error: "already_placing" } as const;
+      }
+      placeInFlightRef.current = true;
       setIsPlacingOrder(true);
       try {
         await flush();
@@ -668,10 +795,14 @@ export function CartProvider({
 
         // Snapshot the cart at place-time so the confirmation step can
         // render line items + totals after the local cart is cleared.
+        // tipCents is included so SummaryBlock can echo the customer's
+        // chosen tip on the placed step (they just agreed to it; seeing
+        // it confirmed builds trust before the merchant collects cash).
         const snapshotBase = {
           orderId: result.orderId,
           lineItems: summary.lineItems,
           subtotalCents: summary.subtotalCents,
+          tipCents,
         };
         const snapshot: PlacedOrderSnapshot =
           input.mode === "dine_in"
@@ -689,15 +820,66 @@ export function CartProvider({
         setSummary(EMPTY_SUMMARY);
         return { ok: true } as const;
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Could not place order.";
+        // Map server-thrown machine codes to localized copy so the toast
+        // body matches the customer's storefront locale rather than
+        // surfacing the raw `tip_too_high` key.
+        const rawMessage =
+          err instanceof Error ? err.message : null;
+        const knownCodes: Record<string, StorefrontMessageKey> = {
+          tip_too_high: "errors.tip_too_high",
+          tip_without_items: "errors.tip_without_items",
+          phone_invalid: "errors.phone_invalid",
+          cart_empty: "errors.cart_empty",
+          scheduled_time_too_soon: "errors.scheduled_time_too_soon",
+          order_expired: "errors.order_expired",
+          table_session_expired: "errors.table_session_expired",
+        };
+        // Price-drift (S11). The server throws "price_changed:Name1, Name2"
+        // when any line item's snapshotted base_price_cents diverges from
+        // the live catalog variation price. We refresh() the cart so the
+        // customer sees the updated prices in the cart list when they
+        // close the toast, then they re-attempt.
+        let message: string;
+        if (rawMessage && rawMessage.startsWith("price_changed")) {
+          // errors.price_changed expects {name}, {old}, {new}. We only
+          // have the affected names from the server (cheap to compute);
+          // a richer payload could include old/new cents at the cost
+          // of more server round-trips. For v1 we use the name list
+          // and let the customer re-check the cart row's updated price.
+          const names =
+            rawMessage.split(":")[1]?.trim() || "";
+          message = tRef.current("errors.price_changed").replace(
+            /\{name\}/g,
+            names,
+          );
+          // Fire-and-forget: the catch returns immediately; refresh
+          // hydrates new prices in the background so the cart row's
+          // total reflects reality next time the customer looks.
+          refresh().catch(() => {
+            /* noop — refresh's own catch surfaces a toast if needed */
+          });
+        } else if (rawMessage && rawMessage in knownCodes) {
+          message = tRef.current(knownCodes[rawMessage]!);
+        } else {
+          message = rawMessage ?? tRef.current("errors.place_order_failed");
+        }
         toast.error(message);
         return { ok: false, error: message } as const;
       } finally {
         setIsPlacingOrder(false);
+        placeInFlightRef.current = false;
       }
     },
-    [catalogPath, flush, orgId, summary.lineItems, summary.subtotalCents, tipCents, venueId],
+    [
+      catalogPath,
+      flush,
+      orgId,
+      refresh,
+      summary.lineItems,
+      summary.subtotalCents,
+      tipCents,
+      venueId,
+    ],
   );
 
   const itemCount = summary.lineItems.reduce(
@@ -720,6 +902,9 @@ export function CartProvider({
       setTipCents,
       step,
       setStep,
+      dineInLock,
+      clearDineInLock,
+      initialModeHint,
       placedOrderId,
       placedOrder,
       isPlacingOrder,
@@ -734,7 +919,10 @@ export function CartProvider({
     [
       addItem,
       clear,
+      clearDineInLock,
+      dineInLock,
       flush,
+      initialModeHint,
       isHydrating,
       isOpen,
       isPlacingOrder,

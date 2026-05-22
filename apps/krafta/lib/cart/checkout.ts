@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { ensureCartIdentity } from "./identity";
+import { normalizeUzPhone } from "./phone";
 import {
   computePricing,
   distributeProRata,
@@ -94,15 +95,63 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // Fetch the line totals up front — we'll use them again below for the
   // tax / payment writes, ordered by created_at so the "remainder goes to
   // last line" pro-rata pattern is deterministic.
+  //
+  // We also pull catalog_variation_id + base_price_cents so the
+  // price-drift check below can compare the line's snapshot to the
+  // live catalog variation price without re-fetching.
   const { data: lines, error: linesError } = await supabase
     .schema("commerce")
     .from("order_line_items")
-    .select("id, total_price_cents")
+    .select(
+      "id, total_price_cents, base_price_cents, catalog_variation_id, name",
+    )
     .eq("order_id", order.id)
     .order("created_at", { ascending: true });
   if (linesError) throw new Error(linesError.message);
   if (!lines || lines.length === 0) {
-    throw new Error("Cart is empty.");
+    throw new Error("cart_empty");
+  }
+
+  // Price-drift reconciliation (S11). The cart snapshots
+  // catalog_variations.price_cents into order_line_items.base_price_cents
+  // at add time. If the merchant edits prices while the customer is mid-
+  // cart, the snapshot is stale by the time they hit Place. Re-fetch
+  // every variation's current price and bail with `price_changed` if
+  // any differ — the client then refreshes the cart so the customer
+  // sees the new prices before re-attempting.
+  const variationIds = Array.from(
+    new Set(
+      lines
+        .map((line) => line.catalog_variation_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  );
+  if (variationIds.length > 0) {
+    const { data: livePrices, error: priceError } = await supabase
+      .from("item_variations")
+      .select("id, price_cents")
+      .in("id", variationIds);
+    if (priceError) throw new Error(priceError.message);
+    const priceById = new Map<string, number>(
+      (livePrices ?? []).map((row) => [row.id, row.price_cents]),
+    );
+    const driftedNames: string[] = [];
+    for (const line of lines) {
+      if (!line.catalog_variation_id) continue;
+      const live = priceById.get(line.catalog_variation_id);
+      // Missing live row (variation deleted) is also drift — the cart
+      // can't be placed at a snapshot price for an item that no longer
+      // exists in the catalog.
+      if (live === undefined || live !== line.base_price_cents) {
+        driftedNames.push(line.name);
+      }
+    }
+    if (driftedNames.length > 0) {
+      // Surface affected names in the error message tail so the client
+      // can display them. The `price_changed` token at the head is what
+      // the client matches on for i18n mapping.
+      throw new Error(`price_changed:${driftedNames.join(", ")}`);
+    }
   }
 
   // ---- Mode-specific prep -------------------------------------------------
@@ -143,8 +192,29 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         })
         .select("id")
         .single();
-      if (createSessionError) throw new Error(createSessionError.message);
-      tableSessionId = createdSession.id;
+      if (createSessionError) {
+        // 23505 = a concurrent QR scan won the unique-index race. The
+        // partial UNIQUE INDEX on (venue_id, table_label) WHERE
+        // status='open' guarantees at most one open session per table,
+        // so the loser just re-SELECTs the winner's row instead of
+        // failing the order.
+        if (createSessionError.code === "23505") {
+          const { data: raced, error: racedError } = await supabase
+            .schema("commerce")
+            .from("table_sessions")
+            .select("id")
+            .eq("venue_id", input.venueId)
+            .eq("table_label", tableLabel)
+            .eq("status", "open")
+            .single();
+          if (racedError) throw new Error(racedError.message);
+          tableSessionId = raced.id;
+        } else {
+          throw new Error(createSessionError.message);
+        }
+      } else {
+        tableSessionId = createdSession.id;
+      }
     }
 
     const { data: guestSession, error: guestError } = await supabase
@@ -223,6 +293,14 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (scheduleType === "scheduled" && !pickupAt) {
       throw new Error("Scheduled pickup requires a pickup time.");
     }
+    // Phone is optional for pickup, but if the customer typed one, it
+    // must match the +998 shape so we can call them back if there's a
+    // problem with the order.
+    let normalizedPickupPhone: string | null = null;
+    if (recipientPhone && recipientPhone.trim()) {
+      normalizedPickupPhone = normalizeUzPhone(recipientPhone);
+      if (!normalizedPickupPhone) throw new Error("phone_invalid");
+    }
     const { error } = await supabase
       .schema("commerce")
       .from("fulfillment_pickup_details")
@@ -231,7 +309,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         schedule_type: scheduleType,
         pickup_at: scheduleType === "scheduled" ? pickupAt : null,
         recipient_name: recipientName?.trim() || null,
-        recipient_phone: recipientPhone?.trim() || null,
+        recipient_phone: normalizedPickupPhone,
         note: note?.trim() || null,
         placed_at: new Date().toISOString(),
       });
@@ -243,6 +321,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (!address.trim()) throw new Error("Delivery address is required.");
     if (!recipientName.trim()) throw new Error("Recipient name is required.");
     if (!recipientPhone.trim()) throw new Error("Recipient phone is required.");
+    // Phone is required for delivery — courier needs to call.
+    const normalizedDeliveryPhone = normalizeUzPhone(recipientPhone);
+    if (!normalizedDeliveryPhone) throw new Error("phone_invalid");
 
     const { error } = await supabase
       .schema("commerce")
@@ -250,7 +331,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       .insert({
         fulfillment_id: fulfillment.id,
         recipient_name: recipientName.trim(),
-        recipient_phone: recipientPhone.trim(),
+        recipient_phone: normalizedDeliveryPhone,
         address: { freeform: address.trim() },
         scheduled_for: scheduledFor,
         delivery_provider: "merchant",
@@ -297,6 +378,15 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     taxes,
     tipCents,
   });
+
+  // Tip cap pre-check (KRA-77). The DB has a CHECK constraint enforcing
+  // tip_cents * 2 <= amount_cents on order_payments — we surface the
+  // failure as a clean error code the client maps to the localized
+  // errors.tip_too_high copy, instead of letting a raw 23514 bubble.
+  const amountForTipCheck = subtotalCents + pricing.additiveFeesCents;
+  if (tipCents * 2 > amountForTipCheck) {
+    throw new Error("tip_too_high");
+  }
 
   // Insert order_taxes (one per active tax). uid pattern keeps applied-tax
   // references stable: "<tax_id>" is sufficient within an order since each

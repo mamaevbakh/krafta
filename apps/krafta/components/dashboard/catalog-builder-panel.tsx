@@ -180,6 +180,7 @@ const CARD_SURFACE_MAP: Record<string, string[]> = {
   "card-photo-row": ["bg-card", "text-card-foreground", "wide image rail", "border"],
   "card-minimal": ["bg-card", "text-card-foreground", "subtle border", "quiet metadata"],
   "card-glass-blur": ["bg-card/80", "text-card-foreground", "backdrop blur", "glow edge"],
+  "card-row-compact": ["bg-card", "text-card-foreground", "48px row", "tabular-num price"],
 };
 
 function getAspectInputs(

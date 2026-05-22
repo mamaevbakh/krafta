@@ -98,6 +98,28 @@ export async function getOrCreateDraftOrder(
     .single();
 
   if (insertError || !created) {
+    // 23505 = the partial UNIQUE INDEX on (customer_id, venue_id) WHERE
+    // state='draft' (KRA-77 migration) fired because two parallel adds
+    // both passed the maybeSingle() check above and raced into INSERT.
+    // The loser re-SELECTs the winner's row instead of failing.
+    if (insertError?.code === "23505") {
+      const { data: raced, error: racedError } = await supabase
+        .schema("commerce")
+        .from("orders")
+        .select("id, version")
+        .eq("customer_id", customerId)
+        .eq("venue_id", input.venueId)
+        .eq("state", "draft")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (racedError || !raced) {
+        throw new Error(
+          racedError?.message ?? "Failed to recover from draft order race.",
+        );
+      }
+      return { orderId: raced.id, version: raced.version, customerId };
+    }
     throw new Error(insertError?.message ?? "Failed to create draft order.");
   }
 
