@@ -116,6 +116,13 @@ type CartContextValue = {
   /** Clear the dine-in lock — exposed for QA / "switch to delivery" flows
    *  we may want later. Not surfaced in v1 UI. */
   clearDineInLock: () => void;
+  /**
+   * Soft mode hint from `?mode=pickup` or `?mode=delivery` URL params —
+   * just biases the initial picker selection in CheckoutStep without
+   * hiding the picker (KRA-79/84). dine_in arrives via dineInLock (a
+   * hard lock) and never appears here.
+   */
+  initialModeHint: "pickup" | "delivery" | null;
   /** Order id stamped on the confirmation step after a successful place. */
   placedOrderId: string | null;
   /**
@@ -385,6 +392,9 @@ export function CartProvider({
   const [dineInLock, setDineInLock] = useState<{ tableLabel: string } | null>(
     null,
   );
+  const [initialModeHint, setInitialModeHint] = useState<
+    "pickup" | "delivery" | null
+  >(null);
 
   // QR-driven dine-in lock hydration.
   //
@@ -414,6 +424,14 @@ export function CartProvider({
         // Quota / private browsing — non-fatal; the in-memory lock
         // still works for this session.
       }
+      return;
+    }
+    // Soft mode hint: ?mode=pickup or ?mode=delivery just biases the
+    // initial picker selection. No lock — the customer can still
+    // switch in the picker (KRA-79/84). dine_in is handled above as
+    // a hard lock and never reaches this branch.
+    if (modeParam === "pickup" || modeParam === "delivery") {
+      setInitialModeHint(modeParam);
       return;
     }
     // No URL signal — hydrate from sessionStorage if present.
@@ -886,6 +904,7 @@ export function CartProvider({
       setStep,
       dineInLock,
       clearDineInLock,
+      initialModeHint,
       placedOrderId,
       placedOrder,
       isPlacingOrder,
@@ -903,6 +922,7 @@ export function CartProvider({
       clearDineInLock,
       dineInLock,
       flush,
+      initialModeHint,
       isHydrating,
       isOpen,
       isPlacingOrder,

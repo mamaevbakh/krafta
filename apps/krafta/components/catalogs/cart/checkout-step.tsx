@@ -79,6 +79,7 @@ export function CartCheckoutStep({
     tipCents,
     setTipCents,
     dineInLock,
+    initialModeHint,
   } = useCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const t = (
@@ -96,25 +97,38 @@ export function CartCheckoutStep({
     return modes;
   }, [modes]);
 
-  const [mode, setMode] = useState<CartFulfillmentMode>(() =>
+  const [mode, setMode] = useState<CartFulfillmentMode>(() => {
     // Honor the QR-driven dine-in lock on first render so the customer
     // sees the table form immediately, no flicker of pickup/delivery.
-    dineInLock ? "dine_in" : (pickerOptions[0] ?? "pickup"),
-  );
+    if (dineInLock) return "dine_in";
+    // Soft hint from ?mode=pickup or ?mode=delivery — pre-select that
+    // tab in the picker (KRA-79/84). Customer can still switch.
+    if (initialModeHint && pickerOptions.includes(initialModeHint)) {
+      return initialModeHint;
+    }
+    return pickerOptions[0] ?? "pickup";
+  });
 
-  // If the lock arrives after first render (e.g., the URL hydrated late
-  // because useSearchParams returned null on the SSR pass), snap the
-  // selected mode to dine_in. Same effect for `lock → cleared`: we drop
-  // back to the first picker option.
+  // If the lock or mode hint arrives after first render (e.g., the URL
+  // hydrated late because useSearchParams returned null on the SSR
+  // pass), snap the selected mode to match. Same effect for
+  // `lock → cleared`: we drop back to the first picker option.
   useEffect(() => {
-    if (dineInLock) setMode("dine_in");
-    else if (mode === "dine_in" && !modes.includes("dine_in")) {
+    if (dineInLock) {
+      setMode("dine_in");
+      return;
+    }
+    if (initialModeHint && pickerOptions.includes(initialModeHint)) {
+      setMode(initialModeHint);
+      return;
+    }
+    if (mode === "dine_in" && !modes.includes("dine_in")) {
       setMode(pickerOptions[0] ?? "pickup");
     }
     // mode is intentionally NOT a dep: this is a "respond to lock
     // toggling" effect, not a "every time mode changes" effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dineInLock, modes, pickerOptions]);
+  }, [dineInLock, initialModeHint, modes, pickerOptions]);
 
   // Per-mode form state. We keep one slot per mode so switching tabs
   // preserves what the user typed.
