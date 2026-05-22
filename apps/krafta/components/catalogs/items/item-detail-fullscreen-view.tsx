@@ -39,10 +39,15 @@
  *     brand voice ("calm, dense, confident, Linear-adjacent") wants a
  *     bold dark title on white, not Instagram-style hero overlay.
  *
- *   • Header buttons are sticky (not fixed) so they scroll with the
- *     modal's own scroll context and never end up white-on-white over
- *     the body content. Share moved to the right cluster so neither
- *     button sits in iOS's left-edge swipe-back zone.
+ *   • Header buttons float as glassmorphic circles, absolutely
+ *     positioned inside a zero-height sticky anchor at the top of the
+ *     modal's scroll context. The anchor takes no vertical space, so
+ *     the image goes edge-to-edge from the modal's top edge; the
+ *     buttons stay pinned to top-right as the customer scrolls. Both
+ *     buttons cluster on the right so neither sits in iOS's left-edge
+ *     swipe-back zone. Backdrop-blur + 85% opaque background keeps
+ *     them readable over the image AND over the body in both light
+ *     and dark modes — no contrast switch needed.
  *
  *   • Add-to-cart button is always enabled. When a required modifier
  *     list isn't filled, clicking scrolls to the first invalid list and
@@ -251,47 +256,50 @@ export function ItemDetailFullscreen({
     <div
       className="mx-auto flex h-dvh w-full max-w-[480px] flex-col overflow-y-auto bg-background text-foreground md:h-[85dvh] md:rounded-sm md:shadow-xl"
     >
-      {/* Sticky header — Share + Close, both clustered top-right so
-          neither sits in iOS's left-edge back-swipe zone. Sticky (not
-          fixed, not absolute-over-image) so it scrolls with the
-          modal's own scroll context but always stays reachable.
-          Background is mostly-opaque + blur so the buttons read
-          cleanly over the image at the top AND over the white body
-          after scroll. */}
-      <div className="sticky top-0 z-20 flex items-center justify-end gap-2 bg-background/90 px-3 py-2.5 backdrop-blur-sm">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={handleShare}
-          className="h-10 w-10 rounded-full border-border/60"
-          aria-label="Share"
-        >
-          <Share2 className="size-4" />
-        </Button>
-        {onClose ? (
+      {/* Floating chrome — Share + Close. The outer sticky div has
+          h-0 + no background so it takes ZERO vertical space; the
+          image starts edge-to-edge from the top of the modal. The
+          buttons are absolutely positioned inside the anchor so they
+          stay pinned to the top-right corner as the customer scrolls.
+          Glassmorphic style (bg-background/85 + backdrop-blur-md +
+          shadow-sm) so they read cleanly over the image OR the body,
+          in light OR dark mode. */}
+      <div className="sticky top-0 z-20 h-0">
+        <div className="absolute right-3 top-3 flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
             size="icon"
-            onClick={onClose}
-            className="h-10 w-10 rounded-full border-border/60"
-            aria-label={closeLabelFor(activeLocale)}
+            onClick={handleShare}
+            className="h-10 w-10 rounded-full border-border/40 bg-background/85 shadow-sm backdrop-blur-md"
+            aria-label="Share"
           >
-            <XIcon className="size-5" />
+            <Share2 className="size-4" />
           </Button>
-        ) : (
-          <Button
-            asChild
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 rounded-full border-border/60"
-          >
-            <Link href={backHref ?? "#"} aria-label={closeLabelFor(activeLocale)}>
+          {onClose ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={onClose}
+              className="h-10 w-10 rounded-full border-border/40 bg-background/85 shadow-sm backdrop-blur-md"
+              aria-label={closeLabelFor(activeLocale)}
+            >
               <XIcon className="size-5" />
-            </Link>
-          </Button>
-        )}
+            </Button>
+          ) : (
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-full border-border/40 bg-background/85 shadow-sm backdrop-blur-md"
+            >
+              <Link href={backHref ?? "#"} aria-label={closeLabelFor(activeLocale)}>
+                <XIcon className="size-5" />
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Image — capped at 55dvh. The aspect ratio is honored UP TO
