@@ -21,13 +21,30 @@ export type PickedModifier = {
 export type ModifierPickerChange = {
   selections: PickedModifier[];
   isValid: boolean;
+  /** The id of the FIRST modifier list whose selection count is below
+   *  `min_selected` (i.e. an unfilled required list). null when every
+   *  list satisfies its bounds. Used by the add-to-cart flow to scroll
+   *  the customer's eye to the field that's blocking them, instead of
+   *  greying out the button with no explanation. */
+  firstInvalidListId: string | null;
 };
 
 type Props = {
   modifierLists: PublicModifierList[];
   onChange: (change: ModifierPickerChange) => void;
   formatPrice: (cents: number) => string;
+  /** When set to the id of a modifier list, that list briefly highlights
+   *  (destructive ring) to draw attention. Used to nudge the customer
+   *  toward a required field they skipped. The picker doesn't manage
+   *  the timer — the parent clears `flashListId` after ~800ms. */
+  flashListId?: string | null;
 };
+
+/** Stable id pattern for the modifier-list fieldset, exported so callers
+ *  (e.g. item-detail-fullscreen-view) can scrollIntoView the target. */
+export function modifierListFieldsetId(listId: string): string {
+  return `modifier-list-${listId}`;
+}
 
 // Picker for an item's customer-visible modifier lists. Hidden lists never
 // render here — the server applies their on_by_default modifiers at add time.
@@ -36,6 +53,7 @@ export function ModifierPicker({
   modifierLists,
   onChange,
   formatPrice,
+  flashListId = null,
 }: Props) {
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const visibleLists = useMemo(
@@ -98,11 +116,21 @@ export function ModifierPicker({
   useEffect(() => {
     const flat: PickedModifier[] = [];
     let valid = true;
+    let firstInvalidListId: string | null = null;
     for (const list of visibleLists) {
       const picked = selectionsByList.get(list.id) ?? new Set<string>();
       const count = picked.size;
-      if (count < list.min_selected) valid = false;
-      if (list.max_selected !== null && count > list.max_selected) valid = false;
+      // Track the FIRST list that fails min-selected — that's where the
+      // customer needs to look. Max-selected can't be triggered by the
+      // UI itself (the toggle handler caps additions), so we only treat
+      // under-min as the actionable invalid state.
+      if (count < list.min_selected) {
+        valid = false;
+        if (!firstInvalidListId) firstInvalidListId = list.id;
+      }
+      if (list.max_selected !== null && count > list.max_selected) {
+        valid = false;
+      }
       for (const id of picked) {
         const mod = list.modifiers.find((m) => m.id === id);
         if (!mod) continue;
@@ -114,7 +142,7 @@ export function ModifierPicker({
         });
       }
     }
-    onChange({ selections: flat, isValid: valid });
+    onChange({ selections: flat, isValid: valid, firstInvalidListId });
   }, [selectionsByList, visibleLists, onChange, localizedModifierNameById]);
 
   if (visibleLists.length === 0) return null;
@@ -125,8 +153,21 @@ export function ModifierPicker({
         const picked = selectionsByList.get(list.id) ?? new Set<string>();
         const isSingleSelect = list.max_selected === 1;
         const required = list.min_selected >= 1;
+        const isFlashed = flashListId === list.id;
         return (
-          <fieldset key={list.id} className="space-y-2">
+          <fieldset
+            key={list.id}
+            id={modifierListFieldsetId(list.id)}
+            className={cn(
+              "space-y-2 rounded-md transition-shadow",
+              // Flash mode: destructive ring + faint backdrop tint to draw
+              // the eye when the customer tried to add-to-cart without
+              // filling this required list. Parent clears flashListId
+              // after ~800ms so the ring fades, not flickers.
+              isFlashed &&
+                "ring-2 ring-destructive ring-offset-2 ring-offset-background -mx-1 px-1 py-1",
+            )}
+          >
             <legend className="flex w-full items-baseline justify-between">
               <span className="text-sm font-medium text-foreground">
                 {localizedListNameById.get(list.id) ?? list.name}
