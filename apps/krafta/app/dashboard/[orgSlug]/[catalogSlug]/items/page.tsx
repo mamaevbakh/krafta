@@ -56,21 +56,64 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     position: number;
     is_primary: boolean;
   }[] = [];
+  // KRA-85 follow-up — Square-inspired modifier UX.
+  // The richer row preview ("Choco, Strawberry, Lemon" subtitle + min/max
+  // chip) needs more than just the bare list rows, so we fetch:
+  //   - modifier_lists with min/max + text-mode constraints + nested
+  //     modifiers (name + ordinal + is_active) so the choice preview can
+  //     render the first few names per attached list
+  //   - item_modifier_lists carrying ordinal + per-item override columns
+  //     (min_selected_override, max_selected_override,
+  //     hidden_from_customer_override). The override columns let the
+  //     editor's per-row settings tweak min/max for THIS item without
+  //     touching the list's catalog-wide defaults — matches Square's
+  //     "customize for this item" affordance.
+  let modifierLists: {
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
+    is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
+  }[] = [];
+  let itemModifierLists: {
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }[] = [];
   if (catalog?.id) {
     const [itemsResponse, categoriesResponse, localesResponse] =
       await Promise.all([
-        // Price is now sourced from the default item_variations row (Migration
-        // 1, ADR 0001 §3.1). Embed it filtered to is_default=true; PostgREST
-        // returns it as an array, we flatten below.
+        // KRA-86 — embed the FULL item_variations array per item, ordered
+        // by ordinal. The legacy `!inner` + is_default filter is dropped:
+        // the EditorSheet's variations editor needs every variation row,
+        // and the LibraryRow / table view still derive the headline price
+        // via variations.find(v => v.is_default)?.price_cents in the
+        // flatten step below.
+        //
+        // Payload cost (per /plan-eng-review P2): ~80 bytes per variation
+        // row. 50 items × 3 variations ≈ 12 KB bump. Trivial vs the
+        // multi-MB image payload already in flight.
         supabase
           .from("items")
           .select(
-            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, item_variations!inner(price_cents)",
+            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, item_variations(id, item_id, catalog_id, name, price_cents, ordinal, is_default, is_sold_out, is_active)",
           )
           .eq("catalog_id", catalog.id)
-          .eq("item_variations.is_default", true)
           .eq("item_variations.is_active", true)
-          .order("position", { ascending: true }),
+          .order("position", { ascending: true })
+          .order("ordinal", { referencedTable: "item_variations", ascending: true }),
         supabase
           .from("catalog_categories")
           .select("id, catalog_id, name, slug, position, is_active, created_at")
@@ -84,20 +127,58 @@ export default async function DashboardItemsPage({ params }: PageProps) {
       ]);
 
     const itemsRaw = (itemsResponse.data ?? []) as Array<
-      Omit<Item, "price_cents"> & {
-        item_variations: Array<{ price_cents: number }>;
+      Omit<Item, "price_cents" | "variations"> & {
+        item_variations: Array<{
+          id: string;
+          item_id: string;
+          catalog_id: string;
+          name: string;
+          price_cents: number;
+          ordinal: number;
+          is_default: boolean;
+          is_sold_out: boolean;
+          is_active: boolean;
+        }>;
       }
     >;
-    items = itemsRaw.map(({ item_variations, ...rest }) => ({
-      ...rest,
-      price_cents: item_variations[0]?.price_cents ?? 0,
-    }));
+    items = itemsRaw.map(({ item_variations, ...rest }) => {
+      const variations = item_variations ?? [];
+      // Default price = the one row with is_default=true. Fallback to 0
+      // for any item with a data bug (no default), so LibraryRow keeps
+      // rendering "0 sum" instead of NaN.
+      const defaultPrice =
+        variations.find((v) => v.is_default)?.price_cents ?? 0;
+      return {
+        ...rest,
+        price_cents: defaultPrice,
+        variations: variations.map((v) => ({
+          id: v.id,
+          item_id: v.item_id,
+          catalog_id: v.catalog_id,
+          name: v.name,
+          price_cents: v.price_cents,
+          ordinal: v.ordinal,
+          is_default: v.is_default,
+          is_sold_out: v.is_sold_out,
+        })),
+      };
+    });
     categories = (categoriesResponse.data ?? []) as CatalogCategory[];
     locales = localesResponse.data ?? [];
 
     if (items.length) {
       const itemIds = items.map((item) => item.id);
-      const [translationsResponse, mediaResponse] = await Promise.all([
+      // KRA-85 follow-up: fetch the catalog's modifier_lists +
+      // item_modifier_lists snapshot in the same wave. The editor uses
+      // both to render the ModifierListsPicker (available options +
+      // currently-attached state). Cheap because list counts per catalog
+      // are typically <30.
+      const [
+        translationsResponse,
+        mediaResponse,
+        modifierListsResponse,
+        itemModifierListsResponse,
+      ] = await Promise.all([
         supabase
           .from("item_translations")
           .select("id, item_id, locale, name, description, image_alt")
@@ -109,10 +190,33 @@ export default async function DashboardItemsPage({ params }: PageProps) {
           )
           .in("item_id", itemIds)
           .order("position", { ascending: true }),
+        supabase
+          .from("modifier_lists")
+          .select(
+            `id, name, modifier_type, min_selected, max_selected,
+             text_required, max_length, is_active,
+             modifiers!modifiers_modifier_list_id_fkey(id, name, ordinal, is_active)`,
+          )
+          .eq("catalog_id", catalog.id)
+          .order("name", { ascending: true })
+          .order("ordinal", { referencedTable: "modifiers", ascending: true }),
+        supabase
+          .from("item_modifier_lists")
+          .select(
+            `item_id, modifier_list_id, ordinal,
+             min_selected_override, max_selected_override,
+             hidden_from_customer_override`,
+          )
+          .eq("catalog_id", catalog.id)
+          .eq("is_active", true)
+          .in("item_id", itemIds)
+          .order("ordinal", { ascending: true }),
       ]);
 
       translations = translationsResponse.data ?? [];
       media = mediaResponse.data ?? [];
+      modifierLists = modifierListsResponse.data ?? [];
+      itemModifierLists = itemModifierListsResponse.data ?? [];
     }
   }
 
@@ -138,6 +242,8 @@ export default async function DashboardItemsPage({ params }: PageProps) {
       locales={locales}
       translations={translations}
       media={media}
+      modifierLists={modifierLists}
+      itemModifierLists={itemModifierLists}
       currencySettings={currencySettings}
     />
   );

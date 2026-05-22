@@ -8,7 +8,35 @@ import type {
   PublicModifier,
   PublicModifierList,
   PublicTax,
+  PublicTranslationRow,
 } from "./types";
+
+// Catalog locale metadata surfaced from getCatalogLocales so the storefront
+// can resolve the active locale + carry the right defaultLocale into
+// pickLocalizedField. `enabled` is the merchant's enabled set (used to
+// validate a ?lang= request — invalid locales fall back to default) and
+// also drives the language switcher in the header.
+//
+// `display_name` is the human-readable label the switcher shows (the
+// merchant set it on `catalog_locales.display_name` from the dashboard —
+// e.g. "Русский", "O‘zbekcha"). `text_direction` is "ltr" or "rtl" and
+// is reserved for future RTL-aware rendering; it's surfaced here so
+// callers don't need a second fetch.
+export type PublicCatalogLocaleOption = {
+  locale: string;
+  display_name: string | null;
+  text_direction: "ltr" | "rtl";
+  is_default: boolean;
+};
+export type PublicCatalogLocales = {
+  default: string | null;
+  enabled: string[];
+  /** Full row metadata for each enabled locale, ordered by sort_order
+   *  (the same order the dashboard uses). The switcher renders this
+   *  array directly; resolveStorefrontLocale only consumes `enabled` +
+   *  `default`. */
+  options: PublicCatalogLocaleOption[];
+};
 
 export type PublicVenue = {
   id: string;
@@ -59,6 +87,51 @@ export async function getCatalogBySlug(
     cacheTag(`catalog:${catalog.id}`);
   }
   return catalog;
+}
+
+// KRA-98: fetch the catalog meta translation row for a specific locale.
+// Returns an empty array when there's no row for that locale yet (the
+// storefront then falls back to catalogs.name + catalogs.description via
+// pickLocalizedField). Keeps the shape compatible with the i18n helper's
+// TranslationRow contract — `image_alt` is always null because catalogs
+// don't carry one, but the field is on the union so the resolver can
+// query it without branching.
+export async function getCatalogMetaTranslation(
+  catalogId: string,
+  locale: string,
+): Promise<Array<{
+  locale: string;
+  name: string | null;
+  description: string | null;
+  image_alt: null;
+}>> {
+  "use cache";
+  cacheTag(`catalog:${catalogId}`, `catalog-structure:${catalogId}`);
+
+  const url =
+    `${supabaseUrl}/rest/v1/catalog_translations` +
+    `?catalog_id=eq.${encodeURIComponent(catalogId)}` +
+    `&locale=eq.${encodeURIComponent(locale)}` +
+    `&select=locale,name,description`;
+  const response = await fetch(url, {
+    headers: supabaseHeaders,
+    next: {
+      tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+    },
+    cache: "force-cache",
+  });
+  if (!response.ok) return [];
+  const rows = (await response.json()) as Array<{
+    locale: string;
+    name: string | null;
+    description: string | null;
+  }>;
+  return rows.map((r) => ({
+    locale: r.locale,
+    name: r.name,
+    description: r.description,
+    image_alt: null,
+  }));
 }
 
 export async function getVenueByCatalogId(
@@ -125,8 +198,57 @@ export async function getCatalogTaxes(
   }));
 }
 
+// Returns the enabled locale list + the catalog's default locale. The
+// storefront uses this to validate ?lang= against the merchant's enabled
+// set: a request for a disabled or unknown locale resolves to the default,
+// so we never render junk locale codes the merchant hasn't opted into.
+export async function getCatalogLocales(
+  catalogId: string,
+): Promise<PublicCatalogLocales> {
+  "use cache";
+  cacheTag(`catalog:${catalogId}`, `catalog-structure:${catalogId}`);
+
+  const url = `${supabaseUrl}/rest/v1/catalog_locales?catalog_id=eq.${encodeURIComponent(
+    catalogId,
+  )}&is_enabled=eq.true&select=locale,is_default,sort_order,display_name,text_direction&order=sort_order.asc`;
+
+  const response = await fetch(url, {
+    headers: supabaseHeaders,
+    next: { tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`] },
+    cache: "force-cache",
+  });
+  if (!response.ok) return { default: null, enabled: [], options: [] };
+  const rows = (await response.json()) as Array<{
+    locale: string;
+    is_default: boolean;
+    display_name: string | null;
+    text_direction: string | null;
+  }>;
+  const enabled = rows.map((r) => r.locale);
+  const defaultLocale =
+    rows.find((r) => r.is_default)?.locale ?? rows[0]?.locale ?? null;
+  // Narrow text_direction to the union the type system expects — the DB
+  // CHECK constraint guarantees one of "ltr" / "rtl" but PostgREST surfaces
+  // it as plain string.
+  const options: PublicCatalogLocaleOption[] = rows.map((r) => ({
+    locale: r.locale,
+    display_name: r.display_name,
+    text_direction: r.text_direction === "rtl" ? "rtl" : "ltr",
+    is_default: r.is_default,
+  }));
+  return { default: defaultLocale, enabled, options };
+}
+
+// `activeLocale` (optional) — when provided AND distinct from the catalog's
+// default locale, the function also fetches `*_translations` rows for that
+// locale and attaches them to each entity as `translations: [...]` (length
+// 0 or 1). Storefront components then call pickLocalizedField against
+// those rows + the canonical defaults. When omitted (or equal to default),
+// no extra translations are fetched — the helper short-circuits to the
+// canonical default-locale value.
 export async function getCatalogStructure(
-  catalogId: string
+  catalogId: string,
+  activeLocale?: string,
 ): Promise<PublicCategoryWithItems[]> {
   "use cache";
   cacheTag(`catalog:${catalogId}`, `catalog-structure:${catalogId}`);
@@ -146,9 +268,15 @@ export async function getCatalogStructure(
   // Modifier data: three tables, all denormalize catalog_id so we can fetch
   // each scoped to the active catalog in parallel with the rest of the
   // catalog structure. Assembly into PublicItem.modifier_lists happens below.
+  // Fetch ALL active modifier lists for the catalog, not just list-mode.
+  // KRA-96 lit up the text-mode (free-text) rendering branch in the
+  // picker; without dropping the modifier_type=eq.list filter the data
+  // layer would silently exclude text-mode lists and the picker would
+  // never see them. text_required + max_length are the schema knobs the
+  // text-mode branch reads to enforce the merchant's constraints.
   const modifierListsUrl = `${supabaseUrl}/rest/v1/modifier_lists?catalog_id=eq.${encodeURIComponent(
     catalogId,
-  )}&is_active=eq.true&modifier_type=eq.list&select=id,name,modifier_type,min_selected,max_selected,version`;
+  )}&is_active=eq.true&select=id,name,modifier_type,min_selected,max_selected,text_required,max_length,version`;
   const modifiersUrl = `${supabaseUrl}/rest/v1/modifiers?catalog_id=eq.${encodeURIComponent(
     catalogId,
   )}&is_active=eq.true&select=id,modifier_list_id,name,price_cents,ordinal,on_by_default,version&order=ordinal.asc`;
@@ -209,26 +337,32 @@ export async function getCatalogStructure(
   ]);
 
   if (!categoriesResponse.ok) return [];
-  const categories = (await categoriesResponse.json()) as PublicCatalogCategory[];
+  // The PostgREST fetch doesn't include `translations`/`description` — both
+  // are filled in by the assembly pass below. The cast is intentionally
+  // narrow to keep the shape honest for the rest of the function.
+  const categories = (await categoriesResponse.json()) as Array<
+    Omit<PublicCatalogCategory, "translations" | "description">
+  >;
 
   if (!itemsResponse.ok) {
     return categories.map((category) => ({
       ...category,
       items: [],
+      translations: [],
     }));
   }
   const itemsRaw = (await itemsResponse.json()) as Array<
-    Omit<PublicItem, "price_cents" | "modifier_lists"> & {
+    Omit<PublicItem, "price_cents" | "modifier_lists" | "translations"> & {
       item_variations: Array<{ price_cents: number }>;
     }
   >;
-  // modifier_lists is filled in below during item-by-item assembly.
-  const items: Array<Omit<PublicItem, "modifier_lists">> = itemsRaw.map(
-    ({ item_variations, ...rest }) => ({
-      ...rest,
-      price_cents: item_variations[0]?.price_cents ?? 0,
-    }),
-  );
+  // modifier_lists and translations are filled in below during assembly.
+  const items: Array<
+    Omit<PublicItem, "modifier_lists" | "translations">
+  > = itemsRaw.map(({ item_variations, ...rest }) => ({
+    ...rest,
+    price_cents: item_variations[0]?.price_cents ?? 0,
+  }));
 
   const locales = localesResponse.ok
     ? ((await localesResponse.json()) as Array<{
@@ -240,11 +374,31 @@ export async function getCatalogStructure(
     locales.find((locale) => locale.is_default)?.locale ??
     locales[0]?.locale ??
     null;
+  const enabledLocales = new Set(locales.map((l) => l.locale));
+
+  // Resolve the request's active locale against the enabled set. An invalid
+  // ?lang= (disabled or unknown) silently degrades to the default — we never
+  // render junk codes the merchant hasn't opted into.
+  const effectiveActiveLocale =
+    activeLocale && enabledLocales.has(activeLocale) ? activeLocale : null;
+  // We only need to ship the active-locale translation rows when active is
+  // distinct from default. Equal-or-missing → pickLocalizedField short-
+  // circuits to the canonical default value carried on the entity itself.
+  const wantActiveLocaleData =
+    !!effectiveActiveLocale &&
+    !!defaultLocale &&
+    effectiveActiveLocale !== defaultLocale;
 
   const categoryIds = categories.map((category) => category.id);
   const itemIds = items.map((item) => item.id);
 
-  const categoryTranslationUrl =
+  // Default-locale legacy fetch: prior to the routeLocaleWrite router in
+  // lib/catalogs/i18n.ts, default-locale edits could land in
+  // `item_translations` / `catalog_category_translations` rather than the
+  // canonical `items` / `catalog_categories` columns. The router fixed
+  // that going forward, but historical rows may still exist, so we keep
+  // the merge below (translation?.name ?? item.name) as defense-in-depth.
+  const defaultCategoryTranslationUrl =
     defaultLocale && categoryIds.length
       ? `${supabaseUrl}/rest/v1/catalog_category_translations?locale=eq.${encodeURIComponent(
           defaultLocale,
@@ -252,10 +406,30 @@ export async function getCatalogStructure(
           .map((id) => encodeURIComponent(id))
           .join(",")})&select=category_id,name`
       : null;
-  const itemTranslationUrl =
+  const defaultItemTranslationUrl =
     defaultLocale && itemIds.length
       ? `${supabaseUrl}/rest/v1/item_translations?locale=eq.${encodeURIComponent(
           defaultLocale,
+        )}&item_id=in.(${itemIds
+          .map((id) => encodeURIComponent(id))
+          .join(",")})&select=item_id,name,description,image_alt`
+      : null;
+  // Active-locale fetches (when active ≠ default). One per translatable
+  // entity kind. Modifier list/modifier ids come from the rows already
+  // fetched above — we need to await those JSONs first, but only the IDs
+  // matter, so we resolve them inline below.
+  const activeCategoryTranslationUrl =
+    wantActiveLocaleData && categoryIds.length
+      ? `${supabaseUrl}/rest/v1/catalog_category_translations?locale=eq.${encodeURIComponent(
+          effectiveActiveLocale!,
+        )}&category_id=in.(${categoryIds
+          .map((id) => encodeURIComponent(id))
+          .join(",")})&select=category_id,name,description`
+      : null;
+  const activeItemTranslationUrl =
+    wantActiveLocaleData && itemIds.length
+      ? `${supabaseUrl}/rest/v1/item_translations?locale=eq.${encodeURIComponent(
+          effectiveActiveLocale!,
         )}&item_id=in.(${itemIds
           .map((id) => encodeURIComponent(id))
           .join(",")})&select=item_id,name,description,image_alt`
@@ -267,47 +441,87 @@ export async function getCatalogStructure(
           .join(",")})&select=item_id,storage_path,is_primary,position&order=position.asc`
       : null;
 
-  const [categoryTranslationsResponse, itemTranslationsResponse, itemMediaResponse] =
-    await Promise.all([
-      categoryTranslationUrl
-        ? fetch(categoryTranslationUrl, {
-            headers: supabaseHeaders,
-            next: {
-              tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
-            },
-            cache: "force-cache",
-          })
-        : null,
-      itemTranslationUrl
-        ? fetch(itemTranslationUrl, {
-            headers: supabaseHeaders,
-            next: {
-              tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
-            },
-            cache: "force-cache",
-          })
-        : null,
-      itemMediaUrl
-        ? fetch(itemMediaUrl, {
-            headers: supabaseHeaders,
-            next: {
-              tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
-            },
-            cache: "force-cache",
-          })
-        : null,
-    ]);
+  const [
+    defaultCategoryTranslationsResponse,
+    defaultItemTranslationsResponse,
+    activeCategoryTranslationsResponse,
+    activeItemTranslationsResponse,
+    itemMediaResponse,
+  ] = await Promise.all([
+    defaultCategoryTranslationUrl
+      ? fetch(defaultCategoryTranslationUrl, {
+          headers: supabaseHeaders,
+          next: {
+            tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+          },
+          cache: "force-cache",
+        })
+      : null,
+    defaultItemTranslationUrl
+      ? fetch(defaultItemTranslationUrl, {
+          headers: supabaseHeaders,
+          next: {
+            tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+          },
+          cache: "force-cache",
+        })
+      : null,
+    activeCategoryTranslationUrl
+      ? fetch(activeCategoryTranslationUrl, {
+          headers: supabaseHeaders,
+          next: {
+            tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+          },
+          cache: "force-cache",
+        })
+      : null,
+    activeItemTranslationUrl
+      ? fetch(activeItemTranslationUrl, {
+          headers: supabaseHeaders,
+          next: {
+            tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+          },
+          cache: "force-cache",
+        })
+      : null,
+    itemMediaUrl
+      ? fetch(itemMediaUrl, {
+          headers: supabaseHeaders,
+          next: {
+            tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+          },
+          cache: "force-cache",
+        })
+      : null,
+  ]);
 
   const categoryTranslations =
-    categoryTranslationsResponse?.ok
-      ? ((await categoryTranslationsResponse.json()) as Array<{
+    defaultCategoryTranslationsResponse?.ok
+      ? ((await defaultCategoryTranslationsResponse.json()) as Array<{
           category_id: string;
           name: string | null;
         }>)
       : [];
   const itemTranslations =
-    itemTranslationsResponse?.ok
-      ? ((await itemTranslationsResponse.json()) as Array<{
+    defaultItemTranslationsResponse?.ok
+      ? ((await defaultItemTranslationsResponse.json()) as Array<{
+          item_id: string;
+          name: string | null;
+          description: string | null;
+          image_alt: string | null;
+        }>)
+      : [];
+  const activeCategoryTranslations =
+    activeCategoryTranslationsResponse?.ok
+      ? ((await activeCategoryTranslationsResponse.json()) as Array<{
+          category_id: string;
+          name: string | null;
+          description: string | null;
+        }>)
+      : [];
+  const activeItemTranslations =
+    activeItemTranslationsResponse?.ok
+      ? ((await activeItemTranslationsResponse.json()) as Array<{
           item_id: string;
           name: string | null;
           description: string | null;
@@ -333,6 +547,12 @@ export async function getCatalogStructure(
   const itemTranslationById = new Map(
     itemTranslations.map((translation) => [translation.item_id, translation]),
   );
+  const activeCategoryTranslationById = new Map(
+    activeCategoryTranslations.map((t) => [t.category_id, t]),
+  );
+  const activeItemTranslationById = new Map(
+    activeItemTranslations.map((t) => [t.item_id, t]),
+  );
   const mediaByItemId = new Map<string, string>();
   itemMedia.forEach((media) => {
     if (media.is_primary && !mediaByItemId.has(media.item_id)) {
@@ -352,6 +572,8 @@ export async function getCatalogStructure(
     modifier_type: "list" | "text";
     min_selected: number;
     max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
     version: number;
   };
   type ModifierRow = {
@@ -382,6 +604,139 @@ export async function getCatalogStructure(
     ? ((await itemModifierListsResponse.json()) as ItemModifierListRow[])
     : [];
 
+  // Second round of active-locale fetches: modifier_list / modifier IDs
+  // are only known after the parent fetches above resolve, so they couldn't
+  // join the first Promise.all. When the request is in the default locale
+  // (or no active locale was set), this batch is skipped entirely.
+  const modifierListIds = modifierListRows.map((row) => row.id);
+  const modifierIds = modifierRows.map((row) => row.id);
+
+  const activeModifierListTranslationUrl =
+    wantActiveLocaleData && modifierListIds.length
+      ? `${supabaseUrl}/rest/v1/modifier_list_translations?locale=eq.${encodeURIComponent(
+          effectiveActiveLocale!,
+        )}&modifier_list_id=in.(${modifierListIds
+          .map((id) => encodeURIComponent(id))
+          .join(",")})&select=modifier_list_id,name`
+      : null;
+  const activeModifierTranslationUrl =
+    wantActiveLocaleData && modifierIds.length
+      ? `${supabaseUrl}/rest/v1/modifier_translations?locale=eq.${encodeURIComponent(
+          effectiveActiveLocale!,
+        )}&modifier_id=in.(${modifierIds
+          .map((id) => encodeURIComponent(id))
+          .join(",")})&select=modifier_id,name`
+      : null;
+
+  const [
+    activeModifierListTranslationsResponse,
+    activeModifierTranslationsResponse,
+  ] = await Promise.all([
+    activeModifierListTranslationUrl
+      ? fetch(activeModifierListTranslationUrl, {
+          headers: supabaseHeaders,
+          next: {
+            tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+          },
+          cache: "force-cache",
+        })
+      : null,
+    activeModifierTranslationUrl
+      ? fetch(activeModifierTranslationUrl, {
+          headers: supabaseHeaders,
+          next: {
+            tags: [`catalog:${catalogId}`, `catalog-structure:${catalogId}`],
+          },
+          cache: "force-cache",
+        })
+      : null,
+  ]);
+
+  const activeModifierListTranslations =
+    activeModifierListTranslationsResponse?.ok
+      ? ((await activeModifierListTranslationsResponse.json()) as Array<{
+          modifier_list_id: string;
+          name: string | null;
+        }>)
+      : [];
+  const activeModifierTranslations =
+    activeModifierTranslationsResponse?.ok
+      ? ((await activeModifierTranslationsResponse.json()) as Array<{
+          modifier_id: string;
+          name: string | null;
+        }>)
+      : [];
+
+  const activeModifierListTranslationById = new Map(
+    activeModifierListTranslations.map((t) => [t.modifier_list_id, t]),
+  );
+  const activeModifierTranslationById = new Map(
+    activeModifierTranslations.map((t) => [t.modifier_id, t]),
+  );
+
+  // Helpers wrap an active-locale row into a single-element translations
+  // array (length 0 or 1) matching pickLocalizedField's TranslationRow
+  // shape. Non-applicable fields are nulled — the helper ignores them.
+  const activeLocaleStr = effectiveActiveLocale ?? "";
+  function itemTranslationsFor(itemId: string): PublicTranslationRow[] {
+    if (!wantActiveLocaleData) return [];
+    const row = activeItemTranslationById.get(itemId);
+    if (!row) return [];
+    return [
+      {
+        locale: activeLocaleStr,
+        name: row.name,
+        description: row.description,
+        image_alt: row.image_alt,
+      },
+    ];
+  }
+  function categoryTranslationsFor(
+    categoryId: string,
+  ): PublicTranslationRow[] {
+    if (!wantActiveLocaleData) return [];
+    const row = activeCategoryTranslationById.get(categoryId);
+    if (!row) return [];
+    return [
+      {
+        locale: activeLocaleStr,
+        name: row.name,
+        description: row.description,
+        image_alt: null,
+      },
+    ];
+  }
+  function modifierListTranslationsFor(
+    modifierListId: string,
+  ): PublicTranslationRow[] {
+    if (!wantActiveLocaleData) return [];
+    const row = activeModifierListTranslationById.get(modifierListId);
+    if (!row) return [];
+    return [
+      {
+        locale: activeLocaleStr,
+        name: row.name,
+        description: null,
+        image_alt: null,
+      },
+    ];
+  }
+  function modifierTranslationsFor(
+    modifierId: string,
+  ): PublicTranslationRow[] {
+    if (!wantActiveLocaleData) return [];
+    const row = activeModifierTranslationById.get(modifierId);
+    if (!row) return [];
+    return [
+      {
+        locale: activeLocaleStr,
+        name: row.name,
+        description: null,
+        image_alt: null,
+      },
+    ];
+  }
+
   const modifierListById = new Map(modifierListRows.map((row) => [row.id, row]));
   const modifiersByListId = new Map<string, PublicModifier[]>();
   for (const row of modifierRows) {
@@ -393,6 +748,7 @@ export async function getCatalogStructure(
       ordinal: row.ordinal,
       on_by_default: row.on_by_default,
       version: row.version,
+      translations: modifierTranslationsFor(row.id),
     });
     modifiersByListId.set(row.modifier_list_id, list);
   }
@@ -416,10 +772,13 @@ export async function getCatalogStructure(
         modifier_type: list.modifier_type,
         min_selected: iml.min_selected_override ?? list.min_selected,
         max_selected: iml.max_selected_override ?? list.max_selected,
+        text_required: list.text_required,
+        max_length: list.max_length,
         hidden_from_customer: iml.hidden_from_customer_override,
         ordinal: iml.ordinal,
         version: list.version,
         modifiers: modifiersByListId.get(list.id) ?? [],
+        translations: modifierListTranslationsFor(list.id),
       });
     }
     return result;
@@ -436,6 +795,7 @@ export async function getCatalogStructure(
       image_alt: translation?.image_alt ?? item.image_alt,
       image_path: mediaPath,
       modifier_lists: buildItemModifierLists(item.id),
+      translations: itemTranslationsFor(item.id),
     };
     const list = itemsByCategory.get(item.category_id) ?? [];
     list.push(mergedItem);
@@ -448,6 +808,7 @@ export async function getCatalogStructure(
       ...category,
       name: translation?.name ?? category.name,
       items: itemsByCategory.get(category.id) ?? [],
+      translations: categoryTranslationsFor(category.id),
     };
   });
 }

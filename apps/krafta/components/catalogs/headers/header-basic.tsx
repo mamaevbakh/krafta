@@ -1,12 +1,17 @@
 import Image from "next/image";
 import type { JSX } from "react";
 
+import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
+import { LocaleSwitcher } from "./locale-switcher";
+
 type CatalogHeaderProps = {
   catalogName: string;
   description?: string | null;
   logoUrl?: string | null;
   tags?: string[] | null;
   headerSettings?: unknown;
+  locales?: PublicCatalogLocaleOption[];
+  activeLocale?: string;
 };
 
 export function CatalogHeader({
@@ -14,10 +19,15 @@ export function CatalogHeader({
   description,
   tags,
   logoUrl,
+  locales = [],
+  activeLocale = "",
 }: CatalogHeaderProps): JSX.Element {
   return (
     <header className="space-y-3">
-      {/* Top: logo + name */}
+      {/* Top: logo + name + language switcher.
+          Switcher sits right-aligned so it doesn't compete with the
+          catalog title for visual weight — language is secondary to
+          the shop's identity. */}
       <div className="flex items-center gap-3">
         {logoUrl && (
           <div className="relative h-10 w-10 overflow-hidden rounded-sm bg-muted">
@@ -32,9 +42,11 @@ export function CatalogHeader({
           </div>
         )}
 
-        <h1 className="text-2xl font-semibold">
+        <h1 className="flex-1 text-2xl font-semibold">
           {catalogName}
         </h1>
+
+        <LocaleSwitcher options={locales} activeLocale={activeLocale} />
       </div>
 
       {/* Middle: description */}

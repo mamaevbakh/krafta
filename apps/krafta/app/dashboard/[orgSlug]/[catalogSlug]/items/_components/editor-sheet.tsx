@@ -43,11 +43,9 @@
  */
 
 import * as React from "react";
-import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Drawer as DrawerPrimitive } from "vaul";
 import {
-  Check,
   Copy,
   Loader2,
   MoreHorizontal,
@@ -59,8 +57,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -88,14 +90,36 @@ import {
 } from "@/components/ui/select";
 
 import { cn } from "@/lib/utils";
-import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
+import { slugify } from "@/lib/catalogs/slug";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { useCanvasSelection } from "./canvas-with-selection";
 import { useCanvasLocale } from "./locale-context";
-import { deleteItem, duplicateItem, setItemActive, updateItem } from "./actions";
+import {
+  deleteItem,
+  duplicateItem,
+  setItemActive,
+  updateItem,
+} from "./actions";
+import {
+  VariationsEditor,
+  VariationPriceInput,
+  useVariationsState,
+} from "./variations-editor";
+import { ItemTypeSelect } from "./item-type-select";
+import { PhotoUploader } from "./photo-uploader";
+import { DraftEditorForm } from "./draft-editor-form";
+import { AdvancedSection } from "./advanced-section";
+import {
+  ModifierListsAttachment,
+  type ModifierAttachment,
+} from "./modifier-lists-attachment";
+import {
+  isCatalogItemProductType,
+  type CatalogItemProductType,
+} from "./product-types";
 
 // =======================================================================
 // Types
@@ -123,6 +147,37 @@ export type EditorSheetProps = {
   categories: CatalogCategory[];
   media: ItemMedia[];
   translations: ItemTranslation[];
+  /** KRA-85 follow-up — full modifier-list set for the catalog (with
+   *  nested choices + min/max defaults), drives the Square-inspired
+   *  attachment UI inside the editor. */
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
+    is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
+  }>;
+  /** KRA-85 follow-up — current (item × list) attachments with per-item
+   *  override columns. Editor derives the row attachments by filtering
+   *  on the selected item's id. */
+  itemModifierLists: Array<{
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }>;
+  orgId: string;
   catalogId: string;
   catalogSlug: string;
   currencySettings: CurrencySettings;
@@ -139,24 +194,39 @@ export function EditorSheet({
   categories,
   media,
   translations,
+  modifierLists,
+  itemModifierLists,
+  orgId,
   catalogId,
   catalogSlug,
   currencySettings,
 }: EditorSheetProps) {
-  const { selectedItemId, setSelectedItemId } = useCanvasSelection();
+  const {
+    selectedItemId,
+    setSelectedItemId,
+    creatingForCategoryId,
+    cancelCreating,
+  } = useCanvasSelection();
 
   const selectedItem = React.useMemo(
     () => (selectedItemId ? items.find((i) => i.id === selectedItemId) : null),
     [items, selectedItemId],
   );
 
-  const open = selectedItem != null;
+  // The drawer is open when EITHER an item is selected for editing OR
+  // a create draft is in flight for some category. Mutually exclusive
+  // per the context — setting one clears the other.
+  const isCreating = creatingForCategoryId !== null;
+  const open = selectedItem != null || isCreating;
 
-  // EditorForm registers its own `handleClose` here so backdrop / ESC /
-  // built-in X close paths all route through the form's dirty-state guard
-  // (shows AlertDialog before discarding work). If no form is mounted
-  // yet (open=false transition), the fallback just nulls selection.
-  const closeRequestRef = React.useRef<() => void>(() => setSelectedItemId(null));
+  // EditorForm + DraftEditorForm both register their own dirty-aware
+  // close handler here so backdrop / ESC / built-in X close paths all
+  // route through the form's discard prompt. Fallback (before either
+  // form mounts) is a plain selection clear.
+  const closeRequestRef = React.useRef<() => void>(() => {
+    setSelectedItemId(null);
+    cancelCreating();
+  });
 
   const handleOpenChange = React.useCallback(
     (next: boolean) => {
@@ -167,9 +237,37 @@ export function EditorSheet({
     [],
   );
 
+  // Body scroll lock — while the editor is open, freeze the page
+  // underneath so:
+  //   (a) Scrolling on the header area (no inner scroller above the
+  //       <ScrollArea>) doesn't fall through to the canvas.
+  //   (b) Overscroll at the form's top/bottom doesn't expose the page.
+  // Defense-in-depth: vaul DOES apply its own body lock, but the
+  // shouldScaleBackground={false} code path skips parts of the lock
+  // setup, so we re-apply explicitly. Cleanup restores the prior
+  // overflow value so other consumers (modals, popovers) aren't broken
+  // if they nested around us.
+  React.useEffect(() => {
+    if (!open) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [open]);
+
   if (!open) return null;
 
-  const onRequestClose = () => setSelectedItemId(null);
+  // Close routes — edit clears selectedItemId, create clears the
+  // creatingForCategoryId. The wrapper picks the right one based on
+  // which mode is active.
+  const onRequestClose = () => {
+    if (isCreating) cancelCreating();
+    else setSelectedItemId(null);
+  };
 
   const registerCloseHandler = (fn: () => void) => {
     closeRequestRef.current = fn;
@@ -206,21 +304,48 @@ export function EditorSheet({
             // curve would create a visible seam at the top of the screen.
           )}
         >
-          <DrawerPrimitive.Title className="sr-only">
-            Edit item: {selectedItem.name || "Untitled item"}
-          </DrawerPrimitive.Title>
-          <EditorForm
-            key={selectedItem.id}
-            item={selectedItem}
-            categories={categories}
-            media={media}
-            translations={translations}
-            catalogId={catalogId}
-            catalogSlug={catalogSlug}
-            currencySettings={currencySettings}
-            onRequestClose={onRequestClose}
-            onRegisterClose={registerCloseHandler}
-          />
+          {isCreating ? (
+            <>
+              <DrawerPrimitive.Title className="sr-only">
+                Create new item
+              </DrawerPrimitive.Title>
+              <DraftEditorForm
+                key={`draft-${creatingForCategoryId}`}
+                initialCategoryId={creatingForCategoryId!}
+                categories={categories}
+                modifierLists={modifierLists}
+                orgId={orgId}
+                catalogId={catalogId}
+                catalogSlug={catalogSlug}
+                currencySettings={currencySettings}
+                onRequestClose={onRequestClose}
+                onRegisterClose={registerCloseHandler}
+              />
+            </>
+          ) : (
+            selectedItem && (
+              <>
+                <DrawerPrimitive.Title className="sr-only">
+                  Edit item: {selectedItem.name || "Untitled item"}
+                </DrawerPrimitive.Title>
+                <EditorForm
+                  key={selectedItem.id}
+                  item={selectedItem}
+                  categories={categories}
+                  media={media}
+                  translations={translations}
+                  modifierLists={modifierLists}
+                  itemModifierLists={itemModifierLists}
+                  orgId={orgId}
+                  catalogId={catalogId}
+                  catalogSlug={catalogSlug}
+                  currencySettings={currencySettings}
+                  onRequestClose={onRequestClose}
+                  onRegisterClose={registerCloseHandler}
+                />
+              </>
+            )
+          )}
         </DrawerPrimitive.Content>
       </DrawerPrimitive.Portal>
     </DrawerPrimitive.Root>
@@ -236,6 +361,31 @@ type EditorFormProps = {
   categories: CatalogCategory[];
   media: ItemMedia[];
   translations: ItemTranslation[];
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
+    is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
+  }>;
+  itemModifierLists: Array<{
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }>;
+  orgId: string;
   catalogId: string;
   catalogSlug: string;
   currencySettings: CurrencySettings;
@@ -253,6 +403,9 @@ function EditorForm({
   categories,
   media,
   translations,
+  modifierLists,
+  itemModifierLists,
+  orgId,
   catalogId,
   catalogSlug,
   currencySettings,
@@ -260,6 +413,17 @@ function EditorForm({
   onRegisterClose,
 }: EditorFormProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  // Derive /items/modifiers from the current path so we don't have to
+  // thread orgSlug through every consumer just to build one link. The
+  // form only mounts under /dashboard/[orgSlug]/[catalogSlug]/items*
+  // so the prefix is always present.
+  const modifiersManageHref = React.useMemo(() => {
+    const match = pathname?.match(
+      /^(\/dashboard\/[^/]+\/[^/]+)\/items(?:\/.*)?$/,
+    );
+    return match ? `${match[1]}/items/modifiers` : "/dashboard";
+  }, [pathname]);
   const { activeLocale, defaultLocale } = useCanvasLocale();
   const { setSelectedItemId, pulseItem } = useCanvasSelection();
 
@@ -333,13 +497,80 @@ function EditorForm({
   const [description, setDescription] = React.useState(initialDescription);
   const [categoryId, setCategoryId] = React.useState(item.category_id);
   const [isActive, setIsActive] = React.useState(item.is_active);
+  const [productType, setProductType] = React.useState<CatalogItemProductType>(
+    isCatalogItemProductType(item.product_type) ? item.product_type : "REGULAR",
+  );
+  /** Slug seed = current items.slug. Merchant can edit; if they clear
+   *  it, updateItem regenerates from `name` server-side. */
+  const [slug, setSlug] = React.useState(item.slug);
 
-  // Dirty = any field changed from its initial value.
+  // ---------------------------------------------------------------------
+  // KRA-85 follow-up — modifier-list attachment state with per-item
+  // overrides (min/max/hidden) + ordinal. Square-inspired UX: the
+  // attachment component owns the row reordering + per-row settings
+  // popover; we just round-trip the changeset through Save.
+  // ---------------------------------------------------------------------
+  const initialAttachments = React.useMemo<ModifierAttachment[]>(
+    () =>
+      itemModifierLists
+        .filter((pair) => pair.item_id === item.id)
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map((pair) => ({
+          modifierListId: pair.modifier_list_id,
+          ordinal: pair.ordinal,
+          minSelectedOverride: pair.min_selected_override,
+          maxSelectedOverride: pair.max_selected_override,
+          hiddenFromCustomerOverride: pair.hidden_from_customer_override,
+        })),
+    [itemModifierLists, item.id],
+  );
+  const [modifierAttachments, setModifierAttachments] = React.useState<
+    ModifierAttachment[]
+  >(initialAttachments);
+
+  // Re-seed if the underlying snapshot changes (RSC refresh, item swap).
+  React.useEffect(() => {
+    setModifierAttachments(initialAttachments);
+  }, [initialAttachments]);
+
+  // ---------------------------------------------------------------------
+  // KRA-86 — variations state (single source of truth via the hook).
+  //
+  // The hook owns the LocalVariation[] state. We read state.changes here
+  // to build the Save payload, state.isDirty / state.isValid to gate the
+  // Save button, and state.defaultVariation to drive the top-level Price
+  // field shown above this section.
+  //
+  // The "primary Price" pattern (mirrors Square): always show a Price
+  // field; when surviving variations >= 2, mute it ("Price varies by
+  // variation"). When surviving <= 1, the field IS the editor for the
+  // default variation's price — it's the only price input visible.
+  // ---------------------------------------------------------------------
+  const { state: variationsState, dispatch: variationsDispatch } =
+    useVariationsState(item.variations);
+
+  const isDefaultLocaleEditable = activeLocale === defaultLocale;
+  const hasMultipleVariations = variationsState.local.length >= 2;
+
+  // Dirty = any field changed from its initial value. Modifier attachments
+  // serialize cheaply enough that JSON diff is the clearest test —
+  // catches reordering, per-row override edits, and add/remove all at once.
+  const modifierAttachmentsDirty = React.useMemo(
+    () =>
+      JSON.stringify(modifierAttachments) !==
+      JSON.stringify(initialAttachments),
+    [modifierAttachments, initialAttachments],
+  );
+
   const isDirty =
     name !== initialName ||
     description !== initialDescription ||
     categoryId !== item.category_id ||
-    isActive !== item.is_active;
+    isActive !== item.is_active ||
+    productType !== item.product_type ||
+    slug !== item.slug ||
+    variationsState.isDirty ||
+    modifierAttachmentsDirty;
 
   // ---------------------------------------------------------------------
   // Save state machine
@@ -384,10 +615,16 @@ function EditorForm({
       catalogSlug,
       itemId: item.id,
       categoryId,
+      productType,
       // For default-locale edits, top-level name/description go to items.*.
       // For non-default-locale edits, items.* stays at the canonical values
       // so we don't overwrite the source-of-truth row with a translation.
       name: isDefaultLocale ? name.trim() : item.name,
+      // Slug edits land on items.slug regardless of locale (URLs are
+      // global). Empty string triggers updateItem's "regenerate from
+      // name" fallback. Non-default-locale edits don't change the slug
+      // so we send the existing value untouched.
+      slug: isDefaultLocale ? slug.trim() : item.slug,
       priceCents: item.price_cents,
       description: isDefaultLocale
         ? description.trim() || null
@@ -396,6 +633,17 @@ function EditorForm({
       translations: activeTranslation
         ? [...otherTranslations, activeTranslation]
         : otherTranslations,
+      // KRA-86 — always dispatch the full variation payload from the
+      // hook. The hook is the single source of truth for variation state
+      // (including the default's price set via the top-level Price
+      // field). When the merchant hasn't edited anything, the payload
+      // round-trips the current rows unchanged through the RPC, which
+      // is idempotent.
+      variationChanges: variationsState.changes,
+      // KRA-85 follow-up — full modifier-list attachment set after this
+      // save. Each entry carries ordinal + per-item overrides; the server
+      // replaces item_modifier_lists row set in one pass.
+      modifierAttachments,
     });
 
     if (!result.ok) {
@@ -425,27 +673,36 @@ function EditorForm({
 
     setSaveStatus("saved");
     router.refresh();
-
-    // Reset to idle after the success flash. Per D7 motion budget:
-    // 1.2s ease-out for the "Saved ✓" flash before returning to idle.
-    setTimeout(() => setSaveStatus("idle"), 1200);
+    toast.success("Item saved");
+    // Auto-close the editor on success — merchant's intent ("save and
+    // get out of my way") is satisfied. The toast confirms the write
+    // without keeping the sheet open in a "Saved" success-state. The
+    // 1.2s idle reset becomes irrelevant because the sheet unmounts.
+    onRequestClose();
   }, [
     name,
     description,
     categoryId,
     isActive,
+    productType,
+    slug,
     activeLocale,
     defaultLocale,
     itemTranslations,
     item.id,
     item.name,
+    item.slug,
     item.description,
     item.image_alt,
     item.price_cents,
     item.is_active,
+    item.product_type,
     catalogId,
     catalogSlug,
     router,
+    onRequestClose,
+    variationsState.changes,
+    modifierAttachments,
   ]);
 
   // ---------------------------------------------------------------------
@@ -539,8 +796,22 @@ function EditorForm({
         return;
       }
       toast.success("Item deleted.");
+      // Close the prompt explicitly. We used to rely on the
+      // AlertDialogAction's built-in close behavior, but when the form
+      // unmounts (selectedItemId → null) before the dialog finishes
+      // closing, the next render path could leave the dialog state in
+      // an inconsistent place. Explicit close first, then unmount.
+      setDeletePromptOpen(false);
       onRequestClose();
       router.refresh();
+    } catch (err) {
+      // Defense in depth — server actions can throw on
+      // network/serialization errors that don't go through the
+      // result-object error path. Surface them as a toast so the
+      // merchant knows the delete didn't land.
+      const message =
+        err instanceof Error ? err.message : "Failed to delete item.";
+      toast.error(message);
     } finally {
       setIsDeleting(false);
     }
@@ -555,22 +826,15 @@ function EditorForm({
     [media, item.id],
   );
 
-  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const mediaUrls = selectedMedia.map((m) =>
-    baseUrl
-      ? `${baseUrl}/storage/v1/object/public/${m.bucket}/${m.storage_path}`
-      : null,
-  );
-
   // ---------------------------------------------------------------------
   // Save button rendering
   // ---------------------------------------------------------------------
 
   const renderSaveButton = (className?: string) => {
-    // All variants use the shadcn Button default radius (rounded-md per
-    // DESIGN.md spec line 178-183). No rounded-full pills — those were
-    // inconsistent with the rest of the dashboard chrome and called out
-    // explicitly in merchant feedback.
+    // All Save button states use the default Button color — success
+    // signaling lives in the toast, not in the button itself. We auto-
+    // close the sheet on success so the "Saved" state is never visible
+    // anyway; the error state stays as a plain Retry button.
     if (saveStatus === "saving") {
       return (
         <Button disabled className={className}>
@@ -579,29 +843,19 @@ function EditorForm({
         </Button>
       );
     }
-    if (saveStatus === "saved") {
-      return (
-        <Button
-          disabled
-          className={cn(
-            "bg-emerald-600 text-white hover:bg-emerald-600",
-            className,
-          )}
-        >
-          <Check className="size-4" />
-          Saved
-        </Button>
-      );
-    }
     if (saveStatus === "error") {
       return (
-        <Button onClick={handleSave} variant="destructive" className={className}>
+        <Button onClick={handleSave} className={className}>
           Save failed — Retry
         </Button>
       );
     }
     return (
-      <Button onClick={handleSave} disabled={!isDirty} className={className}>
+      <Button
+        onClick={handleSave}
+        disabled={!isDirty || !variationsState.isValid}
+        className={className}
+      >
         Save
       </Button>
     );
@@ -694,7 +948,6 @@ function EditorForm({
                 <AlertDialogAction
                   onClick={handleDelete}
                   disabled={isDeleting}
-                  className="bg-destructive text-white hover:bg-destructive/90"
                 >
                   Delete item
                 </AlertDialogAction>
@@ -717,7 +970,12 @@ function EditorForm({
           its own overflow-y: scroll. This is the documented shadcn
           idiom for scrollable content inside a flex column. */}
       <div className="min-h-0 flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
+        {/* `overscroll-contain` on the Viewport prevents scroll chaining
+            when the form hits top/bottom — without it, reaching the end
+            of the form bleeds through to the page underneath via the
+            browser's default overscroll behavior. Targets the Viewport
+            because that's the element doing the scrolling. */}
+        <ScrollArea className="h-full [&>[data-slot=scroll-area-viewport]]:overscroll-contain">
         <div
           className={cn(
             "mx-auto flex max-w-[1248px] gap-6 p-4 md:p-6",
@@ -728,17 +986,24 @@ function EditorForm({
         >
           {/* Left column — identity fields. */}
           <div className="flex min-w-0 flex-1 flex-col gap-5">
-            {/* Item type — read-only display in iter 2 (no UI to change
-                product_type yet; the existing CreateItemFlowDialog handles
-                type selection at creation time). */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Item type
-              </Label>
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                {item.product_type}
-              </div>
-            </div>
+            {/* Item type — shadcn Select wrapped in Field for consistent
+                form chrome. Two options surfaced (FOOD_AND_BEV +
+                REGULAR); other product types stay deferred per
+                ENABLED_CATALOG_ITEM_PRODUCT_TYPES in product-types.ts. */}
+            <Field>
+              <FieldLabel htmlFor="editor-item-type">Item type</FieldLabel>
+              <ItemTypeSelect
+                id="editor-item-type"
+                value={productType}
+                onValueChange={setProductType}
+                disabled={!isDefaultLocaleEditable}
+              />
+              {!isDefaultLocaleEditable && (
+                <FieldDescription>
+                  Item type is edited on the default locale only.
+                </FieldDescription>
+              )}
+            </Field>
 
             {/* Name (required) */}
             <div className="flex flex-col gap-2">
@@ -761,23 +1026,45 @@ function EditorForm({
               )}
             </div>
 
-            {/* Price summary — read-only in iter 2. Full variations editor
-                ships in KRA-90. */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">Price</Label>
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                <span className="font-mono font-semibold tabular-nums">
-                  {formatPriceCents(item.price_cents, currencySettings)}
-                </span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  default variation
-                </span>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Edit pricing via the Variations table below (KRA-90 ships
-                the full multi-variation editor).
-              </span>
-            </div>
+            {/* Primary Price field — Krafta mirror of Square's pattern.
+                When the item has only the default variation, this IS the
+                price input (the variations editor below stays collapsed
+                to an "Add variation" button). When merchant adds a second
+                variation, this field mutes (Field data-disabled + Input
+                disabled per shadcn forms rule) with a hint and per-
+                variation editing happens below. The "default variation"
+                concept is hidden from the merchant entirely. */}
+            <Field
+              data-disabled={
+                hasMultipleVariations ||
+                !isDefaultLocaleEditable ||
+                !variationsState.defaultVariation
+                  ? true
+                  : undefined
+              }
+            >
+              <FieldLabel htmlFor="editor-price">Price</FieldLabel>
+              <VariationPriceInput
+                id="editor-price"
+                valueCents={
+                  variationsState.defaultVariation?.price_cents ?? 0
+                }
+                onChange={variationsDispatch.setDefaultPrice}
+                disabled={
+                  hasMultipleVariations ||
+                  !isDefaultLocaleEditable ||
+                  !variationsState.defaultVariation
+                }
+                currencySettings={currencySettings}
+                className="text-left"
+                data-slot="primary-price-input"
+              />
+              {hasMultipleVariations && (
+                <FieldDescription>
+                  Price varies by variation — edit each below.
+                </FieldDescription>
+              )}
+            </Field>
 
             {/* Description */}
             <div className="flex flex-col gap-2">
@@ -796,86 +1083,60 @@ function EditorForm({
               />
             </div>
 
-            {/* Photos — read-only grid (upload UX deferred). */}
+            {/* Photos — KRA-88 Slice 1: upload + display + delete. Reorder
+                and primary-toggle ship in Slice 2. Empty state uses shadcn
+                Empty with an upload button; populated state shows a grid
+                with a trailing "+ Add photo" tile. */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Photos</Label>
-              {mediaUrls.length === 0 ? (
-                <div className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
-                  No photos yet
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  {mediaUrls.map((url, i) =>
-                    url ? (
-                      <div
-                        key={i}
-                        className="relative aspect-square w-full overflow-hidden rounded-sm bg-muted"
-                      >
-                        <Image
-                          src={url}
-                          alt=""
-                          fill
-                          // EditorSheet is ~800px wide on desktop / full
-                          // width on mobile drawer. 3-column grid means
-                          // ~250px per cell on desktop, ~120px on a 375px
-                          // mobile drawer. The loader requests the closest
-                          // supported width.
-                          sizes="(max-width: 768px) 33vw, 250px"
-                          className="object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        key={i}
-                        className="aspect-square w-full rounded-sm bg-muted"
-                        aria-hidden
-                      />
-                    ),
-                  )}
-                </div>
-              )}
-              <span className="text-xs text-muted-foreground">
-                Photo upload + reorder + primary toggle ship as a follow-up.
-              </span>
+              <PhotoUploader
+                itemId={item.id}
+                orgId={orgId}
+                catalogId={catalogId}
+                media={selectedMedia}
+              />
             </div>
 
-            {/* Variations table — placeholder. Real editor in KRA-90. */}
+            {/* Variations — KRA-86 inline editor. Krafta compact-row
+                vocabulary (not shadcn Table). When variations <= 1, shows
+                only an "+ Add variation" button (the lone default's price
+                is editable via the Price field above). When >= 2, shows
+                the full list with per-row drag, name, price, status,
+                delete. On non-default locale tabs, renders read-only with
+                a banner per A6 (variation name translations are
+                deferred). */}
             <div className="flex flex-col gap-2">
               <Label className="text-sm font-medium">Variations</Label>
-              <div className="rounded-md border">
-                <div className="flex items-center justify-between gap-2 border-b px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <span>Default</span>
-                  <span>Price</span>
-                </div>
-                <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <span className="font-medium">Default</span>
-                  <span className="font-mono font-semibold tabular-nums">
-                    {formatPriceCents(item.price_cents, currencySettings)}
-                  </span>
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Additional variations (sizes, options) ship with KRA-90.
-              </span>
+              <VariationsEditor
+                state={variationsState}
+                dispatch={variationsDispatch}
+                currencySettings={currencySettings}
+                isLocaleEditable={isDefaultLocaleEditable}
+              />
             </div>
 
-            {/* Modifier lists — placeholder. Real attach UI in KRA-85. */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">Modifier lists</Label>
-              <div className="flex flex-wrap gap-2">
-                <Badge
-                  variant="outline"
-                  className="font-normal text-muted-foreground"
-                >
-                  No modifier lists attached
-                </Badge>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Attach modifier lists from{" "}
-                <span className="font-medium">Items → Modifiers</span> once
-                it ships (KRA-85).
-              </span>
-            </div>
+            {/* Square-inspired modifier attachments. Component owns its
+                own header ("Modifiers" + Edit button) + rows. Save flushes
+                via updateItem.modifierAttachments which carries ordinal +
+                per-item overrides on top of the set membership. */}
+            <ModifierListsAttachment
+              available={modifierLists}
+              attachments={modifierAttachments}
+              onChange={setModifierAttachments}
+              disabled={saveStatus === "saving"}
+              manageHref={modifiersManageHref}
+            />
+
+            {/* Advanced — collapsible power-user knobs. Currently just
+                the Slug field; future ones (custom metadata, SKU when
+                that ships, etc.) belong here too. Default collapsed —
+                most merchants never touch slug. */}
+            <AdvancedSection
+              slug={slug}
+              onSlugChange={setSlug}
+              disabled={!isDefaultLocaleEditable}
+              idPrefix="editor"
+            />
           </div>
 
           {/* Right column — metadata cards. lg+: fixed 320px sidebar.
@@ -960,10 +1221,7 @@ function EditorForm({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDiscard}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleConfirmDiscard}>
               Discard
             </AlertDialogAction>
           </AlertDialogFooter>

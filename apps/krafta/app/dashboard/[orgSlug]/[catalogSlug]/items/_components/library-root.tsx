@@ -67,6 +67,36 @@ type ItemMedia = {
   is_primary: boolean;
 };
 
+// Square-inspired modifier UX surface — the row preview needs each list's
+// min/max + nested choice names, and the per-row override popover needs
+// item-level override columns. Shared shape used by every link in the
+// page → editor chain.
+type ModifierListOption = {
+  id: string;
+  name: string;
+  modifier_type: "list" | "text";
+  min_selected: number;
+  max_selected: number | null;
+  text_required: boolean;
+  max_length: number | null;
+  is_active: boolean;
+  modifiers: Array<{
+    id: string;
+    name: string;
+    ordinal: number;
+    is_active: boolean;
+  }>;
+};
+
+type ItemModifierListPair = {
+  item_id: string;
+  modifier_list_id: string;
+  ordinal: number;
+  min_selected_override: number | null;
+  max_selected_override: number | null;
+  hidden_from_customer_override: boolean;
+};
+
 export type LibraryRootProps = {
   catalogId: string;
   catalogSlug: string;
@@ -76,6 +106,12 @@ export type LibraryRootProps = {
   locales: LocaleOption[];
   translations: ItemTranslation[];
   media: ItemMedia[];
+  /** KRA-85 follow-up — all modifier lists for the catalog. Drives the
+   *  picker in the item editor. */
+  modifierLists: ModifierListOption[];
+  /** KRA-85 follow-up — (item_id × modifier_list_id) pairs currently
+   *  attached. The editor reads its initial state from here. */
+  itemModifierLists: ItemModifierListPair[];
   currencySettings: CurrencySettings;
 };
 

@@ -24,9 +24,10 @@
  * particular category has zero items, CategorySection shows its own
  * inline empty hint.
  *
- * The "Add item" button reuses the existing CreateItemFlowDialog from
- * ItemsPanel — no need to rebuild that surface for PR 2; the merchant's
- * mental model for adding items is the same as before.
+ * The "Add item" button opens the unified EditorSheet in CREATE mode
+ * via startCreating(categoryId) from useCanvasSelection. The pre-KRA-88
+ * CreateItemFlowDialog is gone; both create and edit flows share the
+ * same sheet now.
  */
 
 import * as React from "react";
@@ -47,9 +48,15 @@ import { CanvasWithSelection } from "./canvas-with-selection";
 import { CategorySection } from "./category-section";
 import { CategoryRail } from "./category-rail";
 import { EditorSheet } from "./editor-sheet";
-import { CreateItemFlowDialog } from "./create-item-flow-dialog";
+import { useCanvasSelection } from "./canvas-with-selection";
 import { CanvasLocaleProvider } from "./locale-context";
-import { LocaleTabStrip } from "./locale-tab-strip";
+// LocaleTabStrip mount removed — Phase 2 of the localization work (KRA-94)
+// moved per-locale editing into a dedicated /translations workbench. The
+// canvas now stays default-locale-only. The CanvasLocaleProvider stays
+// mounted (consumers still read it as a stable "always default" handle)
+// so the per-row + editor-sheet save paths don't need to be rewritten
+// in the same pass; a follow-up cleanup can strip the now-dead
+// activeLocale === defaultLocale gating.
 
 type LocaleOption = {
   id: string;
@@ -114,6 +121,33 @@ export type LibraryCanvasProps = {
   /** Loaded for PR 3 locale-aware editing in the inspector. PR 2 unused. */
   translations: ItemTranslation[];
   media: ItemMedia[];
+  /** KRA-85 follow-up — drive the editor-sheet modifier attachment UX.
+   *  Carries nested modifier rows + per-item override columns to feed the
+   *  Square-inspired row layout (choice preview + min/max chip + settings). */
+  modifierLists: Array<{
+    id: string;
+    name: string;
+    modifier_type: "list" | "text";
+    min_selected: number;
+    max_selected: number | null;
+    text_required: boolean;
+    max_length: number | null;
+    is_active: boolean;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      ordinal: number;
+      is_active: boolean;
+    }>;
+  }>;
+  itemModifierLists: Array<{
+    item_id: string;
+    modifier_list_id: string;
+    ordinal: number;
+    min_selected_override: number | null;
+    max_selected_override: number | null;
+    hidden_from_customer_override: boolean;
+  }>;
   currencySettings: CurrencySettings;
 };
 
@@ -126,10 +160,15 @@ export function LibraryCanvas({
   locales,
   translations,
   media,
+  modifierLists,
+  itemModifierLists,
   currencySettings,
 }: LibraryCanvasProps) {
   const router = useRouter();
-  const [itemDialogOpen, setItemDialogOpen] = React.useState(false);
+  // (Pre-KRA-88 unified-editor: this used to host CreateItemFlowDialog's
+  // open state. Replaced by the EditorSheet's create branch — the
+  // "Add item" button now calls startCreating(categoryId) from
+  // useCanvasSelection. See PageHeader below.)
 
   // Pure reducer for an item reorder action. Used by BOTH:
   //   - the during-drag `previewItems` state (plain useState, mutated
@@ -349,31 +388,9 @@ export function LibraryCanvas({
     return { map, orphans };
   }, [effectiveItems, sortedCategories]);
 
-  // Header: page title + "Add item" button. Same chrome the legacy
-  // ItemsPanel shipped (`items-panel.tsx:113-127` for reference) —
-  // intentional visual continuity so merchants who used the old page
-  // recognize the canvas layout as "the Items page, redesigned" rather
-  // than "a new section."
-  const header = (
-    <div className="w-full border-b">
-      <div className="mx-auto flex h-[120px] max-w-[1248px] flex-col justify-center gap-2 px-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-[32px] font-semibold tracking-tight">Library</h1>
-          <Button onClick={() => setItemDialogOpen(true)}>
-            <Plus className="size-4" />
-            Add item
-          </Button>
-        </div>
-        <LocaleTabStrip locales={locales} />
-      </div>
-    </div>
-  );
-
   return (
     <main className="w-full">
       <CanvasLocaleProvider locales={locales}>
-        {header}
-
         <CanvasWithSelection
           catalogId={catalogId}
           catalogSlug={catalogSlug}
@@ -386,6 +403,10 @@ export function LibraryCanvas({
           onDragPreviewClear={handleDragPreviewClear}
           onCommitReorder={handleCommitReorder}
         >
+          <PageHeader
+            categories={sortedCategories}
+            locales={locales}
+          />
           <div className="mx-auto flex max-w-[1248px] gap-6 px-6 py-6">
             {/* Category rail (KRA-35 Iter 2 / T3). Subordinate inset, no
                 border per Pass 1 D1A. Hidden ≤xl (1280px) and on mobile. */}
@@ -398,7 +419,7 @@ export function LibraryCanvas({
                 via shadcn Sheet/Drawer — doesn't live in this flex row. */}
             <div className="flex-1 min-w-0">
               {effectiveItems.length === 0 ? (
-                <EmptyCatalog onAddItem={() => setItemDialogOpen(true)} />
+                <EmptyCatalog categories={sortedCategories} />
               ) : (
                 // gap-3 between sections (12px) — tight enough that the
                 // all-collapsed view reads as a compact list of headers,
@@ -438,6 +459,9 @@ export function LibraryCanvas({
                         position: 9999,
                         is_active: true,
                         created_at: "",
+                        // KRA-90 added current_source_hash for translation drift detection.
+                        // Synthetic orphan bucket isn't a real category so we leave it null.
+                        current_source_hash: null,
                       }}
                       items={itemsByCategory.orphans}
                       translations={translations}
@@ -465,25 +489,55 @@ export function LibraryCanvas({
             categories={sortedCategories}
             media={media}
             translations={translations}
+            modifierLists={modifierLists}
+            itemModifierLists={itemModifierLists}
+            orgId={orgId}
             catalogId={catalogId}
             catalogSlug={catalogSlug}
             currencySettings={currencySettings}
           />
         </CanvasWithSelection>
       </CanvasLocaleProvider>
-
-      {/* Add-item dialog — existing flow, reused intact. */}
-      <CreateItemFlowDialog
-        open={itemDialogOpen}
-        onOpenChange={setItemDialogOpen}
-        orgId={orgId}
-        catalogId={catalogId}
-        catalogSlug={catalogSlug}
-        categories={sortedCategories}
-        locales={locales}
-        mode="create"
-      />
     </main>
+  );
+}
+
+/**
+ * PageHeader — page chrome rendered INSIDE CanvasWithSelection so the
+ * "Add item" button can call useCanvasSelection().startCreating().
+ * Hosts the page title, locale tab strip, and the create CTA.
+ *
+ * "Add item" picks the first sorted category as the default for the
+ * draft form; the merchant can change it via the Category dropdown
+ * inside the editor. Disabled when there are no categories — the
+ * EmptyCatalog state handles that path with its own CTA.
+ */
+function PageHeader({
+  categories,
+  locales,
+}: {
+  categories: CatalogCategory[];
+  locales: LocaleOption[];
+}) {
+  const { startCreating } = useCanvasSelection();
+  const defaultCategoryId = categories[0]?.id;
+  return (
+    <div className="w-full border-b">
+      <div className="mx-auto flex h-[120px] max-w-[1248px] flex-col justify-center gap-2 px-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-[32px] font-semibold tracking-tight">Library</h1>
+          <Button
+            onClick={() => {
+              if (defaultCategoryId) startCreating(defaultCategoryId);
+            }}
+            disabled={!defaultCategoryId}
+          >
+            <Plus className="size-4" />
+            Add item
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -496,7 +550,9 @@ export function LibraryCanvas({
  * CTA that points at the same Add Item dialog the header uses, with one
  * sentence of context so it doesn't feel like a 404.
  */
-function EmptyCatalog({ onAddItem }: { onAddItem: () => void }) {
+function EmptyCatalog({ categories }: { categories: CatalogCategory[] }) {
+  const { startCreating } = useCanvasSelection();
+  const defaultCategoryId = categories[0]?.id;
   // Left-aligned per DESIGN.md rule 10 (no `text-center` on body copy).
   // Heading + paragraph + CTA stack left so the body text reads naturally;
   // the dashed border + generous `py-16` carry the "empty state" weight.
@@ -507,7 +563,13 @@ function EmptyCatalog({ onAddItem }: { onAddItem: () => void }) {
         Build your menu by adding items to a category. Each item appears
         in the customer-facing catalog as soon as it&rsquo;s active.
       </p>
-      <Button className="mt-6" onClick={onAddItem}>
+      <Button
+        className="mt-6"
+        onClick={() => {
+          if (defaultCategoryId) startCreating(defaultCategoryId);
+        }}
+        disabled={!defaultCategoryId}
+      >
         <Plus className="size-4" />
         Add your first item
       </Button>

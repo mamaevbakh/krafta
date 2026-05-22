@@ -19,11 +19,19 @@ import { cn } from "@/lib/utils";
 // link still appears on the top nav (for now; KRA-76 will collapse this
 // into the sidebar with proper sub-nav). The sub-path `items/categories`
 // is the destination; the old `/categories` URL 308-redirects to it.
+//
+// KRA-92 adds Translations as a sibling of Items. Same temporary-top-nav
+// pattern; the future sub-nav refactor (KRA-76) will tuck both under Items.
 const DASHBOARD_LINKS = [
   { segment: "", label: "Overview" },
   { segment: "orders", label: "Orders" },
   { segment: "items", label: "Items" },
   { segment: "items/categories", label: "Categories" },
+  // KRA-85 adds Modifiers under the Items tree per ADR 0002 §2. Same
+  // temporary-top-nav pattern as Categories; collapses into the proper
+  // Items sub-nav when KRA-76 lands.
+  { segment: "items/modifiers", label: "Modifiers" },
+  { segment: "translations", label: "Translations" },
   { segment: "builder", label: "Studio" },
   { segment: "billing", label: "Billing" },
   { segment: "settings", label: "Settings" },

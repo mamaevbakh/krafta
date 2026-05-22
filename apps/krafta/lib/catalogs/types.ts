@@ -3,13 +3,36 @@ import type { Tables } from "@/lib/supabase/types";
 export type Catalog = Tables<"catalogs">;
 export type CatalogCategory = Tables<"catalog_categories">;
 export type ItemRow = Tables<"items">;
+export type ItemVariationRow = Tables<"item_variations">;
 
-// Item shape carried through the app. price_cents is sourced from the
-// item's default item_variations row (Migration 1, ADR 0001 §3.1).
-// Fetchers embed item_variations(...) and flatten to this shape so
-// components don't need to know about variations yet.
+// Subset of item_variations columns the admin UI (KRA-86) needs. We embed
+// only what the EditorSheet's VariationsEditor consumes — pricing_type,
+// sku, metadata, version, created_at, updated_at, is_active stay on the
+// row but aren't surfaced through this projection. Keep this list tight
+// so the page-level fetch payload doesn't bloat unnecessarily (per
+// /plan-eng-review P2 budget).
+export type ItemVariation = Pick<
+  ItemVariationRow,
+  | "id"
+  | "item_id"
+  | "catalog_id"
+  | "name"
+  | "price_cents"
+  | "ordinal"
+  | "is_default"
+  | "is_sold_out"
+>;
+
+// Item shape carried through the app.
+// - `price_cents` is the DEFAULT variation's price (legacy flatten, kept
+//   on Item so LibraryRow / table view / customer-side don't need to
+//   know about variations).
+// - `variations` is the full array of variation rows for this item, in
+//   ordinal order. Sourced from the same embed as price_cents (KRA-86).
+//   EditorSheet's variations editor consumes this.
 export type Item = ItemRow & {
   price_cents: number;
+  variations: ItemVariation[];
 };
 
 export type CategoryWithItems = CatalogCategory & {
@@ -30,10 +53,26 @@ export type PublicCatalog = Pick<
   | "settings_behavior"
 >;
 
+// Translation rows attached to each translatable entity on the storefront.
+// One row per active locale carried through render so components can call
+// pickLocalizedField with the row + canonical defaults. The shape is the
+// same as i18n.ts's TranslationRow — non-applicable fields are nulled
+// (e.g. description=null for variations/modifiers, image_alt=null for
+// categories) so consumers can use one helper uniformly.
+export type PublicTranslationRow = {
+  locale: string;
+  name: string | null;
+  description: string | null;
+  image_alt: string | null;
+};
+
 export type PublicCatalogCategory = Pick<
   CatalogCategory,
   "id" | "slug" | "name" | "position"
->;
+> & {
+  description?: string | null;
+  translations: PublicTranslationRow[];
+};
 
 export type PublicModifier = {
   id: string;
@@ -42,6 +81,7 @@ export type PublicModifier = {
   ordinal: number;
   on_by_default: boolean;
   version: number;
+  translations: PublicTranslationRow[];
 };
 
 // Per-item view of a modifier_list, with overrides resolved against defaults.
@@ -53,10 +93,15 @@ export type PublicModifierList = {
   modifier_type: "list" | "text";
   min_selected: number;
   max_selected: number | null;
+  /** Text-mode only: when true, the customer MUST type a non-empty value. */
+  text_required: boolean;
+  /** Text-mode only: max character cap on the typed value. `null` = no limit. */
+  max_length: number | null;
   hidden_from_customer: boolean;
   ordinal: number;
   version: number;
   modifiers: PublicModifier[];
+  translations: PublicTranslationRow[];
 };
 
 export type PublicItem = Pick<
@@ -72,6 +117,7 @@ export type PublicItem = Pick<
 > & {
   price_cents: number;
   modifier_lists: PublicModifierList[];
+  translations: PublicTranslationRow[];
 };
 
 export type PublicCategoryWithItems = PublicCatalogCategory & {

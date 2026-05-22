@@ -2247,6 +2247,7 @@ export type Database = {
         Row: {
           catalog_id: string
           created_at: string
+          current_source_hash: string | null
           id: string
           is_active: boolean
           name: string
@@ -2256,6 +2257,7 @@ export type Database = {
         Insert: {
           catalog_id: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           is_active?: boolean
           name: string
@@ -2265,6 +2267,7 @@ export type Database = {
         Update: {
           catalog_id?: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           is_active?: boolean
           name?: string
@@ -2287,8 +2290,11 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          is_ai_translated: boolean
+          last_edited_by: string | null
           locale: string
           name: string
+          source_hash: string | null
           updated_at: string
         }
         Insert: {
@@ -2296,8 +2302,11 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
           locale: string
           name: string
+          source_hash?: string | null
           updated_at?: string
         }
         Update: {
@@ -2305,8 +2314,11 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
           locale?: string
           name?: string
+          source_hash?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2315,6 +2327,53 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "catalog_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_translations: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_ai_translated: boolean
+          last_edited_by: string | null
+          locale: string
+          name: string
+          source_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale: string
+          name: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale?: string
+          name?: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_translations_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
             referencedColumns: ["id"]
           },
         ]
@@ -2361,29 +2420,35 @@ export type Database = {
         Row: {
           catalog_id: string
           created_at: string
+          display_name: string
           id: string
           is_default: boolean
           is_enabled: boolean
           locale: string
           sort_order: number
+          text_direction: string
         }
         Insert: {
           catalog_id: string
           created_at?: string
+          display_name: string
           id?: string
           is_default?: boolean
           is_enabled?: boolean
           locale: string
           sort_order?: number
+          text_direction?: string
         }
         Update: {
           catalog_id?: string
           created_at?: string
+          display_name?: string
           id?: string
           is_default?: boolean
           is_enabled?: boolean
           locale?: string
           sort_order?: number
+          text_direction?: string
         }
         Relationships: [
           {
@@ -2461,9 +2526,48 @@ export type Database = {
           },
         ]
       }
+      catalog_translation_quotas: {
+        Row: {
+          catalog_id: string
+          daily_quota: number
+          quota_reset_at: string
+          total_tokens_used: number
+          total_usd_estimated: number
+          updated_at: string
+          used_today: number
+        }
+        Insert: {
+          catalog_id: string
+          daily_quota?: number
+          quota_reset_at?: string
+          total_tokens_used?: number
+          total_usd_estimated?: number
+          updated_at?: string
+          used_today?: number
+        }
+        Update: {
+          catalog_id?: string
+          daily_quota?: number
+          quota_reset_at?: string
+          total_tokens_used?: number
+          total_usd_estimated?: number
+          updated_at?: string
+          used_today?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_translation_quotas_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: true
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalogs: {
         Row: {
           created_at: string
+          current_source_hash: string | null
           description: string | null
           id: string
           logo_path: string | null
@@ -2481,6 +2585,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_source_hash?: string | null
           description?: string | null
           id?: string
           logo_path?: string | null
@@ -2498,6 +2603,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_source_hash?: string | null
           description?: string | null
           id?: string
           logo_path?: string | null
@@ -2741,9 +2847,12 @@ export type Database = {
           description: string | null
           id: string
           image_alt: string | null
+          is_ai_translated: boolean
           item_id: string
+          last_edited_by: string | null
           locale: string
           name: string
+          source_hash: string | null
           updated_at: string
         }
         Insert: {
@@ -2751,9 +2860,12 @@ export type Database = {
           description?: string | null
           id?: string
           image_alt?: string | null
+          is_ai_translated?: boolean
           item_id: string
+          last_edited_by?: string | null
           locale: string
           name: string
+          source_hash?: string | null
           updated_at?: string
         }
         Update: {
@@ -2761,9 +2873,12 @@ export type Database = {
           description?: string | null
           id?: string
           image_alt?: string | null
+          is_ai_translated?: boolean
           item_id?: string
+          last_edited_by?: string | null
           locale?: string
           name?: string
+          source_hash?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2812,6 +2927,7 @@ export type Database = {
         Row: {
           catalog_id: string
           created_at: string
+          current_source_hash: string | null
           id: string
           is_active: boolean
           is_default: boolean
@@ -2829,6 +2945,7 @@ export type Database = {
         Insert: {
           catalog_id: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           is_active?: boolean
           is_default?: boolean
@@ -2846,6 +2963,7 @@ export type Database = {
         Update: {
           catalog_id?: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           is_active?: boolean
           is_default?: boolean
@@ -2882,6 +3000,7 @@ export type Database = {
           catalog_id: string
           category_id: string
           created_at: string
+          current_source_hash: string | null
           description: string | null
           id: string
           image_alt: string | null
@@ -2900,6 +3019,7 @@ export type Database = {
           catalog_id: string
           category_id: string
           created_at?: string
+          current_source_hash?: string | null
           description?: string | null
           id?: string
           image_alt?: string | null
@@ -2918,6 +3038,7 @@ export type Database = {
           catalog_id?: string
           category_id?: string
           created_at?: string
+          current_source_hash?: string | null
           description?: string | null
           id?: string
           image_alt?: string | null
@@ -2949,10 +3070,55 @@ export type Database = {
           },
         ]
       }
+      modifier_list_translations: {
+        Row: {
+          created_at: string
+          id: string
+          is_ai_translated: boolean
+          last_edited_by: string | null
+          locale: string
+          modifier_list_id: string
+          name: string
+          source_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale: string
+          modifier_list_id: string
+          name: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale?: string
+          modifier_list_id?: string
+          name?: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modifier_list_translations_modifier_list_id_fkey"
+            columns: ["modifier_list_id"]
+            isOneToOne: false
+            referencedRelation: "modifier_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       modifier_lists: {
         Row: {
           catalog_id: string
           created_at: string
+          current_source_hash: string | null
           id: string
           internal_name: string | null
           is_active: boolean
@@ -2969,6 +3135,7 @@ export type Database = {
         Insert: {
           catalog_id: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           internal_name?: string | null
           is_active?: boolean
@@ -2985,6 +3152,7 @@ export type Database = {
         Update: {
           catalog_id?: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           internal_name?: string | null
           is_active?: boolean
@@ -3008,10 +3176,55 @@ export type Database = {
           },
         ]
       }
+      modifier_translations: {
+        Row: {
+          created_at: string
+          id: string
+          is_ai_translated: boolean
+          last_edited_by: string | null
+          locale: string
+          modifier_id: string
+          name: string
+          source_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale: string
+          modifier_id: string
+          name: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale?: string
+          modifier_id?: string
+          name?: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modifier_translations_modifier_id_fkey"
+            columns: ["modifier_id"]
+            isOneToOne: false
+            referencedRelation: "modifiers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       modifiers: {
         Row: {
           catalog_id: string
           created_at: string
+          current_source_hash: string | null
           id: string
           is_active: boolean
           metadata: Json
@@ -3026,6 +3239,7 @@ export type Database = {
         Insert: {
           catalog_id: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           is_active?: boolean
           metadata?: Json
@@ -3040,6 +3254,7 @@ export type Database = {
         Update: {
           catalog_id?: string
           created_at?: string
+          current_source_hash?: string | null
           id?: string
           is_active?: boolean
           metadata?: Json
@@ -3145,13 +3360,13 @@ export type Database = {
           venue_id: string
         }
         Insert: {
-          catalog_id?: string
+          catalog_id: string
           created_at?: string
           id?: string
           is_active?: boolean
           kind: Database["public"]["Enums"]["qr_kind"]
           metadata?: Json
-          org_id?: string
+          org_id: string
           shortcode?: string
           table_label?: string | null
           updated_at?: string
@@ -3344,6 +3559,148 @@ export type Database = {
           },
         ]
       }
+      translation_history: {
+        Row: {
+          edited_at: string
+          edited_by: string | null
+          entity_kind: Database["public"]["Enums"]["translatable_entity_kind"]
+          field: string
+          id: string
+          locale: string
+          previous_value: string | null
+          translation_row_id: string
+          was_ai_edit: boolean
+        }
+        Insert: {
+          edited_at?: string
+          edited_by?: string | null
+          entity_kind: Database["public"]["Enums"]["translatable_entity_kind"]
+          field: string
+          id?: string
+          locale: string
+          previous_value?: string | null
+          translation_row_id: string
+          was_ai_edit?: boolean
+        }
+        Update: {
+          edited_at?: string
+          edited_by?: string | null
+          entity_kind?: Database["public"]["Enums"]["translatable_entity_kind"]
+          field?: string
+          id?: string
+          locale?: string
+          previous_value?: string | null
+          translation_row_id?: string
+          was_ai_edit?: boolean
+        }
+        Relationships: []
+      }
+      translation_jobs: {
+        Row: {
+          attempts: number
+          catalog_id: string
+          completed_at: string | null
+          created_at: string
+          enqueued_by: string | null
+          entity_id: string
+          entity_kind: Database["public"]["Enums"]["translatable_entity_kind"]
+          error_text: string | null
+          id: string
+          llm_provider: string
+          max_attempts: number
+          next_attempt_at: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["translation_job_status"]
+          target_locale: string
+        }
+        Insert: {
+          attempts?: number
+          catalog_id: string
+          completed_at?: string | null
+          created_at?: string
+          enqueued_by?: string | null
+          entity_id: string
+          entity_kind: Database["public"]["Enums"]["translatable_entity_kind"]
+          error_text?: string | null
+          id?: string
+          llm_provider?: string
+          max_attempts?: number
+          next_attempt_at?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["translation_job_status"]
+          target_locale: string
+        }
+        Update: {
+          attempts?: number
+          catalog_id?: string
+          completed_at?: string | null
+          created_at?: string
+          enqueued_by?: string | null
+          entity_id?: string
+          entity_kind?: Database["public"]["Enums"]["translatable_entity_kind"]
+          error_text?: string | null
+          id?: string
+          llm_provider?: string
+          max_attempts?: number
+          next_attempt_at?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["translation_job_status"]
+          target_locale?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "translation_jobs_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      variation_translations: {
+        Row: {
+          created_at: string
+          id: string
+          is_ai_translated: boolean
+          item_variation_id: string
+          last_edited_by: string | null
+          locale: string
+          name: string
+          source_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_ai_translated?: boolean
+          item_variation_id: string
+          last_edited_by?: string | null
+          locale: string
+          name: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_ai_translated?: boolean
+          item_variation_id?: string
+          last_edited_by?: string | null
+          locale?: string
+          name?: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variation_translations_item_variation_id_fkey"
+            columns: ["item_variation_id"]
+            isOneToOne: false
+            referencedRelation: "item_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       venues: {
         Row: {
           address: Json
@@ -3418,35 +3775,26 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      translation_completeness_view: {
+        Row: {
+          catalog_id: string | null
+          entity_kind:
+            | Database["public"]["Enums"]["translatable_entity_kind"]
+            | null
+          locale: string | null
+          missing: number | null
+          non_stale: number | null
+          stale: number | null
+          total: number | null
+          translated: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       ack_embedding_job: { Args: { p_job_id: number }; Returns: undefined }
       catalog_is_public: { Args: { _catalog_id: string }; Returns: boolean }
       catalog_org_id: { Args: { _catalog_id: string }; Returns: string }
-      create_draft_shop: {
-        Args: { p_slug: string }
-        Returns: { org_id: string; catalog_id: string }[]
-      }
-      reorder_items: {
-        // KRA-35 PR1 — migration 20260520040000.
-        // Hand-added to unblock callers; regen will preserve once the
-        // migration is applied + types are regenerated.
-        Args: { p_catalog_id: string; p_changes: Json }
-        Returns: undefined
-      }
-      reorder_categories: {
-        // KRA-91 — migration 20260520050000.
-        // Hand-added; regen will preserve once applied + types regen'd.
-        Args: { p_catalog_id: string; p_changes: Json }
-        Returns: undefined
-      }
-      duplicate_item: {
-        // KRA-35 PR1 — migration 20260520040000.
-        // Returns the new item's uuid as a string.
-        Args: { p_catalog_id: string; p_item_id: string }
-        Returns: string
-      }
       catalog_search: {
         Args: {
           p_catalog_id?: string
@@ -3516,6 +3864,17 @@ export type Database = {
         Args: { p_item_id: string }
         Returns: undefined
       }
+      create_draft_shop: {
+        Args: { p_slug: string }
+        Returns: {
+          catalog_id: string
+          org_id: string
+        }[]
+      }
+      duplicate_item: {
+        Args: { p_catalog_id: string; p_item_id: string }
+        Returns: string
+      }
       is_org_role: {
         Args: { _org_id: string; _roles?: string[] }
         Returns: boolean
@@ -3530,6 +3889,14 @@ export type Database = {
           p_results_count: number
           p_top_result_id: string
         }
+        Returns: undefined
+      }
+      reorder_categories: {
+        Args: { p_catalog_id: string; p_changes: Json }
+        Returns: undefined
+      }
+      reorder_items: {
+        Args: { p_catalog_id: string; p_changes: Json }
         Returns: undefined
       }
       search_expand_query: { Args: { q: string }; Returns: string }
@@ -3547,6 +3914,14 @@ export type Database = {
       search_simple_translit: { Args: { q: string }; Returns: string }
       set_catalog_search_doc_embedding: {
         Args: { p_embedding_text: string; p_id: string }
+        Returns: undefined
+      }
+      update_item_with_variations: {
+        Args: {
+          p_item_fields: Json
+          p_item_id: string
+          p_variation_changes: Json
+        }
         Returns: undefined
       }
     }
@@ -3569,12 +3944,26 @@ export type Database = {
       item_media_kind: "image" | "video"
       item_variation_pricing_type: "fixed" | "variable"
       modifier_list_kind: "list" | "text"
+      qr_kind: "main" | "table" | "pickup" | "delivery"
       role: "owner" | "member" | "admin"
       tax_applies_to: "all_items" | "by_category"
       tax_calculation_phase: "subtotal" | "total"
       tax_inclusion_type: "included" | "additive"
-      qr_kind: "main" | "table" | "pickup" | "delivery"
       tax_kind: "tax" | "service_fee"
+      translatable_entity_kind:
+        | "item"
+        | "variation"
+        | "modifier"
+        | "modifier_list"
+        | "category"
+        | "catalog"
+      translation_job_status:
+        | "queued"
+        | "running"
+        | "done"
+        | "skipped"
+        | "failed"
+        | "dead"
       venue_status: "active" | "paused" | "archived"
     }
     CompositeTypes: {
@@ -3772,12 +4161,28 @@ export const Constants = {
       item_media_kind: ["image", "video"],
       item_variation_pricing_type: ["fixed", "variable"],
       modifier_list_kind: ["list", "text"],
+      qr_kind: ["main", "table", "pickup", "delivery"],
       role: ["owner", "member", "admin"],
       tax_applies_to: ["all_items", "by_category"],
       tax_calculation_phase: ["subtotal", "total"],
       tax_inclusion_type: ["included", "additive"],
-      qr_kind: ["main", "table", "pickup", "delivery"],
       tax_kind: ["tax", "service_fee"],
+      translatable_entity_kind: [
+        "item",
+        "variation",
+        "modifier",
+        "modifier_list",
+        "category",
+        "catalog",
+      ],
+      translation_job_status: [
+        "queued",
+        "running",
+        "done",
+        "skipped",
+        "failed",
+        "dead",
+      ],
       venue_status: ["active", "paused", "archived"],
     },
   },

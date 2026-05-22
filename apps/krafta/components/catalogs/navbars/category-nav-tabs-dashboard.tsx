@@ -10,6 +10,7 @@ import {
 } from "react";
 import { motion } from "framer-motion";
 import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
+import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { cn } from "@/lib/utils";
 
 const TOP_OFFSET_PX = 60;
@@ -186,6 +187,8 @@ export function CategoryNavTabsDashboard({
   activeCategoryId = null,
   activeCategorySlug = null,
   baseHref,
+  activeLocale,
+  defaultLocale,
 }: CategoryNavProps) {
   if (!categories.length) return null;
 
@@ -297,7 +300,17 @@ export function CategoryNavTabsDashboard({
             { id: "all", label: "Все", slug: null as string | null },
             ...categories.map((category) => ({
               id: category.id,
-              label: category.name,
+              label: pickLocalizedField({
+                translations: category.translations,
+                defaults: {
+                  name: category.name,
+                  description: category.description ?? null,
+                  image_alt: null,
+                },
+                activeLocale,
+                defaultLocale,
+                field: "name",
+              }).value,
               slug: getSlug(category),
             })),
           ].map((tab) => {

@@ -4,6 +4,8 @@ import type { HeaderBasicFreeLogoSettings } from "@/lib/catalogs/settings/layout
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { cn } from "@/lib/utils";
+import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
+import { LocaleSwitcher } from "./locale-switcher";
 
 type CatalogHeaderProps = {
   catalogName: string;
@@ -13,6 +15,8 @@ type CatalogHeaderProps = {
   headerSettings?: {
     basicFreeLogo?: Partial<HeaderBasicFreeLogoSettings>;
   };
+  locales?: PublicCatalogLocaleOption[];
+  activeLocale?: string;
 };
 
 export function CatalogHeaderBasicFreeLogo({
@@ -21,6 +25,8 @@ export function CatalogHeaderBasicFreeLogo({
   tags,
   logoUrl,
   headerSettings,
+  locales = [],
+  activeLocale = "",
 }: CatalogHeaderProps): JSX.Element {
   const settings = headerSettings?.basicFreeLogo;
   const showLogo = settings?.showLogo ?? true;
@@ -45,11 +51,20 @@ export function CatalogHeaderBasicFreeLogo({
   return (
     <header
       className={cn(
-        "flex flex-col items-center gap-4 overflow-hidden rounded-lg px-4 py-5 text-center",
+        "relative flex flex-col items-center gap-4 overflow-hidden rounded-lg px-4 py-5 text-center",
         "bg-[var(--header-bg-light)] dark:bg-[var(--header-bg-dark)]",
       )}
       style={headerStyle}
     >
+      {/* Float the switcher in the top-right corner so it sits above
+          the banner (when present) and never displaces the centered
+          identity. z-10 keeps it above the banner image; the popover
+          itself portals to body so layering inside the rounded card
+          doesn't clip the dropdown. */}
+      <div className="absolute right-3 top-3 z-10">
+        <LocaleSwitcher options={locales} activeLocale={activeLocale} />
+      </div>
+
       {hasBanner && (
         <AspectRatio
           ratio={16 / 6}

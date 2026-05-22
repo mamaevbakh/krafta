@@ -6,6 +6,7 @@ import type {
   PublicItem,
 } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
 
 
 // Headers
@@ -32,6 +33,16 @@ import { CategoryNavTabsMotion } from "@/components/catalogs/navbars/category-na
 import { CategoryNavTabsDashboard } from "@/components/catalogs/navbars/category-nav-tabs-dashboard";
 
 
+// Locale props every layout-registered component receives. activeLocale +
+// defaultLocale flow from the page root (resolved from ?lang= against the
+// catalog's enabled set) and feed into pickLocalizedField at each render
+// site. Empty strings mean "no localization configured" — components just
+// render canonical values.
+export type LocaleProps = {
+  activeLocale: string;
+  defaultLocale: string;
+};
+
 export type HeaderProps = {
   catalogName: string;
   description: string | null;
@@ -39,21 +50,28 @@ export type HeaderProps = {
   headerSettings: CatalogLayoutSettings["header"];
   logoUrl: string | null;
   tags: string[] | null;
+  /** Enabled locale rows from getCatalogLocales(). Headers render the
+   *  LocaleSwitcher from this; an empty / single-element array yields
+   *  no visible switcher. */
+  locales: PublicCatalogLocaleOption[];
+  /** Effective active locale from the page root. Drives the switcher's
+   *  current selection. */
+  activeLocale: string;
 };
 
-export type CategoryNavProps = {
+export type CategoryNavProps = LocaleProps & {
   categories: PublicCategoryWithItems[];
   activeCategoryId?: string | null;
   baseHref: string;
   activeCategorySlug?: string | null;
 };
 
-export type SectionProps = {
+export type SectionProps = LocaleProps & {
   category: PublicCategoryWithItems;
   children: React.ReactNode;
 };
 
-export type ItemCardProps = {
+export type ItemCardProps = LocaleProps & {
   item: PublicItem;
   imageUrl: string | null;
   imageAspectRatio?: number;
@@ -61,7 +79,7 @@ export type ItemCardProps = {
   currencySettings?: CurrencySettings;
 };
 
-export type ItemDetailProps = {
+export type ItemDetailProps = LocaleProps & {
   item: PublicItem;
   category: PublicCategoryWithItems | null;
   imageUrl: string | null;

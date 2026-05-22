@@ -33,6 +33,7 @@
 import Image from "next/image";
 import type { ItemCardProps } from "@/lib/catalogs/layout-registry";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
+import { useLocalizedItemFields } from "./use-localized-item-fields";
 
 /**
  * CardMarkup — internal presentational sub-component.
@@ -50,7 +51,14 @@ export function CardMarkup({
   item,
   imageUrl,
   currencySettings,
+  activeLocale,
+  defaultLocale,
 }: ItemCardProps) {
+  const { name, description, imageAlt } = useLocalizedItemFields(item, {
+    activeLocale,
+    defaultLocale,
+  });
+
   return (
     <>
       {/* Optional image */}
@@ -58,7 +66,7 @@ export function CardMarkup({
         <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xs bg-muted">
           <Image
             src={imageUrl}
-            alt={item.image_alt ?? item.name}
+            alt={imageAlt ?? name}
             fill
             sizes="64px"
             className="object-cover"
@@ -70,12 +78,12 @@ export function CardMarkup({
       <div className="flex flex-1 items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="line-clamp-2 text-sm font-medium">
-            {item.name}
+            {name}
           </span>
 
-          {item.description && (
+          {description && (
             <span className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-              {item.description}
+              {description}
             </span>
           )}
         </div>

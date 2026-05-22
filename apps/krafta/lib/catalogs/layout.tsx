@@ -5,7 +5,10 @@ import type {
   PublicCategoryWithItems,
   PublicTax,
 } from "@/lib/catalogs/types";
-import type { PublicVenue } from "@/lib/catalogs/data";
+import type {
+  PublicCatalogLocaleOption,
+  PublicVenue,
+} from "@/lib/catalogs/data";
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import {
   normalizeLayoutSettings,
@@ -27,6 +30,7 @@ import {
   CartProvider,
   CartTrigger,
 } from "@/components/catalogs/cart";
+import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
 
 type Props = {
   catalog: PublicCatalog;
@@ -38,6 +42,17 @@ type Props = {
   baseHref?: string;
   layoutOverride?: CatalogLayoutOverride;
   currencyOverride?: CurrencySettings;
+  /** Effective active locale resolved at the page root from ?lang= +
+   *  catalog locales. Empty string when the catalog has no enabled
+   *  locales (no translation can happen — every field renders canonical). */
+  activeLocale?: string;
+  /** The catalog's default locale (canonical column source). Same
+   *  source as activeLocale's fallback. */
+  defaultLocale?: string;
+  /** Enabled locale rows (with display_name + text_direction). Threaded
+   *  through to the header so the language switcher knows which options
+   *  to render. Empty/single-element → switcher hides. */
+  locales?: PublicCatalogLocaleOption[];
 };
 
 // map “columns” → Tailwind grid classes (md+)
@@ -65,6 +80,9 @@ export function CatalogLayout({
   baseHref,
   layoutOverride,
   currencyOverride,
+  activeLocale = "",
+  defaultLocale = "",
+  locales = [],
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
@@ -116,86 +134,102 @@ export function CatalogLayout({
   const activeCategorySlugResolved = activeCategory?.slug ?? null;
 
   const tree = (
-    <ItemSheetProvider
-      key={`${activeCategorySlugResolved ?? "none"}:${activeItemSlug ?? "none"}`}
-      categoriesWithItems={categoriesWithItems}
-      activeCategorySlug={activeCategorySlugResolved}
-      activeItemSlug={activeItemSlug}
-      baseHref={hrefBase}
-      // 👇 this prop name is important
-      itemAspectRatio={itemImageAspectRatio}
-      itemDetailVariant={resolvedLayout.itemDetailVariant}
-      currencySettings={resolvedCurrency}
+    <StorefrontLocaleProvider
+      activeLocale={activeLocale}
+      defaultLocale={defaultLocale}
     >
-      <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
-        <Header
-          catalogName={catalog.name}
-          catalog={catalog}
-          headerSettings={resolvedLayout.header}
-          logoUrl={logoUrl}
-          description={catalog.description}
-          tags={catalog.tags}
-        />
-
-        {CategoryNav && (
-          <CategoryNav
-            categories={categoriesWithItems}
-            activeCategoryId={activeCategoryId}
-            activeCategorySlug={activeCategorySlugResolved}
-            baseHref={hrefBase}
+      <ItemSheetProvider
+        key={`${activeCategorySlugResolved ?? "none"}:${activeItemSlug ?? "none"}`}
+        categoriesWithItems={categoriesWithItems}
+        activeCategorySlug={activeCategorySlugResolved}
+        activeItemSlug={activeItemSlug}
+        baseHref={hrefBase}
+        // 👇 this prop name is important
+        itemAspectRatio={itemImageAspectRatio}
+        itemDetailVariant={resolvedLayout.itemDetailVariant}
+        currencySettings={resolvedCurrency}
+      >
+        <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
+          <Header
+            catalogName={catalog.name}
+            catalog={catalog}
+            headerSettings={resolvedLayout.header}
+            logoUrl={logoUrl}
+            description={catalog.description}
+            tags={catalog.tags}
+            locales={locales}
+            activeLocale={activeLocale}
           />
-        )}
 
-        <section className="space-y-8">
-          {categoriesWithItems.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No categories or items in this catalog yet.
-            </p>
+          {CategoryNav && (
+            <CategoryNav
+              categories={categoriesWithItems}
+              activeCategoryId={activeCategoryId}
+              activeCategorySlug={activeCategorySlugResolved}
+              baseHref={hrefBase}
+              activeLocale={activeLocale}
+              defaultLocale={defaultLocale}
+            />
           )}
 
-          {categoriesWithItems.map((category) => {
-            const categorySlug = category.slug ?? String(category.id);
+          <section className="space-y-8">
+            {categoriesWithItems.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No categories or items in this catalog yet.
+              </p>
+            )}
 
-            return (
-              <Section key={category.id} category={category}>
-                {category.items.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No items in this category yet.
-                  </p>
-                ) : (
-                  <div className={`grid gap-2 ${itemGridColsClass}`}>
-                    {category.items.map((item) => {
-                      const itemSlug = item.slug ?? String(item.id);
+            {categoriesWithItems.map((category) => {
+              const categorySlug = category.slug ?? String(category.id);
 
-                      return (
-                        <ItemSheetTrigger
-                          key={item.id}
-                          itemSlug={itemSlug}
-                          categorySlug={categorySlug}
-                        >
-                          <ItemCard
-                            imageAspectRatio={itemImageAspectRatio}
-                            item={item}
-                            imageUrl={getItemImageUrl(item)}
-                            currencySettings={resolvedCurrency}
-                          />
-                        </ItemSheetTrigger>
-                      );
-                    })}
-                  </div>
-                )}
-              </Section>
-            );
-          })}
-        </section>
-      </main>
-      <CatalogSearchLazy
-        catalogId={catalog.id}
-        orgId={catalog.org_id ?? null}
-        categoriesWithItems={categoriesWithItems}
-        currencySettings={resolvedCurrency}
-      />
-    </ItemSheetProvider>
+              return (
+                <Section
+                  key={category.id}
+                  category={category}
+                  activeLocale={activeLocale}
+                  defaultLocale={defaultLocale}
+                >
+                  {category.items.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No items in this category yet.
+                    </p>
+                  ) : (
+                    <div className={`grid gap-2 ${itemGridColsClass}`}>
+                      {category.items.map((item) => {
+                        const itemSlug = item.slug ?? String(item.id);
+
+                        return (
+                          <ItemSheetTrigger
+                            key={item.id}
+                            itemSlug={itemSlug}
+                            categorySlug={categorySlug}
+                          >
+                            <ItemCard
+                              imageAspectRatio={itemImageAspectRatio}
+                              item={item}
+                              imageUrl={getItemImageUrl(item)}
+                              currencySettings={resolvedCurrency}
+                              activeLocale={activeLocale}
+                              defaultLocale={defaultLocale}
+                            />
+                          </ItemSheetTrigger>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Section>
+              );
+            })}
+          </section>
+        </main>
+        <CatalogSearchLazy
+          catalogId={catalog.id}
+          orgId={catalog.org_id ?? null}
+          categoriesWithItems={categoriesWithItems}
+          currencySettings={resolvedCurrency}
+        />
+      </ItemSheetProvider>
+    </StorefrontLocaleProvider>
   );
 
   // Cart UI is opt-in per catalog via settings_behavior.enableCart, and only

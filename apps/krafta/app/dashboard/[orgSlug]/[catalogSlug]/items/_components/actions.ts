@@ -2,10 +2,10 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
-import {
-  deleteSearchDocumentsBySourceIds,
-  syncItemSearchDocuments,
-} from "@/lib/catalogs/search-documents";
+// syncItemSearchDocuments removed as a caller — the DB triggers on
+// items + item_translations handle it. deleteSearchDocumentsBySourceIds
+// stays for the delete-time defensive cleanup.
+import { deleteSearchDocumentsBySourceIds } from "@/lib/catalogs/search-documents";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
@@ -14,15 +14,7 @@ import {
   isCatalogItemProductType,
   type CatalogItemProductType,
 } from "./product-types";
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+import { slugify } from "@/lib/catalogs/slug";
 
 export type ItemTranslationInput = {
   locale: string;
@@ -86,6 +78,194 @@ async function cleanupMediaStorage(rows: StorageMediaRow[]) {
   );
 }
 
+/**
+ * ItemVariationChange — KRA-86 super-RPC payload element.
+ *
+ * Two ops:
+ *   - "upsert" — INSERT (id omitted) or UPDATE (id present). Name +
+ *     price_cents + ordinal + is_default + is_sold_out required.
+ *   - "delete" — DELETE by id.
+ *
+ * The RPC runs deletes first, then a demote-pass on `is_default`, then
+ * upserts. See migration 20260520200000_kra86_update_item_with_variations_rpc.sql
+ * for the full semantics + partial-unique-index handling.
+ */
+export type ItemVariationChange =
+  | {
+      op: "upsert";
+      id?: string;
+      name: string;
+      price_cents: number;
+      ordinal: number;
+      is_default: boolean;
+      is_sold_out: boolean;
+    }
+  | {
+      op: "delete";
+      id: string;
+    };
+
+/**
+ * synthesizeDefaultVariationUpdate — back-compat helper for `updateItem`
+ * callers that don't (yet) supply a `variationChanges` payload.
+ *
+ * Pre-KRA-86, `updateItem` did two writes: (1) UPDATE items, (2) UPDATE
+ * item_variations.price_cents WHERE is_default. The new super-RPC takes a
+ * full variation-changes array. To preserve the legacy contract for the
+ * existing EditorSheet "edit price + name" flow without rewriting the
+ * caller, we look up the default variation's row and synthesize a single
+ * `op: 'upsert'` change that re-states it with the new price.
+ *
+ * Once the KRA-86 UI ships (Slice 2) and the EditorSheet passes a real
+ * variationChanges payload, this helper is bypassed. The helper exists
+ * solely so updateItem stays usable from any caller during the migration
+ * window.
+ */
+async function synthesizeDefaultVariationUpdate(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  itemId: string;
+  priceCents: number;
+}): Promise<ItemVariationChange[]> {
+  const { data: defaultRow } = await args.supabase
+    .from("item_variations")
+    .select("id, name, ordinal, is_sold_out")
+    .eq("item_id", args.itemId)
+    .eq("is_default", true)
+    .maybeSingle();
+
+  // If no default variation exists (data bug — KRA-54 migration backfilled
+  // them for every item), the super-RPC's min-row guard will surface it.
+  // Return an empty array; the RPC will skip the variations branch entirely.
+  if (!defaultRow) {
+    return [];
+  }
+
+  return [
+    {
+      op: "upsert",
+      id: defaultRow.id,
+      name: defaultRow.name,
+      price_cents: args.priceCents,
+      ordinal: defaultRow.ordinal,
+      is_default: true,
+      is_sold_out: defaultRow.is_sold_out,
+    },
+  ];
+}
+
+/**
+ * Per-item modifier-list attachment payload. Mirrors the editable
+ * columns on `item_modifier_lists`. Square-inspired UX added the
+ * per-item override knobs in the editor — keep them at the API
+ * boundary so the form can express them in one shot.
+ */
+export type ItemModifierAttachmentInput = {
+  modifierListId: string;
+  /** 0-based position; the editor's drag-reorder sets this. */
+  ordinal: number;
+  /** Null = use the list's catalog-wide default. */
+  minSelectedOverride: number | null;
+  maxSelectedOverride: number | null;
+  /** True = applied server-side but hidden from customer-facing menu. */
+  hiddenFromCustomerOverride: boolean;
+};
+
+/**
+ * Sync the modifier-list set attached to an item — KRA-85 follow-up.
+ *
+ * Called from createItem (after the items row exists) and updateItem.
+ * Replace-the-set semantics with override-aware UPDATE:
+ *   - For each desired attachment that already exists, UPDATE the row
+ *     to match the new ordinal + overrides (no-op when unchanged).
+ *   - INSERT rows for fresh attachments.
+ *   - DELETE rows for any list_id no longer in the desired set.
+ *
+ * Doesn't bust the catalog cache — the wrapping action does that once
+ * at the end.
+ */
+async function syncItemModifierLists(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  itemId: string;
+  catalogId: string;
+  desired: ItemModifierAttachmentInput[];
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: existing, error: fetchError } = await args.supabase
+    .from("item_modifier_lists")
+    .select("modifier_list_id")
+    .eq("item_id", args.itemId);
+  if (fetchError) {
+    return { ok: false, error: fetchError.message };
+  }
+
+  const existingIds = new Set(
+    (existing ?? []).map((r) => r.modifier_list_id),
+  );
+  const desiredById = new Map(
+    args.desired.map((a) => [a.modifierListId, a] as const),
+  );
+
+  const toInsert = args.desired.filter(
+    (a) => !existingIds.has(a.modifierListId),
+  );
+  const toUpdate = args.desired.filter((a) =>
+    existingIds.has(a.modifierListId),
+  );
+  const toDelete = [...existingIds].filter((id) => !desiredById.has(id));
+
+  if (toDelete.length > 0) {
+    const { error: deleteError } = await args.supabase
+      .from("item_modifier_lists")
+      .delete()
+      .eq("item_id", args.itemId)
+      .in("modifier_list_id", toDelete);
+    if (deleteError) {
+      return { ok: false, error: deleteError.message };
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error: insertError } = await args.supabase
+      .from("item_modifier_lists")
+      .insert(
+        toInsert.map((a) => ({
+          item_id: args.itemId,
+          modifier_list_id: a.modifierListId,
+          catalog_id: args.catalogId,
+          ordinal: a.ordinal,
+          min_selected_override: a.minSelectedOverride,
+          max_selected_override: a.maxSelectedOverride,
+          hidden_from_customer_override: a.hiddenFromCustomerOverride,
+          is_active: true,
+        })),
+      );
+    if (insertError) {
+      return { ok: false, error: insertError.message };
+    }
+  }
+
+  // Updates fire as one UPDATE per row — modifier-list sets on a given
+  // item are typically <10, so the round-trip overhead is fine. If this
+  // becomes hot we can collapse to a single CASE-based UPDATE via RPC.
+  for (const a of toUpdate) {
+    const { error: updateError } = await args.supabase
+      .from("item_modifier_lists")
+      .update({
+        ordinal: a.ordinal,
+        min_selected_override: a.minSelectedOverride,
+        max_selected_override: a.maxSelectedOverride,
+        hidden_from_customer_override: a.hiddenFromCustomerOverride,
+        is_active: true,
+      })
+      .eq("item_id", args.itemId)
+      .eq("modifier_list_id", a.modifierListId);
+    if (updateError) {
+      return { ok: false, error: updateError.message };
+    }
+  }
+
+  return { ok: true };
+}
+
 export async function createItem(params: {
   catalogId: string;
   catalogSlug: string;
@@ -98,6 +278,34 @@ export async function createItem(params: {
   description?: string | null;
   imageAlt?: string | null;
   translations: ItemTranslationInput[];
+  /** KRA-88 all-enabled create flow — variations created during the
+   *  create gesture (instead of the default-only insert). When omitted
+   *  or empty, the legacy default-only behavior runs with priceCents. */
+  variations?: Array<{
+    name: string;
+    price_cents: number;
+    ordinal: number;
+    is_default: boolean;
+    is_sold_out: boolean;
+  }>;
+  /** KRA-88 all-enabled create flow — photos uploaded to Storage during
+   *  the create gesture (paths use the pre-gen itemId). Server registers
+   *  these in item_media after the items row is inserted, then mirrors
+   *  the primary's storage_path onto items.image_path. */
+  photoUploads?: Array<{
+    id: string;
+    bucket: string;
+    storage_path: string;
+    kind: Database["public"]["Enums"]["item_media_kind"];
+    mime_type?: string | null;
+    bytes?: number | null;
+    alt?: string | null;
+  }>;
+  /** KRA-85 follow-up: per-item modifier-list attachments to insert
+   *  during the create gesture. Each carries ordinal + per-item override
+   *  values (min/max/hidden). Empty / omitted leaves the item with no
+   *  attached lists. */
+  modifierAttachments?: ItemModifierAttachmentInput[];
 }) {
   const supabase = await createClient();
 
@@ -158,25 +366,87 @@ export async function createItem(params: {
     return { ok: false, error: itemError?.message ?? "Failed to create item." };
   }
 
-  // Price now lives on the default item_variations row (Migration 1, ADR
-  // 0001 §3.1). Every item must have exactly one default variation; the
-  // partial unique index enforces uniqueness, the app enforces existence.
+  // KRA-88 all-enabled create flow: when the caller provides a full
+  // variations array, insert exactly those rows. Otherwise fall back to
+  // the legacy default-only insert seeded with priceCents.
+  const variationRows = params.variations && params.variations.length > 0
+    ? params.variations.map((v) => ({
+        item_id: item.id,
+        catalog_id: params.catalogId,
+        name: v.name,
+        price_cents: v.price_cents,
+        ordinal: v.ordinal,
+        is_default: v.is_default,
+        is_sold_out: v.is_sold_out,
+      }))
+    : [
+        {
+          item_id: item.id,
+          catalog_id: params.catalogId,
+          name: "Default",
+          price_cents: params.priceCents,
+          is_default: true,
+          ordinal: 0,
+        },
+      ];
+
   const { error: variationError } = await supabase
     .from("item_variations")
-    .insert({
-      item_id: item.id,
-      catalog_id: params.catalogId,
-      name: "Default",
-      price_cents: params.priceCents,
-      is_default: true,
-      ordinal: 0,
-    });
+    .insert(variationRows);
 
   if (variationError) {
     return {
       ok: false,
-      error: variationError.message ?? "Failed to create default variation.",
+      error: variationError.message ?? "Failed to create item variations.",
     };
+  }
+
+  // KRA-88 all-enabled create flow: photos already uploaded to Storage
+  // during the create gesture (the client pre-generated itemId for the
+  // storage paths). Register them in item_media now that the items row
+  // exists, set primary = first row, mirror its path onto items.image_path.
+  if (params.photoUploads && params.photoUploads.length > 0) {
+    const insertRows = params.photoUploads.map((upload, index) => ({
+      id: upload.id,
+      item_id: item.id,
+      bucket: upload.bucket,
+      storage_path: upload.storage_path,
+      kind: upload.kind,
+      mime_type: upload.mime_type ?? null,
+      bytes: upload.bytes ?? null,
+      alt: upload.alt ?? null,
+      title: null,
+      is_primary: index === 0,
+      position: index + 1,
+    }));
+
+    const { error: mediaError } = await supabase
+      .from("item_media")
+      .insert(insertRows);
+
+    if (mediaError) {
+      return {
+        ok: false,
+        error: mediaError.message ?? "Failed to attach photos.",
+      };
+    }
+
+    const primary = insertRows[0];
+    if (primary) {
+      const { error: imageError } = await supabase
+        .from("items")
+        .update({
+          image_path: primary.storage_path,
+          image_alt: primary.alt,
+        })
+        .eq("id", item.id);
+      if (imageError) {
+        return {
+          ok: false,
+          error: imageError.message ?? "Failed to set primary photo on item.",
+        };
+      }
+    }
   }
 
   const translations = params.translations
@@ -213,7 +483,32 @@ export async function createItem(params: {
     }
   }
 
-  await syncItemSearchDocuments({ itemId: item.id, client: supabase });
+  // KRA-85 follow-up: attach the requested modifier lists. Done after the
+  // items + variations rows exist so the FK + denormalized catalog_id
+  // sync trigger have parents to reference.
+  if (
+    params.modifierAttachments &&
+    params.modifierAttachments.length > 0
+  ) {
+    const syncResult = await syncItemModifierLists({
+      supabase,
+      itemId: item.id,
+      catalogId: params.catalogId,
+      desired: params.modifierAttachments,
+    });
+    if (!syncResult.ok) {
+      return { ok: false, error: syncResult.error };
+    }
+  }
+
+  // Search-document sync is handled by DB triggers (KRA-88's
+  // catalog_search_sync_item_document fires AFTER UPDATE / AFTER INSERT
+  // on items + item_translations). The application-level call we used
+  // to make here was redundant — and worse, when the user's session
+  // had no DELETE policy on catalog_search_documents, the DELETE leg
+  // silently no-op'd while the INSERT leg hit the trigger's freshly-
+  // inserted rows → duplicate-key constraint violation. Leaving the
+  // sync to the DB triggers eliminates the double-write entirely.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -231,10 +526,23 @@ export async function updateItem(params: {
   productType?: CatalogItemProductType;
   name: string;
   slug?: string;
+  /** Price for the DEFAULT variation when no variationChanges payload is
+   *  provided (legacy code path). When variationChanges is non-empty, the
+   *  caller is responsible for including the default row's price_cents in
+   *  the upsert payload — priceCents is then ignored. */
   priceCents: number;
   description?: string | null;
   imageAlt?: string | null;
   translations: ItemTranslationInput[];
+  /** KRA-86 — atomic variations changes. Optional. When present, dispatched
+   *  inside the same super-RPC call as the item field UPDATE. */
+  variationChanges?: ItemVariationChange[];
+  /** KRA-85 follow-up: full set of modifier-list attachments for this
+   *  item after the save. Replace-the-set semantics — any list currently
+   *  attached but not in this array gets detached. Pass `undefined` to
+   *  leave existing attachments untouched (legacy callers without
+   *  modifier UI don't need to know about this field). */
+  modifierAttachments?: ItemModifierAttachmentInput[];
 }) {
   const supabase = await createClient();
 
@@ -254,6 +562,10 @@ export async function updateItem(params: {
     return { ok: false, error: "Item slug could not be generated." };
   }
 
+  // Slug uniqueness check stays in the server action (RPC is narrowly scoped
+  // to items + item_variations; cross-table uniqueness is a server-action
+  // concern). The .neq() filter excludes this item's current row so editing
+  // an unchanged slug doesn't false-flag.
   const { data: existingItem } = await supabase
     .from("items")
     .select("id")
@@ -266,33 +578,38 @@ export async function updateItem(params: {
     return { ok: false, error: "This slug is already used in this catalog." };
   }
 
-  const { error: itemError } = await supabase
-    .from("items")
-    .update({
-      name: baseName,
-      slug,
-      category_id: params.categoryId,
-      product_type: productType,
-      description: params.description ?? null,
-      image_alt: params.imageAlt ?? null,
-    })
-    .eq("id", params.itemId);
+  // KRA-86 — single atomic super-RPC for items row + item_variations changes.
+  // If no variationChanges payload was supplied (legacy callers without the
+  // variations editor), synthesize a single-default-row update to keep the
+  // priceCents semantics from the old code path (one UPDATE of the default
+  // variation's price_cents). The RPC's demote-pass + min-row guard handle
+  // the partial-unique index on is_default correctly either way.
+  const variationChanges: ItemVariationChange[] =
+    params.variationChanges && params.variationChanges.length > 0
+      ? params.variationChanges
+      : await synthesizeDefaultVariationUpdate({
+          supabase,
+          itemId: params.itemId,
+          priceCents: params.priceCents,
+        });
 
-  if (itemError) {
-    return { ok: false, error: itemError.message };
-  }
+  const itemFields: Record<string, unknown> = {
+    name: baseName,
+    slug,
+    category_id: params.categoryId,
+    product_type: productType,
+    description: params.description ?? null,
+    image_alt: params.imageAlt ?? null,
+  };
 
-  // Update price on the default item_variations row (Migration 1, ADR 0001
-  // §3.1). Items created before Migration 1 had a Default variation
-  // backfilled, so this UPDATE always finds a row.
-  const { error: variationError } = await supabase
-    .from("item_variations")
-    .update({ price_cents: params.priceCents })
-    .eq("item_id", params.itemId)
-    .eq("is_default", true);
+  const { error: rpcError } = await supabase.rpc("update_item_with_variations", {
+    p_item_id: params.itemId,
+    p_item_fields: itemFields as unknown as Database["public"]["Functions"]["update_item_with_variations"]["Args"]["p_item_fields"],
+    p_variation_changes: variationChanges as unknown as Database["public"]["Functions"]["update_item_with_variations"]["Args"]["p_variation_changes"],
+  });
 
-  if (variationError) {
-    return { ok: false, error: variationError.message };
+  if (rpcError) {
+    return { ok: false, error: rpcError.message };
   }
 
   const translations = params.translations
@@ -309,77 +626,61 @@ export async function updateItem(params: {
     );
 
   if (translations.length) {
-    const { data: existingTranslations, error: existingError } = await supabase
+    // Single bulk UPSERT keyed on the (item_id, locale) UNIQUE constraint.
+    //
+    // The earlier split-into-update-vs-insert + Promise.all path raced
+    // against itself: each .update() was a separate Supabase HTTP request
+    // and therefore a separate Postgres transaction. Each transaction
+    // fired the `trg_catalog_search_sync_item_translation` AFTER trigger,
+    // which calls `catalog_search_sync_item_document(item_id)` — a
+    // DELETE+INSERT cycle over `catalog_search_documents`. Two of those
+    // running concurrently would each DELETE the rows they saw at start,
+    // then INSERT — and the second INSERT would hit the unique constraint
+    // `catalog_search_documents_unique_source_in_catalog` because the
+    // first transaction's INSERT had already committed.
+    //
+    // Collapsing to a single .upsert() puts every row in one transaction,
+    // so the trigger fires per row WITHIN the same transaction and the
+    // DELETE in trigger call N sees the INSERTs from call N-1. No race.
+    const upsertRows = translations.map((translation) => ({
+      item_id: params.itemId,
+      locale: translation.locale,
+      name: translation.name,
+      description: translation.description,
+      image_alt: translation.image_alt,
+    }));
+
+    const { error: upsertError } = await supabase
       .from("item_translations")
-      .select("id, locale")
-      .eq("item_id", params.itemId);
+      .upsert(upsertRows, { onConflict: "item_id,locale" });
 
-    if (existingError) {
-      return { ok: false, error: existingError.message };
-    }
-
-    const existingByLocale = new Map(
-      (existingTranslations ?? []).map((row) => [row.locale, row.id]),
-    );
-
-    const updates = translations
-      .filter((translation) => existingByLocale.has(translation.locale))
-      .map((translation) => ({
-        id: existingByLocale.get(translation.locale) as string,
-        item_id: params.itemId,
-        name: translation.name,
-        description: translation.description,
-        image_alt: translation.image_alt,
-      }));
-
-    const inserts = translations
-      .filter((translation) => !existingByLocale.has(translation.locale))
-      .map((translation) => ({
-        item_id: params.itemId,
-        locale: translation.locale,
-        name: translation.name,
-        description: translation.description,
-        image_alt: translation.image_alt,
-      }));
-
-    if (updates.length) {
-      const updateResults = await Promise.all(
-        updates.map((update) =>
-          supabase
-            .from("item_translations")
-            .update({
-              name: update.name,
-              description: update.description,
-              image_alt: update.image_alt,
-            })
-            .eq("id", update.id),
-        ),
-      );
-
-      const updateError = updateResults.find((result) => result.error)?.error;
-      if (updateError) {
-        return {
-          ok: false,
-          error: updateError.message ?? "Failed to update item translations.",
-        };
-      }
-    }
-
-    if (inserts.length) {
-      const { error: insertError } = await supabase
-        .from("item_translations")
-        .insert(inserts);
-
-      if (insertError) {
-        return {
-          ok: false,
-          error: insertError.message ?? "Failed to insert item translations.",
-        };
-      }
+    if (upsertError) {
+      return {
+        ok: false,
+        error: upsertError.message ?? "Failed to save item translations.",
+      };
     }
   }
 
-  await syncItemSearchDocuments({ itemId: params.itemId, client: supabase });
+  // KRA-85 follow-up: replace the attached modifier-list set if the
+  // caller passed one. `undefined` leaves attachments untouched so
+  // legacy code paths keep working unchanged.
+  if (params.modifierAttachments !== undefined) {
+    const syncResult = await syncItemModifierLists({
+      supabase,
+      itemId: params.itemId,
+      catalogId: params.catalogId,
+      desired: params.modifierAttachments,
+    });
+    if (!syncResult.ok) {
+      return { ok: false, error: syncResult.error };
+    }
+  }
+
+  // Search-document sync handled by the DB trigger on items +
+  // item_translations (see createItem for the full rationale). The
+  // previous app-level call here was the cause of the duplicate-key
+  // error merchants saw when saving an item edit.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -557,13 +858,28 @@ export async function deleteItem(params: {
     return { ok: false, error: deleteTranslationsError.message };
   }
 
-  const { error: deleteItemError } = await supabase
+  // .select() to surface the deleted row back. Without it,
+  // .delete() returns no error AND no data when RLS silently denies
+  // the statement (Postgres' default RLS-deny behavior for missing
+  // policies: 0 rows affected, no error). Checking deletedRows.length
+  // catches that case + future missing-RLS-policy regressions; we
+  // raise a clear error instead of silently toasting "deleted" while
+  // the row stays.
+  const { data: deletedRows, error: deleteItemError } = await supabase
     .from("items")
     .delete()
-    .eq("id", item.id);
+    .eq("id", item.id)
+    .select("id");
 
   if (deleteItemError) {
     return { ok: false, error: deleteItemError.message };
+  }
+  if (!deletedRows || deletedRows.length === 0) {
+    return {
+      ok: false,
+      error:
+        "Delete blocked: no row deleted. Likely a missing RLS policy or insufficient role.",
+    };
   }
 
   await updateCatalogByIdAndSlug({
@@ -739,11 +1055,11 @@ export async function duplicateItem(params: {
     } as const;
   }
 
-  // Sync search docs for the clone so it appears in search immediately.
-  // The RPC clones translations but search indexing happens app-side
-  // (syncItemSearchDocuments reads items + translations and upserts the
-  // search row).
-  await syncItemSearchDocuments({ itemId: newItemId, client: supabase });
+  // Search-document sync runs via DB triggers on items +
+  // item_translations (KRA-88's catalog_search_sync_item_document
+  // is SECURITY DEFINER and fires AFTER INSERT). The RPC's inserts
+  // for the clone trigger the same path automatically — no app-level
+  // call needed, and doing it here used to cause duplicate-key errors.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -806,7 +1122,8 @@ export async function setItemActive(params: {
 //
 // For `price_cents` the router doesn't apply — price always lives on the
 // default item_variations row regardless of locale (UZS values are not
-// translated). A separate updateDefaultVariationPrice handler stays simple.
+// translated). Price edits dispatch through `updateItem` with a
+// `variationChanges` payload (KRA-86 — atomic super-RPC).
 
 import {
   routeLocaleWrite,
@@ -883,14 +1200,10 @@ export async function updateItemField(params: {
     }
   }
 
-  // Search index needs a refresh on name/description changes regardless of
-  // which table the write landed in.
-  if (params.field === "name" || params.field === "description") {
-    await syncItemSearchDocuments({
-      itemId: params.itemId,
-      client: supabase,
-    });
-  }
+  // Search index sync happens automatically via the DB trigger on
+  // items / item_translations — the UPDATE / upsert above fires it.
+  // No app-level call needed (and using one caused duplicate-key
+  // errors when the trigger's inserts collided with the app's).
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -900,30 +1213,8 @@ export async function updateItemField(params: {
   return { ok: true } as const;
 }
 
-export async function updateDefaultVariationPrice(params: {
-  catalogId: string;
-  catalogSlug: string;
-  itemId: string;
-  priceCents: number;
-}) {
-  const supabase = await createClient();
+// KRA-86 — `updateDefaultVariationPrice` was removed. Use `updateItem(...)`
+// with a `variationChanges` payload instead (single atomic super-RPC). The
+// helper had zero non-internal callers at removal time; grep confirmed.
 
-  const { error } = await supabase
-    .from("item_variations")
-    .update({ price_cents: params.priceCents })
-    .eq("item_id", params.itemId)
-    .eq("catalog_id", params.catalogId)
-    .eq("is_default", true);
-
-  if (error) {
-    return { ok: false, error: error.message } as const;
-  }
-
-  await updateCatalogByIdAndSlug({
-    catalogId: params.catalogId,
-    catalogSlug: params.catalogSlug,
-  });
-
-  return { ok: true } as const;
-}
 

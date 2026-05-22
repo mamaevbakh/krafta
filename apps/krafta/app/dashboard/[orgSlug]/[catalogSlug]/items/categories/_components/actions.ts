@@ -2,10 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
-import {
-  deleteSearchDocumentsBySourceIds,
-  syncCategorySearchDocuments,
-} from "@/lib/catalogs/search-documents";
+// syncCategorySearchDocuments removed as a caller — DB triggers handle
+// the sync. deleteSearchDocumentsBySourceIds kept for delete cleanup.
+import { deleteSearchDocumentsBySourceIds } from "@/lib/catalogs/search-documents";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 
@@ -151,7 +150,10 @@ export async function createCategory(params: {
     }
   }
 
-  await syncCategorySearchDocuments({ categoryId: category.id, client: supabase });
+  // Search-document sync handled by the DB trigger on catalog_categories +
+  // catalog_category_translations (KRA-90 patched the function the same way
+  // KRA-88 patched the item version). App-level call was redundant and
+  // caught the same duplicate-key bug — removed in lockstep with items.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
@@ -214,80 +216,33 @@ export async function updateCategory(params: {
     .filter((translation) => translation.name.length > 0);
 
   if (translations.length) {
-    const { data: existingTranslations, error: existingError } = await supabase
+    // Single bulk UPSERT keyed on the (category_id, locale) UNIQUE
+    // constraint. Same race-eliminating change applied to item_translations
+    // in the items actions: parallel .update() via Promise.all creates one
+    // transaction per row, each fires the search-sync trigger, the trigger's
+    // DELETE+INSERT collides on catalog_search_documents_unique_source_in_catalog.
+    // Collapsing to one .upsert() puts every row in one transaction.
+    const upsertRows = translations.map((translation) => ({
+      category_id: params.categoryId,
+      locale: translation.locale,
+      name: translation.name,
+      description: translation.description,
+    }));
+
+    const { error: upsertError } = await supabase
       .from("catalog_category_translations")
-      .select("id, locale")
-      .eq("category_id", params.categoryId);
+      .upsert(upsertRows, { onConflict: "category_id,locale" });
 
-    if (existingError) {
-      return { ok: false, error: existingError.message };
-    }
-
-    const existingByLocale = new Map(
-      (existingTranslations ?? []).map((row) => [row.locale, row.id]),
-    );
-
-    const updates = translations
-      .filter((translation) => existingByLocale.has(translation.locale))
-      .map((translation) => ({
-        id: existingByLocale.get(translation.locale) as string,
-        name: translation.name,
-        description: translation.description,
-      }));
-
-    const inserts = translations
-      .filter((translation) => !existingByLocale.has(translation.locale))
-      .map((translation) => ({
-        category_id: params.categoryId,
-        locale: translation.locale,
-        name: translation.name,
-        description: translation.description,
-      }));
-
-    if (updates.length) {
-      const updateResults = await Promise.all(
-        updates.map((update) =>
-          supabase
-            .from("catalog_category_translations")
-            .update({
-              name: update.name,
-              description: update.description,
-            })
-            .eq("id", update.id),
-        ),
-      );
-
-      const updateError = updateResults.find((result) => result.error)?.error;
-      if (updateError) {
-        return {
-          ok: false,
-          error:
-            updateError.message ??
-            "Failed to update category translations.",
-        };
-      }
-    }
-
-    if (inserts.length) {
-      const { error: insertError } = await supabase
-        .from("catalog_category_translations")
-        .insert(inserts);
-
-      if (insertError) {
-        return {
-          ok: false,
-          error:
-            insertError.message ??
-            "Failed to insert category translations.",
-        };
-      }
+    if (upsertError) {
+      return {
+        ok: false,
+        error:
+          upsertError.message ?? "Failed to save category translations.",
+      };
     }
   }
 
-  await syncCategorySearchDocuments({
-    categoryId: params.categoryId,
-    client: supabase,
-  });
+  // Search-document sync via DB trigger — see createCategory above.
 
   await updateCatalogByIdAndSlug({
     catalogId: params.catalogId,
