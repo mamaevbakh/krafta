@@ -77,7 +77,11 @@ export function CartPlacedStep({
   const { tagline, hint } = describePlacedOrder(placedOrder, t);
 
   return (
-    <div className="flex h-full flex-col">
+    // aria-live="polite" + role="status" so a screen reader announces
+    // the confirmation as soon as the drawer transitions to placed
+    // (otherwise the page silently swaps content under the user). The
+    // visible UI is unchanged.
+    <div className="flex h-full flex-col" role="status" aria-live="polite">
       <DrawerTitle className="sr-only">{t("placed.title")}</DrawerTitle>
       <DrawerDescription className="sr-only">{tagline}</DrawerDescription>
       <ScrollArea className="flex-1 overflow-y-auto">
@@ -309,6 +313,12 @@ function SummaryBlock({
   currencySettings: CurrencySettings;
   t: Translator;
 }) {
+  const tipCents = snapshot.tipCents ?? 0;
+  // Tip echoes back only when the customer actually left one. Showing
+  // a "Tip — 0" line on a no-tip order would feel like a prompt for
+  // doubt at exactly the wrong moment (right after they paid).
+  const showTip = tipCents > 0;
+  const totalCents = snapshot.subtotalCents + tipCents;
   return (
     <div className="rounded-xl border border-border bg-background">
       <ul className="divide-y divide-border/60 px-4 pt-2">
@@ -327,10 +337,25 @@ function SummaryBlock({
         ))}
       </ul>
       <Separator />
-      <div className="flex items-center justify-between px-4 py-3 text-sm">
+      <div className="flex items-center justify-between px-4 py-2 text-sm">
         <span className="text-muted-foreground">{t("cart.subtotal")}</span>
-        <span className="font-mono text-base font-semibold tabular-nums text-foreground">
+        <span className="font-mono tabular-nums text-foreground">
           {formatPriceCents(snapshot.subtotalCents, currencySettings)}
+        </span>
+      </div>
+      {showTip ? (
+        <div className="flex items-center justify-between px-4 py-2 text-sm">
+          <span className="text-muted-foreground">{t("cart.tip")}</span>
+          <span className="font-mono tabular-nums text-foreground">
+            {formatPriceCents(tipCents, currencySettings)}
+          </span>
+        </div>
+      ) : null}
+      <Separator />
+      <div className="flex items-center justify-between px-4 py-3 text-sm">
+        <span className="text-muted-foreground">{t("cart.total")}</span>
+        <span className="font-mono text-base font-semibold tabular-nums text-foreground">
+          {formatPriceCents(totalCents, currencySettings)}
         </span>
       </div>
     </div>

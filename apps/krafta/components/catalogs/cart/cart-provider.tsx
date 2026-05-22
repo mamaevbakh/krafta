@@ -47,6 +47,7 @@ export type PlacedOrderSnapshot =
       fields: { tableLabel: string };
       lineItems: CartLineItem[];
       subtotalCents: number;
+      tipCents: number;
     }
   | {
       orderId: string;
@@ -60,6 +61,7 @@ export type PlacedOrderSnapshot =
       };
       lineItems: CartLineItem[];
       subtotalCents: number;
+      tipCents: number;
     }
   | {
       orderId: string;
@@ -73,6 +75,7 @@ export type PlacedOrderSnapshot =
       };
       lineItems: CartLineItem[];
       subtotalCents: number;
+      tipCents: number;
     };
 
 type CartContextValue = {
@@ -750,8 +753,17 @@ export function CartProvider({
     await Promise.allSettled(pendingPromises);
   }, [catalogPath, orgId, summary.lineItems, venueId]);
 
+  // Synchronous double-tap guard. setIsPlacingOrder(true) is async — a
+  // user double-tapping faster than React schedules the re-render could
+  // sneak in a second submission. The ref makes the rejection synchronous.
+  const placeInFlightRef = useRef(false);
+
   const placeOrder: CartContextValue["placeOrder"] = useCallback(
     async (input) => {
+      if (placeInFlightRef.current) {
+        return { ok: false, error: "already_placing" } as const;
+      }
+      placeInFlightRef.current = true;
       setIsPlacingOrder(true);
       try {
         await flush();
@@ -765,10 +777,14 @@ export function CartProvider({
 
         // Snapshot the cart at place-time so the confirmation step can
         // render line items + totals after the local cart is cleared.
+        // tipCents is included so SummaryBlock can echo the customer's
+        // chosen tip on the placed step (they just agreed to it; seeing
+        // it confirmed builds trust before the merchant collects cash).
         const snapshotBase = {
           orderId: result.orderId,
           lineItems: summary.lineItems,
           subtotalCents: summary.subtotalCents,
+          tipCents,
         };
         const snapshot: PlacedOrderSnapshot =
           input.mode === "dine_in"
@@ -808,6 +824,7 @@ export function CartProvider({
         return { ok: false, error: message } as const;
       } finally {
         setIsPlacingOrder(false);
+        placeInFlightRef.current = false;
       }
     },
     [catalogPath, flush, orgId, summary.lineItems, summary.subtotalCents, tipCents, venueId],
