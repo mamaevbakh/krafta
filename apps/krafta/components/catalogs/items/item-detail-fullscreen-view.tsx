@@ -26,12 +26,20 @@
  *
  * Design decisions vs. KRA-94 v1:
  *
- *   • Image capped at 55dvh + object-cover, replacing the prior
- *     "AspectRatio expands until viewport runs out" behavior. A 9:16
- *     image on a 375pt phone used to consume the whole viewport,
- *     pushing the price below the fold. Now the price is always above
- *     the fold; merchants lose some top/bottom crop on tall images,
- *     which is the right trade for commerce.
+ *   • Image container ADAPTS to each photo's natural aspect ratio
+ *     (measured client-side via onLoad), capped at 55dvh. With the
+ *     container's ratio matching the image's own, object-contain shows
+ *     the WHOLE photo — no cropping, no letterboxing in the common
+ *     case. The 55dvh cap still protects "price above the fold" for
+ *     extreme portraits (9:16 etc.): when the cap kicks in, the image
+ *     scales down to fit the capped height with bg-muted bars on the
+ *     sides of the container — the full photo remains visible.
+ *
+ *     Why client-side measurement instead of stored metadata: zero
+ *     schema change, zero migration. The cost is a brief
+ *     bg-muted placeholder on first paint before the natural ratio
+ *     resolves; the catalog's configured ratio is the fallback during
+ *     that window so the layout doesn't jolt.
  *
  *   • Title + category eyebrow moved out of the image overlay into the
  *     white body. The old white-on-dark-gradient pattern was unreadable
@@ -172,6 +180,15 @@ export function ItemDetailFullscreen({
     [],
   );
 
+  // Natural aspect ratio of the loaded image. null until Next.js fires
+  // onLoad and we read naturalWidth/naturalHeight off the DOM node.
+  // While null, the container falls back to the catalog's configured
+  // `ratio` so the layout has a sensible shape during the brief
+  // placeholder phase.
+  const [naturalImageRatio, setNaturalImageRatio] = useState<number | null>(
+    null,
+  );
+
   // Flash state for the "scroll to first invalid required list" affordance.
   // Set when the customer presses Add and validation fails; cleared after
   // ~900ms so the destructive ring fades rather than flickers.
@@ -302,16 +319,16 @@ export function ItemDetailFullscreen({
         </div>
       </div>
 
-      {/* Image — capped at 55dvh. The aspect ratio is honored UP TO
-          that cap; taller-than-cap images get cropped top/bottom via
-          object-cover so the layout doesn't push critical info off-
-          screen. The image area is skipped entirely when no imageUrl —
-          the body starts immediately below the header. */}
+      {/* Image — container adopts the image's natural aspect ratio
+          (measured on load), capped at 55dvh height. With the
+          container shaped like the image, object-contain shows the
+          full photo without cropping. Skipped entirely when no
+          imageUrl. */}
       {imageUrl && (
         <div
           className="relative w-full overflow-hidden bg-muted"
           style={{
-            aspectRatio: ratio,
+            aspectRatio: naturalImageRatio ?? ratio,
             maxHeight: "55dvh",
           }}
         >
@@ -320,8 +337,18 @@ export function ItemDetailFullscreen({
             alt={localizedImageAlt ?? localizedName}
             fill
             sizes="(max-width: 640px) 100vw, 480px"
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
             priority
+            onLoad={(event) => {
+              // Read natural dimensions off the <img> element to size
+              // the container exactly to the photo. Guard against
+              // 0/0 (some Next.js placeholder transitions report
+              // intermediate states before the real image lands).
+              const img = event.currentTarget;
+              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                setNaturalImageRatio(img.naturalWidth / img.naturalHeight);
+              }
+            }}
           />
         </div>
       )}
