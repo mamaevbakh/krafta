@@ -12,6 +12,7 @@ export function BigPhotoCard({
   currencySettings,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5; // fallback if missing
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
@@ -33,6 +34,7 @@ export function BigPhotoCard({
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="h-full w-full object-cover dark:brightness-[0.9]"
+            priority={priority}
           />
         </AspectRatio>
       )}

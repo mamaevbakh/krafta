@@ -11,6 +11,7 @@ export function GlassBlurCard({
   currencySettings,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5;
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
@@ -29,6 +30,7 @@ export function GlassBlurCard({
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
               className="h-full w-full object-cover"
+              priority={priority}
             />
           </AspectRatio>
         )}

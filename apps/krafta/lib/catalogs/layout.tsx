@@ -179,7 +179,7 @@ export function CatalogLayout({
               </p>
             )}
 
-            {categoriesWithItems.map((category) => {
+            {categoriesWithItems.map((category, categoryIndex) => {
               const categorySlug = category.slug ?? String(category.id);
 
               return (
@@ -195,8 +195,15 @@ export function CatalogLayout({
                     </p>
                   ) : (
                     <div className={`grid gap-2 ${itemGridColsClass}`}>
-                      {category.items.map((item) => {
+                      {category.items.map((item, itemIndex) => {
                         const itemSlug = item.slug ?? String(item.id);
+                        // F-9 (storefront audit): the LCP candidate is one
+                        // of the first images in the first category. Mark
+                        // the first 4 items there as priority so next/image
+                        // emits a preload tag and skips lazy-loading.
+                        // Other items still lazy-load.
+                        const isPriority =
+                          categoryIndex === 0 && itemIndex < 4;
 
                         return (
                           <ItemSheetTrigger
@@ -211,6 +218,7 @@ export function CatalogLayout({
                               currencySettings={resolvedCurrency}
                               activeLocale={activeLocale}
                               defaultLocale={defaultLocale}
+                              priority={isPriority}
                             />
                           </ItemSheetTrigger>
                         );

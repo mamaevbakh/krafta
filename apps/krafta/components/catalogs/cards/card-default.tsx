@@ -53,6 +53,7 @@ export function CardMarkup({
   currencySettings,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
     activeLocale,
@@ -70,6 +71,7 @@ export function CardMarkup({
             fill
             sizes="64px"
             className="object-cover"
+            priority={priority}
           />
         </div>
       )}

@@ -7,6 +7,7 @@ export function PhotoRowCard({
   imageUrl,
   activeLocale,
   defaultLocale,
+  priority,
 }: ItemCardProps) {
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
     activeLocale,
@@ -24,6 +25,7 @@ export function PhotoRowCard({
             fill
             sizes="96px"
             className="object-cover"
+            priority={priority}
           />
         </div>
       )}
