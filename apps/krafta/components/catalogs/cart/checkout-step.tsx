@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { isValidUzPhone } from "@/lib/cart/phone";
+
+import { ScheduledTimePicker } from "./scheduled-time-picker";
 import {
   type CurrencySettings,
   defaultCurrencySettings,
@@ -160,19 +162,26 @@ export function CartCheckoutStep({
   const canSubmit = useMemo(() => {
     if (isPlacingOrder) return false;
     if (mode === "dine_in") return tableLabel.trim().length > 0;
+    // ScheduledTimePicker emits "YYYY-MM-DDTHH:mm" when complete; a
+    // half-set value (date but no time) reads "YYYY-MM-DDT", so the
+    // strict check below catches the missing-time case.
+    const isCompleteSchedule = (s: string) =>
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
     if (mode === "pickup") {
       // Pickup phone is optional, but if typed, must validate. Lets the
       // customer leave it blank while still catching typos.
       const phoneOk =
         pickupPhone.trim().length === 0 || isValidUzPhone(pickupPhone);
-      return (pickupSchedule === "asap" || pickupAt.length > 0) && phoneOk;
+      const scheduleOk =
+        pickupSchedule === "asap" || isCompleteSchedule(pickupAt);
+      return scheduleOk && phoneOk;
     }
     // delivery — phone is required (courier callback).
     return (
       deliveryAddress.trim().length > 0 &&
       deliveryName.trim().length > 0 &&
       isValidUzPhone(deliveryPhone) &&
-      (deliverySchedule === "asap" || deliveryAt.length > 0)
+      (deliverySchedule === "asap" || isCompleteSchedule(deliveryAt))
     );
   }, [
     deliveryAddress,
@@ -321,11 +330,12 @@ export function CartCheckoutStep({
                   <FieldLabel htmlFor="pickup-at">
                     {t("checkout.schedule.scheduled")}
                   </FieldLabel>
-                  <Input
+                  <ScheduledTimePicker
                     id="pickup-at"
-                    type="datetime-local"
                     value={pickupAt}
-                    onChange={(event) => setPickupAt(event.target.value)}
+                    onChange={setPickupAt}
+                    datePlaceholder={t("checkout.schedule.pick_date")}
+                    locale={activeLocale}
                   />
                 </Field>
               ) : null}
@@ -444,11 +454,12 @@ export function CartCheckoutStep({
                   <FieldLabel htmlFor="delivery-at">
                     {t("checkout.schedule.scheduled")}
                   </FieldLabel>
-                  <Input
+                  <ScheduledTimePicker
                     id="delivery-at"
-                    type="datetime-local"
                     value={deliveryAt}
-                    onChange={(event) => setDeliveryAt(event.target.value)}
+                    onChange={setDeliveryAt}
+                    datePlaceholder={t("checkout.schedule.pick_date")}
+                    locale={activeLocale}
                   />
                 </Field>
               ) : null}

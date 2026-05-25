@@ -83,6 +83,7 @@ export type StorefrontMessageKey =
   | "checkout.schedule.when"
   | "checkout.schedule.asap"
   | "checkout.schedule.scheduled"
+  | "checkout.schedule.pick_date"
   | "checkout.table.label"
   | "checkout.table.placeholder"
   | "checkout.address.label"
@@ -178,6 +179,7 @@ const EN: MessageTable = {
   "checkout.schedule.when": "When",
   "checkout.schedule.asap": "As soon as possible",
   "checkout.schedule.scheduled": "Schedule",
+  "checkout.schedule.pick_date": "Pick a date",
   "checkout.table.label": "Table",
   "checkout.table.placeholder": "Table number",
   "checkout.address.label": "Address",
@@ -272,6 +274,7 @@ const RU: MessageTable = {
   "checkout.schedule.when": "Когда",
   "checkout.schedule.asap": "Как можно скорее",
   "checkout.schedule.scheduled": "Запланировать",
+  "checkout.schedule.pick_date": "Выберите дату",
   "checkout.table.label": "Стол",
   "checkout.table.placeholder": "Номер стола",
   "checkout.address.label": "Адрес",
@@ -368,6 +371,7 @@ const UZ_LATN: MessageTable = {
   "checkout.schedule.when": "Qachon",
   "checkout.schedule.asap": "Tezroq",
   "checkout.schedule.scheduled": "Rejalashtirish",
+  "checkout.schedule.pick_date": "Sanani tanlang",
   "checkout.table.label": "Stol",
   "checkout.table.placeholder": "Stol raqami",
   "checkout.address.label": "Manzil",
