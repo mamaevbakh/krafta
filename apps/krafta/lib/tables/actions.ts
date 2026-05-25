@@ -217,3 +217,48 @@ export async function regenerateQrShortcode(
   }
   return { ok: false, error: "Failed to generate unique shortcode after retry." };
 }
+
+// ============================================================================
+// setVenueModes — inline pickup/delivery toggle on the QR-codes page
+// ============================================================================
+//
+// The full venue settings form already updates modes_enabled but it
+// asks for every venue field on submit. The QR-codes page just wants
+// to flip pickup or delivery on/off inline so the matching QR card
+// goes from "disabled" to "ready to print" without a context switch.
+
+const VENUE_MODES = ["dine_in", "pickup", "delivery"] as const;
+type VenueMode = (typeof VENUE_MODES)[number];
+
+const setVenueModesSchema = z.object({
+  venueId: uuidSchema,
+  catalogSlug: z.string().min(1),
+  modes: z.array(z.enum(VENUE_MODES)).min(1),
+});
+
+export async function setVenueModes(
+  input: z.input<typeof setVenueModesSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = setVenueModesSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" };
+  }
+  // Dedupe + keep canonical order so the venues_modes_enabled CHECK
+  // stays predictable across writes.
+  const modes: VenueMode[] = VENUE_MODES.filter((m) =>
+    parsed.data.modes.includes(m),
+  );
+  if (modes.length === 0) {
+    return { ok: false, error: "At least one mode must remain enabled." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("venues")
+    .update({ modes_enabled: modes })
+    .eq("id", parsed.data.venueId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/dashboard/[orgSlug]/${parsed.data.catalogSlug}/qr-codes`, "page");
+  return { ok: true };
+}

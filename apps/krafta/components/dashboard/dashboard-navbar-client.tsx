@@ -32,6 +32,7 @@ const DASHBOARD_LINKS = [
   // Items sub-nav when KRA-76 lands.
   { segment: "items/modifiers", label: "Modifiers" },
   { segment: "translations", label: "Translations" },
+  { segment: "qr-codes", label: "QR codes" },
   { segment: "builder", label: "Studio" },
   { segment: "billing", label: "Billing" },
   { segment: "settings", label: "Settings" },
