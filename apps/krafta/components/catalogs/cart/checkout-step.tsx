@@ -150,7 +150,14 @@ export function CartCheckoutStep({
   const [pickupName, setPickupName] = useState("");
   const [pickupPhone, setPickupPhone] = useState("");
   const [pickupNote, setPickupNote] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
+  // Structured delivery address (S7c). The three slots compose into the
+  // single `address` string the server still expects, joined by " · " so
+  // it reads cleanly on a kitchen receipt without the merchant having to
+  // parse a JSONB blob. District is required because it materially
+  // affects courier routing in Tashkent.
+  const [deliveryDistrict, setDeliveryDistrict] = useState("");
+  const [deliveryStreet, setDeliveryStreet] = useState("");
+  const [deliveryBuilding, setDeliveryBuilding] = useState("");
   const [deliveryName, setDeliveryName] = useState("");
   const [deliveryPhone, setDeliveryPhone] = useState("");
   const [deliverySchedule, setDeliverySchedule] = useState<"asap" | "scheduled">(
@@ -176,19 +183,25 @@ export function CartCheckoutStep({
         pickupSchedule === "asap" || isCompleteSchedule(pickupAt);
       return scheduleOk && phoneOk;
     }
-    // delivery — phone is required (courier callback).
+    // delivery — phone is required (courier callback). Address is now
+    // three structured fields; all three required (district materially
+    // affects routing in Tashkent).
     return (
-      deliveryAddress.trim().length > 0 &&
+      deliveryDistrict.trim().length > 0 &&
+      deliveryStreet.trim().length > 0 &&
+      deliveryBuilding.trim().length > 0 &&
       deliveryName.trim().length > 0 &&
       isValidUzPhone(deliveryPhone) &&
       (deliverySchedule === "asap" || isCompleteSchedule(deliveryAt))
     );
   }, [
-    deliveryAddress,
     deliveryAt,
+    deliveryBuilding,
+    deliveryDistrict,
     deliveryName,
     deliveryPhone,
     deliverySchedule,
+    deliveryStreet,
     isPlacingOrder,
     mode,
     pickupAt,
@@ -220,10 +233,22 @@ export function CartCheckoutStep({
       });
       return;
     }
+    // Compose the structured fields into one human-readable address
+    // string for the server. " · " keeps the line scannable on receipts
+    // and the merchant dashboard, and the original sub-parts stay
+    // recoverable by splitting on the same delimiter if we later expose
+    // them in the dashboard. Server validation just checks non-empty.
+    const composedAddress = [
+      deliveryDistrict.trim(),
+      deliveryStreet.trim(),
+      deliveryBuilding.trim(),
+    ]
+      .filter(Boolean)
+      .join(" · ");
     await placeOrder({
       mode: "delivery",
       fields: {
-        address: deliveryAddress.trim(),
+        address: composedAddress,
         recipientName: deliveryName.trim(),
         recipientPhone: deliveryPhone.trim(),
         scheduledFor: deliverySchedule === "scheduled" ? deliveryAt : null,
@@ -393,16 +418,43 @@ export function CartCheckoutStep({
         {mode === "delivery" ? (
           <FieldSet>
             <FieldGroup>
+              {/* Structured address (S7c). Three single-line inputs that
+                  compose into one string for the kitchen receipt:
+                  "District · Street · Building, apt N". District first
+                  because Tashkent couriers route by district first. */}
               <Field>
-                <FieldLabel htmlFor="delivery-address">
-                  {t("checkout.address.label")}
+                <FieldLabel htmlFor="delivery-district">
+                  {t("checkout.address.district.label")}
                 </FieldLabel>
-                <Textarea
-                  id="delivery-address"
-                  value={deliveryAddress}
-                  onChange={(event) => setDeliveryAddress(event.target.value)}
-                  placeholder={t("checkout.address.placeholder")}
-                  className="min-h-[88px] resize-none"
+                <Input
+                  id="delivery-district"
+                  value={deliveryDistrict}
+                  onChange={(event) => setDeliveryDistrict(event.target.value)}
+                  placeholder={t("checkout.address.district.placeholder")}
+                  autoComplete="address-level2"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="delivery-street">
+                  {t("checkout.address.street.label")}
+                </FieldLabel>
+                <Input
+                  id="delivery-street"
+                  value={deliveryStreet}
+                  onChange={(event) => setDeliveryStreet(event.target.value)}
+                  placeholder={t("checkout.address.street.placeholder")}
+                  autoComplete="street-address"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="delivery-building">
+                  {t("checkout.address.building.label")}
+                </FieldLabel>
+                <Input
+                  id="delivery-building"
+                  value={deliveryBuilding}
+                  onChange={(event) => setDeliveryBuilding(event.target.value)}
+                  placeholder={t("checkout.address.building.placeholder")}
                 />
               </Field>
               <Field>
