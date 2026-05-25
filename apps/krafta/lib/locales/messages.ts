@@ -83,10 +83,17 @@ export type StorefrontMessageKey =
   | "checkout.schedule.when"
   | "checkout.schedule.asap"
   | "checkout.schedule.scheduled"
+  | "checkout.schedule.pick_date"
   | "checkout.table.label"
   | "checkout.table.placeholder"
   | "checkout.address.label"
   | "checkout.address.placeholder"
+  | "checkout.address.district.label"
+  | "checkout.address.district.placeholder"
+  | "checkout.address.street.label"
+  | "checkout.address.street.placeholder"
+  | "checkout.address.building.label"
+  | "checkout.address.building.placeholder"
   | "checkout.recipient.label"
   | "checkout.recipient.placeholder"
   | "checkout.phone.label"
@@ -178,10 +185,17 @@ const EN: MessageTable = {
   "checkout.schedule.when": "When",
   "checkout.schedule.asap": "As soon as possible",
   "checkout.schedule.scheduled": "Schedule",
+  "checkout.schedule.pick_date": "Pick a date",
   "checkout.table.label": "Table",
   "checkout.table.placeholder": "Table number",
   "checkout.address.label": "Address",
   "checkout.address.placeholder": "Building, street, city",
+  "checkout.address.district.label": "District",
+  "checkout.address.district.placeholder": "e.g. Mirzo Ulug‘bek",
+  "checkout.address.street.label": "Street",
+  "checkout.address.street.placeholder": "e.g. Amir Temur",
+  "checkout.address.building.label": "Building / Apt",
+  "checkout.address.building.placeholder": "e.g. 12, apt 45",
   "checkout.recipient.label": "Recipient name",
   "checkout.recipient.placeholder": "Your name",
   "checkout.phone.label": "Phone",
@@ -272,10 +286,17 @@ const RU: MessageTable = {
   "checkout.schedule.when": "Когда",
   "checkout.schedule.asap": "Как можно скорее",
   "checkout.schedule.scheduled": "Запланировать",
+  "checkout.schedule.pick_date": "Выберите дату",
   "checkout.table.label": "Стол",
   "checkout.table.placeholder": "Номер стола",
   "checkout.address.label": "Адрес",
   "checkout.address.placeholder": "Дом, улица, город",
+  "checkout.address.district.label": "Район",
+  "checkout.address.district.placeholder": "Напр. Мирзо-Улугбекский",
+  "checkout.address.street.label": "Улица",
+  "checkout.address.street.placeholder": "Напр. Амира Темура",
+  "checkout.address.building.label": "Дом / Квартира",
+  "checkout.address.building.placeholder": "Напр. 12, кв. 45",
   "checkout.recipient.label": "Получатель",
   "checkout.recipient.placeholder": "Ваше имя",
   "checkout.phone.label": "Телефон",
@@ -368,10 +389,17 @@ const UZ_LATN: MessageTable = {
   "checkout.schedule.when": "Qachon",
   "checkout.schedule.asap": "Tezroq",
   "checkout.schedule.scheduled": "Rejalashtirish",
+  "checkout.schedule.pick_date": "Sanani tanlang",
   "checkout.table.label": "Stol",
   "checkout.table.placeholder": "Stol raqami",
   "checkout.address.label": "Manzil",
   "checkout.address.placeholder": "Uy, ko‘cha, shahar",
+  "checkout.address.district.label": "Tuman",
+  "checkout.address.district.placeholder": "Masalan: Mirzo Ulug‘bek",
+  "checkout.address.street.label": "Ko‘cha",
+  "checkout.address.street.placeholder": "Masalan: Amir Temur",
+  "checkout.address.building.label": "Uy / Xonadon",
+  "checkout.address.building.placeholder": "Masalan: 12, xonadon 45",
   "checkout.recipient.label": "Qabul qiluvchi",
   "checkout.recipient.placeholder": "Ismingiz",
   "checkout.phone.label": "Telefon",
