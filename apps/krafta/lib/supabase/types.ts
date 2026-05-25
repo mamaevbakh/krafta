@@ -3371,6 +3371,7 @@ export type Database = {
           metadata: Json
           org_id: string
           shortcode: string
+          table_id: string | null
           table_label: string | null
           updated_at: string
           venue_id: string
@@ -3384,6 +3385,7 @@ export type Database = {
           metadata?: Json
           org_id: string
           shortcode?: string
+          table_id?: string | null
           table_label?: string | null
           updated_at?: string
           venue_id: string
@@ -3397,6 +3399,7 @@ export type Database = {
           metadata?: Json
           org_id?: string
           shortcode?: string
+          table_id?: string | null
           table_label?: string | null
           updated_at?: string
           venue_id?: string
@@ -3417,7 +3420,62 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "qr_codes_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "tables"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "qr_codes_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tables: {
+        Row: {
+          id: string
+          org_id: string
+          venue_id: string
+          label: string
+          position: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          org_id?: string
+          venue_id: string
+          label: string
+          position?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          venue_id?: string
+          label?: string
+          position?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tables_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tables_venue_id_fkey"
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"

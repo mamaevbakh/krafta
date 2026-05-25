@@ -26,6 +26,9 @@ import { createClient } from "@/lib/supabase/server";
 type QrLookup = {
   kind: "main" | "table" | "pickup" | "delivery";
   table_label: string | null;
+  // New (KRA-26 follow-up): table QRs prefer the joined tables.label +
+  // honor tables.is_active. Legacy table_label is the fallback.
+  tables: { label: string; is_active: boolean } | { label: string; is_active: boolean }[] | null;
   catalogs: { slug: string } | { slug: string }[] | null;
 };
 
@@ -41,7 +44,7 @@ export async function GET(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("qr_codes")
-    .select("kind, table_label, catalogs(slug)")
+    .select("kind, table_label, tables(label, is_active), catalogs(slug)")
     .eq("shortcode", code)
     .eq("is_active", true)
     .maybeSingle<QrLookup>();
@@ -62,10 +65,27 @@ export async function GET(
   switch (data.kind) {
     case "main":
       break;
-    case "table":
-      params.set("mode", "dine_in");
-      if (data.table_label) params.set("table", data.table_label);
+    case "table": {
+      // Prefer the joined tables row (new path). Inactive table →
+      // soft-fallback to the bare catalog so a moved/deactivated table
+      // doesn't 404 a customer mid-meal.
+      const tableRel = data.tables;
+      const tableRow = Array.isArray(tableRel) ? tableRel[0] : tableRel;
+      if (tableRow) {
+        if (tableRow.is_active) {
+          params.set("mode", "dine_in");
+          params.set("table", tableRow.label);
+        }
+        // is_active=false → leave params empty; customer lands on
+        // /{catalog_slug} with the mode picker.
+      } else if (data.table_label) {
+        // Legacy path: QR predates the tables entity. Trust the
+        // denormalized label.
+        params.set("mode", "dine_in");
+        params.set("table", data.table_label);
+      }
       break;
+    }
     case "pickup":
       params.set("mode", "pickup");
       break;
