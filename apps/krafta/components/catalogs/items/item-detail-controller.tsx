@@ -16,15 +16,13 @@ import dynamic from "next/dynamic";
 import type { PublicCategoryWithItems, PublicItem } from "@/lib/catalogs/types";
 import type { ItemDetailVariant } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
-import {
-  Drawer,
-  DrawerContent,
-} from "@/components/ui/drawer";
-import { cn } from "@/lib/utils";
-import { ItemDetailSheet } from "@/components/catalogs/items/item-detail-sheet-view";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 
+// S6 (2026-05-25): the legacy bottom-sheet variant is gone — fullscreen
+// is the only render mode. The variant prop on the provider stays for
+// backward compatibility with callers that still pass it (RSC catalog
+// layout, preview page) but is otherwise unused.
 const ItemDetailFullscreen = dynamic(() =>
   import("@/components/catalogs/items/item-detail-fullscreen-view").then(
     (module) => module.ItemDetailFullscreen,
@@ -60,16 +58,12 @@ export function ItemSheetProvider({
   baseHref,
   children,
   itemAspectRatio,
-  itemDetailVariant = "item-sheet",
+  // itemDetailVariant prop is still accepted by the type for backward
+  // compat with older callers, but intentionally not destructured —
+  // only "item-fullscreen" renders now.
   currencySettings,
 }: ItemSheetProviderProps) {
   const { activeLocale, defaultLocale } = useStorefrontLocale();
-  const isFullscreenDetail = itemDetailVariant === "item-fullscreen";
-  const ItemDetailComponent =
-    isFullscreenDetail ? ItemDetailFullscreen : ItemDetailSheet;
-  const itemDetailDrawerClassName = isFullscreenDetail
-    ? "h-[100dvh] p-0"
-    : undefined;
   const normalizedBase = useMemo(
     () => baseHref.replace(/\/+$/, "") || "/",
     [baseHref],
@@ -175,21 +169,21 @@ export function ItemSheetProvider({
     return () => window.removeEventListener("popstate", handlePopState);
   }, [baseSegments, categoryBySlug, itemLookup, itemToCategorySlug]);
 
+  // Fullscreen detail locks document scroll while open. Previously this
+  // ran conditionally on the (now-gone) sheet vs fullscreen split.
   useEffect(() => {
-    if (!isFullscreenDetail || !open) return;
+    if (!open) return;
     const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow =
-      document.documentElement.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
 
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
 
     return () => {
       document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow =
-        previousHtmlOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
     };
-  }, [isFullscreenDetail, open]);
+  }, [open]);
 
   const currentItem = currentItemSlug ? itemLookup[currentItemSlug] : null;
   const currentCategory = currentCategorySlug
@@ -259,59 +253,23 @@ export function ItemSheetProvider({
     return <>{children}</>;
   }
 
-  if (isFullscreenDetail) {
-    return (
-      <ItemSheetContext.Provider value={ctxValue}>
-        {children}
-        {open && currentItem && (
-          <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:p-6">
-            <ItemDetailComponent
-              item={currentItem}
-              category={currentCategory}
-              imageUrl={imageUrl}
-              itemAspectRatio={itemAspectRatio}
-              onClose={closeItem}
-              currencySettings={currencySettings}
-              activeLocale={activeLocale}
-              defaultLocale={defaultLocale}
-            />
-          </div>
-        )}
-      </ItemSheetContext.Provider>
-    );
-  }
-
   return (
     <ItemSheetContext.Provider value={ctxValue}>
       {children}
-
-      <Drawer
-        open={open && !!currentItem}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            closeItem();
-          }
-        }}
-      >
-      <DrawerContent
-        className={cn(
-          "bg-background px-0 pb-4 pt-2 sm:px-0",
-          itemDetailDrawerClassName,
-        )}
-      >
-        {currentItem && (
-          <ItemDetailComponent
+      {open && currentItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:p-6">
+          <ItemDetailFullscreen
             item={currentItem}
             category={currentCategory}
             imageUrl={imageUrl}
             itemAspectRatio={itemAspectRatio}
+            onClose={closeItem}
             currencySettings={currencySettings}
             activeLocale={activeLocale}
             defaultLocale={defaultLocale}
           />
-        )}
-      </DrawerContent>
-      </Drawer>
+        </div>
+      )}
     </ItemSheetContext.Provider>
   );
 }

@@ -51,7 +51,6 @@ const ITEM_DETAIL_LABELS: Record<
   CatalogLayoutSettings["itemDetailVariant"],
   string
 > = {
-  "item-sheet": "Item Sheet",
   "item-fullscreen": "Fullscreen Modal",
 };
 

@@ -151,8 +151,9 @@ export const sectionVariants = Object.keys(
 export const itemCardVariants = Object.keys(
   itemCardRegistry,
 ) as CatalogLayoutSettings["itemCardVariant"][];
+// S6: only fullscreen remains. Type stays as a union so adding a future
+// variant is just an entry in this array + a new component.
 export const itemDetailVariants = [
-  "item-sheet",
   "item-fullscreen",
 ] as CatalogLayoutSettings["itemDetailVariant"][];
 

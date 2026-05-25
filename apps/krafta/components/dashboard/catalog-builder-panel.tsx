@@ -117,7 +117,6 @@ const NAV_DESCRIPTIONS: Record<string, string> = {
 };
 
 const ITEM_DETAIL_LABELS: Record<string, string> = {
-  "item-sheet": "Sheet",
   "item-fullscreen": "Fullscreen",
 };
 
