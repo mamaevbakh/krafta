@@ -462,6 +462,9 @@ export function LibraryCanvas({
                         // KRA-90 added current_source_hash for translation drift detection.
                         // Synthetic orphan bucket isn't a real category so we leave it null.
                         current_source_hash: null,
+                        // 2026-05-25 schema-fix added description for the
+                        // translate-worker; orphans don't have one.
+                        description: null,
                       }}
                       items={itemsByCategory.orphans}
                       translations={translations}

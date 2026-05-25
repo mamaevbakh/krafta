@@ -80,7 +80,7 @@ export default async function TranslationsPage({ params }: PageProps) {
     supabase
       .from("catalog_categories")
       .select(
-        `id, name, slug, position, is_active, current_source_hash,
+        `id, name, description, slug, position, is_active, current_source_hash,
          catalog_category_translations(id, locale, name, description, is_ai_translated, source_hash)`,
       )
       .eq("catalog_id", catalog.id)
@@ -235,7 +235,11 @@ export default async function TranslationsPage({ params }: PageProps) {
   const categories = (categoriesResponse.data ?? []).map((c) => ({
     id: c.id,
     name: c.name,
-    description: null as string | null,
+    // Source-locale description. Until the schema fix on 2026-05-25 this
+    // was hardcoded null (the column didn't exist on catalog_categories);
+    // now it threads through so the side-by-side translation editor can
+    // show the source text for the AI to translate from.
+    description: c.description,
     context: null,
     is_active: c.is_active,
     current_source_hash: c.current_source_hash,
