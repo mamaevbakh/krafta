@@ -115,6 +115,7 @@ import type { ItemDetailProps } from "@/lib/catalogs/layout-registry";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { useOptionalCart } from "@/components/catalogs/cart";
+import { modifierSignature } from "@/lib/cart/modifier-signature";
 import {
   ModifierPicker,
   modifierListFieldsetId,
@@ -455,28 +456,34 @@ export function ItemDetailFullscreen({
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Bottom CTA — Careem-pattern split
+// Bottom CTA — config-state-aware
 //
-// Layout:
-//   [ 🗑 / − N + ]   [   Add  •  $X.XX   ]
-//   ^ in-progress     ^ filled, primary
-//     qty stepper       price = (item + mods) × qty
+// Two render states:
 //
-// State:
-//   * In-progress qty lives locally to this component (default 1).
-//     Bumping it does NOT touch the cart — it's the count the customer
-//     wants to add IN ONE SHOT. After Add commits, qty resets to 1 and
-//     the picker stays open so the customer can change mods and add
-//     another configuration.
-//   * At qty 1 the left button shows a trash icon (clear visual signal
-//     "next tap removes this in-progress add"). Tapping it at qty 1
-//     closes the modal — same intent as "I don't want to add this."
+//   1. Current selections NOT in cart yet:
+//          [           Add  •  $X.XX                ]
+//      One primary CTA. Tapping commits qty=1 of the current config.
+//      The "in-progress qty stepper" pattern (a separate counter
+//      defaulting to 1 that lets the customer pre-multiply before
+//      add) was removed — customers found it confusing when no
+//      matching cart line existed yet, and qty>1 of the SAME custom
+//      configuration is rare in practice. If they want more, they
+//      tap Add, then bump via the stepper that appears in state 2.
 //
-// Disabled / gated state:
-//   * `pickerState.invalidRequiredCount > 0` → button disabled, text
-//     reads "Make N required selection(s)" + the running price still
-//     shows. Tapping calls onValidateBeforeAdd which scrolls the first
-//     unfilled required list into view and flashes it.
+//   2. Current selections MATCH a cart line:
+//          [ 🗑 / − N + ]   [    In cart  ·  $X.XX     ]
+//      The stepper operates directly on the matching cart line
+//      (bumpQuantity / removeItem semantics). The right side shows
+//      the in-cart line total + a passive "In cart" label so the
+//      customer knows their changes are reflected in the cart.
+//      Different modifier picks make state 1 reappear (creating a
+//      new cart line on Add).
+//
+// Disabled / gated state (only applies to state 1):
+//   * `pickerState.invalidRequiredCount > 0` → button disabled,
+//     text reads "Make N required selection(s)". Tapping calls
+//     onValidateBeforeAdd which scrolls the first unfilled required
+//     list into view and flashes it.
 // ──────────────────────────────────────────────────────────────────────
 
 function ItemDetailBottomCta(props: {
@@ -499,36 +506,54 @@ function ItemDetailBottomCta(props: {
     onValidateBeforeAdd,
     onClose,
   } = props;
-  const [qty, setQty] = useState(1);
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const t = (
     key: Parameters<typeof getStorefrontMessage>[0],
     vars?: Record<string, string | number>,
   ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
-  // Running unit price = base + sum(selected modifier deltas × their qty).
-  // Total price = unit × in-progress qty. Recomputes synchronously as
-  // the customer toggles modifiers or bumps qty.
+  // Modifier signature for the customer's current selections. Must
+  // match the server-side dedup logic in lib/cart/orders.ts byte-for-
+  // byte so the matchingLine lookup below resolves correctly.
+  const currentSignature = modifierSignature(
+    pickerState.selections.map((s) => ({
+      listId: s.modifierListId,
+      modifierId: s.modifierId,
+      quantity: s.quantity,
+      text_value: s.text_value,
+    })),
+  );
+
+  // Look for an existing cart line whose (item, variation?, modifier
+  // signature) exactly matches the current selections. When found, we
+  // render the stepper variant instead of the Add button — same
+  // pattern as AddToCartButton. Variation match is permissive when
+  // the picker hasn't named a variation (the server resolves to the
+  // default), matching the AddToCartButton heuristic.
+  const matchingLine = cart.summary.lineItems.find((line) => {
+    if (line.catalog_item_id !== itemId) return false;
+    const lineSig = modifierSignature(
+      line.modifiers
+        .filter((m) => m.catalog_modifier_list_id !== null)
+        .map((m) => ({
+          listId: m.catalog_modifier_list_id as string,
+          modifierId: m.catalog_modifier_id,
+          quantity: m.quantity,
+          text_value: m.text_value,
+        })),
+    );
+    return lineSig === currentSignature;
+  });
+
+  // Running unit price for the Add CTA = base + sum(modifier deltas × qty).
   const modifierDeltaCents = pickerState.selections.reduce(
     (sum, sel) => sum + sel.basePriceCentsDelta * sel.quantity,
     0,
   );
   const unitPriceCents = basePriceCents + modifierDeltaCents;
-  const totalPriceCents = unitPriceCents * qty;
 
   const requiredCount = pickerState.invalidRequiredCount;
   const isGated = requiredCount > 0;
-
-  const handleDecrement = () => {
-    if (qty > 1) {
-      setQty(qty - 1);
-    } else if (onClose) {
-      // qty=1 + trash tap = "I don't want this" → close the modal.
-      onClose();
-    }
-  };
-
-  const handleIncrement = () => setQty(qty + 1);
 
   const handleAdd = async () => {
     if (!onValidateBeforeAdd()) return;
@@ -537,7 +562,6 @@ function ItemDetailBottomCta(props: {
         itemId,
         name: itemName,
         basePriceCents,
-        quantity: qty,
         modifiers: pickerState.selections.map((s) => ({
           modifierListId: s.modifierListId,
           modifierId: s.modifierId,
@@ -556,96 +580,107 @@ function ItemDetailBottomCta(props: {
           },
         },
       });
-      // Reset in-progress qty so the picker can be used for another
-      // configuration. Don't auto-close — Careem doesn't either; let
-      // the customer choose to view the cart or add another.
-      setQty(1);
+      // No auto-close — Kcal/Careem don't either; once added, the CTA
+      // flips to the stepper variant so the customer can bump/remove
+      // this configuration without leaving the detail.
     } catch {
       // cart-provider toasts the error already.
     }
   };
 
+  // ── State 2: current selections already in cart ───────────────────
+  // Stepper drives the existing cart line directly (no in-progress qty
+  // intermediation). + bumps; − decrements; trash (at qty 1) removes
+  // the line. The right-side label confirms the line total so the
+  // customer sees their state without opening the cart drawer.
+  if (matchingLine) {
+    const inCartTotal = matchingLine.total_price_cents;
+    return (
+      <div className="flex w-full items-stretch gap-3">
+        <div
+          className="inline-flex h-11 items-center gap-0 rounded-md border border-input bg-background"
+          role="group"
+          aria-label="Cart quantity for this configuration"
+        >
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={() => cart.bumpQuantity(matchingLine.id, -1)}
+            className="h-11 w-10 rounded-md hover:bg-muted"
+            aria-label={
+              matchingLine.quantity > 1 ? "Decrease quantity" : "Remove from cart"
+            }
+          >
+            {matchingLine.quantity > 1 ? (
+              <Minus className="size-4" aria-hidden />
+            ) : (
+              <Trash2 className="size-4" aria-hidden />
+            )}
+          </Button>
+          <span
+            className="min-w-[1.75ch] px-1 text-center font-mono text-sm font-semibold tabular-nums"
+            aria-live="polite"
+          >
+            {matchingLine.quantity}
+          </span>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={() => cart.bumpQuantity(matchingLine.id, +1)}
+            className="h-11 w-10 rounded-md hover:bg-muted"
+            aria-label="Increase quantity"
+          >
+            <Plus className="size-4" aria-hidden />
+          </Button>
+        </div>
+
+        {/* Passive "in cart" indicator with running line total. Not
+            interactive — communicates "your changes via the stepper
+            are reflected in the cart now." Outline variant so it
+            doesn't read as a tappable primary CTA. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          onClick={() => cart.open()}
+          className="h-11 min-w-0 flex-1 text-sm font-semibold tabular-nums"
+        >
+          <ShoppingCart className="mr-2 size-4 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">
+            {t("add_to_cart.view")}
+            {" · "}
+            {formatPriceCents(inCartTotal, currencySettings)}
+          </span>
+        </Button>
+      </div>
+    );
+  }
+
+  // ── State 1: current selections NOT in cart yet ───────────────────
+  // Single full-width Add CTA. Gated state swaps copy + disables.
   const addButtonLabel = isGated
     ? requiredCount === 1
       ? t("add_to_cart.gated_required_one")
       : t("add_to_cart.gated_required_many", { count: requiredCount })
     : t("add_to_cart.label_with_price", {
-        price: formatPriceCents(totalPriceCents, currencySettings),
+        price: formatPriceCents(unitPriceCents, currencySettings),
       });
 
   return (
-    <div className="flex w-full items-stretch gap-3">
-      {/* In-progress qty stepper — outline-bordered, neutral color so it
-          doesn't compete with the primary Add button. Buttons are
-          h-11 w-10 (44px tall — Apple HIG minimum touch target — and
-          40px wide instead of 48, which buys 16px back for the localized
-          Add label on the right. Russian / Uzbek translations of the
-          gating message run 30+ chars and were getting clipped on
-          375-390px viewports). */}
-      <div
-        className="inline-flex h-11 items-center gap-0 rounded-md border border-input bg-background"
-        role="group"
-        aria-label="Quantity to add"
-      >
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={handleDecrement}
-          className="h-11 w-10 rounded-md hover:bg-muted"
-          aria-label={qty > 1 ? "Decrease quantity" : "Cancel"}
-        >
-          {qty > 1 ? (
-            <Minus className="size-4" aria-hidden />
-          ) : (
-            <Trash2 className="size-4" aria-hidden />
-          )}
-        </Button>
-        <span
-          className="min-w-[1.75ch] px-1 text-center font-mono text-sm font-semibold tabular-nums"
-          aria-live="polite"
-        >
-          {qty}
-        </span>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={handleIncrement}
-          className="h-11 w-10 rounded-md hover:bg-muted"
-          aria-label="Increase quantity"
-        >
-          <Plus className="size-4" aria-hidden />
-        </Button>
-      </div>
-
-      {/* Primary add button. Disabled when required selections aren't
-          met; copy switches to the gating message in that state. The
-          label uses the default sans (Geist) so the "Add" / gating
-          copy reads as plain UI text; tabular-nums alone keeps the
-          interpolated price digit-aligned within the label. Was
-          font-mono on the whole button which made the localized copy
-          ("2 ta majburiy tanlovni bajaring") read as a monospace
-          terminal line — wrong tonally. */}
-      <Button
-        type="button"
-        size="lg"
-        onClick={handleAdd}
-        disabled={isGated}
-        className={cn(
-          // Shrunk from h-12 → h-11 to match the stepper height, and
-          // text-base → text-sm so the longer RU/UZ gating copies
-          // ("2 ta majburiy tanlovni bajaring") fit without clipping
-          // on 375-390px viewports. min-w-0 + the inner truncate span
-          // give a hard cap if anything still overflows in a future
-          // locale.
-          "h-11 min-w-0 flex-1 text-sm font-semibold tabular-nums",
-          "disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
-        )}
-      >
-        <ShoppingCart className="mr-2 size-4 shrink-0" aria-hidden />
-        <span className="min-w-0 truncate">{addButtonLabel}</span>
-      </Button>
-    </div>
+    <Button
+      type="button"
+      size="lg"
+      onClick={handleAdd}
+      disabled={isGated}
+      className={cn(
+        "h-11 w-full min-w-0 text-sm font-semibold tabular-nums",
+        "disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
+      )}
+    >
+      <ShoppingCart className="mr-2 size-4 shrink-0" aria-hidden />
+      <span className="min-w-0 truncate">{addButtonLabel}</span>
+    </Button>
   );
 }

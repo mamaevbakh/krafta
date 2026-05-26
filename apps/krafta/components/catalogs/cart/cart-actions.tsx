@@ -132,41 +132,53 @@ export function CartActions({
 
   const handleIncrement = () => {
     if (!lastLine) return;
-    // Customisable + already-in-cart: open the disambiguation drawer so
-    // the customer chooses which existing config to bump (or starts a
-    // new combo). Matches the Careem / Kcal pattern from the user-
-    // provided screenshot — silent bump-the-last-one creates the "I
-    // can't tell which one moved" trap.
-    if (hasModifiers) {
+    // Customisable + MULTIPLE configs in cart: open the disambiguation
+    // drawer so the customer picks which config to bump. Opening the
+    // drawer for a single config (the common case) is unnecessary
+    // friction — there's nothing to disambiguate, just silently bump
+    // the only config. Drawer is reserved for the ambiguous case.
+    if (hasModifiers && matchingLines.length > 1) {
       setCustomisationsOpen(true);
       return;
     }
-    // Simple item: bump qty via addItem so this stepper shares the same
-    // debounce key as the item-detail's "+" — both surfaces feed
-    // pendingAddTimers keyed by (itemId, variationId, modifierSig).
+    // Single config (simple OR customisable): bump qty via addItem so
+    // this stepper shares the same debounce key as the item-detail's
+    // "+". For customisable items we echo the line's modifiers so the
+    // dedup key matches and the existing line is bumped (not a new
+    // placeholder added alongside).
     void cart.addItem({
       itemId,
       name: itemName,
       basePriceCents,
       variationId: lastLine.catalog_variation_id ?? undefined,
       variationName: lastLine.variation_name ?? null,
+      modifiers: hasModifiers
+        ? lastLine.modifiers
+            .filter((m) => m.catalog_modifier_list_id !== null)
+            .map((m) => ({
+              modifierListId: m.catalog_modifier_list_id as string,
+              modifierId: m.catalog_modifier_id,
+              quantity: m.quantity,
+              name: m.name,
+              basePriceCentsDelta: m.base_price_cents_delta,
+              text_value: m.text_value,
+            }))
+        : undefined,
     });
   };
 
   const handleDecrement = () => {
     if (!lastLine) return;
-    // Customisable + already-in-cart: same drawer as the + path. − on a
-    // catalog card with 2+ configs is ambiguous; the drawer lets the
-    // customer pick which config to decrement or remove.
-    if (hasModifiers) {
+    // Same rule as +: drawer only when there's actual ambiguity
+    // (multiple configs). Single config = silent decrement / remove.
+    if (hasModifiers && matchingLines.length > 1) {
       setCustomisationsOpen(true);
       return;
     }
-    // Simple item: delta-based bump reads latest qty from summaryRef
-    // (NOT render-stale lastLine.quantity), so rapid taps don't all
-    // compute the same target. bumpQuantity routes to removeItem
-    // internally when next ≤ 0, swapping the icon back to Trash on
-    // the next render.
+    // bumpQuantity reads latest qty from summaryRef (NOT render-stale
+    // lastLine.quantity), so rapid taps don't all compute the same
+    // target. Routes to removeItem internally when next ≤ 0, swapping
+    // the icon back to Trash on the next render.
     cart.bumpQuantity(lastLine.id, -1);
   };
 
