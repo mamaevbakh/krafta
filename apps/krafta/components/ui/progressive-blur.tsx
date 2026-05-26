@@ -39,7 +39,7 @@ type ProgressiveBlurProps = React.HTMLAttributes<HTMLDivElement> & {
 export function ProgressiveBlur({
   className,
   position = "bottom",
-  height = "150px",
+  height = "80px",
   blurAmount = "4px",
   backgroundColor,
   style,
@@ -70,7 +70,13 @@ export function ProgressiveBlur({
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none absolute left-0 right-0 select-none",
+        // `fixed` (not `absolute`) so the band stays glued to the
+        // viewport edge while the page scrolls. With `absolute` the
+        // blur anchors to the nearest positioned ancestor (the body
+        // in storefront usage), which means it moves with the
+        // scrolled content instead of with the chrome it's supposed
+        // to be reinforcing.
+        "pointer-events-none fixed left-0 right-0 select-none",
         className,
       )}
       style={{
