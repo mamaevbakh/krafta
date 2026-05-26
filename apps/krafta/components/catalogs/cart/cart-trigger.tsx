@@ -61,17 +61,30 @@ export function CartTrigger({
     <Button
       type="button"
       size="icon"
+      variant="secondary"
       onClick={open}
       aria-label={
         showCount ? `Open cart (${itemCount} items)` : "Open cart"
       }
-      className={cn("relative h-11 w-11 rounded-full", className)}
+      className={cn(
+        // bg-muted (secondary) instead of bg-primary so the trigger
+        // blends into the storefront-dock's frosted-glass surface
+        // instead of reading as a bright sticker pasted on the dark
+        // pill. The badge does the work of attention-grabbing; the
+        // button doesn't need to scream.
+        "relative h-10 w-10 rounded-full bg-muted text-foreground hover:bg-muted/80",
+        className,
+      )}
     >
-      <ShoppingCart className="h-5 w-5" />
+      <ShoppingCart className="h-4 w-4" />
       {showCount ? (
+        // Inverted-tone badge — bg-foreground (off-white/dark in
+        // light/dark mode) on a muted button reads as a confident
+        // status pip, not a candy-colored sticker. Tighter offset
+        // (-top-1.5 -right-1.5) so it overlaps the button edge by
+        // less, looking integrated rather than stuck on.
         <Badge
-          className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full px-1.5 py-0 text-xs"
-          variant="secondary"
+          className="absolute -right-1.5 -top-1.5 h-5 min-w-5 rounded-full bg-foreground px-1.5 py-0 text-[10px] font-semibold text-background"
         >
           {itemCount}
         </Badge>

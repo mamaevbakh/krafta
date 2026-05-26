@@ -3,12 +3,6 @@
 import * as React from "react";
 import { Search } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import {
-  InputGroup,
-  InputGroupAddon,
-} from "@/components/ui/input-group";
 import { ProgressiveBlur } from "@/components/ui/progressive-blur";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { PublicCategoryWithItems } from "@/lib/catalogs/types";
@@ -80,9 +74,12 @@ export function StorefrontDock({
       />
 
       {/* Dock shell — fixed bottom-center, safe-area aware, theme-blurred.
-          The ButtonGroup composition (search input + cart icon) sits
-          inside a rounded background pill so the two children read as
-          one cohesive element. */}
+          The search slot + cart slot are direct flex siblings inside the
+          dock pill (no nested ButtonGroup / InputGroup). That keeps the
+          composition reading as one cohesive surface rather than
+          "pill-within-pill + sticker." Children share the dock's
+          background and only differ by shape (rounded-full vs square
+          icon button) — the visual language stays unified. */}
       <div
         className={cn(
           "fixed inset-x-0 bottom-0 z-40 px-4",
@@ -90,65 +87,51 @@ export function StorefrontDock({
         )}
       >
         <div className="mx-auto flex w-full max-w-md items-center justify-center">
-          <ButtonGroup
+          <div
             className={cn(
-              // Pill aesthetic: rounded-full, subtle border + shadow.
-              // backdrop-blur-xl + bg-background/85 gives the dock its
-              // own frosted-glass surface on top of the progressive
-              // blur band above — together they read as a polished
-              // floating element, not a flat overlay.
-              "rounded-full border border-border bg-background/85 p-1 shadow-lg backdrop-blur-xl",
-              // Ensure children sit tight; ButtonGroup defaults stack
-              // them as a row already.
-              "items-center gap-1",
+              // Outer dock pill: rounded-full, subtle border + shadow,
+              // frosted-glass background. Padding p-1 gives breathing
+              // room around the inner h-10 children.
+              "flex items-center gap-1 rounded-full border border-border bg-background/85 p-1 shadow-lg backdrop-blur-xl",
+              "w-full",
             )}
           >
-            {/* Search "input" — actually a styled button. Tap → open
-                the CatalogSearch dialog (real input lives there). This
-                avoids the focus-then-modal sequence that mobile
-                keyboards handle awkwardly. */}
-            <ButtonGroup className="flex-1">
-              <InputGroup
-                role="button"
-                tabIndex={0}
-                onClick={() => setSearchOpen(true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSearchOpen(true);
-                  }
-                }}
-                aria-label={t("search.open_aria")}
-                className={cn(
-                  "h-11 cursor-pointer rounded-full border-0 bg-transparent shadow-none transition-colors",
-                  "hover:bg-muted/40",
-                  // Match focus ring style of the cart icon button.
-                  "focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-                )}
-              >
-                <InputGroupAddon align="inline-start">
-                  <Search className="size-4" />
-                </InputGroupAddon>
-                {/* Read-only text node that mimics an input placeholder.
-                    Real <input> would steal keyboard focus on tap —
-                    we want a deliberate tap → modal flow instead. */}
-                <span
-                  className="flex-1 truncate pl-1 text-sm text-muted-foreground"
-                  data-slot="input-group-control"
-                >
-                  {t("search.placeholder")}
-                </span>
-              </InputGroup>
-            </ButtonGroup>
+            {/* Search slot — plain flex row styled as a search field.
+                Tap → opens the CatalogSearch dialog (the real <input>
+                lives in the dialog so the mobile keyboard pops with
+                proper focus handling). Bg-transparent + a subtle
+                hover state lets the slot read as part of the dock,
+                not a nested pill. */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setSearchOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSearchOpen(true);
+                }
+              }}
+              aria-label={t("search.open_aria")}
+              className={cn(
+                "flex h-10 flex-1 cursor-pointer items-center gap-2 rounded-full px-4",
+                "text-sm text-muted-foreground transition-colors",
+                "hover:bg-muted/40",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              )}
+            >
+              <Search className="size-4 shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1 truncate">
+                {t("search.placeholder")}
+              </span>
+            </div>
 
-            {/* Cart icon — slot-mounted via the refactored CartTrigger.
-                hideWhenEmpty (default) keeps the dock minimal when the
-                cart has nothing. Customer adds first item → trigger
-                appears, dock visually extends. */}
-            <ButtonGroup>
-              <CartTrigger />
-            </ButtonGroup>
-          </ButtonGroup>
+            {/* Cart slot — refactored CartTrigger renders a secondary-
+                tone icon button (h-10 w-10 rounded-full) so it matches
+                the dock's tonality. Hides entirely when cart is empty
+                so the dock collapses to a single-slot search-only pill. */}
+            <CartTrigger />
+          </div>
         </div>
       </div>
 
