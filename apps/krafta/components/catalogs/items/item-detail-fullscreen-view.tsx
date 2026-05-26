@@ -294,7 +294,7 @@ export function ItemDetailFullscreen({
   // (which already has the body scroll-locked).
   return (
     <div
-      className="mx-auto flex h-dvh w-full max-w-[480px] flex-col overflow-y-auto bg-background text-foreground md:h-[85dvh] md:rounded-sm md:shadow-xl"
+      className="mx-auto flex h-dvh w-full max-w-[480px] flex-col overflow-y-auto bg-background text-foreground md:h-[85dvh] md:rounded-sm md:shadow-xl [&::-webkit-scrollbar]:hidden [scrollbar-width:none]"
     >
       {/* Floating chrome — Share + Close. The outer sticky div has
           h-0 + no background so it takes ZERO vertical space; the
@@ -615,14 +615,20 @@ function ItemDetailBottomCta(props: {
       </div>
 
       {/* Primary add button. Disabled when required selections aren't
-          met; copy switches to the gating message in that state. */}
+          met; copy switches to the gating message in that state. The
+          label uses the default sans (Geist) so the "Add" / gating
+          copy reads as plain UI text; tabular-nums alone keeps the
+          interpolated price digit-aligned within the label. Was
+          font-mono on the whole button which made the localized copy
+          ("2 ta majburiy tanlovni bajaring") read as a monospace
+          terminal line — wrong tonally. */}
       <Button
         type="button"
         size="lg"
         onClick={handleAdd}
         disabled={isGated}
         className={cn(
-          "h-12 flex-1 font-mono text-base font-semibold tabular-nums",
+          "h-12 flex-1 text-base font-semibold tabular-nums",
           "disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
         )}
       >

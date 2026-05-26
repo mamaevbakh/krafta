@@ -122,6 +122,11 @@ export type StorefrontMessageKey =
   // aren't met yet. `{count}` is the number of unfilled required lists.
   | "add_to_cart.gated_required_one"
   | "add_to_cart.gated_required_many"
+  // Disambiguation drawer that opens when the customer taps +/- on a
+  // customisable item already in cart. Lists each existing config plus
+  // an "Add new customised item" CTA.
+  | "customisations.title"
+  | "customisations.add_new"
   // Errors (interpolation-aware — use `{var}` placeholders in the string)
   | "errors.network"
   | "errors.item_not_found"
@@ -228,6 +233,8 @@ const EN: MessageTable = {
   "add_to_cart.adding": "Adding…",
   "add_to_cart.gated_required_one": "Make 1 required selection",
   "add_to_cart.gated_required_many": "Make {count} required selections",
+  "customisations.title": "Your customisations for this item",
+  "customisations.add_new": "Add new customised item",
 
   "errors.network":
     "Network issue. Check your connection and try again.",
@@ -333,6 +340,8 @@ const RU: MessageTable = {
   "add_to_cart.adding": "Добавляем…",
   "add_to_cart.gated_required_one": "Сделайте 1 обязательный выбор",
   "add_to_cart.gated_required_many": "Сделайте {count} обязательных выборов",
+  "customisations.title": "Ваши настройки этого блюда",
+  "customisations.add_new": "Добавить ещё с другими настройками",
 
   "errors.network": "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   "errors.item_not_found": "Эта позиция больше недоступна.",
@@ -441,6 +450,8 @@ const UZ_LATN: MessageTable = {
   "add_to_cart.adding": "Qo‘shilmoqda…",
   "add_to_cart.gated_required_one": "1 ta majburiy tanlovni bajaring",
   "add_to_cart.gated_required_many": "{count} ta majburiy tanlovni bajaring",
+  "customisations.title": "Bu mahsulot uchun sozlamalaringiz",
+  "customisations.add_new": "Boshqa sozlamalar bilan qo‘shish",
 
   "errors.network": "Internet bilan muammo. Aloqani tekshirib qaytadan urinib ko‘ring.",
   "errors.item_not_found": "Bu taom endi mavjud emas.",

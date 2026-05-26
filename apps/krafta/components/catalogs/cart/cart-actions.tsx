@@ -5,10 +5,12 @@ import { Minus, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
 import { AnimatedQty } from "./animated-qty";
 import { useOptionalCart } from "./cart-provider";
+import { CustomisationsDrawer } from "./customisations-drawer";
 import { useItemSheet } from "../items/item-detail-controller";
 
 type CartActionsProps = {
@@ -18,8 +20,17 @@ type CartActionsProps = {
   itemName: string;
   basePriceCents: number;
   /** True when the item has at least one modifier list (forces the
-   *  customer through the configuration sheet on first Add). */
+   *  customer through the configuration sheet on first Add, and routes
+   *  +/- on the catalog stepper through the customisations drawer
+   *  when at least one config is already in cart). */
   hasModifiers: boolean;
+  /** Photo URL forwarded to the customisations drawer so each config row
+   *  shows a thumbnail. May be null for items without a photo — the
+   *  drawer renders a muted placeholder square instead. */
+  imageUrl?: string | null;
+  /** Currency settings forwarded to the customisations drawer for
+   *  per-config price formatting. */
+  currencySettings?: CurrencySettings;
   /** Visual position. "floating" = absolute bottom-right pill overlapping
    *  the card photo (Careem big-photo pattern). Use "inline" inside
    *  list-row cards where a floating overlay looks wrong. */
@@ -27,15 +38,26 @@ type CartActionsProps = {
 };
 
 /**
- * Catalog-card cart action surface — renders one of two states using the
- * shadcn `ButtonGroup` primitive for cohesive composition.
+ * Catalog-card cart action surface — renders one of three states:
  *
  *   1. **Not in cart** — single "Add" pill. Tap adds (simple items) or
  *      opens the item detail to configure (customisable items).
  *
- *   2. **In cart** — `[🗑/− N +]` 3-button group. + bumps the
- *      most-recently-added matching cart line; − decrements; at qty=1
- *      the − slot becomes a trash icon that removes the line entirely.
+ *   2. **In cart (simple item)** — `[🗑/− N +]` 3-button group. + bumps;
+ *      − decrements; at qty=1 the − slot becomes a trash icon that
+ *      removes the line entirely. Each tap dispatches directly through
+ *      bumpQuantity / addItem — no extra disambiguation surface.
+ *
+ *   3. **In cart (customisable item)** — same stepper visual, BUT taps
+ *      open the CustomisationsDrawer (Careem / Kcal pattern). The
+ *      drawer lists each existing config with its own per-config
+ *      stepper and an "Add new customised item" CTA. Avoids the
+ *      ambiguity of "I tapped + on a card with 2 configs — which one
+ *      did it bump?" that always hits when N > 1.
+ *
+ * Below the action surface, items with modifiers also render a small
+ * "Customisable" hint — the same affordance Kcal/Careem use to signal
+ * "this opens a configurator, it's not a one-tap add."
  *
  * Cart context is optional: when the catalog has cart disabled
  * (`settings_behavior.enableCart=false`), `useOptionalCart` returns null
@@ -53,6 +75,8 @@ export function CartActions({
   itemName,
   basePriceCents,
   hasModifiers,
+  imageUrl = null,
+  currencySettings,
   position = "floating",
 }: CartActionsProps) {
   const cart = useOptionalCart();
@@ -68,6 +92,11 @@ export function CartActions({
   React.useEffect(() => {
     setHasMounted(true);
   }, []);
+
+  // Customisations drawer state. Only ever opens for `hasModifiers` items
+  // that have at least one line in cart — the disambiguation only makes
+  // sense when there's an existing config to either bump or add-another-of.
+  const [customisationsOpen, setCustomisationsOpen] = React.useState(false);
 
   // Match cart lines for this item id, regardless of variation or
   // modifier signature. Multiple lines for the same item (different
@@ -103,43 +132,41 @@ export function CartActions({
 
   const handleIncrement = () => {
     if (!lastLine) return;
-    // Bump qty via addItem (NOT updateQuantity) so this stepper shares the
-    // same debounce key as the item-detail's "+" — both surfaces feed
-    // pendingAddTimers keyed by (itemId, variationId, modifierSig). Without
-    // this, rapid taps across the catalog card AND the open item detail
-    // race two distinct debounce timers and one response gets discarded.
-    //
-    // Echo the existing line's variation + modifiers so the dedup key
-    // matches and the cart-provider merges into the same line instead of
-    // creating a parallel placeholder. For items with no modifiers this is
-    // an empty array; for customisable items it mirrors the most-recently
-    // added config — tapping "+" on a card with 2 configs in cart bumps
-    // the most recent one (Careem behavior).
+    // Customisable + already-in-cart: open the disambiguation drawer so
+    // the customer chooses which existing config to bump (or starts a
+    // new combo). Matches the Careem / Kcal pattern from the user-
+    // provided screenshot — silent bump-the-last-one creates the "I
+    // can't tell which one moved" trap.
+    if (hasModifiers) {
+      setCustomisationsOpen(true);
+      return;
+    }
+    // Simple item: bump qty via addItem so this stepper shares the same
+    // debounce key as the item-detail's "+" — both surfaces feed
+    // pendingAddTimers keyed by (itemId, variationId, modifierSig).
     void cart.addItem({
       itemId,
       name: itemName,
       basePriceCents,
       variationId: lastLine.catalog_variation_id ?? undefined,
       variationName: lastLine.variation_name ?? null,
-      modifiers: lastLine.modifiers
-        .filter((m) => m.catalog_modifier_list_id !== null)
-        .map((m) => ({
-          modifierListId: m.catalog_modifier_list_id as string,
-          modifierId: m.catalog_modifier_id,
-          quantity: m.quantity,
-          name: m.name,
-          basePriceCentsDelta: m.base_price_cents_delta,
-          text_value: m.text_value,
-        })),
     });
   };
 
   const handleDecrement = () => {
     if (!lastLine) return;
-    // Delta-based bump reads latest qty from cart-provider's summaryRef
-    // (NOT the render-stale lastLine.quantity), so rapid taps don't all
-    // compute the same target. bumpQuantity routes to removeItem internally
-    // when next ≤ 0, swapping the icon back to Trash on the next render.
+    // Customisable + already-in-cart: same drawer as the + path. − on a
+    // catalog card with 2+ configs is ambiguous; the drawer lets the
+    // customer pick which config to decrement or remove.
+    if (hasModifiers) {
+      setCustomisationsOpen(true);
+      return;
+    }
+    // Simple item: delta-based bump reads latest qty from summaryRef
+    // (NOT render-stale lastLine.quantity), so rapid taps don't all
+    // compute the same target. bumpQuantity routes to removeItem
+    // internally when next ≤ 0, swapping the icon back to Trash on
+    // the next render.
     cart.bumpQuantity(lastLine.id, -1);
   };
 
@@ -176,39 +203,55 @@ export function CartActions({
   // seamless-edges treatment between siblings. Position class is the
   // only extra style; everything else uses theme tokens.
   return (
-    <ButtonGroup
-      data-cart-action
-      aria-label={`Cart quantity for ${itemName}`}
-      className={cn(
-        "rounded-md border border-black/15 shadow-lg",
-        position === "floating" && "absolute bottom-3 right-3 z-10",
-      )}
-    >
-      <Button
-        type="button"
-        size="icon"
-        variant="default"
-        onClick={handleDecrement}
-        aria-label={
-          lastLine && lastLine.quantity > 1
-            ? `Decrease ${itemName} quantity`
-            : `Remove ${itemName} from cart`
-        }
+    <>
+      <ButtonGroup
+        data-cart-action
+        aria-label={`Cart quantity for ${itemName}`}
+        className={cn(
+          "rounded-md border border-black/15 shadow-lg",
+          position === "floating" && "absolute bottom-3 right-3 z-10",
+        )}
       >
-        {lastLine && lastLine.quantity > 1 ? <Minus /> : <Trash2 />}
-      </Button>
-      <ButtonGroupText className="bg-primary text-primary-foreground">
-        <AnimatedQty value={totalQty} />
-      </ButtonGroupText>
-      <Button
-        type="button"
-        size="icon"
-        variant="default"
-        onClick={handleIncrement}
-        aria-label={`Increase ${itemName} quantity`}
-      >
-        <Plus />
-      </Button>
-    </ButtonGroup>
+        <Button
+          type="button"
+          size="icon"
+          variant="default"
+          onClick={handleDecrement}
+          aria-label={
+            lastLine && lastLine.quantity > 1
+              ? `Decrease ${itemName} quantity`
+              : `Remove ${itemName} from cart`
+          }
+        >
+          {lastLine && lastLine.quantity > 1 ? <Minus /> : <Trash2 />}
+        </Button>
+        <ButtonGroupText className="bg-primary text-primary-foreground">
+          <AnimatedQty value={totalQty} />
+        </ButtonGroupText>
+        <Button
+          type="button"
+          size="icon"
+          variant="default"
+          onClick={handleIncrement}
+          aria-label={`Increase ${itemName} quantity`}
+        >
+          <Plus />
+        </Button>
+      </ButtonGroup>
+      {/* Disambiguation drawer for customisable items. Mounted always
+          when hasModifiers, only opens when the customer taps +/- on
+          a card whose item has at least one config in cart. */}
+      {hasModifiers ? (
+        <CustomisationsDrawer
+          open={customisationsOpen}
+          onOpenChange={setCustomisationsOpen}
+          itemName={itemName}
+          imageUrl={imageUrl}
+          lines={matchingLines}
+          currencySettings={currencySettings}
+          onAddNew={() => sheet.openItem(itemSlug, categorySlug)}
+        />
+      ) : null}
+    </>
   );
 }

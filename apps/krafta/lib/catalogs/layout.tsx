@@ -221,6 +221,10 @@ export function CatalogLayout({
                             itemName={item.name}
                             basePriceCents={item.price_cents}
                             hasModifiers={item.modifier_lists.length > 0}
+                            // Forwarded to the customisations drawer for
+                            // per-config thumbnails + price formatting.
+                            imageUrl={getItemImageUrl(item)}
+                            currencySettings={resolvedCurrency}
                           />
                         ) : null;
 
