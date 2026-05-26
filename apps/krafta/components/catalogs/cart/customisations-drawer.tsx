@@ -12,7 +12,6 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   type CurrencySettings,
   defaultCurrencySettings,
@@ -87,7 +86,15 @@ export function CustomisationsDrawer({
           <DrawerTitle>{t("customisations.title")}</DrawerTitle>
         </DrawerHeader>
 
-        <ScrollArea className="flex-1 overflow-y-auto px-4">
+        {/* Plain overflow-y-auto div instead of shadcn ScrollArea. Radix's
+            ScrollAreaViewport uses display:table internally to enable
+            horizontal scroll, which breaks the min-w-0 chain that <p
+            className="truncate"> relies on for ellipsis. Result was the
+            <li> growing to its content's intrinsic width (~545px) and
+            spilling off the right edge of the 358px drawer — names cut
+            mid-word, price + stepper invisible. We only need vertical
+            scroll here, so a plain div is the right primitive. */}
+        <div className="flex-1 min-w-0 overflow-y-auto px-4">
           <ul className="space-y-3 pb-2">
             {lines.map((line) => (
               <ConfigRow
@@ -103,7 +110,7 @@ export function CustomisationsDrawer({
               />
             ))}
           </ul>
-        </ScrollArea>
+        </div>
 
         <div className="px-4 pb-6 pt-4">
           <Button

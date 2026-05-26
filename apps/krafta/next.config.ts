@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
   // resources by default; this list opts in the LAN range explicitly.
   // Update if the Mac's LAN IP changes.
   allowedDevOrigins: ["192.168.1.5"],
+  // Hide the Next.js dev indicator (the small "N" badge at bottom-left in
+  // dev mode). It was visually overlapping the floating cart trigger on
+  // the customer storefront, leaving the customer wondering why their
+  // cart icon had a stray avatar next to it. The indicator is dev-only
+  // chrome, irrelevant for our QA flows since we use the next-devtools
+  // MCP (see CLAUDE.md) for runtime debugging instead.
+  devIndicators: false,
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
