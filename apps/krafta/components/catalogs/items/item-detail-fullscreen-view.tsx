@@ -576,9 +576,14 @@ function ItemDetailBottomCta(props: {
   return (
     <div className="flex w-full items-stretch gap-3">
       {/* In-progress qty stepper — outline-bordered, neutral color so it
-          doesn't compete with the primary Add button. */}
+          doesn't compete with the primary Add button. Buttons are
+          h-11 w-10 (44px tall — Apple HIG minimum touch target — and
+          40px wide instead of 48, which buys 16px back for the localized
+          Add label on the right. Russian / Uzbek translations of the
+          gating message run 30+ chars and were getting clipped on
+          375-390px viewports). */}
       <div
-        className="inline-flex h-12 items-center gap-0 rounded-md border border-input bg-background"
+        className="inline-flex h-11 items-center gap-0 rounded-md border border-input bg-background"
         role="group"
         aria-label="Quantity to add"
       >
@@ -587,17 +592,17 @@ function ItemDetailBottomCta(props: {
           size="icon"
           variant="ghost"
           onClick={handleDecrement}
-          className="h-12 w-12 rounded-md hover:bg-muted"
+          className="h-11 w-10 rounded-md hover:bg-muted"
           aria-label={qty > 1 ? "Decrease quantity" : "Cancel"}
         >
           {qty > 1 ? (
-            <Minus className="size-5" aria-hidden />
+            <Minus className="size-4" aria-hidden />
           ) : (
-            <Trash2 className="size-5" aria-hidden />
+            <Trash2 className="size-4" aria-hidden />
           )}
         </Button>
         <span
-          className="min-w-[2ch] px-2 text-center font-mono text-base font-semibold tabular-nums"
+          className="min-w-[1.75ch] px-1 text-center font-mono text-sm font-semibold tabular-nums"
           aria-live="polite"
         >
           {qty}
@@ -607,10 +612,10 @@ function ItemDetailBottomCta(props: {
           size="icon"
           variant="ghost"
           onClick={handleIncrement}
-          className="h-12 w-12 rounded-md hover:bg-muted"
+          className="h-11 w-10 rounded-md hover:bg-muted"
           aria-label="Increase quantity"
         >
-          <Plus className="size-5" aria-hidden />
+          <Plus className="size-4" aria-hidden />
         </Button>
       </div>
 
@@ -628,12 +633,18 @@ function ItemDetailBottomCta(props: {
         onClick={handleAdd}
         disabled={isGated}
         className={cn(
-          "h-12 flex-1 text-base font-semibold tabular-nums",
+          // Shrunk from h-12 → h-11 to match the stepper height, and
+          // text-base → text-sm so the longer RU/UZ gating copies
+          // ("2 ta majburiy tanlovni bajaring") fit without clipping
+          // on 375-390px viewports. min-w-0 + the inner truncate span
+          // give a hard cap if anything still overflows in a future
+          // locale.
+          "h-11 min-w-0 flex-1 text-sm font-semibold tabular-nums",
           "disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
         )}
       >
-        <ShoppingCart className="mr-2 size-4" aria-hidden />
-        {addButtonLabel}
+        <ShoppingCart className="mr-2 size-4 shrink-0" aria-hidden />
+        <span className="min-w-0 truncate">{addButtonLabel}</span>
       </Button>
     </div>
   );
