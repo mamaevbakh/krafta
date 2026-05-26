@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Search } from "lucide-react";
 
-import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { ProgressiveBlur } from "@/components/ui/progressive-blur";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { PublicCategoryWithItems } from "@/lib/catalogs/types";
@@ -69,8 +68,8 @@ export function StorefrontDock({
           doesn't intercept scroll/touch on the items behind. */}
       <ProgressiveBlur
         position="bottom"
-        height="134px"
-        blurAmount="1px"
+        height="180px"
+        blurAmount="6px"
         className="z-30"
       />
 
@@ -97,15 +96,6 @@ export function StorefrontDock({
               "w-full",
             )}
           >
-            {/* Krafta brand wordmark — sits on the dock's transparent
-                surface (no bg) so it reads as the chrome's voice,
-                not as a third interactive slot. font-brand (Helvetica
-                Neue Bold) is reserved for the wordmark per DESIGN.md;
-                inheriting font-semibold size to match the dock height.
-                px-3 left-pads it off the edge of the pill so the
-                serif of the "K" doesn't kiss the border. */}
-            <BrandWordmark className="shrink-0 select-none px-3 text-base" />
-
             {/* Search slot — plain flex row styled as a search field.
                 Tap → opens the CatalogSearch dialog (the real <input>
                 lives in the dialog so the mobile keyboard pops with
