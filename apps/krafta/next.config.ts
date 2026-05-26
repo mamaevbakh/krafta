@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // Allow the dev server to accept HMR / RSC requests from devices on the
+  // local Wi-Fi (phone testing against the Mac's LAN IP, e.g. when scanning
+  // a QR code from a real handset). Next.js 16 blocks cross-origin dev
+  // resources by default; this list opts in the LAN range explicitly.
+  // Update if the Mac's LAN IP changes.
+  allowedDevOrigins: ["192.168.1.5"],
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
