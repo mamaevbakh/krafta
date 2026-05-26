@@ -106,7 +106,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Share2, XIcon } from "lucide-react";
+import { Minus, Plus, Share2, ShoppingCart, Trash2, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -114,12 +114,16 @@ import { toast } from "sonner";
 import type { ItemDetailProps } from "@/lib/catalogs/layout-registry";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
-import { AddToCartButton, useOptionalCart } from "@/components/catalogs/cart";
+import { useOptionalCart } from "@/components/catalogs/cart";
 import {
   ModifierPicker,
   modifierListFieldsetId,
   type ModifierPickerChange,
 } from "@/components/catalogs/items/modifier-picker";
+import { cn } from "@/lib/utils";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 // Storefront chrome strings — the storefront doesn't have a formal
 // i18n module yet (only entity translations via item_translations etc.
@@ -201,6 +205,7 @@ export function ItemDetailFullscreen({
     selections: [],
     isValid: !hasVisibleModifierLists,
     firstInvalidListId: null,
+    invalidRequiredCount: 0,
   });
   const handlePickerChange = useCallback(
     (change: ModifierPickerChange) => setPickerState(change),
@@ -405,21 +410,25 @@ export function ItemDetailFullscreen({
         ) : null}
       </div>
 
-      {/* Sticky CTA — Add to cart (cart context present) or Close
-          (browsing without cart). On mobile this stays visually
-          anchored to the bottom via sticky; on desktop the same. */}
+      {/* Sticky CTA — Careem-pattern split:
+          LEFT: in-progress quantity stepper [🗑 / − N +]
+          RIGHT: big primary Add button showing the running total, or
+                 "Make N required selections" when the customer hasn't
+                 picked everything required yet.
+          On Close-only mode (no cart context) we fall back to the
+          previous Close button.   */}
       <div className="sticky bottom-0 z-10 mt-auto w-full border-t border-border/60 bg-background/95 backdrop-blur">
         <div className="mx-auto flex w-full flex-col gap-3 px-5 py-4">
           {cart ? (
-            <AddToCartButton
+            <ItemDetailBottomCta
+              cart={cart}
               itemId={item.id}
               itemName={localizedName}
               basePriceCents={item.price_cents}
-              modifiers={pickerState.selections}
-              // Always enabled visually. The button calls preFlight first;
-              // if it returns false, the add is suppressed and the
-              // customer's eye is scrolled to the unfilled required list.
-              preFlight={validateBeforeAdd}
+              currencySettings={currencySettings}
+              pickerState={pickerState}
+              onValidateBeforeAdd={validateBeforeAdd}
+              onClose={onClose}
             />
           ) : onClose ? (
             <Button
@@ -441,6 +450,185 @@ export function ItemDetailFullscreen({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Bottom CTA — Careem-pattern split
+//
+// Layout:
+//   [ 🗑 / − N + ]   [   Add  •  $X.XX   ]
+//   ^ in-progress     ^ filled, primary
+//     qty stepper       price = (item + mods) × qty
+//
+// State:
+//   * In-progress qty lives locally to this component (default 1).
+//     Bumping it does NOT touch the cart — it's the count the customer
+//     wants to add IN ONE SHOT. After Add commits, qty resets to 1 and
+//     the picker stays open so the customer can change mods and add
+//     another configuration.
+//   * At qty 1 the left button shows a trash icon (clear visual signal
+//     "next tap removes this in-progress add"). Tapping it at qty 1
+//     closes the modal — same intent as "I don't want to add this."
+//
+// Disabled / gated state:
+//   * `pickerState.invalidRequiredCount > 0` → button disabled, text
+//     reads "Make N required selection(s)" + the running price still
+//     shows. Tapping calls onValidateBeforeAdd which scrolls the first
+//     unfilled required list into view and flashes it.
+// ──────────────────────────────────────────────────────────────────────
+
+function ItemDetailBottomCta(props: {
+  cart: NonNullable<ReturnType<typeof useOptionalCart>>;
+  itemId: string;
+  itemName: string;
+  basePriceCents: number;
+  currencySettings: CurrencySettings | undefined;
+  pickerState: ModifierPickerChange;
+  onValidateBeforeAdd: () => boolean;
+  onClose?: () => void;
+}) {
+  const {
+    cart,
+    itemId,
+    itemName,
+    basePriceCents,
+    currencySettings,
+    pickerState,
+    onValidateBeforeAdd,
+    onClose,
+  } = props;
+  const [qty, setQty] = useState(1);
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (
+    key: Parameters<typeof getStorefrontMessage>[0],
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
+
+  // Running unit price = base + sum(selected modifier deltas × their qty).
+  // Total price = unit × in-progress qty. Recomputes synchronously as
+  // the customer toggles modifiers or bumps qty.
+  const modifierDeltaCents = pickerState.selections.reduce(
+    (sum, sel) => sum + sel.basePriceCentsDelta * sel.quantity,
+    0,
+  );
+  const unitPriceCents = basePriceCents + modifierDeltaCents;
+  const totalPriceCents = unitPriceCents * qty;
+
+  const requiredCount = pickerState.invalidRequiredCount;
+  const isGated = requiredCount > 0;
+
+  const handleDecrement = () => {
+    if (qty > 1) {
+      setQty(qty - 1);
+    } else if (onClose) {
+      // qty=1 + trash tap = "I don't want this" → close the modal.
+      onClose();
+    }
+  };
+
+  const handleIncrement = () => setQty(qty + 1);
+
+  const handleAdd = async () => {
+    if (!onValidateBeforeAdd()) return;
+    try {
+      await cart.addItem({
+        itemId,
+        name: itemName,
+        basePriceCents,
+        quantity: qty,
+        modifiers: pickerState.selections.map((s) => ({
+          modifierListId: s.modifierListId,
+          modifierId: s.modifierId,
+          quantity: s.quantity,
+          name: s.name,
+          basePriceCentsDelta: s.basePriceCentsDelta,
+          text_value: s.text_value,
+        })),
+      });
+      toast.success(t("add_to_cart.added", { name: itemName }), {
+        action: {
+          label: t("add_to_cart.view"),
+          onClick: () => {
+            cart.open();
+            onClose?.();
+          },
+        },
+      });
+      // Reset in-progress qty so the picker can be used for another
+      // configuration. Don't auto-close — Careem doesn't either; let
+      // the customer choose to view the cart or add another.
+      setQty(1);
+    } catch {
+      // cart-provider toasts the error already.
+    }
+  };
+
+  const addButtonLabel = isGated
+    ? requiredCount === 1
+      ? t("add_to_cart.gated_required_one")
+      : t("add_to_cart.gated_required_many", { count: requiredCount })
+    : t("add_to_cart.label_with_price", {
+        price: formatPriceCents(totalPriceCents, currencySettings),
+      });
+
+  return (
+    <div className="flex w-full items-stretch gap-3">
+      {/* In-progress qty stepper — outline-bordered, neutral color so it
+          doesn't compete with the primary Add button. */}
+      <div
+        className="inline-flex h-12 items-center gap-0 rounded-md border border-input bg-background"
+        role="group"
+        aria-label="Quantity to add"
+      >
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={handleDecrement}
+          className="h-12 w-12 rounded-md hover:bg-muted"
+          aria-label={qty > 1 ? "Decrease quantity" : "Cancel"}
+        >
+          {qty > 1 ? (
+            <Minus className="size-5" aria-hidden />
+          ) : (
+            <Trash2 className="size-5" aria-hidden />
+          )}
+        </Button>
+        <span
+          className="min-w-[2ch] px-2 text-center font-mono text-base font-semibold tabular-nums"
+          aria-live="polite"
+        >
+          {qty}
+        </span>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={handleIncrement}
+          className="h-12 w-12 rounded-md hover:bg-muted"
+          aria-label="Increase quantity"
+        >
+          <Plus className="size-5" aria-hidden />
+        </Button>
+      </div>
+
+      {/* Primary add button. Disabled when required selections aren't
+          met; copy switches to the gating message in that state. */}
+      <Button
+        type="button"
+        size="lg"
+        onClick={handleAdd}
+        disabled={isGated}
+        className={cn(
+          "h-12 flex-1 font-mono text-base font-semibold tabular-nums",
+          "disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
+        )}
+      >
+        <ShoppingCart className="mr-2 size-4" aria-hidden />
+        {addButtonLabel}
+      </Button>
     </div>
   );
 }

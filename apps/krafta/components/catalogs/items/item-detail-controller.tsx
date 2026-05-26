@@ -299,14 +299,38 @@ export function ItemSheetTrigger({
 }) {
   const { openItem } = useItemSheet();
 
+  // div + role=button (not a literal <button>) so descendants can include
+  // their own interactive controls (the catalog-card cart actions live
+  // inside this trigger so they can position absolutely over the photo).
+  // Nested literal <button>s inside a <button> would be invalid HTML and
+  // produce hydration warnings.
+  //
+  // Click suppression for opt-out zones: any descendant marked with
+  // `data-cart-action` (the Add pill, the stepper) is treated as a
+  // non-trigger zone — taps there mutate the cart instead of opening
+  // the item detail. More reliable than e.stopPropagation across
+  // React's delegated event chain.
   return (
-    <button
-      type="button"
-      onClick={() => openItem(itemSlug, categorySlug)}
-      className="block w-full text-left"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest("[data-cart-action]")) return;
+        openItem(itemSlug, categorySlug);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          const target = e.target as HTMLElement | null;
+          if (target?.closest("[data-cart-action]")) return;
+          e.preventDefault();
+          openItem(itemSlug, categorySlug);
+        }
+      }}
+      className="block w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       {children}
-    </button>
+    </div>
   );
 }
 

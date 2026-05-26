@@ -44,6 +44,10 @@ export type ModifierPickerChange = {
    *  modifier. Drives the "scroll to first invalid required list"
    *  affordance on add-to-cart. */
   firstInvalidListId: string | null;
+  /** Count of required selections the customer hasn't completed yet.
+   *  Drives the item-detail Add button copy ("Make 2 required selections
+   *  • Add ₿50"). 0 when everything required is satisfied. */
+  invalidRequiredCount: number;
 };
 
 type Props = {
@@ -164,6 +168,7 @@ export function ModifierPicker({
     const flat: PickedModifier[] = [];
     let valid = true;
     let firstInvalidListId: string | null = null;
+    let invalidRequiredCount = 0;
 
     for (const list of visibleLists) {
       if (list.modifier_type === "text") {
@@ -179,6 +184,7 @@ export function ModifierPicker({
         // emission stays safe even if the constraint is bypassed).
         if (required && !hasValue) {
           valid = false;
+          invalidRequiredCount += 1;
           if (!firstInvalidListId) firstInvalidListId = list.id;
         }
         if (exceedsMax) {
@@ -208,6 +214,7 @@ export function ModifierPicker({
       const distinctCount = picked.size;
       if (distinctCount < list.min_selected) {
         valid = false;
+        invalidRequiredCount += 1;
         if (!firstInvalidListId) firstInvalidListId = list.id;
       }
       if (
@@ -229,7 +236,12 @@ export function ModifierPicker({
         });
       }
     }
-    onChange({ selections: flat, isValid: valid, firstInvalidListId });
+    onChange({
+      selections: flat,
+      isValid: valid,
+      firstInvalidListId,
+      invalidRequiredCount,
+    });
   }, [
     selectionsByList,
     textValueByList,

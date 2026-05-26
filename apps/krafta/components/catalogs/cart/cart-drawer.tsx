@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +20,7 @@ import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
+import { AnimatedQty } from "./animated-qty";
 import { useCart } from "./cart-provider";
 import { CartCheckoutStep } from "./checkout-step";
 import { CartPlacedStep } from "./placed-step";
@@ -68,7 +69,7 @@ function CartListStep({
   const {
     summary,
     isHydrating,
-    updateQuantity,
+    bumpQuantity,
     removeItem,
     setStep,
     taxes,
@@ -104,7 +105,7 @@ function CartListStep({
           </p>
         ) : isEmpty ? (
           <div className="py-12 text-center">
-            <ShoppingBag
+            <ShoppingCart
               aria-hidden
               className="mx-auto mb-3 h-8 w-8 text-muted-foreground"
             />
@@ -190,23 +191,21 @@ function CartListStep({
                       size="icon"
                       variant="outline"
                       className="h-8 w-8"
-                      onClick={() => updateQuantity(line.id, line.quantity - 1)}
+                      onClick={() => bumpQuantity(line.id, -1)}
                       aria-label={t("aria.decrease_quantity")}
                     >
                       <Minus className="h-3.5 w-3.5" />
                     </Button>
-                    <span
-                      className="min-w-7 text-center text-sm tabular-nums"
-                      aria-live="polite"
-                    >
-                      {line.quantity}
-                    </span>
+                    <AnimatedQty
+                      value={line.quantity}
+                      className="min-w-7 text-center text-sm"
+                    />
                     <Button
                       type="button"
                       size="icon"
                       variant="outline"
                       className="h-8 w-8"
-                      onClick={() => updateQuantity(line.id, line.quantity + 1)}
+                      onClick={() => bumpQuantity(line.id, +1)}
                       aria-label={t("aria.increase_quantity")}
                     >
                       <Plus className="h-3.5 w-3.5" />

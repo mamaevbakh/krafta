@@ -208,7 +208,25 @@
   }
 }
 
+/* Cart quantity pulse — Linear-style "the number just updated" affordance.
+ * Brief scale pop + color flash on every value change. Subtle enough to
+ * not feel jittery, present enough that the customer notices when their
+ * tap registered (or when the server's reconcile bumped the value). */
+@keyframes cart-qty-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.18);
+    color: var(--primary);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 @theme {
   --animate-collapsible-down: collapsible-down 200ms ease-out;
   --animate-collapsible-up: collapsible-up 200ms ease-out;
+  --animate-cart-qty-pulse: cart-qty-pulse 280ms ease-out;
 }

@@ -83,6 +83,12 @@ export type ItemCardProps = LocaleProps & {
    *  to fetch the image early (preload tag, no lazy-load). Set on the
    *  first handful of items by the layout to improve LCP. */
   priority?: boolean;
+  /** Cart actions slot — typically a `<CartActions />` rendering an
+   *  Add pill or a stepper. Card variants decide WHERE to render it
+   *  (Careem-pattern: floating over the photo bottom-right for
+   *  photo-dominant cards; inline next to the price for row cards).
+   *  Null when the catalog has cart disabled. */
+  actions?: React.ReactNode;
 };
 
 export type ItemDetailProps = LocaleProps & {

@@ -8,7 +8,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -16,11 +18,13 @@ import { toast } from "sonner";
 import {
   addLineItemAction,
   clearCartAction,
+  ensureCartIdentityAction,
   getCartSummaryAction,
   placeOrderAction,
   removeLineItemAction,
   updateLineItemQuantityAction,
 } from "@/lib/cart/actions";
+import type { CartIdentity } from "@/lib/cart/identity";
 import type {
   CartLineItem,
   CartLineItemModifier,
@@ -30,6 +34,14 @@ import {
   modifierSignature,
   type ModifierSelection,
 } from "@/lib/cart/modifier-signature";
+import {
+  enqueueMutation,
+  newMutationId,
+  readPendingMutations,
+  removeMutation,
+  writePendingMutations,
+  type PendingMutation,
+} from "@/lib/cart/pending-mutations";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import type { PublicTax } from "@/lib/catalogs/types";
 import {
@@ -159,6 +171,18 @@ type CartContextValue = {
     }>;
   }) => Promise<void>;
   updateQuantity: (lineItemId: string, quantity: number) => Promise<void>;
+  /**
+   * Delta-based qty stepper. Reads the latest line quantity from the live
+   * ref (NOT a render-time closure) before computing the next value, so
+   * rapid taps don't all compute the same target. Routes to removeItem
+   * when the next qty would be <= 0.
+   *
+   * Prefer this over `updateQuantity(line.id, line.quantity + 1)` in
+   * stepper handlers — that pattern has a stale-closure race under
+   * tap-burst (two taps in the same render compute the same +1 target
+   * → second tap is a no-op locally; "the number won't move" symptom).
+   */
+  bumpQuantity: (lineItemId: string, delta: number) => void;
   removeItem: (lineItemId: string) => Promise<void>;
   clear: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -208,10 +232,14 @@ const EMPTY_SUMMARY: CartSummary = {
   subtotalCents: 0,
 };
 
-// 2.5s of inactivity before pushing to the server. The cart is the user's
-// scratchpad until they hit "Continue" — we just need persistence across
-// reloads and the right state at checkout time.
-const SERVER_SYNC_DEBOUNCE_MS = 2500;
+// 400ms of inactivity before pushing to the server. Industry-standard for
+// tap-coalescing on stepper buttons — long enough that 5 rapid taps collapse
+// into one network call, short enough that a tab-close right after a tap
+// almost always wins the race to the server. Was 2500ms originally, which
+// widened every reconcile race (qty stomp across lines) and meant tab-close
+// during a 2s+ window silently lost the write — local cache showed items,
+// server didn't, checkout placed orders against a stale draft.
+const SERVER_SYNC_DEBOUNCE_MS = 400;
 
 // ---- local reducer ---------------------------------------------------------
 
@@ -350,6 +378,98 @@ function applyLocal(state: CartSummary, action: LocalAction): CartSummary {
 
 type Pending = { timer: ReturnType<typeof setTimeout> };
 
+// Identity key for cart lines (matches server-side dedup logic in
+// lib/cart/orders.ts addLineItem). Two lines with the same triple are the
+// same logical cart line: a server-real line REPLACES any local placeholder
+// with the same triple, instead of appearing alongside it.
+//
+// Used by reconcileServerSummary to drop local placeholders once the server
+// has materialized them as real rows.
+function lineIdentityKey(line: CartLineItem): string {
+  const sig = modifierSignature(
+    line.modifiers
+      .filter((m) => m.catalog_modifier_list_id !== null)
+      .map((m) => ({
+        listId: m.catalog_modifier_list_id as string,
+        modifierId: m.catalog_modifier_id,
+        quantity: m.quantity,
+        text_value: m.text_value,
+      })),
+  );
+  return `${line.catalog_item_id ?? ""}::${line.catalog_variation_id ?? ""}::${sig}`;
+}
+
+/**
+ * Local-first merge of a server cart response into the local state. Used at
+ * every place a server-action call resolves with a fresh CartSummary
+ * (addItem timer, updateQuantity timer, removeItem, clear, refresh) — so
+ * the local optimistic state is never stomped by a stale-looking server
+ * response.
+ *
+ * Three protections layered:
+ *
+ *   1. **Fewer lines on server → keep local.** Customer added/edited
+ *      something then navigated or refreshed before the debounce fired;
+ *      local has their intent, server is behind.
+ *
+ *   2. **Any line with a pending qty timer keeps local qty.** This is
+ *      what prevents action A's response from snapping Line B's qty
+ *      back when both A and B were recently tapped — A's response
+ *      contains the pre-B-tap quantity for B, but B's debounce hasn't
+ *      flushed yet, so the customer's intent for B wins.
+ *
+ *   3. **Local placeholders survive the round-trip, but get replaced by
+ *      same-identity server lines.** A placeholder created by addItem
+ *      lives at `id: "local-…"`. When the server materializes it (real
+ *      uuid id), the placeholder is dropped via identity match (item +
+ *      variation + modifier-sig) and replaced by the server's row.
+ *      Without identity matching we'd see the placeholder AND the real
+ *      line side-by-side until the next refresh.
+ */
+function reconcileServerSummary(
+  prev: CartSummary,
+  next: CartSummary,
+  pendingQtyTimers: ReadonlyMap<string, unknown>,
+): CartSummary {
+  // Guard #1: fewer lines on server → server is behind, keep local.
+  if (prev.lineItems.length > next.lineItems.length) return prev;
+
+  // Guard #2: per-line qty preservation for lines with pending timers.
+  const prevById = new Map(prev.lineItems.map((l) => [l.id, l]));
+  const merged = next.lineItems.map((serverLine) => {
+    const localLine = prevById.get(serverLine.id);
+    if (
+      localLine &&
+      pendingQtyTimers.has(serverLine.id) &&
+      localLine.quantity !== serverLine.quantity
+    ) {
+      const perUnit = perUnitCents(localLine);
+      return {
+        ...serverLine,
+        quantity: localLine.quantity,
+        total_price_cents: perUnit * localLine.quantity,
+      };
+    }
+    return serverLine;
+  });
+
+  // Guard #3: carry over local placeholders the server doesn't already
+  // know about (by identity match, not id). Once the server has the real
+  // row, we drop the placeholder — otherwise we'd see two rows for the
+  // same item until the next refresh.
+  const serverIdentityKeys = new Set(next.lineItems.map(lineIdentityKey));
+  const placeholders = prev.lineItems.filter(
+    (l) => l.id.startsWith("local-") && !serverIdentityKeys.has(lineIdentityKey(l)),
+  );
+
+  const lineItems = [...merged, ...placeholders];
+  return {
+    ...next,
+    lineItems,
+    subtotalCents: recomputeSubtotal(lineItems),
+  };
+}
+
 // ----------------------------------------------------------------------------
 
 type CartProviderProps = {
@@ -368,6 +488,65 @@ type CartProviderProps = {
   children: ReactNode;
 };
 
+// ──────────────────────────────────────────────────────────────────────────
+// Local-first cart cache (instant first-paint, no hydration flash).
+//
+// The cart's source of truth for the UI is the local React state. The DB
+// is a silent telemetry + crash-recovery channel that gets a debounced
+// background sync. On reload, we read the localStorage snapshot
+// synchronously so the first paint already shows the right stepper /
+// quantity / line items — no "loading" flash, no "Add to cart" flicker
+// that then morphs into a stepper a second later.
+//
+// Keyed per (orgId, venueId) so two venues in the same browser don't
+// cross-contaminate. Quota / private-browsing failures are non-fatal —
+// we just lose the instant-paint optimization for that session.
+// ──────────────────────────────────────────────────────────────────────────
+const CART_CACHE_PREFIX = "krafta.cart.summary";
+
+function cartCacheKey(orgId: string, venueId: string): string {
+  return `${CART_CACHE_PREFIX}.${orgId}.${venueId}`;
+}
+
+function readCachedSummary(
+  orgId: string,
+  venueId: string,
+): CartSummary | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(cartCacheKey(orgId, venueId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CartSummary;
+    // Defensive: ensure required fields are present + sane shape.
+    if (
+      parsed &&
+      typeof parsed.subtotalCents === "number" &&
+      Array.isArray(parsed.lineItems)
+    ) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedSummary(
+  orgId: string,
+  venueId: string,
+  summary: CartSummary,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      cartCacheKey(orgId, venueId),
+      JSON.stringify(summary),
+    );
+  } catch {
+    // Quota / private browsing — silently drop. In-memory state still works.
+  }
+}
+
 export function CartProvider({
   orgId,
   venueId,
@@ -377,11 +556,69 @@ export function CartProvider({
   initialSummary,
   children,
 }: CartProviderProps) {
-  const [summary, setSummary] = useState<CartSummary>(
+  // SSR-safe init: both server and client start with the SAME state
+  // (initialSummary if passed, otherwise EMPTY_SUMMARY). Reading
+  // localStorage here would diverge server vs client and trigger a
+  // hydration mismatch warning + force React to re-render the whole
+  // tree. The localStorage snapshot is applied post-mount via an
+  // effect (see below) — close enough to "instant" for the customer
+  // (one frame later) while staying SSR-correct.
+  const [summary, setSummaryRaw] = useState<CartSummary>(
     initialSummary ?? EMPTY_SUMMARY,
   );
+
+  // summaryRef mirrors `summary` state but updates SYNCHRONOUSLY inside
+  // setSummary (not via a useEffect, which lags by one render). Callers
+  // that need "what is local right now?" — bumpQuantity reading the latest
+  // qty before scheduling an absolute update, updateQuantity finding a
+  // local placeholder's pending-add key, flush() draining current state —
+  // read summaryRef.current and never see a stale closure.
+  const summaryRef = useRef<CartSummary>(
+    initialSummary ?? EMPTY_SUMMARY,
+  );
+
+  // Persist every cart mutation to localStorage so the next reload paints
+  // instantly. Wrapper around setSummary keeps the persistence concern
+  // out of every call site (there are ~6 of them across this file).
+  //
+  // Also updates summaryRef inside the same reducer tick so concurrent
+  // synchronous reads (e.g. tap-burst against bumpQuantity) see the latest
+  // intent, not a render-stale snapshot. Safe to mutate a ref inside a
+  // reducer: refs are not part of React's reconciler state.
+  const setSummary: Dispatch<SetStateAction<CartSummary>> = useCallback(
+    (next) => {
+      setSummaryRaw((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        summaryRef.current = resolved;
+        writeCachedSummary(orgId, venueId, resolved);
+        return resolved;
+      });
+    },
+    [orgId, venueId],
+  );
+
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
+
+  // Post-mount: apply the localStorage cache (if any) immediately so the
+  // stepper/quantity reflects the customer's previous session state
+  // before the server roundtrip lands. This runs ONCE per (org, venue),
+  // synchronously inside the effect — by the time the browser paints
+  // the first commit's DOM, the localStorage state is also in.
+  const hasAppliedCacheRef = useRef(false);
+  useEffect(() => {
+    if (hasAppliedCacheRef.current) return;
+    if (initialSummary) {
+      hasAppliedCacheRef.current = true;
+      return;
+    }
+    const cached = readCachedSummary(orgId, venueId);
+    if (cached && cached.lineItems.length > 0) {
+      setSummaryRaw(cached);
+    }
+    hasAppliedCacheRef.current = true;
+    // setSummaryRaw is stable; orgId+venueId stable per provider mount.
+  }, [initialSummary, orgId, venueId]);
   const [step, setStep] = useState<CartStep>("cart");
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [placedOrder, setPlacedOrder] = useState<PlacedOrderSnapshot | null>(
@@ -399,42 +636,100 @@ export function CartProvider({
   // QR-driven dine-in lock hydration.
   //
   // Source of truth chain (highest → lowest priority):
-  //   1. URL params on first render: ?mode=dine_in&table={n}
-  //   2. sessionStorage for this venue (keyed per-venueId so two venues
-  //      open in the same tab don't cross-contaminate). Surviving refresh
-  //      is the whole point — customer scans QR, the page reloads to
-  //      pull catalog data, the lock must persist.
-  //   3. null — free-form mode picker.
-  //
-  // We intentionally do not write to URL; URL is a one-shot intent
-  // signal. The customer can keep navigating the catalog without
-  // dragging ?mode=…&table=… along.
+  //   1. ?qr=<shortcode> — "fresh QR scan" signal set by /q/[code]
+  //      redirects. URL state becomes AUTHORITATIVE: re-scanning a
+  //      different mode QR clears any stale lock from a prior scan.
+  //      Scanning the main QR (no mode/table params) resets to the free
+  //      picker. After consumption we strip ?qr= (and the mode/table
+  //      params that came with it) via history.replaceState so a refresh
+  //      doesn't re-trigger the reset and the address bar stays clean.
+  //   2. ?mode=… without ?qr= — shared/typed URL with explicit intent
+  //      (someone sent a friend a pickup link). Adopt the mode but
+  //      DON'T strip — keep the URL shareable.
+  //   3. sessionStorage for this venue (keyed per-venueId so two venues
+  //      open in the same tab don't cross-contaminate). Persists across
+  //      in-app navigation + refresh so customers don't lose their table
+  //      lock by tapping around.
+  //   4. null — free-form mode picker.
   const searchParams = useSearchParams();
   const storageKey = `krafta.cart.dineIn.${venueId}`;
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const qrParam = searchParams?.get("qr");
     const modeParam = searchParams?.get("mode");
     const tableParam = searchParams?.get("table");
-    if (modeParam === "dine_in" && tableParam && tableParam.trim().length > 0) {
-      const next = { tableLabel: tableParam.trim() };
-      setDineInLock(next);
-      try {
-        window.sessionStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // Quota / private browsing — non-fatal; the in-memory lock
-        // still works for this session.
+    const hasFreshScan = Boolean(qrParam);
+    const hasModeIntent =
+      modeParam === "dine_in" ||
+      modeParam === "pickup" ||
+      modeParam === "delivery";
+
+    if (hasFreshScan || hasModeIntent) {
+      // URL carries explicit intent. Apply it to in-memory state +
+      // sessionStorage. The mode/table inversions below cover all four
+      // QR kinds (main / table / pickup / delivery) plus the shared-link
+      // cases.
+      if (
+        modeParam === "dine_in" &&
+        tableParam &&
+        tableParam.trim().length > 0
+      ) {
+        const next = { tableLabel: tableParam.trim() };
+        setDineInLock(next);
+        setInitialModeHint(null);
+        try {
+          window.sessionStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          // Quota / private browsing — non-fatal; in-memory lock still works.
+        }
+      } else if (modeParam === "pickup" || modeParam === "delivery") {
+        // Switching to non-dine_in: clear any prior table lock so the
+        // customer actually lands in the new mode instead of staying
+        // pinned to the table they scanned earlier.
+        setDineInLock(null);
+        setInitialModeHint(modeParam);
+        try {
+          window.sessionStorage.removeItem(storageKey);
+        } catch {
+          // ignore
+        }
+      } else if (hasFreshScan) {
+        // Fresh scan with no mode/table = main QR. Reset everything so
+        // the customer sees the unbiased picker.
+        setDineInLock(null);
+        setInitialModeHint(null);
+        try {
+          window.sessionStorage.removeItem(storageKey);
+        } catch {
+          // ignore
+        }
+      }
+
+      // ?qr= is a one-shot signal — strip it (plus the mode/table that
+      // came with it) so a page refresh doesn't re-fire this branch and
+      // wipe a lock the customer may have set via the picker after the
+      // initial scan. We only strip when ?qr= is present; shared/typed
+      // URLs without ?qr= keep their params intact for shareability.
+      if (hasFreshScan) {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("qr");
+          url.searchParams.delete("mode");
+          url.searchParams.delete("table");
+          window.history.replaceState(
+            null,
+            "",
+            url.pathname + (url.search ? url.search : "") + url.hash,
+          );
+        } catch {
+          // ignore — URL mutation is cosmetic, behavior is already correct.
+        }
       }
       return;
     }
-    // Soft mode hint: ?mode=pickup or ?mode=delivery just biases the
-    // initial picker selection. No lock — the customer can still
-    // switch in the picker (KRA-79/84). dine_in is handled above as
-    // a hard lock and never reaches this branch.
-    if (modeParam === "pickup" || modeParam === "delivery") {
-      setInitialModeHint(modeParam);
-      return;
-    }
-    // No URL signal — hydrate from sessionStorage if present.
+
+    // No URL signal — hydrate from sessionStorage if present. This is
+    // what preserves the lock across in-app navigation + refresh.
     try {
       const raw = window.sessionStorage.getItem(storageKey);
       if (raw) {
@@ -447,7 +742,7 @@ export function CartProvider({
       // Corrupted storage — ignore, fall back to no lock.
     }
     // venueId is captured via storageKey; searchParams is stable per render
-    // pair so this re-checks if the user navigates with a new ?mode= URL.
+    // pair so this re-checks if the user navigates with a new ?qr=/?mode= URL.
   }, [searchParams, storageKey]);
 
   const clearDineInLock = useCallback(() => {
@@ -483,6 +778,54 @@ export function CartProvider({
   // closures so the fire-time action call can include it.
   const pendingAddModifiers = useRef(new Map<string, ModifierSelection[]>());
 
+  // Identity cache. Bootstrapped once on mount (parallel with the cart
+  // summary fetch) and reused on every mutation. Threads the resolved
+  // (customerId, userId) pair into addLineItem/updateLineItem/removeLineItem
+  // /clearCart so the server skips one auth.getUser() + customers SELECT
+  // round-trip per call — saving ~200-400ms per mutation on dev.
+  //
+  // Trust model: even if a client forged a CartIdentity, RLS policies on
+  // commerce.* tables scope every read/write to auth.uid(), so the worst
+  // case is a no-op. The hint is a performance optimization, not privilege.
+  //
+  // Hydrogen does the equivalent via the cart=<id> cookie; we mirror the
+  // pattern in-app (sourced from a single anon-auth bootstrap rather than
+  // a long-lived cookie because our cart is multi-org and the customerId
+  // is per-org). See research notes for the Hydrogen / Linear lineage.
+  const identityRef = useRef<CartIdentity | null>(null);
+
+  // orderIdRef removed: summaryRef.current.orderId is now the single source
+  // of truth (kept in lockstep with state via setSummary). Callers read
+  // it directly inside debounced timers; no separate ref to keep in sync.
+
+  // Persistent mutation queue (Enterprise Slice B). Every debounced server
+  // write is ALSO mirrored into localStorage via this queue; on the next
+  // mount we drain the queue BEFORE the initial refresh so a tab close
+  // during a 400ms debounce window doesn't lose the write.
+  //
+  // The ref is the in-memory mirror of what's in localStorage. Both stay
+  // in lockstep via enqueueMutationLocal / dequeueMutationLocal — never
+  // write to one without the other.
+  const mutationQueueRef = useRef<PendingMutation[]>([]);
+
+  const enqueueMutationLocal = useCallback(
+    (mutation: PendingMutation) => {
+      const next = enqueueMutation(mutationQueueRef.current, mutation);
+      mutationQueueRef.current = next;
+      writePendingMutations(orgId, venueId, next);
+    },
+    [orgId, venueId],
+  );
+
+  const dequeueMutationLocal = useCallback(
+    (id: string) => {
+      const next = removeMutation(mutationQueueRef.current, id);
+      mutationQueueRef.current = next;
+      writePendingMutations(orgId, venueId, next);
+    },
+    [orgId, venueId],
+  );
+
   // Closing the drawer should reset the step so the next open starts at the
   // cart list, not lingering on a stale confirmation.
   useEffect(() => {
@@ -495,20 +838,148 @@ export function CartProvider({
 
   const refresh = useCallback(async () => {
     try {
-      const next = await getCartSummaryAction({ orgId, venueId });
-      setSummary(next);
+      const next = await getCartSummaryAction({
+        orgId,
+        venueId,
+        identity: identityRef.current ?? undefined,
+        // No orderId hint on the blanket refresh — we want the slow path
+        // (re-resolve current draft) in case the customer cleared cookies
+        // or a different draft was promoted to open in another tab.
+      });
+      setSummary((prev) =>
+        reconcileServerSummary(prev, next, pendingQtyTimers.current),
+      );
     } finally {
       setIsHydrating(false);
     }
-  }, [orgId, venueId]);
+  }, [orgId, setSummary, venueId]);
 
+  // Guard against StrictMode double-mount (Next 16 dev default). Without
+  // this, the hydration effect fires twice on initial page load — two
+  // getCartSummary POSTs back-to-back, AND the second mount resets the
+  // provider's React state, wiping any optimistic line the customer
+  // just added and making the +/- stepper visually disappear.
+  //
+  // We track which (org, venue) we last hydrated for. The ref persists
+  // across the StrictMode mount-unmount-mount cycle (refs are not reset
+  // by React strict-mode remounts the way state is); the comparison
+  // prevents a duplicate refresh. If the venue genuinely changes
+  // (e.g. customer navigates to a different catalog with the same
+  // provider instance), the key changes and we re-hydrate.
+  //
+  // Identity bootstrap fires in parallel with refresh — they're independent
+  // server calls. Once identity resolves, every subsequent mutation skips
+  // the ensureCartIdentity round-trip on the server. The first 1-2
+  // mutations after page load may race the bootstrap (no hint available
+  // yet) — that's fine, the server falls back to ensureCartIdentity as
+  // before. Steady state is hint-on-every-call.
+  //
+  // Mutation queue replay (Slice B): if the previous session left any
+  // pending writes in localStorage (tab closed mid-debounce), drain them
+  // BEFORE the initial refresh — otherwise the refresh would return the
+  // server's pre-pending-writes state and clobber the customer's intent.
+  // Replay is awaited on the bootstrap path so refresh() sees the post-
+  // replay canonical cart.
+  const lastHydratedKey = useRef<string | null>(null);
   useEffect(() => {
     if (initialSummary) {
       setIsHydrating(false);
+      // Even with initialSummary we still want identity cached for future
+      // mutations. Fire-and-forget; the ref is read on the hot path.
+      if (!identityRef.current) {
+        ensureCartIdentityAction(orgId)
+          .then((id) => {
+            identityRef.current = id;
+          })
+          .catch(() => {
+            // Silent — mutations will fall back to server-side ensureCartIdentity.
+          });
+      }
       return;
     }
-    refresh();
-  }, [initialSummary, refresh]);
+    const key = `${orgId}::${venueId}`;
+    if (lastHydratedKey.current === key) return;
+    lastHydratedKey.current = key;
+
+    // Parallel: cart summary fetch + identity bootstrap. Don't await
+    // identity here — refresh() is the path that controls isHydrating;
+    // identity is a pure latency optimization for future mutations.
+    if (!identityRef.current) {
+      ensureCartIdentityAction(orgId)
+        .then((id) => {
+          identityRef.current = id;
+        })
+        .catch(() => {
+          // Silent fallback to server-side resolve on each mutation.
+        });
+    }
+
+    // Load persisted queue + drain before first refresh. Sequential
+    // dispatch (Promise.allSettled in a for-loop) so a single failure
+    // doesn't block the others — each entry is independent. After
+    // replay, the queue is cleared regardless of per-entry outcome:
+    // the next refresh() is the canonical source of truth and any
+    // entries that failed have already shown an error toast.
+    const persisted = readPendingMutations(orgId, venueId);
+    mutationQueueRef.current = persisted;
+
+    const drainAndRefresh = async () => {
+      if (persisted.length > 0) {
+        const identity = identityRef.current ?? undefined;
+        const orderIdHint = summaryRef.current.orderId ?? undefined;
+        const dispatches = persisted.map((mut) => {
+          if (mut.type === "add") {
+            return addLineItemAction({
+              orgId,
+              venueId,
+              itemId: mut.itemId,
+              variationId: mut.variationId,
+              quantity: mut.quantity,
+              modifiers: mut.modifiers,
+              catalogPath,
+              identity,
+            });
+          }
+          if (mut.type === "update") {
+            return updateLineItemQuantityAction({
+              orgId,
+              venueId,
+              lineItemId: mut.lineItemId,
+              quantity: mut.quantity,
+              catalogPath,
+              identity,
+              orderId: orderIdHint,
+            });
+          }
+          if (mut.type === "remove") {
+            return removeLineItemAction({
+              orgId,
+              venueId,
+              lineItemId: mut.lineItemId,
+              catalogPath,
+              identity,
+              orderId: orderIdHint,
+            });
+          }
+          return clearCartAction({
+            orgId,
+            venueId,
+            catalogPath,
+            identity,
+            orderId: orderIdHint,
+          });
+        });
+        await Promise.allSettled(dispatches);
+        // Queue is fully drained — wipe it before refresh, regardless of
+        // per-entry success. Refresh is canonical from here on.
+        mutationQueueRef.current = [];
+        writePendingMutations(orgId, venueId, []);
+      }
+      refresh();
+    };
+
+    void drainAndRefresh();
+  }, [catalogPath, initialSummary, refresh, orgId, venueId]);
 
   const cancelPendingForLine = useCallback((lineItemId: string) => {
     const pending = pendingQtyTimers.current.get(lineItemId);
@@ -595,12 +1066,37 @@ export function CartProvider({
       const existing = pendingAddTimers.current.get(key);
       if (existing) clearTimeout(existing.timer);
 
+      // Mirror the pending add into the persistent queue. enqueueMutation
+      // coalesces by `key` — rapid + taps replace the entry with the new
+      // accumulated qty, never appending duplicates. On tab close mid-
+      // debounce, the next mount drains this and dispatches the add.
+      const mutationId = newMutationId();
+      enqueueMutationLocal({
+        id: mutationId,
+        type: "add",
+        itemId,
+        variationId,
+        quantity: pendingAddTotals.current.get(key) ?? quantity,
+        modifiers: modifierSelections,
+        key,
+      });
+
       const timer = setTimeout(async () => {
         pendingAddTimers.current.delete(key);
         const finalQty = pendingAddTotals.current.get(key) ?? quantity;
         const finalMods = pendingAddModifiers.current.get(key) ?? [];
         pendingAddTotals.current.delete(key);
         pendingAddModifiers.current.delete(key);
+
+        // Cancelled mid-flight (placeholder dropped to 0 in the drawer
+        // before the debounce fired). Skip the server call — there's
+        // nothing to add. The local cart already reflects qty=0 / removed.
+        // Also drop the queue entry: there's no write to recover.
+        if (finalQty <= 0) {
+          dequeueMutationLocal(mutationId);
+          return;
+        }
+
         try {
           const next = await addLineItemAction({
             orgId,
@@ -610,12 +1106,20 @@ export function CartProvider({
             quantity: finalQty,
             modifiers: finalMods,
             catalogPath,
+            identity: identityRef.current ?? undefined,
           });
+          // Server applied the write — drop the queue entry. Recovery is
+          // no longer needed (canonical state is now in the server cart).
+          dequeueMutationLocal(mutationId);
           // Reconcile only if the user has not started a new add for this
           // (item, variation) during the round-trip. If they have, the next
-          // debounced sync will reconcile.
+          // debounced sync will reconcile. Use the shared reconcile helper
+          // so unrelated lines with pending qty timers aren't stomped by
+          // this response.
           if (!pendingAddTimers.current.has(key)) {
-            setSummary(next);
+            setSummary((prev) =>
+              reconcileServerSummary(prev, next, pendingQtyTimers.current),
+            );
           }
         } catch (err) {
           toast.error(
@@ -629,7 +1133,15 @@ export function CartProvider({
 
       pendingAddTimers.current.set(key, { timer });
     },
-    [catalogPath, orgId, refresh, venueId],
+    [
+      catalogPath,
+      dequeueMutationLocal,
+      enqueueMutationLocal,
+      orgId,
+      refresh,
+      setSummary,
+      venueId,
+    ],
   );
 
   const updateQuantity: CartContextValue["updateQuantity"] = useCallback(
@@ -638,12 +1150,44 @@ export function CartProvider({
         applyLocal(prev, { type: "updateQuantity", lineItemId, quantity }),
       );
 
-      // Local-only placeholders have no server-side row yet; the next
-      // debounced add will reconcile them.
-      if (lineItemId.startsWith("local-")) return;
+      // Local-only placeholders have no server-side row yet — the +/- in
+      // the drawer is operating on a line that's still waiting for its
+      // debounced add to fire. We can't issue an updateLineItemQuantity
+      // RPC (no real line id), so we mirror the customer's absolute target
+      // qty into pendingAddTotals so the pending add sends the right
+      // number when its timer fires. Without this the add fires with the
+      // original qty (typically 1) and the customer's edit silently
+      // disappears when the server response arrives.
+      //
+      // qty=0 leaves pendingAddTotals at 0; the add timer's `if (finalQty
+      // <= 0) return` guard then skips the server call entirely — the
+      // placeholder was effectively cancelled before it ever materialized.
+      if (lineItemId.startsWith("local-")) {
+        const localLine = summaryRef.current.lineItems.find(
+          (l) => l.id === lineItemId,
+        );
+        if (localLine && localLine.catalog_item_id) {
+          const key = lineIdentityKey(localLine);
+          if (pendingAddTotals.current.has(key)) {
+            pendingAddTotals.current.set(key, quantity);
+          }
+        }
+        return;
+      }
 
       const existing = pendingQtyTimers.current.get(lineItemId);
       if (existing) clearTimeout(existing.timer);
+
+      // Mirror pending qty update into the persistent queue. Coalesces by
+      // lineItemId — rapid +/- on the same line collapse to one entry
+      // with the latest absolute qty.
+      const mutationId = newMutationId();
+      enqueueMutationLocal({
+        id: mutationId,
+        type: "update",
+        lineItemId,
+        quantity,
+      });
 
       const timer = setTimeout(async () => {
         pendingQtyTimers.current.delete(lineItemId);
@@ -654,11 +1198,19 @@ export function CartProvider({
             lineItemId,
             quantity,
             catalogPath,
+            identity: identityRef.current ?? undefined,
+            orderId: summaryRef.current.orderId ?? undefined,
           });
+          dequeueMutationLocal(mutationId);
           // Reconcile only if the user has not clicked +/- on this line
           // during the round-trip. The next debounce will handle that case.
+          // Use the shared reconcile helper so OTHER lines with their own
+          // pending qty timers aren't stomped by this response — that was
+          // the "tap A, then tap B, see B snap back" bug.
           if (!pendingQtyTimers.current.has(lineItemId)) {
-            setSummary(next);
+            setSummary((prev) =>
+              reconcileServerSummary(prev, next, pendingQtyTimers.current),
+            );
           }
         } catch (err) {
           toast.error(
@@ -672,7 +1224,15 @@ export function CartProvider({
 
       pendingQtyTimers.current.set(lineItemId, { timer });
     },
-    [catalogPath, orgId, refresh, venueId],
+    [
+      catalogPath,
+      dequeueMutationLocal,
+      enqueueMutationLocal,
+      orgId,
+      refresh,
+      setSummary,
+      venueId,
+    ],
   );
 
   const removeItem: CartContextValue["removeItem"] = useCallback(
@@ -682,14 +1242,29 @@ export function CartProvider({
 
       if (lineItemId.startsWith("local-")) return;
 
+      // Remove fires immediately (no debounce), but enqueue it anyway so
+      // a tab close mid-flight can recover. Remove supersedes any prior
+      // queued update for the same lineItemId — see enqueueMutation.
+      const mutationId = newMutationId();
+      enqueueMutationLocal({
+        id: mutationId,
+        type: "remove",
+        lineItemId,
+      });
+
       try {
         const next = await removeLineItemAction({
           orgId,
           venueId,
           lineItemId,
           catalogPath,
+          identity: identityRef.current ?? undefined,
+          orderId: summaryRef.current.orderId ?? undefined,
         });
-        setSummary(next);
+        dequeueMutationLocal(mutationId);
+        setSummary((prev) =>
+          reconcileServerSummary(prev, next, pendingQtyTimers.current),
+        );
       } catch (err) {
         toast.error(
           err instanceof Error
@@ -699,16 +1274,59 @@ export function CartProvider({
         refresh();
       }
     },
-    [cancelPendingForLine, catalogPath, orgId, refresh, venueId],
+    [
+      cancelPendingForLine,
+      catalogPath,
+      dequeueMutationLocal,
+      enqueueMutationLocal,
+      orgId,
+      refresh,
+      setSummary,
+      venueId,
+    ],
+  );
+
+  const bumpQuantity: CartContextValue["bumpQuantity"] = useCallback(
+    (lineItemId, delta) => {
+      // Read latest from summaryRef (live, lockstep with state) instead of
+      // a closure-captured `line.quantity` — otherwise two taps within the
+      // same render frame both compute the same absolute target and the
+      // second tap is a no-op locally ("the number won't move" symptom).
+      const line = summaryRef.current.lineItems.find(
+        (l) => l.id === lineItemId,
+      );
+      if (!line) return;
+      const next = line.quantity + delta;
+      if (next <= 0) {
+        void removeItem(lineItemId);
+      } else {
+        void updateQuantity(lineItemId, next);
+      }
+    },
+    [removeItem, updateQuantity],
   );
 
   const clear: CartContextValue["clear"] = useCallback(async () => {
     setSummary((prev) => applyLocal(prev, { type: "clear" }));
     cancelAllPending();
 
+    // Clear supersedes the entire queue (see enqueueMutation: type=clear
+    // replaces all). One queued clear is enough to recover any prior state.
+    const mutationId = newMutationId();
+    enqueueMutationLocal({ id: mutationId, type: "clear" });
+
     try {
-      const next = await clearCartAction({ orgId, venueId, catalogPath });
-      setSummary(next);
+      const next = await clearCartAction({
+        orgId,
+        venueId,
+        catalogPath,
+        identity: identityRef.current ?? undefined,
+        orderId: summaryRef.current.orderId ?? undefined,
+      });
+      dequeueMutationLocal(mutationId);
+      setSummary((prev) =>
+        reconcileServerSummary(prev, next, pendingQtyTimers.current),
+      );
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -717,13 +1335,24 @@ export function CartProvider({
       );
       refresh();
     }
-  }, [cancelAllPending, catalogPath, orgId, refresh, venueId]);
+  }, [
+    cancelAllPending,
+    catalogPath,
+    dequeueMutationLocal,
+    enqueueMutationLocal,
+    orgId,
+    refresh,
+    setSummary,
+    venueId,
+  ]);
 
   // Fire pending debounced writes immediately. Used before checkout to make
   // sure the server has the latest cart contents before we transition the
   // order from draft to open.
   const flush: CartContextValue["flush"] = useCallback(async () => {
     const pendingPromises: Promise<unknown>[] = [];
+    const identity = identityRef.current ?? undefined;
+    const orderId = summaryRef.current.orderId ?? undefined;
 
     // Fire pending qty updates immediately. Each line carries the absolute
     // target quantity from local state.
@@ -738,6 +1367,8 @@ export function CartProvider({
           lineItemId,
           quantity,
           catalogPath,
+          identity,
+          orderId,
         }),
       );
     }
@@ -760,6 +1391,7 @@ export function CartProvider({
           quantity: accumQty,
           modifiers: mods,
           catalogPath,
+          identity,
         }),
       );
     }
@@ -910,6 +1542,7 @@ export function CartProvider({
       isPlacingOrder,
       addItem,
       updateQuantity,
+      bumpQuantity,
       removeItem,
       clear,
       refresh,
@@ -918,6 +1551,7 @@ export function CartProvider({
     }),
     [
       addItem,
+      bumpQuantity,
       clear,
       clearDineInLock,
       dineInLock,

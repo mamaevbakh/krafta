@@ -1,6 +1,7 @@
 "use client";
 
-import { ShoppingBag } from "lucide-react";
+import * as React from "react";
+import { ShoppingCart } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,22 @@ type CartTriggerProps = {
 };
 
 export function CartTrigger({ className }: CartTriggerProps) {
-  const { itemCount, open, isHydrating } = useCart();
+  const { itemCount, open } = useCart();
+
+  // hasMounted flips true after first commit. Used to gate everything
+  // derived from the localStorage-cached cart so the server-rendered tree
+  // and the first client render are byte-identical (no hydration mismatch).
+  //
+  // Without this, server renders aria-label="Open cart" + no Badge while
+  // client renders aria-label="Open cart (N items)" + a Badge — React then
+  // throws "Hydration failed" and tears down + re-renders the whole cart
+  // tree, which the customer perceives as the "Add → stepper" flicker.
+  const [hasMounted, setHasMounted] = React.useState(false);
+  React.useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  const showCount = hasMounted && itemCount > 0;
 
   return (
     <Button
@@ -21,7 +37,7 @@ export function CartTrigger({ className }: CartTriggerProps) {
       size="icon"
       onClick={open}
       aria-label={
-        itemCount > 0 ? `Open cart (${itemCount} items)` : "Open cart"
+        showCount ? `Open cart (${itemCount} items)` : "Open cart"
       }
       // Sits to the left of the floating search trigger (right-6) so both are
       // visible together on mobile.
@@ -30,8 +46,8 @@ export function CartTrigger({ className }: CartTriggerProps) {
         className,
       )}
     >
-      <ShoppingBag className="h-5 w-5" />
-      {!isHydrating && itemCount > 0 ? (
+      <ShoppingCart className="h-5 w-5" />
+      {showCount ? (
         <Badge
           className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full px-1.5 py-0 text-xs"
           variant="secondary"

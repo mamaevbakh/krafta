@@ -1,8 +1,51 @@
 import "server-only";
 
+import { cookies } from "next/headers";
+
 import { createClient } from "@/lib/supabase/server";
-import { ensureCartIdentity } from "./identity";
+import { QR_SOURCE_COOKIE } from "./qr-source-cookie";
+import { ensureCartIdentity, type CartIdentity } from "./identity";
 import { modifierSignature, type ModifierSelection } from "./modifier-signature";
+
+/**
+ * Identity hint accepted by every cart helper to skip an `ensureCartIdentity`
+ * round-trip. The action layer resolves identity ONCE per request and threads
+ * it through; orders.ts internals only fall back to `ensureCartIdentity` when
+ * the hint is missing (e.g. legacy callers or direct CLI scripts).
+ *
+ * Trust model: even if a malicious client lied about its `customerId`, the
+ * `commerce.*` RLS policies (which scope rows to
+ * `commerce.customers.user_id = auth.uid()`) would still reject every read
+ * and write. The hint is a performance optimization, not a privilege grant.
+ */
+async function resolveCartIdentity(
+  orgId: string,
+  hint?: CartIdentity,
+): Promise<CartIdentity> {
+  if (hint?.customerId && hint?.userId) return hint;
+  return ensureCartIdentity(orgId);
+}
+
+/**
+ * Reads the QR-source cookie set by /q/[code] on scan-driven landings.
+ * Returns 'qr_scan' if the customer arrived via a scanned QR within the
+ * 15-minute attribution window, otherwise undefined. Used by
+ * getOrCreateDraftOrder to stamp commerce.orders.source.
+ *
+ * Kept as a tiny helper (not inlined) so the source-of-truth for cookie
+ * → enum mapping lives in one place.
+ */
+async function detectQrSource(): Promise<"qr_scan" | undefined> {
+  const cookieStore = await cookies();
+  const cookie = cookieStore.get(QR_SOURCE_COOKIE);
+  // Cookie value is the shortcode (8 hex chars). Presence + shape check
+  // is all we need — we don't re-validate the shortcode against qr_codes
+  // because the scan already did, and faking the cookie just attributes
+  // your own order to QR rather than web; not a meaningful exploit.
+  return cookie && /^[a-f0-9]{1,32}$/i.test(cookie.value)
+    ? "qr_scan"
+    : undefined;
+}
 
 export type CartLineItemModifier = {
   id: string;
@@ -42,6 +85,9 @@ type GetOrCreateDraftInput = {
   orgId: string;
   venueId: string;
   source?: "web" | "tma" | "qr_scan" | "dashboard";
+  /** Pre-resolved identity from the action layer. Skips ensureCartIdentity
+   *  when present — saves a round-trip on the hot path. See resolveCartIdentity. */
+  identity?: CartIdentity;
 };
 
 /**
@@ -55,7 +101,7 @@ export async function getOrCreateDraftOrder(
   input: GetOrCreateDraftInput,
 ): Promise<{ orderId: string; version: number; customerId: string }> {
   const supabase = await createClient();
-  const { customerId } = await ensureCartIdentity(input.orgId);
+  const { customerId } = await resolveCartIdentity(input.orgId, input.identity);
 
   const { data: existing, error: selectError } = await supabase
     .schema("commerce")
@@ -77,6 +123,14 @@ export async function getOrCreateDraftOrder(
     };
   }
 
+  // Resolve order source. Explicit caller-passed source wins (e.g. a
+  // future Telegram-Mini-App flow), then the QR-scan cookie set by
+  // /q/[code], then the default 'web'. Only checked when we're actually
+  // creating a draft — existing draft's source is locked-in from its
+  // first creation (no migration of an in-flight cart).
+  const resolvedSource =
+    input.source ?? (await detectQrSource()) ?? "web";
+
   // The BEFORE-INSERT trigger `orders_sync_from_venue` overwrites the NOT
   // NULL fields below from the venue row: org_id, catalog_id, currency,
   // timezone. We pass placeholders to satisfy the type system; the trigger
@@ -92,7 +146,7 @@ export async function getOrCreateDraftOrder(
       venue_id: input.venueId,
       customer_id: customerId,
       state: "draft",
-      source: input.source ?? "web",
+      source: resolvedSource,
     })
     .select("id, version")
     .single();
@@ -133,6 +187,8 @@ type AddLineItemInput = {
   variationId?: string;
   quantity?: number;
   modifiers?: ModifierSelection[];
+  /** Pre-resolved identity. See resolveCartIdentity / addLineItemAction. */
+  identity?: CartIdentity;
 };
 
 // Resolved snapshot of a modifier ready to be written to
@@ -179,38 +235,57 @@ export async function addLineItem(
   input: AddLineItemInput,
 ): Promise<{ orderId: string; lineItemId: string }> {
   const supabase = await createClient();
-  const { orderId } = await getOrCreateDraftOrder({
-    orgId: input.orgId,
-    venueId: input.venueId,
-  });
-
   const quantity = input.quantity ?? 1;
   if (quantity <= 0) throw new Error("quantity must be > 0");
 
-  const { data: item, error: itemError } = await supabase
-    .from("items")
-    .select("id, name")
-    .eq("id", input.itemId)
-    .maybeSingle();
-  if (itemError) throw new Error(itemError.message);
-  if (!item) throw new Error("Item not found.");
-
+  // Parallelize the 4 independent reads we need before any write. Before this
+  // refactor these ran sequentially (draft → item → variation → IMLs) for ~4×
+  // 200ms = ~800ms on dev. Promise.all collapses them to ~1× 200ms.
+  //
+  // None of the four depend on each other:
+  //   - getOrCreateDraftOrder needs only (org, venue, identity)
+  //   - item + variation + IMLs need only (itemId, variationId)
+  //
+  // The driving constraint stays auth: getOrCreateDraftOrder ends up calling
+  // ensureCartIdentity once (if identity hint is missing). The other three
+  // reads are anon-RLS-scoped catalog rows with no auth dependency.
   const variationQuery = supabase
     .from("item_variations")
     .select("id, name, price_cents, version")
     .eq("item_id", input.itemId)
     .eq("is_active", true);
+  const variationPromise = input.variationId
+    ? variationQuery.eq("id", input.variationId).maybeSingle()
+    : variationQuery.eq("is_default", true).maybeSingle();
 
-  const { data: variation, error: variationError } = input.variationId
-    ? await variationQuery.eq("id", input.variationId).maybeSingle()
-    : await variationQuery.eq("is_default", true).maybeSingle();
+  const [draftResult, itemResult, variationResult, imlResult] =
+    await Promise.all([
+      getOrCreateDraftOrder({
+        orgId: input.orgId,
+        venueId: input.venueId,
+        identity: input.identity,
+      }),
+      supabase
+        .from("items")
+        .select("id, name")
+        .eq("id", input.itemId)
+        .maybeSingle(),
+      variationPromise,
+      fetchItemModifierLists(supabase, input.itemId),
+    ]);
 
-  if (variationError) throw new Error(variationError.message);
+  const { orderId } = draftResult;
+
+  if (itemResult.error) throw new Error(itemResult.error.message);
+  const item = itemResult.data;
+  if (!item) throw new Error("Item not found.");
+
+  if (variationResult.error) throw new Error(variationResult.error.message);
+  const variation = variationResult.data;
   if (!variation) throw new Error("Item variation not found.");
 
-  const resolvedModifiers = await resolveModifierSelections(
-    supabase,
-    input.itemId,
+  const resolvedModifiers = resolveModifierSelections(
+    imlResult,
     input.modifiers ?? [],
   );
 
@@ -234,50 +309,33 @@ export async function addLineItem(
 
   // Look for an existing line we can merge into. Same (item, variation) is
   // a necessary condition but not sufficient — modifier signatures must also
-  // match. Fetch all candidates + their modifier rows in two queries, then
-  // compare signatures in memory.
+  // match. Embedded select fetches candidates + their modifier rows in ONE
+  // round-trip (PostgREST inner relation), down from two before.
   const { data: candidateLines, error: candidatesError } = await supabase
     .schema("commerce")
     .from("order_line_items")
-    .select("id, quantity, base_price_cents")
+    .select(
+      "id, quantity, base_price_cents, modifiers:order_line_item_modifiers(catalog_modifier_id, catalog_modifier_list_id, quantity, text_value)",
+    )
     .eq("order_id", orderId)
     .eq("catalog_item_id", input.itemId)
     .eq("catalog_variation_id", variation.id);
   if (candidatesError) throw new Error(candidatesError.message);
 
   if (candidateLines && candidateLines.length > 0) {
-    const candidateIds = candidateLines.map((row) => row.id);
-    const { data: candidateMods, error: candidateModsError } = await supabase
-      .schema("commerce")
-      .from("order_line_item_modifiers")
-      .select(
-        "line_item_id, catalog_modifier_id, catalog_modifier_list_id, quantity, text_value",
-      )
-      .in("line_item_id", candidateIds);
-    if (candidateModsError) throw new Error(candidateModsError.message);
-
-    const modsByLineId = new Map<string, ModifierSelection[]>();
-    for (const row of candidateMods ?? []) {
-      // Skip rows that are missing the list_id — pre-KRA-96 legacy rows can
-      // have catalog_modifier_list_id=NULL. We can still derive it from
-      // catalog_modifier_id for list-mode rows, but for the purposes of the
-      // signature comparison the cleanest thing is to skip them: a legacy
-      // line will simply never match a fresh signature, so the new add
-      // becomes a new cart line. The customer gets a (mildly redundant) new
-      // line; not great but not a correctness problem.
-      if (!row.catalog_modifier_list_id) continue;
-      const list = modsByLineId.get(row.line_item_id) ?? [];
-      list.push({
-        listId: row.catalog_modifier_list_id,
-        modifierId: row.catalog_modifier_id,
-        quantity: Number(row.quantity),
-        text_value: row.text_value,
-      });
-      modsByLineId.set(row.line_item_id, list);
-    }
-
     const match = candidateLines.find((line) => {
-      const lineSelections = modsByLineId.get(line.id) ?? [];
+      // Skip rows missing list_id — pre-KRA-96 legacy rows can have
+      // catalog_modifier_list_id=NULL. The signature won't match a fresh
+      // add's signature anyway, so the new add becomes a new cart line.
+      // Mildly redundant but not a correctness problem.
+      const lineSelections: ModifierSelection[] = (line.modifiers ?? [])
+        .filter((m) => m.catalog_modifier_list_id !== null)
+        .map((m) => ({
+          listId: m.catalog_modifier_list_id as string,
+          modifierId: m.catalog_modifier_id,
+          quantity: Number(m.quantity),
+          text_value: m.text_value,
+        }));
       return modifierSignature(lineSelections) === signature;
     });
 
@@ -363,52 +421,74 @@ export async function addLineItem(
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
-// Validates the customer's modifier picks against the item's modifier_lists
-// (with overrides), and expands hidden-from-customer lists with their
-// on_by_default modifiers (the customer never sees those, but the kitchen
-// must — Square parity).
-async function resolveModifierSelections(
+type IMLRow = {
+  modifier_list_id: string;
+  ordinal: number;
+  min_selected_override: number | null;
+  max_selected_override: number | null;
+  hidden_from_customer_override: boolean;
+  modifier_lists: {
+    id: string;
+    name: string;
+    min_selected: number;
+    max_selected: number | null;
+    is_active: boolean;
+    modifier_type: "list" | "text";
+    text_required: boolean;
+    max_length: number | null;
+    version: number;
+    modifiers: Array<{
+      id: string;
+      name: string;
+      price_cents: number;
+      ordinal: number;
+      on_by_default: boolean;
+      is_active: boolean;
+      version: number;
+    }>;
+  };
+};
+
+/**
+ * Fetches the item's modifier-list rows (with embedded list + modifier
+ * details). Split out from resolveModifierSelections so addLineItem can
+ * issue this query in parallel with the item, variation, and draft-order
+ * lookups — three sequential 200ms RTs become one 200ms RT.
+ */
+async function fetchItemModifierLists(
   supabase: SupabaseClient,
   itemId: string,
-  selections: ModifierSelection[],
-): Promise<ResolvedModifier[]> {
+): Promise<IMLRow[]> {
+  // `ordinal` lives on item_modifier_lists (the JOIN row — per-item list
+  // ordering), NOT on modifier_lists itself (lists are reusable across
+  // items and have no intrinsic order). Selecting it under
+  // modifier_lists!inner(...) threw "column modifier_lists_1.ordinal
+  // does not exist" — a runtime bug caught on first cart add. The
+  // ordinal we want for the kitchen receipt is the order the list
+  // appears on THIS item, which is `item_modifier_lists.ordinal`.
   const { data: imlRows, error } = await supabase
     .from("item_modifier_lists")
     .select(
-      "modifier_list_id, min_selected_override, max_selected_override, hidden_from_customer_override, modifier_lists!inner(id, name, min_selected, max_selected, is_active, modifier_type, text_required, max_length, ordinal, version, modifiers(id, name, price_cents, ordinal, on_by_default, is_active, version))",
+      "modifier_list_id, ordinal, min_selected_override, max_selected_override, hidden_from_customer_override, modifier_lists!inner(id, name, min_selected, max_selected, is_active, modifier_type, text_required, max_length, version, modifiers(id, name, price_cents, ordinal, on_by_default, is_active, version))",
     )
     .eq("item_id", itemId)
     .eq("is_active", true);
   if (error) throw new Error(error.message);
+  return (imlRows ?? []) as unknown as IMLRow[];
+}
 
-  type IMLRow = {
-    modifier_list_id: string;
-    min_selected_override: number | null;
-    max_selected_override: number | null;
-    hidden_from_customer_override: boolean;
-    modifier_lists: {
-      id: string;
-      name: string;
-      min_selected: number;
-      max_selected: number | null;
-      is_active: boolean;
-      modifier_type: "list" | "text";
-      text_required: boolean;
-      max_length: number | null;
-      ordinal: number;
-      version: number;
-      modifiers: Array<{
-        id: string;
-        name: string;
-        price_cents: number;
-        ordinal: number;
-        on_by_default: boolean;
-        is_active: boolean;
-        version: number;
-      }>;
-    };
-  };
-  const imls = (imlRows ?? []) as unknown as IMLRow[];
+// Validates the customer's modifier picks against pre-fetched IML rows
+// (with overrides), and expands hidden-from-customer lists with their
+// on_by_default modifiers (the customer never sees those, but the kitchen
+// must — Square parity).
+//
+// Pure / synchronous after the fetchItemModifierLists split — separates the
+// I/O concern from the validation concern, lets the caller parallelize the
+// IML fetch with other reads (see addLineItem).
+function resolveModifierSelections(
+  imls: IMLRow[],
+  selections: ModifierSelection[],
+): ResolvedModifier[] {
 
   // Lookup tables: modifier_id → (list_id, modifier row) for list-mode;
   // list_id → IML row for both modes (text-mode validation needs it too).
@@ -541,7 +621,9 @@ async function resolveModifierSelections(
       name: iml.modifier_lists.name,
       base_price_cents_delta: 0,
       quantity: 1,
-      ordinal: iml.modifier_lists.ordinal,
+      // Per-item list ordering comes from the join row, not the list itself
+      // (lists are reusable across items so they have no intrinsic order).
+      ordinal: iml.ordinal,
       text_value: trimmed,
     });
   }
@@ -621,13 +703,55 @@ export async function clearCart(orderId: string): Promise<void> {
  * Reads the cart for the current customer at the given venue. Returns null-ish
  * shape (no order, empty lines) when the customer has no draft yet so
  * components can render "empty cart" without conditional walls of code.
+ *
+ * Optional hints (`identity`, `orderId`) let callers that already know these
+ * values (typically the action layer right after a mutation) skip the
+ * corresponding lookups. With both hints we collapse 4 round-trips down to a
+ * single embedded query.
  */
 export async function getCartSummary(input: {
   orgId: string;
   venueId: string;
+  identity?: CartIdentity;
+  orderId?: string;
 }): Promise<CartSummary> {
   const supabase = await createClient();
-  const { customerId } = await ensureCartIdentity(input.orgId);
+
+  // Embedded select: lines + their modifiers in ONE round-trip (down from
+  // two). The modifiers join lives at the same nesting depth as the lines
+  // select so the response shape is `{ ..., modifiers: [...] }` per line.
+  const LINE_SELECT =
+    "id, uid, catalog_item_id, catalog_variation_id, name, variation_name, quantity, base_price_cents, total_price_cents, modifiers:order_line_item_modifiers(id, catalog_modifier_id, catalog_modifier_list_id, name, base_price_cents_delta, quantity, ordinal, text_value)";
+
+  // Fast path: caller already knows the orderId (most common — the action
+  // layer just created the draft or just mutated it). Skip the identity
+  // resolution AND the orders lookup; jump straight to fetching lines.
+  if (input.orderId) {
+    const { data: lines, error: linesError } = await supabase
+      .schema("commerce")
+      .from("order_line_items")
+      .select(LINE_SELECT)
+      .eq("order_id", input.orderId)
+      .order("created_at", { ascending: true });
+    if (linesError) throw new Error(linesError.message);
+
+    const lineItems = (lines ?? []).map((row) => normalizeLineItem(row));
+    return {
+      orderId: input.orderId,
+      // No version round-trip on the fast path — callers that need the OCC
+      // version use the orders SELECT path below.
+      version: 0,
+      lineItems,
+      subtotalCents: lineItems.reduce(
+        (sum, line) => sum + line.total_price_cents,
+        0,
+      ),
+    };
+  }
+
+  // Slow path: resolve identity and look up the draft order ourselves. Still
+  // benefits from the embedded lines+modifiers select (one RT instead of two).
+  const { customerId } = await resolveCartIdentity(input.orgId, input.identity);
 
   const { data: order, error: orderError } = await supabase
     .schema("commerce")
@@ -648,55 +772,13 @@ export async function getCartSummary(input: {
   const { data: lines, error: linesError } = await supabase
     .schema("commerce")
     .from("order_line_items")
-    .select(
-      "id, uid, catalog_item_id, catalog_variation_id, name, variation_name, quantity, base_price_cents, total_price_cents",
-    )
+    .select(LINE_SELECT)
     .eq("order_id", order.id)
     .order("created_at", { ascending: true });
 
   if (linesError) throw new Error(linesError.message);
 
-  const lineIds = (lines ?? []).map((row) => row.id);
-  let modifiersByLineId = new Map<string, CartLineItemModifier[]>();
-  if (lineIds.length > 0) {
-    const { data: modRows, error: modError } = await supabase
-      .schema("commerce")
-      .from("order_line_item_modifiers")
-      .select(
-        "id, line_item_id, catalog_modifier_id, catalog_modifier_list_id, name, base_price_cents_delta, quantity, ordinal, text_value",
-      )
-      .in("line_item_id", lineIds)
-      .order("ordinal", { ascending: true });
-    if (modError) throw new Error(modError.message);
-    modifiersByLineId = (modRows ?? []).reduce((acc, row) => {
-      const list = acc.get(row.line_item_id) ?? [];
-      list.push({
-        id: row.id,
-        catalog_modifier_id: row.catalog_modifier_id,
-        catalog_modifier_list_id: row.catalog_modifier_list_id,
-        name: row.name,
-        base_price_cents_delta: row.base_price_cents_delta,
-        quantity: Number(row.quantity),
-        text_value: row.text_value,
-      });
-      acc.set(row.line_item_id, list);
-      return acc;
-    }, new Map<string, CartLineItemModifier[]>());
-  }
-
-  const lineItems = (lines ?? []).map((row) => ({
-    id: row.id,
-    uid: row.uid,
-    catalog_item_id: row.catalog_item_id,
-    catalog_variation_id: row.catalog_variation_id,
-    name: row.name,
-    variation_name: row.variation_name,
-    quantity: Number(row.quantity),
-    base_price_cents: row.base_price_cents,
-    total_price_cents: row.total_price_cents,
-    modifiers: modifiersByLineId.get(row.id) ?? [],
-  }));
-
+  const lineItems = (lines ?? []).map((row) => normalizeLineItem(row));
   const subtotalCents = lineItems.reduce(
     (sum, line) => sum + line.total_price_cents,
     0,
@@ -707,5 +789,59 @@ export async function getCartSummary(input: {
     version: order.version,
     lineItems,
     subtotalCents,
+  };
+}
+
+// Coerces the PostgREST embedded-select row shape into the CartLineItem
+// shape the client expects. Centralized so the fast + slow paths in
+// getCartSummary stay in sync.
+type RawLineItem = {
+  id: string;
+  uid: string;
+  catalog_item_id: string | null;
+  catalog_variation_id: string | null;
+  name: string;
+  variation_name: string | null;
+  quantity: number | string;
+  base_price_cents: number;
+  total_price_cents: number;
+  modifiers:
+    | Array<{
+        id: string;
+        catalog_modifier_id: string | null;
+        catalog_modifier_list_id: string | null;
+        name: string;
+        base_price_cents_delta: number;
+        quantity: number | string;
+        ordinal: number;
+        text_value: string | null;
+      }>
+    | null;
+};
+
+function normalizeLineItem(row: RawLineItem): CartLineItem {
+  const modifiers = (row.modifiers ?? [])
+    .slice()
+    .sort((a, b) => a.ordinal - b.ordinal)
+    .map((m) => ({
+      id: m.id,
+      catalog_modifier_id: m.catalog_modifier_id,
+      catalog_modifier_list_id: m.catalog_modifier_list_id,
+      name: m.name,
+      base_price_cents_delta: m.base_price_cents_delta,
+      quantity: Number(m.quantity),
+      text_value: m.text_value,
+    }));
+  return {
+    id: row.id,
+    uid: row.uid,
+    catalog_item_id: row.catalog_item_id,
+    catalog_variation_id: row.catalog_variation_id,
+    name: row.name,
+    variation_name: row.variation_name,
+    quantity: Number(row.quantity),
+    base_price_cents: row.base_price_cents,
+    total_price_cents: row.total_price_cents,
+    modifiers,
   };
 }

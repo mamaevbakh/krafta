@@ -30,6 +30,7 @@ import {
   CartProvider,
   CartTrigger,
 } from "@/components/catalogs/cart";
+import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
 
 type Props = {
@@ -205,6 +206,24 @@ export function CatalogLayout({
                         const isPriority =
                           categoryIndex === 0 && itemIndex < 4;
 
+                        // CartActions goes INSIDE the card via the
+                        // `actions` slot prop so each variant can place
+                        // it where the design wants (BigPhotoCard floats
+                        // it absolute over the photo bottom-right —
+                        // Careem pattern). Null when cart is disabled
+                        // (settings_behavior.enableCart=false), in which
+                        // case the card renders zero cart UI.
+                        const actions = behavior.enableCart ? (
+                          <CartActions
+                            itemId={item.id}
+                            itemSlug={itemSlug}
+                            categorySlug={categorySlug}
+                            itemName={item.name}
+                            basePriceCents={item.price_cents}
+                            hasModifiers={item.modifier_lists.length > 0}
+                          />
+                        ) : null;
+
                         return (
                           <ItemSheetTrigger
                             key={item.id}
@@ -219,6 +238,7 @@ export function CatalogLayout({
                               activeLocale={activeLocale}
                               defaultLocale={defaultLocale}
                               priority={isPriority}
+                              actions={actions}
                             />
                           </ItemSheetTrigger>
                         );

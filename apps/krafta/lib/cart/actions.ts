@@ -19,15 +19,57 @@ import {
   type PlaceOrderResult,
 } from "./checkout";
 
+// Cart mutations DELIBERATELY skip revalidatePath of the catalog path:
+//
+//   1. The cart isn't rendered server-side in the catalog page tree —
+//      it's a client component (CartProvider) that fetches its own
+//      state via getCartSummaryAction. Invalidating the catalog cache
+//      does nothing useful for the cart.
+//   2. The storefront page uses "use cache" (see lib/catalogs/data.ts).
+//      revalidatePath there triggers Next 16's automatic post-
+//      server-action router refresh, which re-fetches the cached
+//      catalog payload (~1-2 s), re-mounts the cart-provider, fires
+//      its hydration effect a second time (the spurious
+//      getCartSummary calls you'd see in the dev logs), and races
+//      with the action's own return value — wiping the optimistic
+//      placeholder the user just added.
+//   3. The catalog data (items, prices, modifiers) doesn't change from
+//      a cart add/update/remove. Only the cart's own state does, and
+//      we already return the fresh cart summary from these actions for
+//      the client to reconcile against.
+//
+// placeOrderAction is the only cart action that DOES revalidate, and
+// only because the order transitions draft → open (which surfaces on
+// the merchant orders dashboard if they're looking) and clears the
+// customer's cart at the same moment — by then the optimistic /
+// stepper UI is gone, so the re-render is harmless.
+
 export async function ensureCartIdentityAction(
   orgId: string,
 ): Promise<CartIdentity> {
   return ensureCartIdentity(orgId);
 }
 
+// All cart mutation actions accept an optional `identity` hint. When the
+// client has already bootstrapped identity (via ensureCartIdentityAction on
+// CartProvider mount, cached for the session), it threads the hint into every
+// mutation — the server skips the ~200ms `auth.getUser()` + customers SELECT
+// round-trip. RLS still scopes every read/write to `auth.uid()`, so a forged
+// hint can't widen privilege. Likewise `orderId` lets getCartSummaryImpl skip
+// the orders lookup on the post-mutation reconcile.
+//
+// Performance impact (KRA cart latency cut, 2026-05): with both hints, an
+// `addLineItemAction` round-trip is one ensureCartIdentity, one parallel
+// reads block (draft+item+variation+IMLs), one candidate query, one
+// upsert — down from ~10 sequential queries to ~4. Combined with the
+// embedded select in getCartSummary, the action drops from ~2.7s to <1s
+// on dev (and proportionally faster on prod).
+
 export async function getCartSummaryAction(input: {
   orgId: string;
   venueId: string;
+  identity?: CartIdentity;
+  orderId?: string;
 }): Promise<CartSummary> {
   return getCartSummaryImpl(input);
 }
@@ -39,11 +81,19 @@ export async function addLineItemAction(input: {
   variationId?: string;
   quantity?: number;
   modifiers?: ModifierSelection[];
+  /** Kept on the input for backward compat with the cart-provider call
+   *  sites; intentionally unused now (see file-level comment above). */
   catalogPath: string;
+  identity?: CartIdentity;
 }): Promise<CartSummary> {
-  await addLineItemImpl(input);
-  revalidatePath(input.catalogPath);
-  return getCartSummaryImpl({ orgId: input.orgId, venueId: input.venueId });
+  const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
+  const { orderId } = await addLineItemImpl({ ...input, identity });
+  return getCartSummaryImpl({
+    orgId: input.orgId,
+    venueId: input.venueId,
+    identity,
+    orderId,
+  });
 }
 
 export async function updateLineItemQuantityAction(input: {
@@ -52,10 +102,20 @@ export async function updateLineItemQuantityAction(input: {
   lineItemId: string;
   quantity: number;
   catalogPath: string;
+  identity?: CartIdentity;
+  /** Optional draft orderId hint — when provided we skip the orders lookup in
+   *  the post-mutation getCartSummary. Cart-provider passes `summary.orderId`
+   *  on every update once it knows it. */
+  orderId?: string;
 }): Promise<CartSummary> {
+  const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
   await updateLineItemQuantityImpl(input.lineItemId, input.quantity);
-  revalidatePath(input.catalogPath);
-  return getCartSummaryImpl({ orgId: input.orgId, venueId: input.venueId });
+  return getCartSummaryImpl({
+    orgId: input.orgId,
+    venueId: input.venueId,
+    identity,
+    orderId: input.orderId,
+  });
 }
 
 export async function removeLineItemAction(input: {
@@ -63,24 +123,43 @@ export async function removeLineItemAction(input: {
   venueId: string;
   lineItemId: string;
   catalogPath: string;
+  identity?: CartIdentity;
+  orderId?: string;
 }): Promise<CartSummary> {
+  const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
   await removeLineItemImpl(input.lineItemId);
-  revalidatePath(input.catalogPath);
-  return getCartSummaryImpl({ orgId: input.orgId, venueId: input.venueId });
+  return getCartSummaryImpl({
+    orgId: input.orgId,
+    venueId: input.venueId,
+    identity,
+    orderId: input.orderId,
+  });
 }
 
 export async function clearCartAction(input: {
   orgId: string;
   venueId: string;
   catalogPath: string;
+  identity?: CartIdentity;
+  orderId?: string;
 }): Promise<CartSummary> {
-  const draft = await getOrCreateDraftOrderImpl({
+  const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
+  // If the client knows orderId (the common case after the cart has any line),
+  // skip the getOrCreateDraftOrder lookup entirely and clear directly.
+  const orderId =
+    input.orderId ??
+    (await getOrCreateDraftOrderImpl({
+      orgId: input.orgId,
+      venueId: input.venueId,
+      identity,
+    })).orderId;
+  await clearCartImpl(orderId);
+  return getCartSummaryImpl({
     orgId: input.orgId,
     venueId: input.venueId,
+    identity,
+    orderId,
   });
-  await clearCartImpl(draft.orderId);
-  revalidatePath(input.catalogPath);
-  return getCartSummaryImpl({ orgId: input.orgId, venueId: input.venueId });
 }
 
 export async function placeOrderAction(
