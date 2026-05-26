@@ -15,6 +15,17 @@ const nextConfig: NextConfig = {
   // chrome, irrelevant for our QA flows since we use the next-devtools
   // MCP (see CLAUDE.md) for runtime debugging instead.
   devIndicators: false,
+  // @resvg/resvg-js ships native .node bindings (libvips-style binary
+  // pulled in to rasterize the QR SVGs into PNGs for the bulk-download
+  // zip route). Turbopack can't place those binaries inside an ESM
+  // chunk — the Vercel build fails with `non-ecmascript placeable
+  // asset`. Opting the package out of bundling tells Next to leave it
+  // as a runtime `require()` so the native addon loads normally on the
+  // Node.js function runtime. See:
+  //   https://nextjs.org/docs/app/api-reference/config/next-config-js/serverExternalPackages
+  // Only the QR zip route (app/api/qr-codes/zip/[venueId]/route.ts)
+  // imports it, so the impact is isolated to that single Route Handler.
+  serverExternalPackages: ["@resvg/resvg-js"],
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
