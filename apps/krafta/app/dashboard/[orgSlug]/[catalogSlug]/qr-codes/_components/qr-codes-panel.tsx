@@ -25,6 +25,17 @@ import { startTransition, useTransition } from "react";
 import { toast } from "sonner";
 import { Download, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +57,11 @@ type ModeQr = {
   url: string;
   svg: string;
   isActive: boolean;
+  // KRA-26 follow-up: lifetime + rolling-7d counts from qr_scans. The
+  // panel renders them as a single chip; if both are 0 we render a
+  // "no scans yet" muted hint instead.
+  scanCountTotal: number;
+  scanCountLast7: number;
 };
 
 type TableRow = {
@@ -57,6 +73,8 @@ type TableRow = {
   shortcode: string;
   url: string;
   svg: string | null;
+  scanCountTotal: number;
+  scanCountLast7: number;
 };
 
 type QrCodesPanelProps = {
@@ -86,7 +104,7 @@ export function QrCodesPanel({
   }, [modeQrs]);
 
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-8 px-6 py-8">
+    <div className="mx-auto flex max-w-[1248px] flex-col gap-8 px-6 py-8">
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">QR codes</h1>
         <p className="text-sm text-muted-foreground">
@@ -238,7 +256,7 @@ function ModeQrCard({
   return (
     <article
       className={cn(
-        "flex flex-col gap-3 rounded-xl border bg-card p-4",
+        "flex flex-col gap-3 rounded-lg border bg-card p-4",
         !isModeEnabled && "opacity-60",
       )}
     >
@@ -261,8 +279,13 @@ function ModeQrCard({
 
       <QrPreview svg={qr.svg} muted={!isModeEnabled} />
 
+      <ScanCountLine
+        total={qr.scanCountTotal}
+        last7={qr.scanCountLast7}
+      />
+
       <div className="flex items-center justify-between gap-2">
-        <code className="truncate font-mono text-[11px] text-muted-foreground">
+        <code className="truncate font-mono text-xs text-muted-foreground">
           /q/{qr.shortcode}
         </code>
         <DownloadPngButton
@@ -274,7 +297,7 @@ function ModeQrCard({
       {/* Stamp the catalog/venue name below the QR for printability —
           merchants who copy the SVG straight to a printer benefit from
           having the brand context already on the asset. */}
-      <p className="text-center text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+      <p className="text-center text-xs uppercase tracking-[0.12em] text-muted-foreground">
         {catalogSubtitle} · {kindLabel}
       </p>
     </article>
@@ -403,15 +426,12 @@ function TableQrCard({
     });
   };
 
-  const onRegenerate = () => {
+  // Destructive handlers — no more window.confirm; the AlertDialog
+  // primitive owns the confirm step (rendered below in the JSX). Each
+  // handler is invoked from AlertDialogAction onClick after the merchant
+  // confirms in the dialog.
+  const onRegenerateConfirmed = () => {
     if (!table.qrId) return;
-    if (
-      !window.confirm(
-        `Regenerate the QR for "${table.label}"? The currently printed QR will stop working.`,
-      )
-    ) {
-      return;
-    }
     startRegen(async () => {
       const result = await regenerateQrShortcode({
         qrId: table.qrId!,
@@ -422,14 +442,7 @@ function TableQrCard({
     });
   };
 
-  const onDelete = () => {
-    if (
-      !window.confirm(
-        `Delete "${table.label}"? The QR will stop working immediately.`,
-      )
-    ) {
-      return;
-    }
+  const onDeleteConfirmed = () => {
     startDelete(async () => {
       const result = await deleteTable({ tableId: table.id, catalogSlug });
       if (!result.ok) toast.error(result.error);
@@ -440,7 +453,7 @@ function TableQrCard({
   return (
     <article
       className={cn(
-        "flex flex-col gap-3 rounded-xl border bg-card p-4",
+        "flex flex-col gap-3 rounded-lg border bg-card p-4",
         !table.isActive && "opacity-60",
       )}
     >
@@ -475,12 +488,17 @@ function TableQrCard({
         </div>
       )}
 
-      <p className="text-center text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+      <p className="text-center text-xs uppercase tracking-[0.12em] text-muted-foreground">
         {catalogSubtitle} · {table.label}
       </p>
 
+      <ScanCountLine
+        total={table.scanCountTotal}
+        last7={table.scanCountLast7}
+      />
+
       <div className="flex items-center justify-between gap-2">
-        <code className="truncate font-mono text-[11px] text-muted-foreground">
+        <code className="truncate font-mono text-xs text-muted-foreground">
           /q/{table.shortcode || "—"}
         </code>
         <div className="flex items-center gap-1">
@@ -490,36 +508,79 @@ function TableQrCard({
               fileName={`${catalogSlug}-${slugify(table.label)}.png`}
             />
           ) : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            disabled={pendingRegen || !table.qrId}
-            onClick={onRegenerate}
-            title="Regenerate shortcode (invalidates the printed QR)"
-            aria-label="Regenerate shortcode"
-          >
-            {pendingRegen ? (
-              <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            ) : (
-              <RefreshCw className="size-3.5" aria-hidden />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-            disabled={pendingDelete}
-            onClick={onDelete}
-            title="Delete table"
-            aria-label="Delete table"
-          >
-            {pendingDelete ? (
-              <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            ) : (
-              <Trash2 className="size-3.5" aria-hidden />
-            )}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                disabled={pendingRegen || !table.qrId}
+                title="Regenerate shortcode (invalidates the printed QR)"
+                aria-label="Regenerate shortcode"
+              >
+                {pendingRegen ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <RefreshCw className="size-3.5" aria-hidden />
+                )}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Regenerate QR for &ldquo;{table.label}&rdquo;?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  The currently printed QR will stop working immediately.
+                  You&apos;ll need to reprint the table card with the new code.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onRegenerateConfirmed}>
+                  Regenerate
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                disabled={pendingDelete}
+                title="Delete table"
+                aria-label="Delete table"
+              >
+                {pendingDelete ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Trash2 className="size-3.5" aria-hidden />
+                )}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Delete &ldquo;{table.label}&rdquo;?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  The QR will stop working immediately and the table will be
+                  removed from this venue. This can&apos;t be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={onDeleteConfirmed}
+                  className="bg-destructive text-white hover:bg-destructive/90"
+                >
+                  Delete table
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     </article>
@@ -529,6 +590,41 @@ function TableQrCard({
 // ----------------------------------------------------------------------------
 // QR rendering helpers
 // ----------------------------------------------------------------------------
+
+function ScanCountLine({
+  total,
+  last7,
+}: {
+  total: number;
+  last7: number;
+}) {
+  // Compact single-line readout. Three states:
+  //   - never scanned: muted hint nudging the merchant to print + share
+  //   - scanned but quiet this week: just the lifetime total
+  //   - active: lifetime + this-week delta
+  // Numbers are mono so they read as data, not prose.
+  if (total === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No scans yet. Print the QR and put it on the table.
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-muted-foreground">
+      <span className="font-mono font-medium tabular-nums text-foreground">
+        {total.toLocaleString()}
+      </span>{" "}
+      scan{total === 1 ? "" : "s"}
+      {last7 > 0 ? (
+        <>
+          {" · "}
+          <span className="font-mono tabular-nums">{last7}</span> this week
+        </>
+      ) : null}
+    </p>
+  );
+}
 
 function QrPreview({
   svg,

@@ -17,31 +17,64 @@ describe("renderQrSvg", () => {
     expect(svg).toMatch(/<path /);
   });
 
-  it("includes the Krafta wordmark by default", async () => {
+  it("includes the QR module path (not just the white background)", async () => {
+    // Regression guard for the regex bug shipped in 2026-05-25: the
+    // original `/<path[^>]+\/>/` matched the *first* <path> in qrcode's
+    // output, which is the white background fill — leaving the rendered
+    // SVG with no QR pattern at all (caught only in design review).
+    // qrcode emits the dark modules as <path stroke="#000000" ...>; if
+    // that path doesn't make it into the output the QR is unscannable.
     const svg = await renderQrSvg("https://krafta.org/q/abcd1234");
-    expect(svg).toContain("Krafta");
-    expect(svg).toContain("Helvetica Neue");
+    expect(svg).toMatch(/<path[^>]*stroke="#000000"[^>]*\/>/);
+    // And the d= for the module path should be non-trivial (many segments)
+    const strokeMatch = svg.match(/<path[^>]*stroke="#000000"[^>]*d="([^"]+)"/);
+    expect(strokeMatch).not.toBeNull();
+    expect(strokeMatch![1].length).toBeGreaterThan(100);
+  });
+
+  it("includes the Krafta vector wordmark by default", async () => {
+    // Default wordmark renders as a pre-baked vector <path>, NOT a
+    // <text> element — see render.ts for the why (cross-renderer font
+    // consistency). Looking for the path's first move command which is
+    // unique to the Krafta glyph cluster.
+    const svg = await renderQrSvg("https://krafta.org/q/abcd1234");
+    expect(svg).toContain("M22.6 -71.4");
+    expect(svg).toContain("fill=\"#000000\"");
+    // The white cutout rect should still be there.
+    expect(svg).toContain("fill=\"#FFFFFF\"");
+    // And we should NOT have fallen through to the text branch.
+    expect(svg).not.toContain("<text");
+    // No font-family attribute means we didn't fall through to <text>.
+    // (The source comment mentions "Helvetica Neue Bold" so we can't
+    // grep for that string directly.)
+    expect(svg).not.toMatch(/font-family\s*=/);
   });
 
   it("omits the wordmark when disabled", async () => {
     const svg = await renderQrSvg("https://krafta.org/q/abcd1234", {
       withWordmark: false,
     });
-    expect(svg).not.toContain("Krafta");
+    expect(svg).not.toContain("M22.6 -71.4");
     expect(svg).not.toContain("<text");
   });
 
-  it("honors a custom wordmark string", async () => {
+  it("falls back to text element for a custom wordmark string", async () => {
+    // The vector path is only baked for "Krafta". Custom strings get the
+    // <text> fallback rendered in the brand font stack.
     const svg = await renderQrSvg("https://krafta.org/q/abcd1234", {
       wordmark: "AcmeCo",
     });
     expect(svg).toContain("AcmeCo");
-    expect(svg).not.toContain(">Krafta<");
+    expect(svg).toContain("<text");
+    expect(svg).toMatch(/font-family\s*=\s*"'Helvetica Neue'/);
+    // The Krafta vector path must NOT leak into custom-wordmark output.
+    expect(svg).not.toContain("M22.6 -71.4");
   });
 
-  it("XML-escapes wordmark text", async () => {
-    // Future-proofing — Krafta has no special chars, but defensive
-    // escaping protects callers that pass merchant-supplied brand names.
+  it("XML-escapes wordmark text on the fallback branch", async () => {
+    // Krafta has no special chars and uses the vector path; the escape
+    // path matters for merchant-supplied brand names that go through
+    // <text>.
     const svg = await renderQrSvg("https://krafta.org/q/abcd1234", {
       wordmark: "<Bobby> & \"Drop\"",
     });

@@ -3435,6 +3435,55 @@ export type Database = {
           },
         ]
       }
+      qr_scans: {
+        // KRA-26 follow-up — hand-added until the next `pnpm gen:types`.
+        // See supabase/migrations/20260525150000_kra26_qr_scans.sql.
+        Row: {
+          id: string
+          qr_code_id: string
+          org_id: string
+          scanned_at: string
+          ip_hash: string | null
+          ua_hash: string | null
+          referrer: string | null
+        }
+        Insert: {
+          id?: string
+          qr_code_id: string
+          // BEFORE INSERT trigger fills org_id from the qr_codes row; any
+          // uuid here is overwritten. Mirrors the qr_codes/tables pattern.
+          org_id?: string
+          scanned_at?: string
+          ip_hash?: string | null
+          ua_hash?: string | null
+          referrer?: string | null
+        }
+        Update: {
+          id?: string
+          qr_code_id?: string
+          org_id?: string
+          scanned_at?: string
+          ip_hash?: string | null
+          ua_hash?: string | null
+          referrer?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qr_scans_qr_code_id_fkey"
+            columns: ["qr_code_id"]
+            isOneToOne: false
+            referencedRelation: "qr_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_scans_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tables: {
         Row: {
           id: string
