@@ -127,6 +127,9 @@ export type StorefrontMessageKey =
   // an "Add new customised item" CTA.
   | "customisations.title"
   | "customisations.add_new"
+  // Storefront bottom dock — search input placeholder + a11y label.
+  | "search.placeholder"
+  | "search.open_aria"
   // Errors (interpolation-aware — use `{var}` placeholders in the string)
   | "errors.network"
   | "errors.item_not_found"
@@ -235,6 +238,8 @@ const EN: MessageTable = {
   "add_to_cart.gated_required_many": "Make {count} required selections",
   "customisations.title": "Your customisations for this item",
   "customisations.add_new": "Add new customised item",
+  "search.placeholder": "Search the menu",
+  "search.open_aria": "Open search",
 
   "errors.network":
     "Network issue. Check your connection and try again.",
@@ -342,6 +347,8 @@ const RU: MessageTable = {
   "add_to_cart.gated_required_many": "Сделайте {count} обязательных выборов",
   "customisations.title": "Ваши настройки этого блюда",
   "customisations.add_new": "Добавить ещё с другими настройками",
+  "search.placeholder": "Поиск по меню",
+  "search.open_aria": "Открыть поиск",
 
   "errors.network": "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   "errors.item_not_found": "Эта позиция больше недоступна.",
@@ -452,6 +459,8 @@ const UZ_LATN: MessageTable = {
   "add_to_cart.gated_required_many": "{count} ta majburiy tanlovni bajaring",
   "customisations.title": "Bu mahsulot uchun sozlamalaringiz",
   "customisations.add_new": "Boshqa sozlamalar bilan qo‘shish",
+  "search.placeholder": "Menyu bo‘yicha qidirish",
+  "search.open_aria": "Qidiruvni ochish",
 
   "errors.network": "Internet bilan muammo. Aloqani tekshirib qaytadan urinib ko‘ring.",
   "errors.item_not_found": "Bu taom endi mavjud emas.",

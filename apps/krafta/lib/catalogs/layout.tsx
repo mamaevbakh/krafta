@@ -24,13 +24,12 @@ import {
   ItemSheetProvider,
   ItemSheetTrigger,
 } from "@/components/catalogs/items/item-detail-controller";
-import { CatalogSearchLazy } from "@/components/catalogs/search/catalog-search-lazy";
 import {
   CartDrawer,
   CartProvider,
-  CartTrigger,
 } from "@/components/catalogs/cart";
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
+import { StorefrontDock } from "@/components/catalogs/storefront-dock";
 import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
 
 type Props = {
@@ -254,7 +253,12 @@ export function CatalogLayout({
             })}
           </section>
         </main>
-        <CatalogSearchLazy
+        {/* Bottom-center floating dock — search input + cart icon. Lives
+            INSIDE ItemSheetProvider so its CatalogSearch can call
+            useItemSheet() to open items on result tap. The CartTrigger
+            slot reads useOptionalCart() so it noops gracefully when
+            this catalog has cart disabled (no CartProvider in scope). */}
+        <StorefrontDock
           catalogId={catalog.id}
           orgId={catalog.org_id ?? null}
           categoriesWithItems={categoriesWithItems}
@@ -266,12 +270,16 @@ export function CatalogLayout({
 
   // Cart UI is opt-in per catalog via settings_behavior.enableCart, and only
   // renders when we have a venue (always true post-Migration 2, but the null
-  // path guards against catalogs created outside the normal flow).
+  // path guards against catalogs created outside the normal flow). The
+  // dock itself is part of `tree` (so its CatalogSearch sees the
+  // ItemSheetProvider); its CartTrigger child noops when no CartProvider
+  // is in scope, so the dock collapses to a search-only pill here.
   if (!venue || !behavior.enableCart) return tree;
 
   // Paused / archived venues: customer can still browse the menu, but no
   // cart UI renders. Surface a banner so the missing Add-to-cart buttons
-  // are not mysterious.
+  // are not mysterious. Same dock semantics (search-only without
+  // CartProvider).
   if (venue.status !== "active") {
     return (
       <>
@@ -299,7 +307,6 @@ export function CatalogLayout({
       taxes={taxes}
     >
       {tree}
-      <CartTrigger />
       <CartDrawer currencySettings={resolvedCurrency} />
     </CartProvider>
   );

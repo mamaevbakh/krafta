@@ -50,6 +50,13 @@ export type CatalogSearchProps = {
   orgId?: string | null;
   categoriesWithItems: PublicCategoryWithItems[];
   currencySettings?: CurrencySettings;
+  /** Controlled-open API. Pass both to lift the dialog state into the
+   *  storefront dock — the dock owns the visible search input that
+   *  triggers the dialog. When undefined, the component falls back to
+   *  internal state + renders its legacy floating bottom-right button
+   *  as the trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 type ItemMatch = {
@@ -87,10 +94,29 @@ export function CatalogSearch({
   orgId,
   categoriesWithItems,
   currencySettings,
+  open: controlledOpen,
+  onOpenChange,
 }: CatalogSearchProps) {
   const { openItem } = useItemSheet();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
-  const [open, setOpen] = React.useState(false);
+  // Controlled vs uncontrolled: when the storefront dock passes both
+  // `open` and `onOpenChange`, those drive the dialog state and the
+  // legacy floating trigger is suppressed. Otherwise we keep the
+  // original internal-state + floating-button behavior for any caller
+  // that hasn't migrated to the dock yet.
+  const isControlled = controlledOpen !== undefined && Boolean(onOpenChange);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = isControlled ? (controlledOpen as boolean) : internalOpen;
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (isControlled) {
+        onOpenChange?.(next);
+      } else {
+        setInternalOpen(next);
+      }
+    },
+    [isControlled, onOpenChange],
+  );
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<SearchDocument[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -467,17 +493,23 @@ export function CatalogSearch({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          aria-label="Open search"
-          variant="default"
-          size="icon-lg"
-          className="fixed bottom-6 right-6 z-40 h-12 w-12 rounded-full "
-        >
-          <Search />
-        </Button>
-      </DialogTrigger>
+      {/* Legacy floating trigger — rendered only when the dialog state
+          is uncontrolled (no dock wiring). The storefront dock owns
+          its own input which calls onOpenChange directly; we don't
+          want a second floating button competing with it. */}
+      {!isControlled ? (
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            aria-label="Open search"
+            variant="default"
+            size="icon-lg"
+            className="fixed bottom-6 right-6 z-40 h-12 w-12 rounded-full "
+          >
+            <Search />
+          </Button>
+        </DialogTrigger>
+      ) : null}
 
       <DialogContent
         showCloseButton={false}

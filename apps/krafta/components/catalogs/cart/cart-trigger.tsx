@@ -7,29 +7,55 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { useCart } from "./cart-provider";
+import { useOptionalCart } from "./cart-provider";
 
 type CartTriggerProps = {
   className?: string;
+  /** When true, the trigger renders nothing while the cart is empty
+   *  (slot-friendly behavior for the storefront dock). When false (the
+   *  legacy floating-button mode), the icon stays visible at all times
+   *  so the customer can still tap into an empty cart drawer. */
+  hideWhenEmpty?: boolean;
 };
 
-export function CartTrigger({ className }: CartTriggerProps) {
-  const { itemCount, open } = useCart();
+/**
+ * Tap surface that opens the cart drawer. Designed to be slotted into
+ * the storefront bottom dock (`hideWhenEmpty=true` by default for the
+ * dock context) — no fixed positioning, no shadow, no rounded-full;
+ * the dock owns chrome. The legacy floating-button mode stays on the
+ * `false` path for any caller that still wants the standalone bottom-
+ * right circle.
+ *
+ * hasMounted gate prevents the badge from rendering during hydration:
+ * the localStorage cart cache applies in a post-mount effect, so the
+ * server's `itemCount=0` render diverges from the client's
+ * `itemCount=N` immediately after hydration. Without this gate React
+ * tears down + re-renders the whole cart tree → visible "stepper
+ * flash" the customer perceives as a UI glitch.
+ */
+export function CartTrigger({
+  className,
+  hideWhenEmpty = true,
+}: CartTriggerProps) {
+  // useOptionalCart returns null when the trigger is mounted outside a
+  // CartProvider (catalog with cart disabled, or test harness). Render
+  // nothing in that case — safe to drop into the storefront dock
+  // regardless of cart-enabled state.
+  const cart = useOptionalCart();
 
-  // hasMounted flips true after first commit. Used to gate everything
-  // derived from the localStorage-cached cart so the server-rendered tree
-  // and the first client render are byte-identical (no hydration mismatch).
-  //
-  // Without this, server renders aria-label="Open cart" + no Badge while
-  // client renders aria-label="Open cart (N items)" + a Badge — React then
-  // throws "Hydration failed" and tears down + re-renders the whole cart
-  // tree, which the customer perceives as the "Add → stepper" flicker.
   const [hasMounted, setHasMounted] = React.useState(false);
   React.useEffect(() => {
     setHasMounted(true);
   }, []);
 
+  if (!cart) return null;
+  const { itemCount, open } = cart;
+
   const showCount = hasMounted && itemCount > 0;
+
+  // Dock mode: render nothing while cart is empty. The dock collapses
+  // to just the search input — calm empty state, no idle chrome.
+  if (hideWhenEmpty && !showCount) return null;
 
   return (
     <Button
@@ -39,12 +65,7 @@ export function CartTrigger({ className }: CartTriggerProps) {
       aria-label={
         showCount ? `Open cart (${itemCount} items)` : "Open cart"
       }
-      // Sits to the left of the floating search trigger (right-6) so both are
-      // visible together on mobile.
-      className={cn(
-        "fixed bottom-6 right-24 z-40 h-12 w-12 rounded-full shadow-lg",
-        className,
-      )}
+      className={cn("relative h-11 w-11 rounded-full", className)}
     >
       <ShoppingCart className="h-5 w-5" />
       {showCount ? (
