@@ -68,8 +68,8 @@ export function StorefrontDock({
           doesn't intercept scroll/touch on the items behind. */}
       <ProgressiveBlur
         position="bottom"
-        height="180px"
-        blurAmount="6px"
+        height="134px"
+        blurAmount="1px"
         className="z-30"
       />
 

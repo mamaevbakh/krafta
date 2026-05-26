@@ -39,8 +39,8 @@ type ProgressiveBlurProps = React.HTMLAttributes<HTMLDivElement> & {
 export function ProgressiveBlur({
   className,
   position = "bottom",
-  height = "80px",
-  blurAmount = "4px",
+  height = "40px",
+  blurAmount = "1px",
   backgroundColor,
   style,
   ...rest
