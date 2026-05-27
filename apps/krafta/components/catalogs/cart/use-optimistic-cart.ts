@@ -54,7 +54,18 @@ export type OptimisticCartAction =
       type: "add";
       itemId: string;
       variationId: string | null;
-      quantity: number;
+      /**
+       * cart-v3 P3 fix: absolute target quantity after this action lands,
+       * NOT a delta. The caller computes `existing.quantity + intent` at
+       * dispatch time using the latest optimisticCart (via ref). Going
+       * absolute closes the "server response commits before useOptimistic
+       * clears the action" flicker class: re-applying a `setQty(2)`
+       * action on top of a serverCart that already has the line at qty=2
+       * is a no-op, where the old delta semantics produced a transient
+       * qty=3 between commit and clear (one frame of stepper → minus
+       * icon → trash, observable to the customer on a single tap).
+       */
+      targetQty: number;
       name: string;
       variationName: string | null;
       basePriceCents: number;
@@ -175,9 +186,16 @@ export function applyAction(
       );
 
       if (matchingIndex >= 0) {
+        // Absolute-qty SET (cart-v3 P3 flicker fix). The caller
+        // computes `existing.quantity + intent` at dispatch using
+        // the LATEST optimisticCart, so re-applying this action on
+        // top of an already-committed serverCart yields the same
+        // qty — no transient overshoot between setServerCart commit
+        // and useOptimistic clearing the pending action.
         const next = [...state.lineItems];
         const existing = next[matchingIndex];
-        const nextQty = existing.quantity + action.quantity;
+        const nextQty = action.targetQty;
+        if (existing.quantity === nextQty) return state;
         next[matchingIndex] = {
           ...existing,
           quantity: nextQty,
@@ -190,12 +208,12 @@ export function applyAction(
         };
       }
 
-      // No match — append a placeholder. The id begins with `local-`
-      // so anyone iterating the list can distinguish placeholders from
-      // server-materialized lines. We use the CALLER-ALLOCATED id
-      // (passed on the action) instead of generating one here, so the
-      // reducer stays pure — see the doc comment on
-      // OptimisticCartAction.add.placeholderId for the StrictMode trap.
+      // No match — append a placeholder line at the action's
+      // targetQty (which, for a brand-new line, is just the customer's
+      // intent — 1 on a fresh tap, N on a programmatic add-N path).
+      // We use the CALLER-ALLOCATED id (passed on the action) instead
+      // of generating one here, so the reducer stays pure — see the
+      // doc comment on OptimisticCartAction.add.placeholderId.
       const placeholder: CartLineItem = {
         id: action.placeholderId,
         uid: "",
@@ -203,13 +221,13 @@ export function applyAction(
         catalog_variation_id: action.variationId,
         name: action.name,
         variation_name: action.variationName,
-        quantity: action.quantity,
+        quantity: action.targetQty,
         base_price_cents: action.basePriceCents,
         total_price_cents:
           perUnitCents({
             base_price_cents: action.basePriceCents,
             modifiers: action.modifiers,
-          }) * action.quantity,
+          }) * action.targetQty,
         modifiers: action.modifiers,
       };
       const next = [...state.lineItems, placeholder];

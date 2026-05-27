@@ -37,6 +37,7 @@ import {
 } from "@/lib/locales/messages";
 
 import {
+  applyAction,
   toModifierSelections,
   useOptimisticCart,
   type OptimisticCartAction,
@@ -272,11 +273,10 @@ export function CartProvider({
   const [, startTransition] = useTransition();
 
   // Live mirror of serverCart, read inside serverCall closures so each
-  // mutation's `targetQty` computation sees the latest committed state.
+  // mutation can pass the latest committed orderId hint to the server.
   // The runMutation lock guarantees a serverCall only fires after the
   // previous mutation's setServerCart has landed, so by the time we
-  // read this ref, it reflects every prior tap's outcome — rapid
-  // taps walk 1 → 2 → 3 instead of all sending qty=1.
+  // read this ref, it reflects every prior tap's outcome.
   //
   // Why a ref and not a useCallback dep: putting serverCart on addItem's
   // deps re-creates the callback on every mutation, which cascades
@@ -285,6 +285,16 @@ export function CartProvider({
   // still giving us a fresh read at server-call time.
   const serverCartRef = useRef(serverCart);
   serverCartRef.current = serverCart;
+
+  // Live mirror of optimisticCart, read at addItem DISPATCH time to
+  // compute the absolute targetQty (= existing + delta). Reading the
+  // optimistic view rather than serverCart means rapid taps stack
+  // correctly: tap 2's dispatch sees tap 1's pending optimistic, so
+  // targetQty for tap 2 is `1 + 1 = 2`, not `0 + 1 = 1`. Server-side,
+  // the runMutation lock + idempotency keys + absolute setLineQuantityAction
+  // semantics ensure the final state matches the last dispatched tap.
+  const optimisticCartRef = useRef(optimisticCart);
+  optimisticCartRef.current = optimisticCart;
 
   // Track in-flight mutation promises so flush() can await them before
   // placeOrder commits. A WeakRef-free Set keeps this simple; each entry
@@ -486,31 +496,45 @@ export function CartProvider({
             : Math.random().toString(36).slice(2));
       }
 
+      // Compute the absolute targetQty at DISPATCH time using the
+      // latest optimisticCart (which includes any prior in-flight taps).
+      // Reading optimistic — not serverCart — is what makes rapid
+      // taps stack correctly: tap 2 sees tap 1's pending optimistic,
+      // so targetQty = 1 + 1 = 2. We use the same value for the
+      // optimistic dispatch AND the server call so they converge by
+      // construction.
+      const optExisting = optimisticCartRef.current.lineItems.find(
+        (l) => l.id === placeholderId,
+      );
+      const targetQty = (optExisting?.quantity ?? 0) + quantity;
+      const optimisticAction: OptimisticCartAction = {
+        type: "add",
+        itemId,
+        variationId: resolvedVariationId,
+        targetQty,
+        name: resolvedName,
+        variationName,
+        basePriceCents,
+        modifiers: lineModifiers,
+        modifierSig: sig,
+        idempotencyKey,
+        placeholderId,
+      };
+      // Pre-advance the optimisticCart ref to what this dispatch will
+      // produce. addOptimistic + useOptimistic's reducer only update
+      // the ref on the NEXT React render — between two synchronous
+      // rapid taps in the same event handler, there is no render, so
+      // tap 2 would otherwise still see tap 1's pre-dispatch state.
+      // We run the same exported reducer against the same action so
+      // the ref and the eventual render converge byte-for-byte.
+      optimisticCartRef.current = applyAction(
+        optimisticCartRef.current,
+        optimisticAction,
+      );
+
       runMutation({
-        optimistic: {
-          type: "add",
-          itemId,
-          variationId: resolvedVariationId,
-          quantity,
-          name: resolvedName,
-          variationName,
-          basePriceCents,
-          modifiers: lineModifiers,
-          modifierSig: sig,
-          idempotencyKey,
-          placeholderId,
-        },
+        optimistic: optimisticAction,
         serverCall: () => {
-          // Absolute-quantity translation. setLineQuantityAction wants
-          // the final qty after this tap commits; we read the existing
-          // line from the LATEST serverCart (via ref, post-lock-await)
-          // and add the delta. Rapid taps walk monotonically — no
-          // overshoot from out-of-order arrival, no walk-back from
-          // every server call sending qty=1.
-          const existing = serverCartRef.current.lineItems.find(
-            (l) => l.id === placeholderId,
-          );
-          const targetQty = (existing?.quantity ?? 0) + quantity;
           if (!resolvedVariationId) {
             // Defensive: dev-warn already fired above. The mutation
             // can't address a setLineQuantityAction without a variation
