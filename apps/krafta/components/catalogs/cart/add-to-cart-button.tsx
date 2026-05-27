@@ -189,31 +189,16 @@ export function AddToCartButton(props: AddToCartButtonProps) {
     }
   };
 
-  const handleIncrement = async () => {
+  const handleIncrement = () => {
     if (!matchingLine) return;
-    // addItem with quantity=1 dedupes by (item+variation+signature) and
-    // bumps the existing line's qty. Local state updates immediately;
-    // the server sync is debounced (~2.5s) and merges multiple taps.
-    //
-    // Pass the matched line's resolved variation so the cart-provider's
-    // applyLocal can find it. If the caller didn't specify a variation
-    // (variationId prop undefined), the existing line is keyed by the
-    // server's chosen default variation — passing undefined here would
-    // create a duplicate placeholder instead of bumping the existing
-    // line's quantity.
-    try {
-      await addItem({
-        itemId,
-        variationId:
-          variationId ?? matchingLine.catalog_variation_id ?? undefined,
-        name: itemName,
-        basePriceCents,
-        variationName,
-        modifiers,
-      });
-    } catch {
-      // cart-provider toasts the error.
-    }
+    // Bump by line id — identical path the cart-drawer + card stepper
+    // use post-KRA-108. Goes through updateQuantity (line-id keyed,
+    // absolute qty), which avoids the racy match-by-(item, variation,
+    // sig) recompute the old addItem-bump path required. The comment
+    // here used to talk about a 2.5s debounce dedup — that mechanism is
+    // gone, and so is the only reason for taking the addItem path on a
+    // bump where we already know the exact line id.
+    bumpQuantity(matchingLine.id, +1);
   };
 
   const handleDecrement = () => {
