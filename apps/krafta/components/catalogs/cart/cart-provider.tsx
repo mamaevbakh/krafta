@@ -29,6 +29,8 @@ import type {
   CartSummary,
 } from "@/lib/cart/orders";
 import { modifierSignature } from "@/lib/cart/modifier-signature";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { pinRealtimeAuth } from "@/lib/supabase/realtime";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import type { PublicTax } from "@/lib/catalogs/types";
 import {
@@ -309,6 +311,12 @@ export function CartProvider({
   // Hydration state: true until the first server roundtrip lands. Only
   // matters when initialSummary wasn't passed (no SSR cart preload).
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
+
+  // Refresh, threaded through a ref so the Realtime subscription effect
+  // below can call the latest closure without listing `refresh` as a
+  // dep (which would tear the subscription down on every cart
+  // mutation, since refresh changes when serverCart.orderId changes).
+  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   // One-time mount: identity bootstrap + initial cart fetch in parallel.
   // No drain loop, no localStorage cache hydration, no race-aware
@@ -719,12 +727,83 @@ export function CartProvider({
         identity: identityRef.current ?? undefined,
         orderId: serverCart.orderId ?? undefined,
       });
-      setServerCart(normalizeSummary(next));
+      const normalized = normalizeSummary(next);
+      // Manual ref sync — same rationale as the runMutation post-
+      // setServerCart sync: keep serverCartRef ahead of React's next
+      // render so any rapid mutation that fires immediately after a
+      // Realtime-driven refresh sees the latest committed state.
+      serverCartRef.current = normalized;
+      setServerCart(normalized);
     } catch {
       // Silent — refresh is best-effort. The cart still has its last
       // known state; the next mutation's response will hydrate fresh.
     }
   }, [orgId, serverCart.orderId, venueId]);
+  refreshRef.current = refresh;
+
+  // ── Realtime cross-tab sync (P4) ──────────────────────────────────────
+  //
+  // Subscribe to commerce.order_line_items mutations scoped to the
+  // current draft order_id. Any insert / update / delete event triggers
+  // a refresh() so Tab B picks up Tab A's changes within ~200ms (the
+  // round-trip floor of Supabase Realtime's WebSocket).
+  //
+  // Self-events (this tab's own mutation fires through Realtime too)
+  // are not filtered out — refresh() lands the same state we already
+  // committed via setServerCart, so the optimistic re-derive is a
+  // no-op visually. The absolute-quantity optimistic action makes
+  // re-application idempotent.
+  //
+  // Resubscribe on orderId change: when the customer places an order
+  // the draft transitions to state='open' and setServerCart(EMPTY)
+  // clears orderId. The cleanup runs, the effect returns early on
+  // null orderId, and the next addItem creates a new draft → orderId
+  // becomes non-null → effect re-runs and subscribes to the fresh
+  // channel.
+  //
+  // refreshRef indirection: `refresh` changes whenever its deps
+  // change (specifically serverCart.orderId), so listing it in this
+  // effect's deps would tear the subscription down on every cart
+  // mutation. The ref dereference inside the handler reads the latest
+  // closure without churning the WebSocket.
+  useEffect(() => {
+    const orderId = serverCart.orderId;
+    if (!orderId) return;
+
+    const supabase = createBrowserClient();
+    let cancelled = false;
+    let channelRef: ReturnType<typeof supabase.channel> | null = null;
+
+    (async () => {
+      // Pin the customer's JWT on Realtime before subscribing — RLS
+      // on commerce.order_line_items scopes by auth.uid(), so anon
+      // events get filtered out and the subscription would silently
+      // never deliver.
+      await pinRealtimeAuth(supabase);
+      if (cancelled) return;
+
+      channelRef = supabase
+        .channel(`cart:${orderId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "commerce",
+            table: "order_line_items",
+            filter: `order_id=eq.${orderId}`,
+          },
+          () => {
+            void refreshRef.current();
+          },
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channelRef) void supabase.removeChannel(channelRef);
+    };
+  }, [serverCart.orderId]);
 
   const flush: CartContextValue["flush"] = useCallback(async () => {
     // Await the serialize chain head FIRST. Each runMutation captures
