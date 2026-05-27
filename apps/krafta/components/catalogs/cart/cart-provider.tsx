@@ -454,13 +454,40 @@ function reconcileServerSummary(
   });
 
   // Guard #3: carry over local placeholders the server doesn't already
-  // know about (by identity match, not id). Once the server has the real
-  // row, we drop the placeholder — otherwise we'd see two rows for the
-  // same item until the next refresh.
-  const serverIdentityKeys = new Set(next.lineItems.map(lineIdentityKey));
-  const placeholders = prev.lineItems.filter(
-    (l) => l.id.startsWith("local-") && !serverIdentityKeys.has(lineIdentityKey(l)),
-  );
+  // know about. Drop a placeholder once the server has materialized it
+  // (matched by identity).
+  //
+  // **Permissive variation match for placeholders with no variationId.**
+  // The catalog-card Add path (cart-actions.tsx → cart.addItem with no
+  // variationId) creates a placeholder with `catalog_variation_id=null`.
+  // The server resolves "no variation specified" to the item's default
+  // variation and returns the real line with `catalog_variation_id=<uuid>`.
+  // A strict identity match (item + variation + sig) misses these — the
+  // placeholder's key is `item::::sig`, the server's is `item::uuid::sig`.
+  // Without permissive matching the placeholder stays in cart state
+  // alongside the materialized server line:
+  //   - the cart drawer renders two rows for the same item
+  //   - the catalog card stepper sums totalQty across matching lines,
+  //     so its qty readout flashes "2" for what the customer perceives
+  //     as a single +1 (the famous "tap once, cart shows 2" bug)
+  // Permissive rule: when the placeholder has no variationId, match it
+  // against ANY server line for the same (item, sig). When it HAS a
+  // variationId (detail-view path), strict (item, variation, sig).
+  const placeholders = prev.lineItems.filter((local) => {
+    if (!local.id.startsWith("local-")) return false;
+    const localSig = lineModifierSig(local);
+    return !next.lineItems.some((server) => {
+      if (server.catalog_item_id !== local.catalog_item_id) return false;
+      if (lineModifierSig(server) !== localSig) return false;
+      if (
+        local.catalog_variation_id !== null &&
+        server.catalog_variation_id !== local.catalog_variation_id
+      ) {
+        return false;
+      }
+      return true;
+    });
+  });
 
   const lineItems = [...merged, ...placeholders];
   return {
