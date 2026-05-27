@@ -15,15 +15,14 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import {
-  addLineItemAction,
   clearCartAction,
   ensureCartIdentityAction,
   getCartSummaryAction,
   placeOrderAction,
-  removeLineItemAction,
-  updateLineItemQuantityAction,
+  setLineQuantityAction,
 } from "@/lib/cart/actions";
 import type { CartIdentity } from "@/lib/cart/identity";
+import { lineKeyFromServerLine, makeLineKey } from "@/lib/cart/line-key";
 import type {
   CartLineItem,
   CartLineItemModifier,
@@ -110,6 +109,14 @@ type CartContextValue = {
   addItem: (input: {
     itemId: string;
     variationId?: string;
+    /**
+     * cart-v3 P3: the item's resolved default variation id, threaded
+     * from the catalog at render time. Used when the caller didn't
+     * explicitly pick a variation (catalog-card Add path) so the
+     * client lineKey matches the server-materialized line's lineKey
+     * by construction — no swap on first response, no flicker.
+     */
+    defaultVariationId?: string;
     quantity?: number;
     name?: string;
     basePriceCents?: number;
@@ -170,6 +177,39 @@ const EMPTY_SUMMARY: CartSummary = {
   subtotalCents: 0,
 };
 
+/**
+ * cart-v3 P3: rewrite each server line's `id` to its tuple-derived
+ * `lineKey` BEFORE the cart enters React state. This is the move that
+ * collapses the cart-v2 "server uuid for materialized lines, local-uuid
+ * for placeholders, swap on first response" identity dance into a single
+ * stable key.
+ *
+ * Once the server cart is normalized:
+ *   - React keys off `line.id` (== lineKey) — same value across the
+ *     line's whole lifetime, no reconciler thrash on materialization.
+ *   - The optimistic reducer's placeholderId is also a lineKey, so a
+ *     placeholder and its server-materialized commit are indistinguishable
+ *     from the reducer's perspective.
+ *   - Stepper handlers (cart-actions, cart-drawer, customisations-drawer)
+ *     keep passing `line.id` to bumpQuantity / removeItem; that value is
+ *     now a lineKey, which routes cleanly through setLineQuantityAction.
+ *
+ * Legacy rows with NULL catalog_item_id / catalog_variation_id can't form
+ * a lineKey — those keep their server uuid and remain effectively
+ * orphaned (no client mutation can target them). Acceptable: every row
+ * written post-KRA-77 has both fields populated, and the only paths that
+ * could produce a NULL are migrations we've already retired.
+ */
+function normalizeSummary(summary: CartSummary): CartSummary {
+  return {
+    ...summary,
+    lineItems: summary.lineItems.map((line) => {
+      if (!line.catalog_item_id || !line.catalog_variation_id) return line;
+      return { ...line, id: lineKeyFromServerLine(line) };
+    }),
+  };
+}
+
 /** Per-action idempotency key. UUID when crypto.randomUUID is available;
  *  fallback for ancient browsers. Server's withIdempotency wrapper caches
  *  the result for 24h, so the same key returned twice produces one DB
@@ -226,10 +266,25 @@ export function CartProvider({
 }: CartProviderProps) {
   // ── Cart state (the actual refactored thing) ──────────────────────────
   const [serverCart, setServerCart] = useState<CartSummary>(
-    initialSummary ?? EMPTY_SUMMARY,
+    initialSummary ? normalizeSummary(initialSummary) : EMPTY_SUMMARY,
   );
   const [optimisticCart, addOptimistic] = useOptimisticCart(serverCart);
   const [, startTransition] = useTransition();
+
+  // Live mirror of serverCart, read inside serverCall closures so each
+  // mutation's `targetQty` computation sees the latest committed state.
+  // The runMutation lock guarantees a serverCall only fires after the
+  // previous mutation's setServerCart has landed, so by the time we
+  // read this ref, it reflects every prior tap's outcome — rapid
+  // taps walk 1 → 2 → 3 instead of all sending qty=1.
+  //
+  // Why a ref and not a useCallback dep: putting serverCart on addItem's
+  // deps re-creates the callback on every mutation, which cascades
+  // through the context-value memo and forces every cart-consuming
+  // component to re-render. The ref keeps the callback stable while
+  // still giving us a fresh read at server-call time.
+  const serverCartRef = useRef(serverCart);
+  serverCartRef.current = serverCart;
 
   // Track in-flight mutation promises so flush() can await them before
   // placeOrder commits. A WeakRef-free Set keeps this simple; each entry
@@ -271,7 +326,7 @@ export function CartProvider({
     }
 
     getCartSummaryAction({ orgId, venueId })
-      .then((next) => setServerCart(next))
+      .then((next) => setServerCart(normalizeSummary(next)))
       .catch(() => {
         // Silent — cart stays empty. User can still add items; the
         // first mutation will populate state from its return value.
@@ -334,7 +389,19 @@ export function CartProvider({
           pendingPromisesRef.current.add(promise);
           try {
             const next = (await promise) as unknown as CartSummary;
-            setServerCart(next);
+            const normalized = normalizeSummary(next);
+            // Sync the ref IMMEDIATELY (don't wait for React's next
+            // render of `serverCartRef.current = serverCart`). The
+            // next runMutation in the chain awaits `prior` — that
+            // await returns the moment we call releaseLock() below,
+            // BEFORE React has had a chance to flush this setServerCart
+            // into a re-render. If we leave the ref to update on re-
+            // render, the next mutation's serverCall reads stale state
+            // (still pre-this-mutation), computes targetQty against the
+            // old quantity, and the server sees the same qty twice in
+            // a row → rapid taps stall at qty=2 instead of walking to 3.
+            serverCartRef.current = normalized;
+            setServerCart(normalized);
           } finally {
             pendingPromisesRef.current.delete(promise);
           }
@@ -362,6 +429,7 @@ export function CartProvider({
     async ({
       itemId,
       variationId,
+      defaultVariationId,
       quantity = 1,
       name,
       basePriceCents = 0,
@@ -369,21 +437,6 @@ export function CartProvider({
       modifiers,
     }) => {
       const idempotencyKey = newIdempotencyKey();
-      // Allocate the placeholder id HERE (once per tap) rather than
-      // inside the optimistic reducer. useOptimistic re-runs the
-      // reducer on every render — and under StrictMode it runs twice
-      // per render in dev — so generating crypto.randomUUID() inside
-      // the reducer would produce a different placeholder id on every
-      // render. React's list reconciliation keys off `id`, so the
-      // placeholder line would unmount/remount every frame the add is
-      // in flight, visibly flickering and tearing down any animation
-      // mid-flight. The action carries the id so the reducer can stay
-      // a pure function.
-      const placeholderId =
-        "local-" +
-        (typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : Math.random().toString(36).slice(2));
 
       const resolvedName = name ?? tRef.current("add_to_cart.adding");
       const modifierSelections = toModifierSelections(modifiers);
@@ -403,11 +456,41 @@ export function CartProvider({
       );
       const sig = modifierSignature(modifierSelections);
 
+      // cart-v3 P3 line identity resolution.
+      //
+      // resolvedVariationId comes from either the explicit pick (item-
+      // detail) or the catalog-threaded default (CartActions). Either
+      // way, by the time we get here we should have a real uuid — the
+      // local-uuid fallback below is a defensive catch for the case
+      // where some new caller forgets to thread defaultVariationId.
+      // When the lineKey is constructible, the placeholder's id matches
+      // what normalizeSummary will write back from the server response,
+      // so the placeholder and its materialized commit are the same
+      // React identity (no key change, no reconciler thrash on first
+      // round-trip).
+      const resolvedVariationId = variationId ?? defaultVariationId ?? null;
+      let placeholderId: string;
+      if (resolvedVariationId) {
+        placeholderId = makeLineKey(itemId, resolvedVariationId, sig);
+      } else {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            "[cart] addItem called without variationId or defaultVariationId — falling back to local-uuid placeholder",
+            { itemId },
+          );
+        }
+        placeholderId =
+          "local-" +
+          (typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : Math.random().toString(36).slice(2));
+      }
+
       runMutation({
         optimistic: {
           type: "add",
           itemId,
-          variationId: variationId ?? null,
+          variationId: resolvedVariationId,
           quantity,
           name: resolvedName,
           variationName,
@@ -417,97 +500,157 @@ export function CartProvider({
           idempotencyKey,
           placeholderId,
         },
-        serverCall: () =>
-          addLineItemAction({
+        serverCall: () => {
+          // Absolute-quantity translation. setLineQuantityAction wants
+          // the final qty after this tap commits; we read the existing
+          // line from the LATEST serverCart (via ref, post-lock-await)
+          // and add the delta. Rapid taps walk monotonically — no
+          // overshoot from out-of-order arrival, no walk-back from
+          // every server call sending qty=1.
+          const existing = serverCartRef.current.lineItems.find(
+            (l) => l.id === placeholderId,
+          );
+          const targetQty = (existing?.quantity ?? 0) + quantity;
+          if (!resolvedVariationId) {
+            // Defensive: dev-warn already fired above. The mutation
+            // can't address a setLineQuantityAction without a variation
+            // uuid, so we throw — the toast layer surfaces it.
+            throw new Error(
+              "Cart add missing variation — thread defaultVariationId on the call site.",
+            );
+          }
+          return setLineQuantityAction({
             orgId,
             venueId,
             itemId,
-            variationId,
-            quantity,
-            modifiers: modifierSelections,
+            variationId: resolvedVariationId,
+            qty: targetQty,
+            modifiers: modifierSelections.map((m) => ({
+              modifierListId: m.listId,
+              modifierId: m.modifierId,
+              quantity: m.quantity,
+              text_value: m.text_value,
+            })),
             catalogPath,
             identity: identityRef.current ?? undefined,
+            orderId: serverCartRef.current.orderId ?? undefined,
             idempotencyKey,
-          }),
+          });
+        },
         onError: onMutationError,
       });
     },
-    [catalogPath, orgId, runMutation, venueId],
+    [catalogPath, onMutationError, orgId, runMutation, venueId],
   );
 
   const updateQuantity: CartContextValue["updateQuantity"] = useCallback(
     async (lineItemId, quantity) => {
       const idempotencyKey = newIdempotencyKey();
+      // cart-v3: lineItemId is a lineKey now (post-normalizeSummary).
+      // Look up the line in optimisticCart so a stepper tap on a line
+      // whose server roundtrip hasn't yet committed still has the
+      // metadata we need to address setLineQuantityAction. Legacy rows
+      // missing item/variation can't form a tuple, so we silently
+      // skip rather than crash the render.
+      const line = optimisticCart.lineItems.find((l) => l.id === lineItemId);
+      if (!line || !line.catalog_item_id || !line.catalog_variation_id) {
+        return;
+      }
+      const itemId = line.catalog_item_id;
+      const variationId = line.catalog_variation_id;
+      // Visible modifiers only — the server re-applies hidden auto-mods
+      // from canonical catalog state. Passing only visible mods keeps
+      // the client and server signature byte-aligned (same contract
+      // addLineItem uses).
+      const modifierSelections = line.modifiers
+        .filter((m) => m.catalog_modifier_list_id !== null)
+        .map((m) => ({
+          modifierListId: m.catalog_modifier_list_id as string,
+          modifierId: m.catalog_modifier_id,
+          quantity: m.quantity,
+          text_value: m.text_value,
+        }));
 
       runMutation({
         optimistic: { type: "updateQuantity", lineItemId, quantity, idempotencyKey },
         serverCall: () =>
-          updateLineItemQuantityAction({
+          setLineQuantityAction({
             orgId,
             venueId,
-            lineItemId,
-            quantity,
+            itemId,
+            variationId,
+            qty: quantity,
+            modifiers: modifierSelections,
             catalogPath,
             identity: identityRef.current ?? undefined,
-            orderId: serverCart.orderId ?? undefined,
+            orderId: serverCartRef.current.orderId ?? undefined,
             idempotencyKey,
           }),
         onError: onMutationError,
       });
     },
-    [catalogPath, orgId, runMutation, serverCart.orderId, venueId],
+    [catalogPath, onMutationError, optimisticCart, orgId, runMutation, venueId],
+  );
+
+  const removeItem: CartContextValue["removeItem"] = useCallback(
+    async (lineItemId) => {
+      const idempotencyKey = newIdempotencyKey();
+      // cart-v3: lineItemId is a lineKey. Look up in optimisticCart so
+      // a stepper "− at qty=1" on a freshly-added placeholder still
+      // has the metadata it needs to address the server delete. No
+      // more 'invalid input syntax for type uuid' on placeholders.
+      const line = optimisticCart.lineItems.find((l) => l.id === lineItemId);
+      if (!line || !line.catalog_item_id || !line.catalog_variation_id) {
+        return;
+      }
+      const itemId = line.catalog_item_id;
+      const variationId = line.catalog_variation_id;
+      const modifierSelections = line.modifiers
+        .filter((m) => m.catalog_modifier_list_id !== null)
+        .map((m) => ({
+          modifierListId: m.catalog_modifier_list_id as string,
+          modifierId: m.catalog_modifier_id,
+          quantity: m.quantity,
+          text_value: m.text_value,
+        }));
+
+      runMutation({
+        optimistic: { type: "remove", lineItemId, idempotencyKey },
+        serverCall: () =>
+          setLineQuantityAction({
+            orgId,
+            venueId,
+            itemId,
+            variationId,
+            qty: 0,
+            modifiers: modifierSelections,
+            catalogPath,
+            identity: identityRef.current ?? undefined,
+            orderId: serverCartRef.current.orderId ?? undefined,
+            idempotencyKey,
+          }),
+        onError: onMutationError,
+      });
+    },
+    [catalogPath, onMutationError, optimisticCart, orgId, runMutation, venueId],
   );
 
   const bumpQuantity: CartContextValue["bumpQuantity"] = useCallback(
     (lineItemId, delta) => {
       // Read latest qty from optimistic cart so two rapid taps in the
-      // same render don't both compute the same target. Without
-      // useOptimistic, this would need a ref; with it, optimisticCart
-      // is always fresh because it derives from server + in-flight
-      // optimistic actions.
+      // same render don't both compute the same target. optimisticCart
+      // is always fresh because useOptimistic re-derives it every
+      // render from server + in-flight optimistic actions.
+      //
+      // cart-v3 P3: the placeholder-vs-materialized branch that used
+      // to live here is gone. With lineKey-based identity, a
+      // placeholder line and its server-materialized commit share the
+      // same `id`, so updateQuantity / removeItem can address either
+      // directly via setLineQuantityAction (which takes the (item,
+      // variation, modifier) tuple, not a server uuid). No more
+      // 'invalid input syntax for type uuid' on rapid taps.
       const line = optimisticCart.lineItems.find((l) => l.id === lineItemId);
       if (!line) return;
-
-      // Local placeholder: the originating addItem's server roundtrip
-      // is still in flight, so the line doesn't have a real DB uuid
-      // yet. Firing updateQuantity / removeItem with `lineItemId`
-      // would send the client-generated `local-<uuid>` string to
-      // Postgres, which rejects it as invalid uuid syntax (toast:
-      // 'invalid input syntax for type uuid'). Route through addItem
-      // for positive deltas: the reducer's tuple match (item,
-      // variation, sig) bumps the placeholder optimistically, and
-      // server-side dedup merges each +1 add onto whichever line the
-      // original add is about to materialize.
-      //
-      // Negative deltas on a placeholder are deliberately a no-op for
-      // now — they require a deferred-remove flow that fires once the
-      // placeholder materializes (TODO: track pending bumps per local
-      // id, apply against the real line id when setServerCart lands).
-      // Silent skip beats a uuid error toast; the customer can tap −
-      // again the moment the placeholder converts.
-      if (line.id.startsWith("local-")) {
-        if (delta > 0 && line.catalog_item_id) {
-          void addItem({
-            itemId: line.catalog_item_id,
-            variationId: line.catalog_variation_id ?? undefined,
-            quantity: delta,
-            name: line.name,
-            basePriceCents: line.base_price_cents,
-            variationName: line.variation_name,
-            modifiers: line.modifiers
-              .filter((m) => m.catalog_modifier_list_id !== null)
-              .map((m) => ({
-                modifierListId: m.catalog_modifier_list_id as string,
-                modifierId: m.catalog_modifier_id,
-                quantity: m.quantity,
-                name: m.name,
-                basePriceCentsDelta: m.base_price_cents_delta,
-                text_value: m.text_value,
-              })),
-          });
-        }
-        return;
-      }
 
       const next = line.quantity + delta;
       if (next <= 0) {
@@ -516,44 +659,7 @@ export function CartProvider({
         void updateQuantity(lineItemId, next);
       }
     },
-    // addItem/updateQuantity/removeItem are stable; optimisticCart
-    // updates per render so the closure sees latest line state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optimisticCart, addItem, updateQuantity],
-  );
-
-  const removeItem: CartContextValue["removeItem"] = useCallback(
-    async (lineItemId) => {
-      // Local placeholder: the originating addItem's server roundtrip
-      // is still in flight, so this line has no real DB uuid yet.
-      // Firing removeLineItemAction with `local-<uuid>` would crash
-      // Postgres' uuid parser the same way bumpQuantity used to (toast:
-      // 'invalid input syntax for type uuid'). Silent no-op until the
-      // placeholder materializes — same TODO as the negative-delta-
-      // on-placeholder path in bumpQuantity. A proper fix queues
-      // pending removes per local id and drains them against the real
-      // line id when setServerCart materializes. Out of scope for this
-      // hotfix; the user can re-tap the moment the line converts.
-      if (lineItemId.startsWith("local-")) return;
-
-      const idempotencyKey = newIdempotencyKey();
-
-      runMutation({
-        optimistic: { type: "remove", lineItemId, idempotencyKey },
-        serverCall: () =>
-          removeLineItemAction({
-            orgId,
-            venueId,
-            lineItemId,
-            catalogPath,
-            identity: identityRef.current ?? undefined,
-            orderId: serverCart.orderId ?? undefined,
-            idempotencyKey,
-          }),
-        onError: onMutationError,
-      });
-    },
-    [catalogPath, onMutationError, orgId, runMutation, serverCart.orderId, venueId],
+    [optimisticCart, removeItem, updateQuantity],
   );
 
   const clear: CartContextValue["clear"] = useCallback(async () => {
@@ -589,7 +695,7 @@ export function CartProvider({
         identity: identityRef.current ?? undefined,
         orderId: serverCart.orderId ?? undefined,
       });
-      setServerCart(next);
+      setServerCart(normalizeSummary(next));
     } catch {
       // Silent — refresh is best-effort. The cart still has its last
       // known state; the next mutation's response will hydrate fresh.
