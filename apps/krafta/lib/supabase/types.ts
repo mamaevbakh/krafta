@@ -968,6 +968,27 @@ export type Database = {
           },
         ]
       }
+      processed_actions: {
+        Row: {
+          created_at: string
+          id: string
+          result: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          result: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          result?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
       table_sessions: {
         Row: {
           closed_at: string | null

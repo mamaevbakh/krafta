@@ -175,8 +175,9 @@ export function CartActions({
       setCustomisationsOpen(true);
       return;
     }
-    // bumpQuantity reads latest qty from summaryRef (NOT render-stale
-    // lastLine.quantity), so rapid taps don't all compute the same
+    // bumpQuantity reads latest qty from the optimistic cart (which is
+    // always fresh because it derives from server + in-flight optimistic
+    // actions every render), so rapid taps don't all compute the same
     // target. Routes to removeItem internally when next ≤ 0, swapping
     // the icon back to Trash on the next render.
     cart.bumpQuantity(lastLine.id, -1);

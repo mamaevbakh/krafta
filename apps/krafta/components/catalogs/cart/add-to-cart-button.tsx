@@ -218,10 +218,10 @@ export function AddToCartButton(props: AddToCartButtonProps) {
 
   const handleDecrement = () => {
     if (!matchingLine) return;
-    // Delta-based bump reads latest qty from cart-provider's summaryRef
-    // (NOT the closure-captured matchingLine.quantity), so two rapid taps
-    // both compute against current state — second tap actually moves the
-    // number. bumpQuantity routes to removeItem internally when next ≤ 0,
+    // Delta-based bump reads latest qty from the optimistic cart (derived
+    // every render from server + in-flight actions — never stale), so two
+    // rapid taps both compute against current state — second tap actually
+    // moves the number. bumpQuantity routes to removeItem internally when next ≤ 0,
     // which also flips the stepper back to the "Add to cart" button on
     // the next render (matchingLine becomes undefined).
     bumpQuantity(matchingLine.id, -1);
