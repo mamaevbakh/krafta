@@ -927,7 +927,35 @@ export function CartProvider({
       if (persisted.length > 0) {
         const identity = identityRef.current ?? undefined;
         const orderIdHint = summaryRef.current.orderId ?? undefined;
-        const dispatches = persisted.map((mut) => {
+        // Race guard: if the user tapped Add between mount and this
+        // drain (which is a common timing — bootstrap runs in a layout
+        // effect, the user's tap can fire microseconds before this
+        // closure runs), `addItem` has already armed an in-memory
+        // debounce timer AND mirrored an entry into the persistent
+        // queue. The snapshot in `persisted` may or may not include
+        // that entry depending on read timing, but the in-memory
+        // timer is the authoritative source for the user's intent.
+        //
+        // Without this filter:
+        //   t=0   stale entry-X in localStorage from a prior interrupted tap
+        //   t=0   user opens page → mount → persisted = [entry-X]
+        //   t=0+  user taps X → optimistic + queue write + 400ms timer
+        //   t=0+  drainAndRefresh dispatches entry-X server-side (+1)
+        //   t=400 in-memory timer fires for X (+1)
+        //   net   server merges into qty=2 — the bug the user sees as
+        //         "tap once, cart shows 2"
+        //
+        // The filter below skips draining any `add` entry whose key
+        // has an active in-memory timer. The timer will dispatch with
+        // the correct accumulated total shortly. update / remove /
+        // clear mutations don't carry the same coalescing semantics
+        // (they target specific lineItemIds, not item+sig keys), so
+        // we drain them through normally.
+        const filtered = persisted.filter((mut) => {
+          if (mut.type !== "add") return true;
+          return !pendingAddTimers.current.has(mut.key);
+        });
+        const dispatches = filtered.map((mut) => {
           if (mut.type === "add") {
             return addLineItemAction({
               orgId,
@@ -972,8 +1000,25 @@ export function CartProvider({
         await Promise.allSettled(dispatches);
         // Queue is fully drained — wipe it before refresh, regardless of
         // per-entry success. Refresh is canonical from here on.
-        mutationQueueRef.current = [];
-        writePendingMutations(orgId, venueId, []);
+        //
+        // Preserve entries that we deliberately SKIPPED (active in-
+        // memory timers): those still need to recover if the tab dies
+        // before the timer fires. The in-memory timer's success path
+        // will dequeueMutationLocal them on its own.
+        const skippedKeys = new Set(
+          persisted
+            .filter((mut) => mut.type === "add" && pendingAddTimers.current.has(mut.key))
+            .map((mut) => mut.id),
+        );
+        if (skippedKeys.size === 0) {
+          mutationQueueRef.current = [];
+          writePendingMutations(orgId, venueId, []);
+        } else {
+          mutationQueueRef.current = mutationQueueRef.current.filter((mut) =>
+            skippedKeys.has(mut.id),
+          );
+          writePendingMutations(orgId, venueId, mutationQueueRef.current);
+        }
       }
       refresh();
     };
