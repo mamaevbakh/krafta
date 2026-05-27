@@ -24,6 +24,13 @@ type CartActionsProps = {
    *  +/- on the catalog stepper through the customisations drawer
    *  when at least one config is already in cart). */
   hasModifiers: boolean;
+  /** cart-v3 P3: the item's default variation uuid (is_default=true,
+   *  or first variation as a fallback). Threaded down from the catalog
+   *  layout so the provider can compute a stable lineKey for the
+   *  no-picker Add path. Without this the optimistic placeholder uses
+   *  a random local-uuid and won't match the server-materialized
+   *  line's lineKey on commit, causing a stepper flicker. */
+  defaultVariationId?: string;
   /** Photo URL forwarded to the customisations drawer so each config row
    *  shows a thumbnail. May be null for items without a photo — the
    *  drawer renders a muted placeholder square instead. */
@@ -75,6 +82,7 @@ export function CartActions({
   itemName,
   basePriceCents,
   hasModifiers,
+  defaultVariationId,
   imageUrl = null,
   currencySettings,
   position = "floating",
@@ -125,6 +133,7 @@ export function CartActions({
     }
     void cart.addItem({
       itemId,
+      variationId: defaultVariationId,
       name: itemName,
       basePriceCents,
     });

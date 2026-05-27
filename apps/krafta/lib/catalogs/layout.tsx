@@ -213,6 +213,18 @@ export async function CatalogLayout({
                         // Careem pattern). Null when cart is disabled
                         // (settings_behavior.enableCart=false), in which
                         // case the card renders zero cart UI.
+                        //
+                        // defaultVariationId (cart-v3 P3): every item has
+                        // at least one variation; either one is flagged
+                        // is_default=true or we fall back to the first
+                        // one. Passing it here lets the provider compute
+                        // a stable lineKey for the catalog-card Add path
+                        // (no variation picker) so the client placeholder
+                        // and server-materialized line share an identity
+                        // from the moment the customer taps.
+                        const defaultVariationId =
+                          item.variations.find((v) => v.is_default)?.id ??
+                          item.variations[0]?.id;
                         const actions = behavior.enableCart ? (
                           <CartActions
                             itemId={item.id}
@@ -221,6 +233,7 @@ export async function CatalogLayout({
                             itemName={item.name}
                             basePriceCents={item.price_cents}
                             hasModifiers={item.modifier_lists.length > 0}
+                            defaultVariationId={defaultVariationId}
                             // Forwarded to the customisations drawer for
                             // per-config thumbnails + price formatting.
                             imageUrl={getItemImageUrl(item)}
