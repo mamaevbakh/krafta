@@ -586,8 +586,7 @@ function ItemDetailBottomCta(props: {
 
   // Look for an existing cart line whose (item, variation, modifier
   // signature) exactly matches the current selections. When found, we
-  // render the stepper variant instead of the Add button — same
-  // pattern as AddToCartButton.
+  // render the stepper variant instead of the Add button.
   //
   // Variation match: when the caller passed a variationId (multi-
   // variation items), require an exact match so different variations

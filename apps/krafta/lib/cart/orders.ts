@@ -300,9 +300,10 @@ export async function addLineItem(
   // into the server signature, every server signature would diverge from
   // every client signature for any item carrying a hidden+on_by_default
   // list (a common shape — VAT auto-add, kitchen prep flag, etc.). The
-  // resulting client/server signature mismatch makes `AddToCartButton`'s
-  // matchingLine probe miss → it shows "Add to cart" instead of the
-  // stepper → the customer taps again, thinking the first add failed →
+  // resulting client/server signature mismatch makes the item-detail
+  // stepper-morph's matchingLine probe miss → it shows "Add to cart"
+  // instead of the stepper → the customer taps again, thinking the
+  // first add failed →
   // local optimistic state appends a placeholder line with the visible
   // sig → server merges into the existing line by ITEM (not full sig)
   // because the same hidden-mod-shaped row already exists → cart shows
@@ -853,8 +854,8 @@ export async function getCartSummary(input: {
  *      modifiers as visible bullet rows.
  *   2. The CLIENT-computed line modifier signature matches the SERVER-side
  *      visible-only signature (KRA-cart-double-add bug — without this filter
- *      the matchingLine probe in AddToCartButton + item-detail-fullscreen
- *      fails byte-comparison against a stored line with hidden mods baked
+ *      the matchingLine probe in item-detail-fullscreen-view fails
+ *      byte-comparison against a stored line with hidden mods baked
  *      in, the button shows "Add to cart" again, the customer taps once
  *      more, and the server merges into the existing line → qty=2).
  *
