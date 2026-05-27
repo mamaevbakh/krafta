@@ -31,6 +31,7 @@ import {
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
 import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
+import { getCartSummary, type CartSummary } from "@/lib/cart/orders";
 
 type Props = {
   catalog: PublicCatalog;
@@ -70,7 +71,7 @@ function getItemGridColsClass(columns: number): string {
   }
 }
 
-export function CatalogLayout({
+export async function CatalogLayout({
   catalog,
   categoriesWithItems,
   venue = null,
@@ -298,6 +299,32 @@ export function CatalogLayout({
       (allowedModes as readonly string[]).includes(mode),
   );
 
+  // SSR cart preload (cart-v3 P1). Fetch the customer's current draft
+  // cart server-side using the request's cookie-bound Supabase auth
+  // session, then thread it to CartProvider so the first paint matches
+  // the cart's real state instead of flashing "Add" pills for the
+  // duration of the client-side bootstrap fetch.
+  //
+  // Failures are silent on purpose: a fresh visitor with no anon session
+  // can't have a cart, and `getCartSummary` returns an empty summary in
+  // that case. Any unexpected error (network blip, auth race) → render
+  // with no initialSummary; the provider falls back to its mount-time
+  // bootstrap effect, which is the cart-v2 behaviour we're carrying
+  // forward as the worst-case path. Customer never sees an error here.
+  //
+  // The cookies() call inside the supabase client opts the route into
+  // dynamic rendering (Next 16 semantics). Cart is per-user, never
+  // cacheable — this is the correct trade-off.
+  let initialSummary: CartSummary | undefined;
+  try {
+    initialSummary = await getCartSummary({
+      orgId: venue.org_id,
+      venueId: venue.id,
+    });
+  } catch {
+    initialSummary = undefined;
+  }
+
   return (
     <CartProvider
       orgId={venue.org_id}
@@ -305,6 +332,7 @@ export function CatalogLayout({
       catalogPath={hrefBase}
       modes={venueModes}
       taxes={taxes}
+      initialSummary={initialSummary}
     >
       {tree}
       <CartDrawer currencySettings={resolvedCurrency} />
