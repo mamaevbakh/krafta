@@ -524,6 +524,18 @@ export function CartProvider({
 
   const removeItem: CartContextValue["removeItem"] = useCallback(
     async (lineItemId) => {
+      // Local placeholder: the originating addItem's server roundtrip
+      // is still in flight, so this line has no real DB uuid yet.
+      // Firing removeLineItemAction with `local-<uuid>` would crash
+      // Postgres' uuid parser the same way bumpQuantity used to (toast:
+      // 'invalid input syntax for type uuid'). Silent no-op until the
+      // placeholder materializes — same TODO as the negative-delta-
+      // on-placeholder path in bumpQuantity. A proper fix queues
+      // pending removes per local id and drains them against the real
+      // line id when setServerCart materializes. Out of scope for this
+      // hotfix; the user can re-tap the moment the line converts.
+      if (lineItemId.startsWith("local-")) return;
+
       const idempotencyKey = newIdempotencyKey();
 
       runMutation({
@@ -541,7 +553,7 @@ export function CartProvider({
         onError: onMutationError,
       });
     },
-    [catalogPath, orgId, runMutation, serverCart.orderId, venueId],
+    [catalogPath, onMutationError, orgId, runMutation, serverCart.orderId, venueId],
   );
 
   const clear: CartContextValue["clear"] = useCallback(async () => {
@@ -585,6 +597,22 @@ export function CartProvider({
   }, [orgId, serverCart.orderId, venueId]);
 
   const flush: CartContextValue["flush"] = useCallback(async () => {
+    // Await the serialize chain head FIRST. Each runMutation captures
+    // `prior` synchronously at dispatch and only releases its own lock
+    // after its server call resolves, so awaiting the current ref
+    // subsumes every dispatched-but-not-yet-started mutation in the
+    // queue. Without this, rapid-tap + + + Place could land here with
+    // taps 2 and 3 still parked behind `await prior` — their server
+    // promises haven't been added to pendingPromisesRef yet, so the
+    // Promise.allSettled below would walk past them and placeOrder
+    // would transition the draft → open before they ran. Their add
+    // server calls would then land on a fresh new draft, depositing
+    // phantom lines on the customer's next order.
+    await mutationLockRef.current;
+
+    // Then drain any in-flight promises that aren't part of the
+    // serialize chain (currently none, but cheap insurance for
+    // future code that bypasses runMutation).
     const pending = [...pendingPromisesRef.current];
     if (pending.length === 0) return;
     await Promise.allSettled(pending);
