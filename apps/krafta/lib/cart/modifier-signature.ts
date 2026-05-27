@@ -1,6 +1,6 @@
 // Canonical signature for a set of selected modifiers on a cart line.
 // Used in two places: the client-side optimistic cart (cart-provider) to dedup
-// local-state line items, and the server addLineItem path to dedup against
+// local-state line items, and the server setLineQuantity path to dedup against
 // the DB. Both must agree, byte for byte — that's why this is a shared util.
 
 export type ModifierSelection = {

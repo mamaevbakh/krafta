@@ -52,13 +52,12 @@ import {
  *     combo gives us last-WRITER-by-dispatch-order, which is what the
  *     customer expects.
  *
- * Signature dedup mirrors addLineItem exactly: only VISIBLE modifiers
- * participate in the signature (`hiddenListIds` filter) so client + server
- * agree on the lookup key even when the item carries hidden auto-applied
- * mods (VAT, kitchen flags, etc).
+ * Signature dedup uses VISIBLE modifiers only (`hiddenListIds` filter)
+ * so client + server agree on the lookup key even when the item carries
+ * hidden auto-applied mods (VAT, kitchen flags, etc).
  *
  * Returns the fresh CartSummary the caller should commit to optimistic
- * state — same shape addLineItemAction returns today.
+ * state.
  */
 
 export type SetLineQuantityInput = {
@@ -108,7 +107,7 @@ export type SetLineQuantityInput = {
 
   identity?: CartIdentity;
   /** Performance hint — when the client already knows the draft orderId,
-   *  we skip the draft lookup. Same hint addLineItem accepts. */
+   *  we skip the draft lookup. */
   orderId?: string;
 };
 
@@ -119,7 +118,7 @@ export async function setLineQuantity(
   const targetQty = Math.max(0, Math.floor(input.qty));
 
   // Parallel reads: draft order + item + variation + modifier lists.
-  // Same shape as addLineItem — same latency envelope.
+  // 4 independent queries collapse to one ~200ms RT.
   const [draftResult, itemResult, variationResult, imlResult] =
     await Promise.all([
       getOrCreateDraftOrder({
@@ -155,7 +154,7 @@ export async function setLineQuantity(
   // Resolve modifier selections against canonical catalog state.
   // resolveModifierSelections enforces required / range constraints and
   // auto-applies the on_by_default rows of any list the customer didn't
-  // touch — same as addLineItem.
+  // touch.
   const clientSelections: ModifierSelection[] = (input.modifiers ?? []).map(
     (m) => ({
       listId: m.modifierListId,
@@ -169,9 +168,9 @@ export async function setLineQuantity(
     clientSelections,
   );
 
-  // Hidden lists drop out of the dedup signature on both sides. See the
-  // addLineItem comment for the long-form justification (kitchen-only
-  // / VAT / surcharge lists, etc).
+  // Hidden lists drop out of the dedup signature on both sides — see
+  // `fetchHiddenModifierListsForItems` in orders.ts for the long-form
+  // justification (kitchen-only / VAT / surcharge lists, etc).
   const hiddenListIds = new Set(
     imlResult
       .filter((iml) => iml.hidden_from_customer_override)
@@ -198,8 +197,7 @@ export async function setLineQuantity(
 
   // Find any existing line for this (order, item, variation). We then
   // narrow to the modifier-signature match in JS — the same dedup
-  // contract addLineItem uses, so absolute-qty and additive paths agree
-  // on what counts as "the same line".
+  // contract the client signature builder uses.
   const { data: candidateLines, error: candidatesError } = await supabase
     .schema("commerce")
     .from("order_line_items")

@@ -180,17 +180,6 @@ export async function getOrCreateDraftOrder(
   return { orderId: created.id, version: created.version, customerId };
 }
 
-type AddLineItemInput = {
-  orgId: string;
-  venueId: string;
-  itemId: string;
-  variationId?: string;
-  quantity?: number;
-  modifiers?: ModifierSelection[];
-  /** Pre-resolved identity. See resolveCartIdentity / addLineItemAction. */
-  identity?: CartIdentity;
-};
-
 // Resolved snapshot of a modifier ready to be written to
 // commerce.order_line_item_modifiers. Built from the catalog's modifier rows
 // (server queries them fresh) so the snapshot can't be forged client-side.
@@ -211,254 +200,6 @@ type ResolvedModifier = {
   ordinal: number;
   text_value: string | null;
 };
-
-/**
- * Adds an item to the customer's draft cart. Snapshots the catalog item +
- * variation onto the line so future catalog edits do not retroactively
- * change historical orders (ADR 0001 §3 snapshot principle).
- *
- * If `variationId` is omitted, uses the item's default variation.
- *
- * Modifier handling (KRA-62):
- *   - Server fetches the item's modifier_lists fresh and validates that every
- *     selected modifier_id belongs to a list attached to the item, with
- *     min/max bounds respected (override → list default).
- *   - Hidden-from-customer lists never appear in the picker; the server still
- *     auto-applies their `on_by_default=true` modifiers at add time (Square
- *     parity / KRA-62 D2). The customer cannot override these.
- *   - Dedup: two add-to-cart actions merge into one row iff
- *     (item, variation, modifier_signature) matches. The signature is
- *     computed by the shared modifierSignature() util so client local state
- *     and server agree byte-for-byte.
- */
-export async function addLineItem(
-  input: AddLineItemInput,
-): Promise<{ orderId: string; lineItemId: string }> {
-  const supabase = await createClient();
-  const quantity = input.quantity ?? 1;
-  if (quantity <= 0) throw new Error("quantity must be > 0");
-
-  // Parallelize the 4 independent reads we need before any write. Before this
-  // refactor these ran sequentially (draft → item → variation → IMLs) for ~4×
-  // 200ms = ~800ms on dev. Promise.all collapses them to ~1× 200ms.
-  //
-  // None of the four depend on each other:
-  //   - getOrCreateDraftOrder needs only (org, venue, identity)
-  //   - item + variation + IMLs need only (itemId, variationId)
-  //
-  // The driving constraint stays auth: getOrCreateDraftOrder ends up calling
-  // ensureCartIdentity once (if identity hint is missing). The other three
-  // reads are anon-RLS-scoped catalog rows with no auth dependency.
-  const variationQuery = supabase
-    .from("item_variations")
-    .select("id, name, price_cents, version")
-    .eq("item_id", input.itemId)
-    .eq("is_active", true);
-  const variationPromise = input.variationId
-    ? variationQuery.eq("id", input.variationId).maybeSingle()
-    : variationQuery.eq("is_default", true).maybeSingle();
-
-  const [draftResult, itemResult, variationResult, imlResult] =
-    await Promise.all([
-      getOrCreateDraftOrder({
-        orgId: input.orgId,
-        venueId: input.venueId,
-        identity: input.identity,
-      }),
-      supabase
-        .from("items")
-        .select("id, name")
-        .eq("id", input.itemId)
-        .maybeSingle(),
-      variationPromise,
-      fetchItemModifierLists(supabase, input.itemId),
-    ]);
-
-  const { orderId } = draftResult;
-
-  if (itemResult.error) throw new Error(itemResult.error.message);
-  const item = itemResult.data;
-  if (!item) throw new Error("Item not found.");
-
-  if (variationResult.error) throw new Error(variationResult.error.message);
-  const variation = variationResult.data;
-  if (!variation) throw new Error("Item variation not found.");
-
-  const resolvedModifiers = resolveModifierSelections(
-    imlResult,
-    input.modifiers ?? [],
-  );
-
-  // Set of modifier_list_ids whose entire contents are hidden from the
-  // customer (`hidden_from_customer_override=true`). The server still
-  // stores their auto-applied on_by_default modifiers on the line (kitchen
-  // / receipt parity with Square), but they MUST NOT participate in the
-  // dedup signature.
-  //
-  // Why: the customer-facing client computes the signature from only the
-  // modifiers it actually rendered — visible lists. If hidden mods leaked
-  // into the server signature, every server signature would diverge from
-  // every client signature for any item carrying a hidden+on_by_default
-  // list (a common shape — VAT auto-add, kitchen prep flag, etc.). The
-  // resulting client/server signature mismatch makes the item-detail
-  // stepper-morph's matchingLine probe miss → it shows "Add to cart"
-  // instead of the stepper → the customer taps again, thinking the
-  // first add failed →
-  // local optimistic state appends a placeholder line with the visible
-  // sig → server merges into the existing line by ITEM (not full sig)
-  // because the same hidden-mod-shaped row already exists → cart shows
-  // qty=2 from a single tap.
-  //
-  // Hidden modifiers are deterministic per item (server-resolved from
-  // catalog state), so dropping them from the dedup key costs zero
-  // information: two adds of the same (item, variation, visible-mods)
-  // still get the same hidden-mod set, and dedup still works.
-  const hiddenListIds = new Set(
-    imlResult
-      .filter((iml) => iml.hidden_from_customer_override)
-      .map((iml) => iml.modifier_lists.id),
-  );
-
-  // Recompute the signature on the SERVER side from the resolved snapshot
-  // (catalog-fresh) rather than trusting the client-passed selections, but
-  // restrict to the visible modifiers only so the client's signature can
-  // match byte-for-byte.
-  const modifierSelections: ModifierSelection[] = resolvedModifiers
-    .filter((m) => !hiddenListIds.has(m.catalog_modifier_list_id))
-    .map((m) => ({
-      listId: m.catalog_modifier_list_id,
-      modifierId: m.catalog_modifier_id,
-      quantity: m.quantity,
-      text_value: m.text_value,
-    }));
-  const signature = modifierSignature(modifierSelections);
-  const modifierDeltaSum = resolvedModifiers.reduce(
-    (sum, m) => sum + m.base_price_cents_delta * m.quantity,
-    0,
-  );
-  const perUnitCents = variation.price_cents + modifierDeltaSum;
-
-  // Look for an existing line we can merge into. Same (item, variation) is
-  // a necessary condition but not sufficient — modifier signatures must also
-  // match. Embedded select fetches candidates + their modifier rows in ONE
-  // round-trip (PostgREST inner relation), down from two before.
-  const { data: candidateLines, error: candidatesError } = await supabase
-    .schema("commerce")
-    .from("order_line_items")
-    .select(
-      "id, quantity, base_price_cents, modifiers:order_line_item_modifiers(catalog_modifier_id, catalog_modifier_list_id, quantity, text_value)",
-    )
-    .eq("order_id", orderId)
-    .eq("catalog_item_id", input.itemId)
-    .eq("catalog_variation_id", variation.id);
-  if (candidatesError) throw new Error(candidatesError.message);
-
-  if (candidateLines && candidateLines.length > 0) {
-    const match = candidateLines.find((line) => {
-      // Skip rows missing list_id — pre-KRA-96 legacy rows can have
-      // catalog_modifier_list_id=NULL. The signature won't match a fresh
-      // add's signature anyway, so the new add becomes a new cart line.
-      // Mildly redundant but not a correctness problem.
-      //
-      // Also drop hidden-list modifiers from the candidate's signature so
-      // the comparison stays apples-to-apples with the visible-only
-      // signature we computed above. Without this, a stored row with
-      // hidden mods baked in would fail to match a new add that's also
-      // shaped identically — the very situation this commit's signature
-      // change is intended to fix.
-      const lineSelections: ModifierSelection[] = (line.modifiers ?? [])
-        .filter((m) => m.catalog_modifier_list_id !== null)
-        .filter(
-          (m) => !hiddenListIds.has(m.catalog_modifier_list_id as string),
-        )
-        .map((m) => ({
-          listId: m.catalog_modifier_list_id as string,
-          modifierId: m.catalog_modifier_id,
-          quantity: Number(m.quantity),
-          text_value: m.text_value,
-        }));
-      return modifierSignature(lineSelections) === signature;
-    });
-
-    if (match) {
-      const nextQty = Number(match.quantity) + quantity;
-      const { error: updateError } = await supabase
-        .schema("commerce")
-        .from("order_line_items")
-        .update({
-          quantity: nextQty,
-          total_price_cents: perUnitCents * nextQty,
-        })
-        .eq("id", match.id);
-      if (updateError) throw new Error(updateError.message);
-      return { orderId, lineItemId: match.id };
-    }
-  }
-
-  const uid = crypto.randomUUID();
-  const totalCents = perUnitCents * quantity;
-
-  // org_id is auto-set by the order_line_items_sync_org_id trigger; we pass
-  // any uuid to satisfy the NOT NULL Insert type.
-  const { data: created, error: insertError } = await supabase
-    .schema("commerce")
-    .from("order_line_items")
-    .insert({
-      order_id: orderId,
-      org_id: orderId,
-      uid,
-      catalog_item_id: item.id,
-      catalog_variation_id: variation.id,
-      catalog_version: variation.version,
-      name: item.name,
-      variation_name: variation.name,
-      quantity,
-      base_price_cents: variation.price_cents,
-      total_price_cents: totalCents,
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !created) {
-    throw new Error(insertError?.message ?? "Failed to add line item.");
-  }
-
-  if (resolvedModifiers.length > 0) {
-    const modifierRows = resolvedModifiers.map((mod, index) => ({
-      // line_item_child_sync_ids trigger fills order_id + org_id from the
-      // parent line, so any uuid placeholder satisfies the NOT NULL Insert
-      // type.
-      order_id: orderId,
-      org_id: orderId,
-      line_item_id: created.id,
-      uid: `${uid}-${index}`,
-      catalog_modifier_id: mod.catalog_modifier_id,
-      catalog_modifier_list_id: mod.catalog_modifier_list_id,
-      catalog_version: mod.catalog_version,
-      name: mod.name,
-      base_price_cents_delta: mod.base_price_cents_delta,
-      quantity: mod.quantity,
-      ordinal: mod.ordinal,
-      text_value: mod.text_value,
-    }));
-    const { error: modInsertError } = await supabase
-      .schema("commerce")
-      .from("order_line_item_modifiers")
-      .insert(modifierRows);
-    if (modInsertError) {
-      // Best-effort rollback: remove the just-inserted line so the cart does
-      // not end up with a line missing its modifiers.
-      await supabase
-        .schema("commerce")
-        .from("order_line_items")
-        .delete()
-        .eq("id", created.id);
-      throw new Error(modInsertError.message);
-    }
-  }
-
-  return { orderId, lineItemId: created.id };
-}
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -492,9 +233,9 @@ type IMLRow = {
 
 /**
  * Fetches the item's modifier-list rows (with embedded list + modifier
- * details). Split out from resolveModifierSelections so addLineItem can
- * issue this query in parallel with the item, variation, and draft-order
- * lookups — three sequential 200ms RTs become one 200ms RT.
+ * details). Split out from resolveModifierSelections so setLineQuantity
+ * can issue this query in parallel with the item, variation, and draft-
+ * order lookups — three sequential 200ms RTs become one 200ms RT.
  */
 export async function fetchItemModifierLists(
   supabase: SupabaseClient,
@@ -525,7 +266,7 @@ export async function fetchItemModifierLists(
 //
 // Pure / synchronous after the fetchItemModifierLists split — separates the
 // I/O concern from the validation concern, lets the caller parallelize the
-// IML fetch with other reads (see addLineItem).
+// IML fetch with other reads (see set-line-quantity.ts).
 export function resolveModifierSelections(
   imls: IMLRow[],
   selections: ModifierSelection[],
@@ -689,45 +430,6 @@ export function resolveModifierSelections(
   }
 
   return resolved;
-}
-
-export async function updateLineItemQuantity(
-  lineItemId: string,
-  quantity: number,
-): Promise<void> {
-  if (quantity <= 0) {
-    await removeLineItem(lineItemId);
-    return;
-  }
-  const supabase = await createClient();
-  const { data: line, error: selectError } = await supabase
-    .schema("commerce")
-    .from("order_line_items")
-    .select("base_price_cents")
-    .eq("id", lineItemId)
-    .maybeSingle();
-  if (selectError) throw new Error(selectError.message);
-  if (!line) throw new Error("Line item not found.");
-
-  const { error: updateError } = await supabase
-    .schema("commerce")
-    .from("order_line_items")
-    .update({
-      quantity,
-      total_price_cents: line.base_price_cents * quantity,
-    })
-    .eq("id", lineItemId);
-  if (updateError) throw new Error(updateError.message);
-}
-
-export async function removeLineItem(lineItemId: string): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .schema("commerce")
-    .from("order_line_items")
-    .delete()
-    .eq("id", lineItemId);
-  if (error) throw new Error(error.message);
 }
 
 export async function clearCart(orderId: string): Promise<void> {
