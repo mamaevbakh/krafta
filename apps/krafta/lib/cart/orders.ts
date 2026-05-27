@@ -495,7 +495,7 @@ type IMLRow = {
  * issue this query in parallel with the item, variation, and draft-order
  * lookups — three sequential 200ms RTs become one 200ms RT.
  */
-async function fetchItemModifierLists(
+export async function fetchItemModifierLists(
   supabase: SupabaseClient,
   itemId: string,
 ): Promise<IMLRow[]> {
@@ -525,7 +525,7 @@ async function fetchItemModifierLists(
 // Pure / synchronous after the fetchItemModifierLists split — separates the
 // I/O concern from the validation concern, lets the caller parallelize the
 // IML fetch with other reads (see addLineItem).
-function resolveModifierSelections(
+export function resolveModifierSelections(
   imls: IMLRow[],
   selections: ModifierSelection[],
 ): ResolvedModifier[] {

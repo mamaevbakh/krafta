@@ -19,6 +19,10 @@ import {
   type PlaceOrderInput,
   type PlaceOrderResult,
 } from "./checkout";
+import {
+  setLineQuantity as setLineQuantityImpl,
+  type SetLineQuantityInput,
+} from "./set-line-quantity";
 
 // Cart mutations DELIBERATELY skip revalidatePath of the catalog path:
 //
@@ -191,4 +195,30 @@ export async function placeOrderAction(
   const result = await placeOrderImpl(input);
   revalidatePath(input.catalogPath);
   return result;
+}
+
+/**
+ * cart-v3 mutation action — set the absolute quantity for a single
+ * line, addressed by its tuple (itemId, variationId, modifierSig).
+ * Replaces add / update / remove with one verb.
+ *
+ * The provider (P3) routes every cart mutation through this. We keep
+ * the cart-v2 actions above for now as a back-compat shim during the
+ * P2 → P3 transition; once P3 lands and the steppers are off the
+ * cart-v2 surface, the deprecated actions go away in P5.
+ *
+ * See `lib/cart/set-line-quantity.ts` for the absolute-qty semantics
+ * (qty > 0 = upsert, qty <= 0 = delete) and the dedup contract
+ * (visible-modifier signature, matches addLineItem byte-for-byte).
+ */
+export async function setLineQuantityAction(
+  input: SetLineQuantityInput & {
+    catalogPath: string;
+    idempotencyKey?: string;
+  },
+): Promise<CartSummary> {
+  const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
+  return withIdempotency(input.idempotencyKey, identity.userId, async () => {
+    return setLineQuantityImpl({ ...input, identity });
+  });
 }
