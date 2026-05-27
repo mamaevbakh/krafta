@@ -135,6 +135,12 @@ export type StorefrontMessageKey =
   // (merchant-curated), so the only localized string we need is the
   // affordance label for screen readers.
   | "language.select_aria"
+  // Item detail view — variation selector. "Size" reads as the universal
+  // header for variation pickers in food/menu contexts even when the
+  // actual axis is something else (e.g. "Cold / Hot"). Renamed to
+  // generic "Choose option" if you'd rather not assume size semantics.
+  | "variation.label"
+  | "variation.sold_out"
   // Errors (interpolation-aware — use `{var}` placeholders in the string)
   | "errors.network"
   | "errors.item_not_found"
@@ -246,6 +252,8 @@ const EN: MessageTable = {
   "search.placeholder": "Search the menu",
   "search.open_aria": "Open search",
   "language.select_aria": "Select language",
+  "variation.label": "Choose option",
+  "variation.sold_out": "Sold out",
 
   "errors.network":
     "Network issue. Check your connection and try again.",
@@ -356,6 +364,8 @@ const RU: MessageTable = {
   "search.placeholder": "Поиск по меню",
   "search.open_aria": "Открыть поиск",
   "language.select_aria": "Выбрать язык",
+  "variation.label": "Выберите вариант",
+  "variation.sold_out": "Нет в наличии",
 
   "errors.network": "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   "errors.item_not_found": "Эта позиция больше недоступна.",
@@ -469,6 +479,8 @@ const UZ_LATN: MessageTable = {
   "search.placeholder": "Menyu bo‘yicha qidirish",
   "search.open_aria": "Qidiruvni ochish",
   "language.select_aria": "Tilni tanlash",
+  "variation.label": "Variantni tanlang",
+  "variation.sold_out": "Tugagan",
 
   "errors.network": "Internet bilan muammo. Aloqani tekshirib qaytadan urinib ko‘ring.",
   "errors.item_not_found": "Bu taom endi mavjud emas.",

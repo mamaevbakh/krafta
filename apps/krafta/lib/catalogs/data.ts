@@ -259,12 +259,20 @@ export async function getCatalogStructure(
   const categoriesUrl = `${supabaseUrl}/rest/v1/catalog_categories?catalog_id=eq.${encodeURIComponent(
     catalogId,
   )}&is_active=eq.true&select=id,slug,name,position&order=position.asc`;
-  // Price is now sourced from the default item_variations row (Migration 1,
-  // ADR 0001 §3.1). Embed it filtered to is_default=true; PostgREST returns
-  // it as an array, we flatten below.
+  // Price is sourced from the default item_variations row (Migration 1,
+  // ADR 0001 §3.1). We now also pull the FULL set of active variations
+  // (id/name/price/ordinal/is_default/is_sold_out) so the storefront's
+  // item-detail view can render a customer-facing variation selector.
+  // Items with a single variation skip the selector and read price_cents
+  // off the default row exactly as before; multi-variation items light
+  // the chip group + reactive price.
+  //
+  // No `is_default=true` filter on the embed any more — the assembly pass
+  // below picks the default row for the legacy `price_cents` flatten and
+  // emits the full ordinal-sorted array for `variations`.
   const itemsUrl = `${supabaseUrl}/rest/v1/items?catalog_id=eq.${encodeURIComponent(
     catalogId,
-  )}&is_active=eq.true&select=id,slug,category_id,name,description,image_path,image_alt,position,item_variations(price_cents)&item_variations.is_default=eq.true&item_variations.is_active=eq.true&order=position.asc`;
+  )}&is_active=eq.true&select=id,slug,category_id,name,description,image_path,image_alt,position,item_variations(id,name,price_cents,ordinal,is_default,is_sold_out)&item_variations.is_active=eq.true&item_variations.order=ordinal.asc&order=position.asc`;
   // Modifier data: three tables, all denormalize catalog_id so we can fetch
   // each scoped to the active catalog in parallel with the rest of the
   // catalog structure. Assembly into PublicItem.modifier_lists happens below.
@@ -352,17 +360,51 @@ export async function getCatalogStructure(
     }));
   }
   const itemsRaw = (await itemsResponse.json()) as Array<
-    Omit<PublicItem, "price_cents" | "modifier_lists" | "translations"> & {
-      item_variations: Array<{ price_cents: number }>;
+    Omit<
+      PublicItem,
+      "price_cents" | "variations" | "modifier_lists" | "translations"
+    > & {
+      item_variations: Array<{
+        id: string;
+        name: string;
+        price_cents: number;
+        ordinal: number;
+        is_default: boolean;
+        is_sold_out: boolean;
+      }>;
     }
   >;
   // modifier_lists and translations are filled in below during assembly.
+  // `variations` is built here straight from the embed; the legacy
+  // `price_cents` flatten finds the default row (falling back to the
+  // first ordinal entry — a guard against legacy items where Migration 1
+  // didn't run cleanly and no row carries is_default=true).
+  //
+  // Variation translations are NOT yet plumbed through the public fetch.
+  // The merchant workbench supports them (KRA-94 Variations tab), the
+  // table exists with anon RLS, but adding a third fetch + per-variation
+  // i18n assembly pass is a follow-up. For now `variations[i].translations`
+  // ships as [] so storefront callers render the canonical variation name
+  // even on RU / UZ. TODO: KRA-XYZ — variation translations on storefront.
   const items: Array<
     Omit<PublicItem, "modifier_lists" | "translations">
-  > = itemsRaw.map(({ item_variations, ...rest }) => ({
-    ...rest,
-    price_cents: item_variations[0]?.price_cents ?? 0,
-  }));
+  > = itemsRaw.map(({ item_variations, ...rest }) => {
+    const defaultRow =
+      item_variations.find((v) => v.is_default) ?? item_variations[0] ?? null;
+    return {
+      ...rest,
+      price_cents: defaultRow?.price_cents ?? 0,
+      variations: item_variations.map((v) => ({
+        id: v.id,
+        name: v.name,
+        price_cents: v.price_cents,
+        ordinal: v.ordinal,
+        is_default: v.is_default,
+        is_sold_out: v.is_sold_out,
+        translations: [],
+      })),
+    };
+  });
 
   const locales = localesResponse.ok
     ? ((await localesResponse.json()) as Array<{

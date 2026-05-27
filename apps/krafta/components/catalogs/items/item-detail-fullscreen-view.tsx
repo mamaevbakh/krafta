@@ -121,6 +121,7 @@ import {
   modifierListFieldsetId,
   type ModifierPickerChange,
 } from "@/components/catalogs/items/modifier-picker";
+import { VariationSelector } from "@/components/catalogs/items/variation-selector";
 import { cn } from "@/lib/utils";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
@@ -195,6 +196,34 @@ export function ItemDetailFullscreen({
     : null;
   const ratio = itemAspectRatio ?? 4 / 5;
   const cart = useOptionalCart();
+
+  // Variation selection — multi-variation items show a chip group above
+  // the modifier picker; single-variation items use the default silently
+  // (VariationSelector returns null in that case). Default = the row
+  // flagged is_default=true; fall back to the first ordinal entry to
+  // guard against catalogs where Migration 1 didn't stamp a default.
+  // The selection drives:
+  //   • the variation chip's selected state (selector chrome)
+  //   • basePriceCents on the bottom CTA (label + line total preview)
+  //   • variationId + variationName threaded to cart.addItem so the
+  //     server resolves to THIS variation instead of the item's default
+  //   • the matching-line probe in ItemDetailBottomCta (different
+  //     variations are distinct cart lines, so each variation gets its
+  //     own stepper state)
+  const defaultVariation =
+    item.variations.find((v) => v.is_default) ?? item.variations[0] ?? null;
+  const [selectedVariationId, setSelectedVariationId] = useState<string>(
+    defaultVariation?.id ?? "",
+  );
+  const selectedVariation =
+    item.variations.find((v) => v.id === selectedVariationId) ??
+    defaultVariation;
+  // Effective unit price + variation name flow through the bottom CTA.
+  // When the item has no variations at all (legacy / mid-migration data),
+  // fall back to item.price_cents (the legacy flatten).
+  const effectivePriceCents =
+    selectedVariation?.price_cents ?? item.price_cents;
+  const selectedVariationName = selectedVariation?.name ?? null;
 
   // Picker state is owned here so the add-to-cart click handler can
   // read selections + validity + the first-invalid-list id. Items with
@@ -385,9 +414,12 @@ export function ItemDetailFullscreen({
         </div>
 
         {/* Price: smaller than the title so it supports without
-            competing. font-mono tabular-nums per DESIGN.md. */}
+            competing. font-mono tabular-nums per DESIGN.md.
+            Reads the SELECTED variation's price so it updates live as
+            the customer toggles chips; single-variation items still
+            show their one price unchanged. */}
         <p className="text-2xl font-mono font-semibold tabular-nums text-foreground">
-          {formatPriceCents(item.price_cents, currencySettings)}
+          {formatPriceCents(effectivePriceCents, currencySettings)}
         </p>
 
         {/* Description only renders when the merchant actually wrote one.
@@ -398,6 +430,21 @@ export function ItemDetailFullscreen({
             {localizedDescription}
           </p>
         )}
+
+        {/* Variation selector sits above the modifier picker because
+            variation choice is the more fundamental decision (it
+            changes price + flavor of the whole product); modifiers
+            customise within a chosen variation. Returns null for
+            single-variation items so the chrome is calm by default. */}
+        {item.variations.length > 1 ? (
+          <VariationSelector
+            variations={item.variations}
+            value={selectedVariationId}
+            onChange={setSelectedVariationId}
+            currencySettings={currencySettings}
+            className="mt-2"
+          />
+        ) : null}
 
         {cart && hasVisibleModifierLists ? (
           <div className="mt-2">
@@ -425,7 +472,9 @@ export function ItemDetailFullscreen({
               cart={cart}
               itemId={item.id}
               itemName={localizedName}
-              basePriceCents={item.price_cents}
+              basePriceCents={effectivePriceCents}
+              variationId={selectedVariation?.id}
+              variationName={selectedVariationName}
               currencySettings={currencySettings}
               pickerState={pickerState}
               onValidateBeforeAdd={validateBeforeAdd}
@@ -491,6 +540,14 @@ function ItemDetailBottomCta(props: {
   itemId: string;
   itemName: string;
   basePriceCents: number;
+  /** Customer-selected variation. When undefined, the server resolves
+   *  to the item's default variation. Both are valid — multi-variation
+   *  items pass the chosen id; legacy single-variation items can omit. */
+  variationId?: string;
+  /** Display label for the variation. Shows up on cart line rows and
+   *  receipts. Falls back to the variation row's snapshot name on the
+   *  server if omitted. */
+  variationName?: string | null;
   currencySettings: CurrencySettings | undefined;
   pickerState: ModifierPickerChange;
   onValidateBeforeAdd: () => boolean;
@@ -501,6 +558,8 @@ function ItemDetailBottomCta(props: {
     itemId,
     itemName,
     basePriceCents,
+    variationId,
+    variationName = null,
     currencySettings,
     pickerState,
     onValidateBeforeAdd,
@@ -524,14 +583,26 @@ function ItemDetailBottomCta(props: {
     })),
   );
 
-  // Look for an existing cart line whose (item, variation?, modifier
+  // Look for an existing cart line whose (item, variation, modifier
   // signature) exactly matches the current selections. When found, we
   // render the stepper variant instead of the Add button — same
-  // pattern as AddToCartButton. Variation match is permissive when
-  // the picker hasn't named a variation (the server resolves to the
-  // default), matching the AddToCartButton heuristic.
+  // pattern as AddToCartButton.
+  //
+  // Variation match: when the caller passed a variationId (multi-
+  // variation items), require an exact match so different variations
+  // stay as different cart lines. When undefined (single-variation /
+  // legacy), accept any variation — the server resolves to the item's
+  // default and the optimistic placeholder uses null, so a strict
+  // compare would flash the stepper off the moment the server response
+  // overwrites the placeholder with the real default-variation row.
   const matchingLine = cart.summary.lineItems.find((line) => {
     if (line.catalog_item_id !== itemId) return false;
+    if (
+      variationId !== undefined &&
+      line.catalog_variation_id !== variationId
+    ) {
+      return false;
+    }
     const lineSig = modifierSignature(
       line.modifiers
         .filter((m) => m.catalog_modifier_list_id !== null)
@@ -560,6 +631,13 @@ function ItemDetailBottomCta(props: {
     try {
       await cart.addItem({
         itemId,
+        // Variation threading: when present, sent to the server so it
+        // resolves to the customer's chosen variation instead of the
+        // item's default. The variation also drives the dedup key so
+        // two different variations of the same item land as distinct
+        // cart lines (Square / DoorDash parity).
+        variationId,
+        variationName,
         name: itemName,
         basePriceCents,
         modifiers: pickerState.selections.map((s) => ({

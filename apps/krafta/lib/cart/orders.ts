@@ -289,17 +289,47 @@ export async function addLineItem(
     input.modifiers ?? [],
   );
 
+  // Set of modifier_list_ids whose entire contents are hidden from the
+  // customer (`hidden_from_customer_override=true`). The server still
+  // stores their auto-applied on_by_default modifiers on the line (kitchen
+  // / receipt parity with Square), but they MUST NOT participate in the
+  // dedup signature.
+  //
+  // Why: the customer-facing client computes the signature from only the
+  // modifiers it actually rendered — visible lists. If hidden mods leaked
+  // into the server signature, every server signature would diverge from
+  // every client signature for any item carrying a hidden+on_by_default
+  // list (a common shape — VAT auto-add, kitchen prep flag, etc.). The
+  // resulting client/server signature mismatch makes `AddToCartButton`'s
+  // matchingLine probe miss → it shows "Add to cart" instead of the
+  // stepper → the customer taps again, thinking the first add failed →
+  // local optimistic state appends a placeholder line with the visible
+  // sig → server merges into the existing line by ITEM (not full sig)
+  // because the same hidden-mod-shaped row already exists → cart shows
+  // qty=2 from a single tap.
+  //
+  // Hidden modifiers are deterministic per item (server-resolved from
+  // catalog state), so dropping them from the dedup key costs zero
+  // information: two adds of the same (item, variation, visible-mods)
+  // still get the same hidden-mod set, and dedup still works.
+  const hiddenListIds = new Set(
+    imlResult
+      .filter((iml) => iml.hidden_from_customer_override)
+      .map((iml) => iml.modifier_lists.id),
+  );
+
   // Recompute the signature on the SERVER side from the resolved snapshot
-  // (catalog-fresh) rather than trusting the client-passed selections.
-  // Auto-applied modifiers from hidden lists become part of the signature
-  // here just like they will on the line; that way two adds of the same
-  // item — both with the same hidden defaults — still merge.
-  const modifierSelections: ModifierSelection[] = resolvedModifiers.map((m) => ({
-    listId: m.catalog_modifier_list_id,
-    modifierId: m.catalog_modifier_id,
-    quantity: m.quantity,
-    text_value: m.text_value,
-  }));
+  // (catalog-fresh) rather than trusting the client-passed selections, but
+  // restrict to the visible modifiers only so the client's signature can
+  // match byte-for-byte.
+  const modifierSelections: ModifierSelection[] = resolvedModifiers
+    .filter((m) => !hiddenListIds.has(m.catalog_modifier_list_id))
+    .map((m) => ({
+      listId: m.catalog_modifier_list_id,
+      modifierId: m.catalog_modifier_id,
+      quantity: m.quantity,
+      text_value: m.text_value,
+    }));
   const signature = modifierSignature(modifierSelections);
   const modifierDeltaSum = resolvedModifiers.reduce(
     (sum, m) => sum + m.base_price_cents_delta * m.quantity,
@@ -328,8 +358,18 @@ export async function addLineItem(
       // catalog_modifier_list_id=NULL. The signature won't match a fresh
       // add's signature anyway, so the new add becomes a new cart line.
       // Mildly redundant but not a correctness problem.
+      //
+      // Also drop hidden-list modifiers from the candidate's signature so
+      // the comparison stays apples-to-apples with the visible-only
+      // signature we computed above. Without this, a stored row with
+      // hidden mods baked in would fail to match a new add that's also
+      // shaped identically — the very situation this commit's signature
+      // change is intended to fix.
       const lineSelections: ModifierSelection[] = (line.modifiers ?? [])
         .filter((m) => m.catalog_modifier_list_id !== null)
+        .filter(
+          (m) => !hiddenListIds.has(m.catalog_modifier_list_id as string),
+        )
         .map((m) => ({
           listId: m.catalog_modifier_list_id as string,
           modifierId: m.catalog_modifier_id,
@@ -735,7 +775,13 @@ export async function getCartSummary(input: {
       .order("created_at", { ascending: true });
     if (linesError) throw new Error(linesError.message);
 
-    const lineItems = (lines ?? []).map((row) => normalizeLineItem(row));
+    const hiddenByItem = await fetchHiddenModifierListsForItems(
+      supabase,
+      lines ?? [],
+    );
+    const lineItems = (lines ?? []).map((row) =>
+      normalizeLineItem(row, hiddenByItem),
+    );
     return {
       orderId: input.orderId,
       // No version round-trip on the fast path — callers that need the OCC
@@ -778,7 +824,13 @@ export async function getCartSummary(input: {
 
   if (linesError) throw new Error(linesError.message);
 
-  const lineItems = (lines ?? []).map((row) => normalizeLineItem(row));
+  const hiddenByItem = await fetchHiddenModifierListsForItems(
+    supabase,
+    lines ?? [],
+  );
+  const lineItems = (lines ?? []).map((row) =>
+    normalizeLineItem(row, hiddenByItem),
+  );
   const subtotalCents = lineItems.reduce(
     (sum, line) => sum + line.total_price_cents,
     0,
@@ -790,6 +842,59 @@ export async function getCartSummary(input: {
     lineItems,
     subtotalCents,
   };
+}
+
+/**
+ * Builds a per-item map of modifier_list_ids whose contents are hidden from
+ * the customer. Used by `normalizeLineItem` to strip auto-applied hidden
+ * modifiers from the cart-summary response so:
+ *
+ *   1. The customer cart drawer doesn't leak kitchen-only / VAT / surcharge
+ *      modifiers as visible bullet rows.
+ *   2. The CLIENT-computed line modifier signature matches the SERVER-side
+ *      visible-only signature (KRA-cart-double-add bug — without this filter
+ *      the matchingLine probe in AddToCartButton + item-detail-fullscreen
+ *      fails byte-comparison against a stored line with hidden mods baked
+ *      in, the button shows "Add to cart" again, the customer taps once
+ *      more, and the server merges into the existing line → qty=2).
+ *
+ * One extra round-trip per getCartSummary call (a batched IN query scoped
+ * to the catalog item ids actually present in the cart — usually <10 items
+ * and indexed on item_id). Negligible vs. the correctness win.
+ */
+async function fetchHiddenModifierListsForItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  lines: ReadonlyArray<{ catalog_item_id: string | null }>,
+): Promise<Map<string, Set<string>>> {
+  const result = new Map<string, Set<string>>();
+  const itemIds = Array.from(
+    new Set(
+      lines
+        .map((l) => l.catalog_item_id)
+        .filter((id): id is string => id !== null),
+    ),
+  );
+  if (itemIds.length === 0) return result;
+
+  const { data: imls, error: imlError } = await supabase
+    .from("item_modifier_lists")
+    .select("item_id, modifier_list_id")
+    .in("item_id", itemIds)
+    .eq("hidden_from_customer_override", true);
+  // Non-fatal: if the IML lookup fails (auth race, network blip), we
+  // degrade to returning the unfiltered modifiers — the cart still works,
+  // just shows the hidden mods. Better than 500-ing the whole summary.
+  if (imlError || !imls) return result;
+
+  for (const row of imls) {
+    let set = result.get(row.item_id);
+    if (!set) {
+      set = new Set();
+      result.set(row.item_id, set);
+    }
+    set.add(row.modifier_list_id);
+  }
+  return result;
 }
 
 // Coerces the PostgREST embedded-select row shape into the CartLineItem
@@ -819,10 +924,24 @@ type RawLineItem = {
     | null;
 };
 
-function normalizeLineItem(row: RawLineItem): CartLineItem {
+function normalizeLineItem(
+  row: RawLineItem,
+  hiddenByItem: Map<string, Set<string>>,
+): CartLineItem {
+  // Hidden modifiers are kitchen-only / VAT / surcharge auto-applies. They
+  // exist on the DB row (kitchen receipts need them) but must not surface
+  // in the customer cart drawer, and they MUST not contribute to the
+  // signature the client computes when probing for a matching line — see
+  // fetchHiddenModifierListsForItems for the full story.
+  const hiddenForThisItem =
+    row.catalog_item_id !== null ? hiddenByItem.get(row.catalog_item_id) : null;
   const modifiers = (row.modifiers ?? [])
     .slice()
     .sort((a, b) => a.ordinal - b.ordinal)
+    .filter((m) => {
+      if (m.catalog_modifier_list_id === null) return true;
+      return !hiddenForThisItem?.has(m.catalog_modifier_list_id);
+    })
     .map((m) => ({
       id: m.id,
       catalog_modifier_id: m.catalog_modifier_id,
