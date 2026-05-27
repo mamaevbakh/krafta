@@ -223,6 +223,54 @@ function newIdempotencyKey(): string {
     : `mut-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * Heuristic for transient failures that benefit from retry. Network-
+ * layer faults manifest as `TypeError("Failed to fetch")` (browser
+ * fetch policy) or messages that mention network/timeout/abort. Server-
+ * side validation errors ("Item not found", "price_changed", RLS denial)
+ * have specific human-readable text from setLineQuantity and aren't
+ * fixed by retrying — they go straight to the toast.
+ */
+function isRetryableMutationError(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  if (err instanceof Error) {
+    const message = err.message.toLowerCase();
+    if (message.includes("network")) return true;
+    if (message.includes("fetch")) return true;
+    if (message.includes("timeout")) return true;
+    if (message.includes("aborted")) return true;
+  }
+  return false;
+}
+
+/**
+ * Retry a cart mutation with exponential-ish backoff on transient
+ * failures. Backoff schedule 200ms → 500ms → 1500ms (4 attempts total
+ * worst case). Idempotency keys make this safe: same key replays land
+ * the same DB result via commerce.processed_actions, so a network blip
+ * that swallowed the response doesn't cause a double-write.
+ *
+ * Held inside the runMutation serialize lock — rapid taps that follow
+ * a retrying mutation pile up optimistic state but their server calls
+ * don't fire until the retry settles. The customer's UI stays at the
+ * dispatched target qty throughout.
+ */
+async function callWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [200, 500, 1500];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt >= delays.length) break;
+      if (!isRetryableMutationError(err)) break;
+      await new Promise<void>((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+  throw lastErr;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Provider
 
@@ -403,7 +451,11 @@ export function CartProvider({
         addOptimistic(opts.optimistic);
         try {
           await prior;
-          const promise = opts.serverCall();
+          // Wrap serverCall in retry-with-backoff (P5b) for transient
+          // network failures. Same idempotencyKey on retries → server
+          // dedup returns the cached result if the first call already
+          // landed, so no double-write.
+          const promise = callWithRetry(opts.serverCall);
           pendingPromisesRef.current.add(promise);
           try {
             const next = (await promise) as unknown as CartSummary;
