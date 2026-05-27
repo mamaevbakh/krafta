@@ -99,7 +99,7 @@ export function LocaleSwitcher({
         <Button
           type="button"
           size="icon"
-          variant="secondary"
+          variant="outline"
           aria-label={ariaLabel}
           className={cn(
             // Match cart-trigger tonality: bg-muted secondary surface so
