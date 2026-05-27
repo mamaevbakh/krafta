@@ -968,6 +968,35 @@ export type Database = {
           },
         ]
       }
+      processed_actions: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          result: Json
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id: string
+          result: Json
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          result?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "processed_actions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_sessions: {
         Row: {
           closed_at: string | null

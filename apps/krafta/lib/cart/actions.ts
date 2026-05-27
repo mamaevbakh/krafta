@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { ensureCartIdentity, type CartIdentity } from "./identity";
+import { withIdempotency } from "./idempotency";
 import {
   addLineItem as addLineItemImpl,
   clearCart as clearCartImpl,
@@ -85,14 +86,23 @@ export async function addLineItemAction(input: {
    *  sites; intentionally unused now (see file-level comment above). */
   catalogPath: string;
   identity?: CartIdentity;
+  /** KRA-108: client-generated UUID per logical user action. Same key
+   *  twice → server returns cached result, never re-executes. Closes
+   *  the multi-tab / refresh-mid-flight / strict-mode-double-invoke
+   *  duplicate-write classes structurally. Optional for backward
+   *  compatibility while the v2 client rolls out; legacy callers
+   *  bypass dedup. */
+  idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  const { orderId } = await addLineItemImpl({ ...input, identity });
-  return getCartSummaryImpl({
-    orgId: input.orgId,
-    venueId: input.venueId,
-    identity,
-    orderId,
+  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+    const { orderId } = await addLineItemImpl({ ...input, identity });
+    return getCartSummaryImpl({
+      orgId: input.orgId,
+      venueId: input.venueId,
+      identity,
+      orderId,
+    });
   });
 }
 
@@ -107,14 +117,18 @@ export async function updateLineItemQuantityAction(input: {
    *  the post-mutation getCartSummary. Cart-provider passes `summary.orderId`
    *  on every update once it knows it. */
   orderId?: string;
+  /** KRA-108 idempotency key — see addLineItemAction. */
+  idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  await updateLineItemQuantityImpl(input.lineItemId, input.quantity);
-  return getCartSummaryImpl({
-    orgId: input.orgId,
-    venueId: input.venueId,
-    identity,
-    orderId: input.orderId,
+  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+    await updateLineItemQuantityImpl(input.lineItemId, input.quantity);
+    return getCartSummaryImpl({
+      orgId: input.orgId,
+      venueId: input.venueId,
+      identity,
+      orderId: input.orderId,
+    });
   });
 }
 
@@ -125,14 +139,18 @@ export async function removeLineItemAction(input: {
   catalogPath: string;
   identity?: CartIdentity;
   orderId?: string;
+  /** KRA-108 idempotency key — see addLineItemAction. */
+  idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  await removeLineItemImpl(input.lineItemId);
-  return getCartSummaryImpl({
-    orgId: input.orgId,
-    venueId: input.venueId,
-    identity,
-    orderId: input.orderId,
+  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+    await removeLineItemImpl(input.lineItemId);
+    return getCartSummaryImpl({
+      orgId: input.orgId,
+      venueId: input.venueId,
+      identity,
+      orderId: input.orderId,
+    });
   });
 }
 
@@ -142,23 +160,28 @@ export async function clearCartAction(input: {
   catalogPath: string;
   identity?: CartIdentity;
   orderId?: string;
+  /** KRA-108 idempotency key — see addLineItemAction. */
+  idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  // If the client knows orderId (the common case after the cart has any line),
-  // skip the getOrCreateDraftOrder lookup entirely and clear directly.
-  const orderId =
-    input.orderId ??
-    (await getOrCreateDraftOrderImpl({
+  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+    // If the client knows orderId (the common case after the cart has any
+    // line), skip the getOrCreateDraftOrder lookup entirely and clear
+    // directly.
+    const orderId =
+      input.orderId ??
+      (await getOrCreateDraftOrderImpl({
+        orgId: input.orgId,
+        venueId: input.venueId,
+        identity,
+      })).orderId;
+    await clearCartImpl(orderId);
+    return getCartSummaryImpl({
       orgId: input.orgId,
       venueId: input.venueId,
       identity,
-    })).orderId;
-  await clearCartImpl(orderId);
-  return getCartSummaryImpl({
-    orgId: input.orgId,
-    venueId: input.venueId,
-    identity,
-    orderId,
+      orderId,
+    });
   });
 }
 
