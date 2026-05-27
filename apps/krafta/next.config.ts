@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   // a QR code from a real handset). Next.js 16 blocks cross-origin dev
   // resources by default; this list opts in the LAN range explicitly.
   // Update if the Mac's LAN IP changes.
-  allowedDevOrigins: ["192.168.1.5"],
+  allowedDevOrigins: ["192.168.1.3"],
   // Hide the Next.js dev indicator (the small "N" badge at bottom-left in
   // dev mode). It was visually overlapping the floating cart trigger on
   // the customer storefront, leaving the customer wondering why their

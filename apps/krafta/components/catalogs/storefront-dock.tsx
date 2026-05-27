@@ -71,7 +71,7 @@ export function StorefrontDock({
         height="80px"
         blurAmount="1px"
         className="z-30"
-        backgroundColor="bg-primary/85"
+        backgroundColor="oklch(from var(--background) l c h / 0.85)"
       />
 
       {/* Dock shell — fixed bottom-center, safe-area aware, theme-blurred.
