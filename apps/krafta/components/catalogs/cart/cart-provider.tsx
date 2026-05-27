@@ -467,6 +467,48 @@ export function CartProvider({
       // optimistic actions.
       const line = optimisticCart.lineItems.find((l) => l.id === lineItemId);
       if (!line) return;
+
+      // Local placeholder: the originating addItem's server roundtrip
+      // is still in flight, so the line doesn't have a real DB uuid
+      // yet. Firing updateQuantity / removeItem with `lineItemId`
+      // would send the client-generated `local-<uuid>` string to
+      // Postgres, which rejects it as invalid uuid syntax (toast:
+      // 'invalid input syntax for type uuid'). Route through addItem
+      // for positive deltas: the reducer's tuple match (item,
+      // variation, sig) bumps the placeholder optimistically, and
+      // server-side dedup merges each +1 add onto whichever line the
+      // original add is about to materialize.
+      //
+      // Negative deltas on a placeholder are deliberately a no-op for
+      // now — they require a deferred-remove flow that fires once the
+      // placeholder materializes (TODO: track pending bumps per local
+      // id, apply against the real line id when setServerCart lands).
+      // Silent skip beats a uuid error toast; the customer can tap −
+      // again the moment the placeholder converts.
+      if (line.id.startsWith("local-")) {
+        if (delta > 0 && line.catalog_item_id) {
+          void addItem({
+            itemId: line.catalog_item_id,
+            variationId: line.catalog_variation_id ?? undefined,
+            quantity: delta,
+            name: line.name,
+            basePriceCents: line.base_price_cents,
+            variationName: line.variation_name,
+            modifiers: line.modifiers
+              .filter((m) => m.catalog_modifier_list_id !== null)
+              .map((m) => ({
+                modifierListId: m.catalog_modifier_list_id as string,
+                modifierId: m.catalog_modifier_id,
+                quantity: m.quantity,
+                name: m.name,
+                basePriceCentsDelta: m.base_price_cents_delta,
+                text_value: m.text_value,
+              })),
+          });
+        }
+        return;
+      }
+
       const next = line.quantity + delta;
       if (next <= 0) {
         void removeItem(lineItemId);
@@ -474,10 +516,10 @@ export function CartProvider({
         void updateQuantity(lineItemId, next);
       }
     },
-    // updateQuantity/removeItem are stable; optimisticCart updates per render
-    // so the closure sees latest line state.
+    // addItem/updateQuantity/removeItem are stable; optimisticCart
+    // updates per render so the closure sees latest line state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optimisticCart, updateQuantity],
+    [optimisticCart, addItem, updateQuantity],
   );
 
   const removeItem: CartContextValue["removeItem"] = useCallback(
