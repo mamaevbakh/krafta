@@ -284,15 +284,27 @@ export function CartProvider({
   // Pattern (used by every action below):
   //   1. crypto.randomUUID() per logical user action
   //   2. startTransition(async () => {
-  //        addOptimistic({...})       ← instant UI
-  //        promise = serverAction(...)
-  //        pendingPromisesRef.add(promise)
-  //        const next = await promise
-  //        setServerCart(next)        ← React clears optimistic + commits server in one tick
+  //        addOptimistic({...})           ← instant UI, in dispatch order
+  //        await mutationLockRef.current  ← serialize the SERVER CALL only
+  //        const next = await serverCall()
+  //        setServerCart(next)            ← React clears this transition's
+  //                                          optimistic + commits server in one tick
   //      })
   //
-  // No debounce. Each tap fires its own server action immediately.
-  // Idempotency keys + server dedup catch duplicates structurally.
+  // Why the lock (KRA-108 auto-add bug, 2026-05-27): without it, rapid
+  // taps fire concurrent server calls. Responses arrive in unpredictable
+  // order due to network jitter — and each response is the cart state at
+  // its commit moment. When `setServerCart` lands with state that already
+  // reflects siblings' commits, useOptimistic re-derives by re-applying
+  // still-pending optimistic actions on top → phantom qty overshoot
+  // (taps=3, server qty=3, UI briefly flashes 4 or 5). Serializing the
+  // server call eliminates the out-of-order arrival; the optimistic UI
+  // stays instant because addOptimistic still fires before the lock await.
+  //
+  // Idempotency keys at the server side still close any retry/replay
+  // duplicates the lock doesn't cover (multi-tab, refresh-mid-flight).
+
+  const mutationLockRef = useRef<Promise<void>>(Promise.resolve());
 
   const runMutation = useCallback(
     <T,>(opts: {
@@ -300,17 +312,36 @@ export function CartProvider({
       serverCall: () => Promise<T>;
       onError?: (err: unknown) => void;
     }) => {
+      // Chain this mutation's server call onto the lock BEFORE entering
+      // the transition. Two reasons it has to be sync at dispatch time:
+      // (1) two near-simultaneous taps both reading `mutationLockRef.current`
+      // inside their async transitions could see the SAME prior promise
+      // and serialize against IT instead of each other — defeating the
+      // chain. (2) The lock has to advance in dispatch order, which is
+      // the order React fires startTransition callbacks; doing the swap
+      // synchronously here pins that order.
+      const prior = mutationLockRef.current;
+      let releaseLock!: () => void;
+      mutationLockRef.current = new Promise<void>((r) => {
+        releaseLock = r;
+      });
+
       startTransition(async () => {
         addOptimistic(opts.optimistic);
-        const promise = opts.serverCall();
-        pendingPromisesRef.current.add(promise);
         try {
-          const next = (await promise) as unknown as CartSummary;
-          setServerCart(next);
+          await prior;
+          const promise = opts.serverCall();
+          pendingPromisesRef.current.add(promise);
+          try {
+            const next = (await promise) as unknown as CartSummary;
+            setServerCart(next);
+          } finally {
+            pendingPromisesRef.current.delete(promise);
+          }
         } catch (err) {
           opts.onError?.(err);
         } finally {
-          pendingPromisesRef.current.delete(promise);
+          releaseLock();
         }
       });
     },
@@ -338,6 +369,21 @@ export function CartProvider({
       modifiers,
     }) => {
       const idempotencyKey = newIdempotencyKey();
+      // Allocate the placeholder id HERE (once per tap) rather than
+      // inside the optimistic reducer. useOptimistic re-runs the
+      // reducer on every render — and under StrictMode it runs twice
+      // per render in dev — so generating crypto.randomUUID() inside
+      // the reducer would produce a different placeholder id on every
+      // render. React's list reconciliation keys off `id`, so the
+      // placeholder line would unmount/remount every frame the add is
+      // in flight, visibly flickering and tearing down any animation
+      // mid-flight. The action carries the id so the reducer can stay
+      // a pure function.
+      const placeholderId =
+        "local-" +
+        (typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2));
 
       const resolvedName = name ?? tRef.current("add_to_cart.adding");
       const modifierSelections = toModifierSelections(modifiers);
@@ -369,6 +415,7 @@ export function CartProvider({
           modifiers: lineModifiers,
           modifierSig: sig,
           idempotencyKey,
+          placeholderId,
         },
         serverCall: () =>
           addLineItemAction({

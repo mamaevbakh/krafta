@@ -61,6 +61,20 @@ export type OptimisticCartAction =
       modifiers: CartLineItemModifier[];
       modifierSig: string;
       idempotencyKey: string;
+      /**
+       * Caller-allocated placeholder line id used when no existing line
+       * matches (item, variation, sig). MUST live on the action so the
+       * reducer stays pure: `useOptimistic` re-runs the reducer on every
+       * render, and React's StrictMode dev-mode double-invoke calls it
+       * twice per render. If we generated `crypto.randomUUID()` inside
+       * the reducer, the placeholder's React `key` would change on
+       * every render → list item unmounts/remounts on every parent
+       * re-render while an add is in flight → flicker, animation
+       * restarts, sometimes input focus loss. Allocating at the call
+       * site (where it's a one-time event) keeps the id stable across
+       * the optimistic action's lifetime.
+       */
+      placeholderId: string;
     }
   | {
       type: "updateQuantity";
@@ -178,14 +192,12 @@ export function applyAction(
 
       // No match — append a placeholder. The id begins with `local-`
       // so anyone iterating the list can distinguish placeholders from
-      // server-materialized lines. Crypto-random id avoids React key
-      // collisions across concurrent optimistic adds.
+      // server-materialized lines. We use the CALLER-ALLOCATED id
+      // (passed on the action) instead of generating one here, so the
+      // reducer stays pure — see the doc comment on
+      // OptimisticCartAction.add.placeholderId for the StrictMode trap.
       const placeholder: CartLineItem = {
-        id:
-          "local-" +
-          (typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID()
-            : Math.random().toString(36).slice(2)),
+        id: action.placeholderId,
         uid: "",
         catalog_item_id: action.itemId,
         catalog_variation_id: action.variationId,
