@@ -971,31 +971,23 @@ export type Database = {
       processed_actions: {
         Row: {
           created_at: string
-          customer_id: string
           id: string
           result: Json
+          user_id: string
         }
         Insert: {
           created_at?: string
-          customer_id: string
           id: string
           result: Json
+          user_id: string
         }
         Update: {
           created_at?: string
-          customer_id?: string
           id?: string
           result?: Json
+          user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "processed_actions_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       table_sessions: {
         Row: {

@@ -44,15 +44,16 @@ import { createClient } from "@/lib/supabase/server";
  */
 export async function withIdempotency<T>(
   key: string | undefined,
-  customerId: string,
+  userId: string,
   fn: () => Promise<T>,
 ): Promise<T> {
   if (!key) return fn();
 
   const supabase = await createClient();
 
-  // Read existing cached result if any. RLS limits visibility to this
-  // customer's rows; a missing row is the common case (fresh action).
+  // Read existing cached result if any. RLS limits visibility to rows
+  // owned by the current auth.uid(); a missing row is the common case
+  // (fresh action).
   const { data: existing, error: selectError } = await supabase
     .schema("commerce")
     .from("processed_actions")
@@ -71,14 +72,33 @@ export async function withIdempotency<T>(
   const result = await fn();
 
   // Cache the result. A concurrent request with the same key may have
-  // already inserted; in that case our INSERT hits a PK conflict and
-  // returns null. We swallow that error: the cache is best-effort and
-  // the action already executed once on our path. Re-running the same
-  // key in the future will return whichever insert won the race.
-  await supabase
+  // already inserted; in that case our INSERT hits a PK conflict (23505)
+  // and we swallow it: the cache is best-effort and the action already
+  // executed once on our path. Re-running the same key in the future
+  // will return whichever insert won the race.
+  //
+  // Any OTHER error (RLS denial, network, schema mismatch) is logged but
+  // not thrown — the caller already has its result. We log so we can
+  // notice when dedup writes silently break (e.g. policy regression on a
+  // future migration). Promote to throw if we ever want strict semantics.
+  const { error: insertError } = await supabase
     .schema("commerce")
     .from("processed_actions")
-    .insert({ id: key, customer_id: customerId, result: result as unknown as never });
+    .insert({ id: key, user_id: userId, result: result as unknown as never });
+
+  if (insertError && (insertError as { code?: string }).code !== "23505") {
+    console.warn(
+      "[withIdempotency] cache insert failed",
+      {
+        key,
+        userId,
+        code: (insertError as { code?: string }).code,
+        message: insertError.message,
+        details: (insertError as { details?: string }).details,
+        hint: (insertError as { hint?: string }).hint,
+      },
+    );
+  }
 
   return result;
 }

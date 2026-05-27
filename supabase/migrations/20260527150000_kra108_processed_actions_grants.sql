@@ -1,0 +1,22 @@
+-- KRA-108 hotfix #2: missing table-level GRANTs.
+--
+-- RLS scopes which rows the role CAN see; table-level GRANTs control
+-- whether the role can touch the table at all. The first KRA-108
+-- migration enabled RLS + wrote per-row policies, but never granted
+-- SELECT/INSERT on the table itself to `anon`/`authenticated`. Postgres
+-- denies at the GRANT layer before RLS even runs, so every cart-action
+-- INSERT was failing with `42501 permission denied for table
+-- processed_actions` and being swallowed by the helper's then-untested
+-- error handler — `pg_stat_user_tables.n_tup_ins = 0` is what tipped us
+-- off.
+--
+-- Storefront cart sessions run under `signInAnonymously` which assigns
+-- role=authenticated + is_anonymous=true. The publishable key alone is
+-- role=anon. Either can land in this helper, so we grant to both —
+-- matching the policies' `to anon, authenticated`.
+--
+-- No UPDATE/DELETE grants: rows are immutable once cached (idempotency
+-- contract) and TTL cleanup runs as the cron job's owner (postgres),
+-- which already has full access.
+
+grant select, insert on commerce.processed_actions to anon, authenticated;

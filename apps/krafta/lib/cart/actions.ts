@@ -95,7 +95,7 @@ export async function addLineItemAction(input: {
   idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+  return withIdempotency(input.idempotencyKey, identity.userId, async () => {
     const { orderId } = await addLineItemImpl({ ...input, identity });
     return getCartSummaryImpl({
       orgId: input.orgId,
@@ -121,7 +121,7 @@ export async function updateLineItemQuantityAction(input: {
   idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+  return withIdempotency(input.idempotencyKey, identity.userId, async () => {
     await updateLineItemQuantityImpl(input.lineItemId, input.quantity);
     return getCartSummaryImpl({
       orgId: input.orgId,
@@ -143,7 +143,7 @@ export async function removeLineItemAction(input: {
   idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+  return withIdempotency(input.idempotencyKey, identity.userId, async () => {
     await removeLineItemImpl(input.lineItemId);
     return getCartSummaryImpl({
       orgId: input.orgId,
@@ -164,7 +164,7 @@ export async function clearCartAction(input: {
   idempotencyKey?: string;
 }): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  return withIdempotency(input.idempotencyKey, identity.customerId, async () => {
+  return withIdempotency(input.idempotencyKey, identity.userId, async () => {
     // If the client knows orderId (the common case after the cart has any
     // line), skip the getOrCreateDraftOrder lookup entirely and clear
     // directly.
