@@ -68,9 +68,10 @@ export function StorefrontDock({
           doesn't intercept scroll/touch on the items behind. */}
       <ProgressiveBlur
         position="bottom"
-        height="134px"
+        height="80px"
         blurAmount="1px"
         className="z-30"
+        backgroundColor="bg-primary/85"
       />
 
       {/* Dock shell — fixed bottom-center, safe-area aware, theme-blurred.
