@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Minus, Plus, ShoppingCart } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   type ModifierSelection,
 } from "@/lib/cart/modifier-signature";
 
-import { AnimatedQty } from "./animated-qty";
+import { CartStepper } from "./cart-stepper";
 import { useCart } from "./cart-provider";
 
 type AddToCartModifier = {
@@ -215,41 +215,15 @@ export function AddToCartButton(props: AddToCartButtonProps) {
   // ── Stepper state: already in cart ─────────────────────────────────
   if (hasMounted && matchingLine) {
     return (
-      <div
-        className={cn(
-          "flex w-full items-center justify-between gap-3 rounded-md border border-input bg-background p-1.5",
-          className,
-        )}
-        role="group"
-        aria-label={t("add_to_cart.label")}
-      >
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={handleDecrement}
-          disabled={disabled}
-          aria-label="Decrease quantity"
-          className="h-11 w-11 rounded-sm"
-        >
-          <Minus className="size-5" />
-        </Button>
-        <AnimatedQty
-          value={matchingLine.quantity}
-          className="min-w-[2.5rem] text-center font-mono text-lg font-semibold"
-        />
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={handleIncrement}
-          disabled={disabled}
-          aria-label="Increase quantity"
-          className="h-11 w-11 rounded-sm"
-        >
-          <Plus className="size-5" />
-        </Button>
-      </div>
+      <CartStepper
+        variant="detail"
+        quantity={matchingLine.quantity}
+        itemName={itemName}
+        onDecrement={handleDecrement}
+        onIncrement={handleIncrement}
+        disabled={disabled}
+        className={className}
+      />
     );
   }
 

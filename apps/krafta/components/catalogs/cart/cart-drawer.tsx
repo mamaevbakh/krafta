@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { ShoppingCart, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,7 @@ import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
-import { AnimatedQty } from "./animated-qty";
+import { CartStepper } from "./cart-stepper";
 import { useCart } from "./cart-provider";
 import { CartCheckoutStep } from "./checkout-step";
 import { CartPlacedStep } from "./placed-step";
@@ -185,32 +185,13 @@ function CartListStep({
                   </p>
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      className="h-8 w-8"
-                      onClick={() => bumpQuantity(line.id, -1)}
-                      aria-label={t("aria.decrease_quantity")}
-                    >
-                      <Minus className="h-3.5 w-3.5" />
-                    </Button>
-                    <AnimatedQty
-                      value={line.quantity}
-                      className="min-w-7 text-center text-sm"
-                    />
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      className="h-8 w-8"
-                      onClick={() => bumpQuantity(line.id, +1)}
-                      aria-label={t("aria.increase_quantity")}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  <CartStepper
+                    variant="drawer"
+                    quantity={line.quantity}
+                    itemName={line.name}
+                    onDecrement={() => bumpQuantity(line.id, -1)}
+                    onIncrement={() => bumpQuantity(line.id, +1)}
+                  />
                   <Button
                     type="button"
                     size="sm"

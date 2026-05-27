@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import {
   Drawer,
   DrawerContent,
@@ -20,9 +19,8 @@ import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CartLineItem } from "@/lib/cart/orders";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
-import { cn } from "@/lib/utils";
 
-import { AnimatedQty } from "./animated-qty";
+import { CartStepper } from "./cart-stepper";
 import { useCart } from "./cart-provider";
 
 type CustomisationsDrawerProps = {
@@ -104,9 +102,6 @@ export function CustomisationsDrawer({
                 imageUrl={imageUrl}
                 currencySettings={currencySettings}
                 onBump={bumpQuantity}
-                decreaseLabel={t("aria.decrease_quantity")}
-                increaseLabel={t("aria.increase_quantity")}
-                removeLabel={t("aria.remove_item")}
               />
             ))}
           </ul>
@@ -144,21 +139,14 @@ function ConfigRow({
   imageUrl,
   currencySettings,
   onBump,
-  decreaseLabel,
-  increaseLabel,
-  removeLabel,
 }: {
   line: CartLineItem;
   fallbackName: string;
   imageUrl: string | null;
   currencySettings: CurrencySettings;
   onBump: (lineId: string, delta: number) => void;
-  decreaseLabel: string;
-  increaseLabel: string;
-  removeLabel: string;
 }) {
   const displayName = line.name || fallbackName;
-  const isFirstQty = line.quantity <= 1;
 
   // Compact modifier summary: "{quantity}x {name}" per modifier, joined
   // with a thin separator. Text-mode rows render the typed value
@@ -229,38 +217,13 @@ function ConfigRow({
       {/* Per-config stepper — Careem-pattern: trash icon at qty 1, minus
           above. Same shape as the catalog-card stepper for consistency. */}
       <div className="mt-3 flex justify-end">
-        <ButtonGroup
-          aria-label={`Quantity for this configuration`}
-          className={cn("rounded-md border border-input")}
-        >
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => onBump(line.id, -1)}
-            aria-label={isFirstQty ? removeLabel : decreaseLabel}
-            className="h-9 w-9"
-          >
-            {isFirstQty ? (
-              <Trash2 className="h-4 w-4" />
-            ) : (
-              <Minus className="h-4 w-4" />
-            )}
-          </Button>
-          <ButtonGroupText className="min-w-[2.5rem] justify-center text-center">
-            <AnimatedQty value={line.quantity} className="text-sm font-semibold" />
-          </ButtonGroupText>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => onBump(line.id, +1)}
-            aria-label={increaseLabel}
-            className="h-9 w-9"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </ButtonGroup>
+        <CartStepper
+          variant="config"
+          quantity={line.quantity}
+          itemName={displayName}
+          onDecrement={() => onBump(line.id, -1)}
+          onIncrement={() => onBump(line.id, +1)}
+        />
       </div>
     </li>
   );

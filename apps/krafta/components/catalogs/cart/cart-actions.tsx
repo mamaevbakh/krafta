@@ -1,14 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Minus, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
-import { AnimatedQty } from "./animated-qty";
+import { CartStepper } from "./cart-stepper";
 import { useOptionalCart } from "./cart-provider";
 import { CustomisationsDrawer } from "./customisations-drawer";
 import { useItemSheet } from "../items/item-detail-controller";
@@ -209,47 +207,22 @@ export function CartActions({
     );
   }
 
-  // ── In cart: shadcn ButtonGroup, default outline buttons ─────────
-  // Standard ButtonGroup composition: outline icon-buttons + a
-  // ButtonGroupText for the qty readout. The primitive handles the
-  // seamless-edges treatment between siblings. Position class is the
-  // only extra style; everything else uses theme tokens.
+  // ── In cart: shared CartStepper, card variant ───────────────────
+  // The stepper renders the trash icon at qty=1 (the card has no
+  // other "remove" affordance); +/- otherwise route through the
+  // handlers we computed above — which open the customisations
+  // disambiguator when there are multiple configs of the same item
+  // in the cart.
   return (
     <>
-      <ButtonGroup
-        data-cart-action
-        aria-label={`Cart quantity for ${itemName}`}
-        className={cn(
-          "rounded-md border border-black/15 shadow-lg",
-          position === "floating" && "absolute bottom-3 right-3 z-10",
-        )}
-      >
-        <Button
-          type="button"
-          size="icon"
-          variant="default"
-          onClick={handleDecrement}
-          aria-label={
-            lastLine && lastLine.quantity > 1
-              ? `Decrease ${itemName} quantity`
-              : `Remove ${itemName} from cart`
-          }
-        >
-          {lastLine && lastLine.quantity > 1 ? <Minus /> : <Trash2 />}
-        </Button>
-        <ButtonGroupText className="bg-primary text-primary-foreground">
-          <AnimatedQty value={totalQty} />
-        </ButtonGroupText>
-        <Button
-          type="button"
-          size="icon"
-          variant="default"
-          onClick={handleIncrement}
-          aria-label={`Increase ${itemName} quantity`}
-        >
-          <Plus />
-        </Button>
-      </ButtonGroup>
+      <CartStepper
+        variant="card"
+        floating={position === "floating"}
+        quantity={totalQty}
+        itemName={itemName}
+        onDecrement={handleDecrement}
+        onIncrement={handleIncrement}
+      />
       {/* Disambiguation drawer for customisable items. Mounted always
           when hasModifiers, only opens when the customer taps +/- on
           a card whose item has at least one config in cart. */}

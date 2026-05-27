@@ -106,7 +106,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Minus, Plus, Share2, ShoppingCart, Trash2, XIcon } from "lucide-react";
+import { Share2, ShoppingCart, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -115,6 +115,7 @@ import type { ItemDetailProps } from "@/lib/catalogs/layout-registry";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { useOptionalCart } from "@/components/catalogs/cart";
+import { CartStepper } from "@/components/catalogs/cart/cart-stepper";
 import { modifierSignature } from "@/lib/cart/modifier-signature";
 import {
   ModifierPicker,
@@ -675,49 +676,18 @@ function ItemDetailBottomCta(props: {
     const inCartTotal = matchingLine.total_price_cents;
     return (
       <div className="flex w-full items-stretch gap-3">
-        <div
-          className="inline-flex h-11 items-center gap-0 rounded-md border border-input bg-background"
-          role="group"
-          aria-label="Cart quantity for this configuration"
-        >
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => cart.bumpQuantity(matchingLine.id, -1)}
-            className="h-11 w-10 rounded-md hover:bg-muted"
-            aria-label={
-              matchingLine.quantity > 1 ? "Decrease quantity" : "Remove from cart"
-            }
-          >
-            {matchingLine.quantity > 1 ? (
-              <Minus className="size-4" aria-hidden />
-            ) : (
-              <Trash2 className="size-4" aria-hidden />
-            )}
-          </Button>
-          <span
-            className="min-w-[1.75ch] px-1 text-center font-mono text-sm font-semibold tabular-nums"
-            aria-live="polite"
-          >
-            {matchingLine.quantity}
-          </span>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => cart.bumpQuantity(matchingLine.id, +1)}
-            className="h-11 w-10 rounded-md hover:bg-muted"
-            aria-label="Increase quantity"
-          >
-            <Plus className="size-4" aria-hidden />
-          </Button>
-        </div>
+        <CartStepper
+          variant="detail"
+          quantity={matchingLine.quantity}
+          itemName={itemName}
+          onDecrement={() => cart.bumpQuantity(matchingLine.id, -1)}
+          onIncrement={() => cart.bumpQuantity(matchingLine.id, +1)}
+        />
 
-        {/* Passive "in cart" indicator with running line total. Not
-            interactive — communicates "your changes via the stepper
-            are reflected in the cart now." Outline variant so it
-            doesn't read as a tappable primary CTA. */}
+        {/* Passive "in cart" indicator with running line total.
+            Tappable — opens the cart drawer so the customer can review
+            and continue. Outline variant so it doesn't read as a
+            primary CTA. */}
         <Button
           type="button"
           variant="outline"
