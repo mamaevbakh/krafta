@@ -141,30 +141,20 @@ export function CartActions({
       setCustomisationsOpen(true);
       return;
     }
-    // Single config (simple OR customisable): bump qty via addItem so
-    // this stepper shares the same debounce key as the item-detail's
-    // "+". For customisable items we echo the line's modifiers so the
-    // dedup key matches and the existing line is bumped (not a new
-    // placeholder added alongside).
-    void cart.addItem({
-      itemId,
-      name: itemName,
-      basePriceCents,
-      variationId: lastLine.catalog_variation_id ?? undefined,
-      variationName: lastLine.variation_name ?? null,
-      modifiers: hasModifiers
-        ? lastLine.modifiers
-            .filter((m) => m.catalog_modifier_list_id !== null)
-            .map((m) => ({
-              modifierListId: m.catalog_modifier_list_id as string,
-              modifierId: m.catalog_modifier_id,
-              quantity: m.quantity,
-              name: m.name,
-              basePriceCentsDelta: m.base_price_cents_delta,
-              text_value: m.text_value,
-            }))
-        : undefined,
-    });
+    // Single config (simple OR customisable): bump by line id via the
+    // same path the cart-drawer stepper uses. This is the line-id-keyed
+    // updateQuantity flow — no match-by-(item, variation, sig), no
+    // permissive-variation papering over placeholder gaps, no chance of
+    // creating a second line from a stale optimistic snapshot.
+    //
+    // History: this used to call cart.addItem(...) so it could share the
+    // pre-v2 cart's debounce key with the item-detail's "+". That whole
+    // debounce mechanism is gone (KRA-108) — the surviving justification
+    // for taking the racy path was the debounce-key sharing, which no
+    // longer applies. Going through bumpQuantity makes the card stepper
+    // symmetric with the drawer stepper and eliminates the rapid-fire
+    // overshoot the customer was seeing on the card surface.
+    cart.bumpQuantity(lastLine.id, +1);
   };
 
   const handleDecrement = () => {
