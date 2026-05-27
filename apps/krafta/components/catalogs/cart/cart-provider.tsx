@@ -369,6 +369,21 @@ export function CartProvider({
       modifiers,
     }) => {
       const idempotencyKey = newIdempotencyKey();
+      // Allocate the placeholder id HERE (once per tap) rather than
+      // inside the optimistic reducer. useOptimistic re-runs the
+      // reducer on every render — and under StrictMode it runs twice
+      // per render in dev — so generating crypto.randomUUID() inside
+      // the reducer would produce a different placeholder id on every
+      // render. React's list reconciliation keys off `id`, so the
+      // placeholder line would unmount/remount every frame the add is
+      // in flight, visibly flickering and tearing down any animation
+      // mid-flight. The action carries the id so the reducer can stay
+      // a pure function.
+      const placeholderId =
+        "local-" +
+        (typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2));
 
       const resolvedName = name ?? tRef.current("add_to_cart.adding");
       const modifierSelections = toModifierSelections(modifiers);
@@ -400,6 +415,7 @@ export function CartProvider({
           modifiers: lineModifiers,
           modifierSig: sig,
           idempotencyKey,
+          placeholderId,
         },
         serverCall: () =>
           addLineItemAction({
