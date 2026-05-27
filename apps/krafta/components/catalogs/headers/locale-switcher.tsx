@@ -3,20 +3,22 @@
 /**
  * locale-switcher.tsx — customer-facing language picker.
  *
- * Reads the enabled locales surfaced by getCatalogLocales(), shows them
- * in a Combobox, and on change rewrites the current URL with a new
- * `?lang=` param via next/navigation's router.replace. The page root
- * re-resolves activeLocale from searchParams on the next render, so
- * the storefront re-renders against the chosen locale.
+ * A single secondary-tone globe icon button. Tap → dropdown of enabled
+ * locales as radio items (current locale shown as the selected radio).
+ * On change, rewrites the current URL with a new `?lang=` param via
+ * router.replace; the page root re-resolves activeLocale from
+ * searchParams on the next render so the storefront re-renders against
+ * the chosen locale.
  *
- * Renders nothing when the catalog has 0 or 1 enabled locales — a
- * single-locale catalog has nothing to switch to, and showing the
- * picker would just be noise.
+ * Visual: matches the rest of the storefront's secondary chrome (cart
+ * trigger in the dock uses the same `variant="secondary" size="icon"`
+ * pattern). The Globe is recognizable as a language affordance across
+ * locales — no text needed, no separate "current locale" label leaking
+ * into the header. The current selection lives inside the dropdown as a
+ * radio dot; the trigger stays icon-only.
  *
- * The combobox label uses `display_name` (merchant-curated on
- * catalog_locales — e.g. "Русский", "O‘zbekcha") with the raw locale
- * code as a faint hint, so the merchant's chosen label drives the UI
- * while the code is still visible for debugging / accessibility.
+ * Renders nothing when the catalog has 0 or 1 enabled locales —
+ * single-locale catalogs have nothing to switch to.
  *
  * Why router.replace, not router.push: the locale param is view state,
  * not navigation history. Back-button should still go to the previous
@@ -25,23 +27,30 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Languages } from "lucide-react";
+import { Globe } from "lucide-react";
 
-import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 type LocaleSwitcherProps = {
   /** Enabled locale rows in sort order. Length 0–1 → component renders
    *  nothing (single-locale catalogs have no switching to do). */
   options: PublicCatalogLocaleOption[];
-  /** Effective active locale from the page root. Empty string when the
-   *  catalog has no enabled locales — Combobox treats it as no
-   *  selection and shows the placeholder. */
+  /** Effective active locale from the page root. Drives which radio
+   *  item shows as selected inside the dropdown. */
   activeLocale: string;
-  /** Visual sizing. Headers want a compact trigger that doesn't compete
-   *  with the catalog title; the dialog can use the same component at
-   *  default size if needed later. */
+  /** Optional class override on the trigger button — for header layouts
+   *  that need a different margin / colour. */
   className?: string;
 };
 
@@ -53,29 +62,20 @@ export function LocaleSwitcher({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-
-  const comboboxOptions = React.useMemo<ComboboxOption[]>(
-    () =>
-      options.map((option) => ({
-        value: option.locale,
-        // display_name is the merchant's chosen label; fall back to the
-        // locale code so we never render an empty row. The code goes in
-        // `hint` so the trigger stays compact while the dropdown shows
-        // the full identifier for clarity.
-        label: option.display_name && option.display_name.trim().length > 0
-          ? option.display_name
-          : option.locale,
-        hint: option.locale,
-      })),
-    [options],
-  );
+  // Storefront locale provider wraps the page root, so this hook
+  // resolves to the same activeLocale the prop carries — we pull
+  // `defaultLocale` from it so the aria label can fall back correctly
+  // when activeLocale is empty (catalog with no enabled locales — which
+  // also short-circuits the render below, but the resolver is
+  // defensive).
+  const { defaultLocale } = useStorefrontLocale();
 
   const handleChange = React.useCallback(
     (nextLocale: string) => {
       if (!nextLocale || nextLocale === activeLocale) return;
       // Clone existing params so we preserve mode / table / preview etc.
-      // — the switcher only touches `lang`. Use URLSearchParams over
-      // string templating so values containing `&` or `=` stay safe.
+      // — the switcher only touches `lang`. URLSearchParams handles
+      // values containing `&` or `=` safely.
       const params = new URLSearchParams(searchParams.toString());
       params.set("lang", nextLocale);
       const query = params.toString();
@@ -88,29 +88,71 @@ export function LocaleSwitcher({
 
   if (options.length < 2) return null;
 
+  const ariaLabel = getStorefrontMessage("language.select_aria", {
+    activeLocale,
+    defaultLocale,
+  });
+
   return (
-    <div
-      className={cn(
-        "inline-flex items-center gap-1.5 text-muted-foreground",
-        className,
-      )}
-    >
-      <Languages aria-hidden className="size-4 shrink-0" />
-      <Combobox
-        value={activeLocale || null}
-        onChange={handleChange}
-        options={comboboxOptions}
-        placeholder="Language"
-        searchPlaceholder="Search language…"
-        emptyMessage="No matching language."
-        aria-label="Select language"
-        // Compact trigger — language code typically fits in ~10ch, but
-        // give it a little breathing room for "Русский" / "O‘zbekcha"
-        // labels. Headers position this in a corner so we cap the
-        // visual width.
-        className="h-11 w-auto min-w-[7.5rem] gap-2 px-3 text-xs sm:h-8"
-        contentClassName="min-w-[12rem]"
-      />
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="secondary"
+          aria-label={ariaLabel}
+          className={cn(
+            // Match cart-trigger tonality: bg-muted secondary surface so
+            // both icon buttons read as siblings in the same visual
+            // family. Rounded-full keeps the affordance consistent with
+            // the dock's pill chrome.
+            "rounded-full bg-muted text-foreground hover:bg-muted/80",
+            className,
+          )}
+        >
+          <Globe className="size-4" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        // min-w wide enough for "O‘zbekcha" + the locale-code hint
+        // without forcing the longest row to wrap. shadcn defaults
+        // would be too narrow once the locale code lands on the right.
+        className="min-w-[11rem]"
+      >
+        <DropdownMenuRadioGroup
+          // value can be the empty string when activeLocale is unset;
+          // radio-group treats an empty value as "no selection" which
+          // matches the catalog-with-no-locales fallback. We use
+          // `undefined` to coerce to that no-selection state cleanly.
+          value={activeLocale || undefined}
+          onValueChange={handleChange}
+        >
+          {options.map((option) => {
+            const label =
+              option.display_name && option.display_name.trim().length > 0
+                ? option.display_name
+                : option.locale;
+            return (
+              <DropdownMenuRadioItem
+                key={option.locale}
+                value={option.locale}
+                // Body text reads as the merchant-chosen display name
+                // (e.g. "Русский"); the locale code goes to the right
+                // as a faint hint so screen readers + power users can
+                // still see the canonical identifier. Same dual-row
+                // pattern the old Combobox used.
+                className="text-sm"
+              >
+                <span className="flex-1 truncate">{label}</span>
+                <span className="ml-3 text-xs uppercase tracking-wide text-muted-foreground">
+                  {option.locale}
+                </span>
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

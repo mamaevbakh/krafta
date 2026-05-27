@@ -130,6 +130,11 @@ export type StorefrontMessageKey =
   // Storefront bottom dock — search input placeholder + a11y label.
   | "search.placeholder"
   | "search.open_aria"
+  // Header language switcher — aria label on the globe-icon trigger.
+  // The dropdown items themselves use each locale's `display_name`
+  // (merchant-curated), so the only localized string we need is the
+  // affordance label for screen readers.
+  | "language.select_aria"
   // Errors (interpolation-aware — use `{var}` placeholders in the string)
   | "errors.network"
   | "errors.item_not_found"
@@ -240,6 +245,7 @@ const EN: MessageTable = {
   "customisations.add_new": "Add new customised item",
   "search.placeholder": "Search the menu",
   "search.open_aria": "Open search",
+  "language.select_aria": "Select language",
 
   "errors.network":
     "Network issue. Check your connection and try again.",
@@ -349,6 +355,7 @@ const RU: MessageTable = {
   "customisations.add_new": "Добавить ещё с другими настройками",
   "search.placeholder": "Поиск по меню",
   "search.open_aria": "Открыть поиск",
+  "language.select_aria": "Выбрать язык",
 
   "errors.network": "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   "errors.item_not_found": "Эта позиция больше недоступна.",
@@ -461,6 +468,7 @@ const UZ_LATN: MessageTable = {
   "customisations.add_new": "Boshqa sozlamalar bilan qo‘shish",
   "search.placeholder": "Menyu bo‘yicha qidirish",
   "search.open_aria": "Qidiruvni ochish",
+  "language.select_aria": "Tilni tanlash",
 
   "errors.network": "Internet bilan muammo. Aloqani tekshirib qaytadan urinib ko‘ring.",
   "errors.item_not_found": "Bu taom endi mavjud emas.",
