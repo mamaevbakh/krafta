@@ -514,6 +514,17 @@ export function CartProvider({
     const lines = drainPayload();
     if (lines.length === 0) return;
 
+    // Snapshot the tx-resolvers belonging to THIS batch synchronously
+    // — same instant we drain pendingByLineKey. Any tap that lands
+    // during the upcoming server round-trip pushes its resolver into
+    // a fresh array, and its entry into pendingByLineKey for the
+    // NEXT batch. Without this snapshot, batch 1's setServerCart
+    // would fire every resolver in the ref, prematurely clearing the
+    // in-flight taps' optimistic actions and producing a visible
+    // qty regression before batch 2 has a chance to land.
+    const myResolvers = pendingTxResolversRef.current;
+    pendingTxResolversRef.current = [];
+
     // Fresh idempotency key per flush attempt. callWithRetry retries
     // with the same key (server dedup); a NEW batch (because more taps
     // came in after this one started) gets its own fresh key.
@@ -550,18 +561,15 @@ export function CartProvider({
         // to re-sync against the server's truth.
         void refresh();
       } finally {
-        // Fire every pending optimistic-tx resolver. Each resolver
-        // completes its startTransition, which clears the corresponding
-        // pending optimistic action. We fire them all here (success
-        // OR failure) so the optimistic UI can't get stuck — on
-        // success the resolved transitions clear in the same tick as
-        // setServerCart, so the canonical state lands cleanly; on
-        // failure the optimistic actions clear and the UI reverts to
-        // whatever the last good serverCart was (the customer sees
-        // their taps undo + the error toast).
-        const resolvers = pendingTxResolversRef.current;
-        pendingTxResolversRef.current = [];
-        for (const resolve of resolvers) resolve();
+        // Fire only the resolvers we snapshotted — taps that landed
+        // during this batch's execution keep their transitions open
+        // until the NEXT batch lands. Fired in finally so the
+        // optimistic UI can't get stuck on failure either: on success
+        // the resolved transitions clear in the same tick as
+        // setServerCart (canonical state lands cleanly); on failure
+        // the optimistic actions clear and the UI reverts to the last
+        // good serverCart (customer sees their taps undo + error toast).
+        for (const resolve of myResolvers) resolve();
         releaseLock();
       }
     })();
