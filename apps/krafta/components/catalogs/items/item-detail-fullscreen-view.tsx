@@ -247,32 +247,25 @@ export function ItemDetailFullscreen({
   // ── Guided required-selection flow ────────────────────────────────
   //
   // When the customer taps the "Make N required selections" button,
-  // the detail enters `inGuidedMode`. The current pointer is always
-  // the HEAD of `pickerState.invalidRequiredListIds` — as the customer
-  // satisfies each required section, the head shifts, and we auto-
-  // scroll to the new head. When the list becomes empty, all required
-  // selections are complete and guided mode ends (the Add button
-  // copy flips to "Add to cart · $X.XX").
+  // the detail enters `inGuidedMode`. This flag is STICKY for the
+  // rest of the detail's lifetime — even after the customer satisfies
+  // every required list, the satisfied (green ✓) pills stay green as
+  // the "you completed the journey" mark. The orange pointer pill
+  // only renders while there's still an un-satisfied required list
+  // (i.e. `invalidRequiredListIds` is non-empty); when the list goes
+  // empty the pointer disappears but the green marks remain.
   //
-  // The picker reads `inGuidedMode` + `guidedPointerListId` to render
-  // its three-state Required pills (neutral / satisfied / attention)
-  // and to apply the orange border on the pointer's fieldset. Until
-  // the customer opts in by tapping the button, every required list
-  // shows a calm neutral pill — no colors compete for attention
+  // Picking up an un-satisfied required mid-flow (after everything was
+  // green) brings the orange pointer back at that list — the customer
+  // can see they accidentally regressed and the guided flow continues.
+  //
+  // Until the customer opts in by tapping the button, every required
+  // list shows a calm neutral pill — no colors compete for attention
   // during normal scroll-and-pick browsing.
   const [inGuidedMode, setInGuidedMode] = useState(false);
   const guidedPointerListId = inGuidedMode
     ? pickerState.invalidRequiredListIds[0] ?? null
     : null;
-
-  // Exit guided mode automatically once everything required is
-  // satisfied. The Add CTA's copy flips and the customer's next tap
-  // adds to cart cleanly.
-  useEffect(() => {
-    if (inGuidedMode && pickerState.invalidRequiredListIds.length === 0) {
-      setInGuidedMode(false);
-    }
-  }, [inGuidedMode, pickerState.invalidRequiredListIds]);
 
   // When the guided pointer advances (customer satisfied the current
   // section), scroll the next un-satisfied required list into view.
@@ -286,7 +279,7 @@ export function ItemDetailFullscreen({
   }, [inGuidedMode, guidedPointerListId]);
 
   // Handler the Add button calls when there are still required
-  // selections. Enters guided mode + scrolls to the first
+  // selections. Sticky-arms guided mode + scrolls to the first
   // un-satisfied section. The button stays clickable throughout —
   // tapping it again while already in guided mode just re-scrolls,
   // which is a useful "I lost the pointer, take me back" affordance.
