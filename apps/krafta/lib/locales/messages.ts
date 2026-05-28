@@ -264,7 +264,7 @@ const EN: MessageTable = {
   "errors.order_expired":
     "This order expired. Start a new one to continue.",
   "errors.price_changed":
-    "The price of \"{name}\" changed from {old} to {new}. Update and continue?",
+    "Prices have changed for: {name}. Refresh the cart and try again.",
   "errors.table_session_expired":
     "This table session ended. Scan the QR again or pick another mode.",
   "errors.scheduled_time_too_soon":
@@ -375,7 +375,7 @@ const RU: MessageTable = {
   "errors.order_expired":
     "Срок действия этого заказа истёк. Начните новый заказ.",
   "errors.price_changed":
-    "Цена «{name}» изменилась с {old} на {new}. Обновить и продолжить?",
+    "Цены изменились: {name}. Обновите корзину и попробуйте снова.",
   "errors.table_session_expired":
     "Сессия столика завершена. Отсканируйте QR заново или выберите другой режим.",
   "errors.scheduled_time_too_soon":
@@ -490,7 +490,7 @@ const UZ_LATN: MessageTable = {
   "errors.order_expired":
     "Bu buyurtma muddati o‘tdi. Yangi buyurtma boshlang.",
   "errors.price_changed":
-    "«{name}» narxi {old} dan {new} ga o‘zgardi. Yangilab davom etamizmi?",
+    "Narxlar o‘zgardi: {name}. Savatchani yangilab qaytadan urinib ko‘ring.",
   "errors.table_session_expired":
     "Stol sessiyasi tugadi. QR-kodni qayta skanerlang yoki boshqa rejimni tanlang.",
   "errors.scheduled_time_too_soon":

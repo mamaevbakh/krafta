@@ -96,14 +96,16 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // tax / payment writes, ordered by created_at so the "remainder goes to
   // last line" pro-rata pattern is deterministic.
   //
-  // We also pull catalog_variation_id + base_price_cents so the
-  // price-drift check below can compare the line's snapshot to the
-  // live catalog variation price without re-fetching.
+  // We also pull catalog_variation_id + base_price_cents and the line's
+  // modifier rows so the price-drift check below can isolate the
+  // variation-only portion of base_price_cents (which is stored as
+  // variation + Σ(modifier_delta × modifier_qty)) before comparing
+  // it against the live catalog variation price.
   const { data: lines, error: linesError } = await supabase
     .schema("commerce")
     .from("order_line_items")
     .select(
-      "id, total_price_cents, base_price_cents, catalog_variation_id, name",
+      "id, total_price_cents, base_price_cents, catalog_variation_id, name, modifiers:order_line_item_modifiers(base_price_cents_delta, quantity)",
     )
     .eq("order_id", order.id)
     .order("created_at", { ascending: true });
@@ -139,10 +141,21 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     for (const line of lines) {
       if (!line.catalog_variation_id) continue;
       const live = priceById.get(line.catalog_variation_id);
+      // base_price_cents on the line is stored as
+      //   variation.price_cents + Σ(modifier_delta × modifier_qty)
+      // (see lib/cart/upsert-cart-lines.ts → perUnitCents). To compare
+      // against the live variation price we have to peel the modifier
+      // sum off — otherwise every line with a priced modifier would
+      // false-fire drift on every place-order.
+      const modifierSum = (line.modifiers ?? []).reduce(
+        (sum, m) => sum + m.base_price_cents_delta * Number(m.quantity),
+        0,
+      );
+      const storedVariationCents = line.base_price_cents - modifierSum;
       // Missing live row (variation deleted) is also drift — the cart
       // can't be placed at a snapshot price for an item that no longer
       // exists in the catalog.
-      if (live === undefined || live !== line.base_price_cents) {
+      if (live === undefined || live !== storedVariationCents) {
         driftedNames.push(line.name);
       }
     }
