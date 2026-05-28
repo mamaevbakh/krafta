@@ -27,6 +27,12 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -64,6 +70,18 @@
   --accent: oklch(0.967 0.001 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
+  /* Status tokens (light) — used by the guided required-selection
+   * flow on item-detail. --success: emerald-700-ish for text/icon
+   * (the "✓ Required" pill). --success-muted: emerald-50-ish for
+   * the pill background. --warning: amber-700-ish + --warning-muted:
+   * amber-50-ish for the "⚠ Required" attention pill + the orange
+   * section border on the current pointer. */
+  --success: oklch(0.51 0.13 165);
+  --success-foreground: oklch(0.985 0 0);
+  --success-muted: oklch(0.96 0.04 156);
+  --warning: oklch(0.56 0.17 49);
+  --warning-foreground: oklch(0.985 0 0);
+  --warning-muted: oklch(0.97 0.05 95);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
@@ -99,6 +117,15 @@
   --accent: oklch(0.274 0.006 286.033);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  /* Status tokens (dark) — brighter hues for legibility against the
+   * dark background. Muted variants use low-alpha tints so the pill
+   * sits gently inside dark cards. */
+  --success: oklch(0.7 0.17 162);
+  --success-foreground: oklch(0.141 0.005 285.823);
+  --success-muted: oklch(0.5 0.13 165 / 18%);
+  --warning: oklch(0.77 0.19 70);
+  --warning-foreground: oklch(0.141 0.005 285.823);
+  --warning-muted: oklch(0.6 0.17 60 / 18%);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);
