@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 
 export function NotFoundActions({ isAuthed }: { isAuthed: boolean }) {
   const router = useRouter();
@@ -16,9 +17,23 @@ export function NotFoundActions({ isAuthed }: { isAuthed: boolean }) {
   };
 
   return (
-    <Button onClick={goBack} variant="outline" className="rounded-full px-6">
-      Go back
-    </Button>
+    <div className="flex flex-col items-center gap-3">
+      <Button onClick={goBack} variant="outline" className="rounded-full px-6">
+        Go back
+      </Button>
+      {/* Sign-out escape hatch — exists so a customer / merchant
+       *  who landed here with a stale anon Supabase session (or any
+       *  signed-in state they didn't intend) can clear it and sign
+       *  back in. Will be replaced by the onboarding redirect once
+       *  the new-user flow lands. */}
+      {isAuthed ? (
+        <SignOutButton
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+        />
+      ) : null}
+    </div>
   );
 }
 
