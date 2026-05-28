@@ -237,10 +237,13 @@ export function ModifierPicker({
         continue;
       }
 
-      // List-mode branch
+      // List-mode branch. Validity checks the TOTAL quantity across
+      // every selection in this list, matching the customer-facing
+      // "Up to N" hint and the server-side validator in orders.ts.
       const picked = selectionsByList.get(list.id) ?? new Map<string, number>();
-      const distinctCount = picked.size;
-      if (distinctCount < list.min_selected) {
+      let totalInList = 0;
+      for (const q of picked.values()) totalInList += q;
+      if (totalInList < list.min_selected) {
         valid = false;
         invalidRequiredCount += 1;
         invalidRequiredListIds.push(list.id);
@@ -248,7 +251,7 @@ export function ModifierPicker({
       }
       if (
         list.max_selected !== null &&
-        distinctCount > list.max_selected
+        totalInList > list.max_selected
       ) {
         valid = false;
       }
@@ -298,7 +301,9 @@ export function ModifierPicker({
       return trimmed.length > 0 && !exceedsMax;
     }
     const picked = selectionsByList.get(list.id) ?? new Map<string, number>();
-    return picked.size >= list.min_selected;
+    let total = 0;
+    for (const q of picked.values()) total += q;
+    return total >= list.min_selected;
   }
 
   return (
@@ -536,6 +541,21 @@ function ListModifierRows({
   // toggles (no point in "Small × 3"; pick Small or Large, not both).
   const showQuantity = !isSingleSelect;
 
+  // `max_selected` caps the TOTAL quantity across every selection in
+  // this list — matches the customer-facing "Up to N" hint. A pizza
+  // place that says "Up to 10 toppings" means 10 toppings total, not
+  // 10 distinct toppings each up to 99 (Square's older semantic). The
+  // server-side validator (resolveModifierSelections in orders.ts)
+  // applies the same total-qty cap, so client and server agree.
+  const totalInList = Array.from(selections.values()).reduce(
+    (sum, q) => sum + q,
+    0,
+  );
+  const remainingCap =
+    list.max_selected === null
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, list.max_selected - totalInList);
+
   const toggle = (modId: string) => {
     const next = new Map(selections);
     if (next.has(modId)) {
@@ -547,8 +567,10 @@ function ListModifierRows({
         next.clear();
         next.set(modId, 1);
       } else {
-        const cap = list.max_selected ?? Infinity;
-        if (next.size >= cap) return;
+        // Block adding a new modifier if doing so would exceed the
+        // list's total cap. e.g. "Up to 10" with 10 already picked
+        // refuses an 11th distinct selection.
+        if (remainingCap < 1) return;
         next.set(modId, 1);
       }
     }
@@ -563,6 +585,13 @@ function ListModifierRows({
       // − one too many times would silently lose their pick.)
       return;
     }
+    // Cap against BOTH the per-modifier hard ceiling AND the
+    // list-wide remaining capacity. e.g. "Up to 10" with 7 distinct
+    // and this row at qty=3: total=10, remainingCap=0. Bumping this
+    // row to 4 would push total to 11 — block it.
+    const current = selections.get(modId) ?? 0;
+    const delta = quantity - current;
+    if (delta > 0 && delta > remainingCap) return;
     const capped = Math.min(quantity, MAX_PER_MODIFIER_QUANTITY);
     next.set(modId, capped);
     onSelectionsChange(next);
@@ -576,6 +605,7 @@ function ListModifierRows({
           modifier={mod}
           selected={selections.has(mod.id)}
           quantity={selections.get(mod.id) ?? 0}
+          listCapReached={remainingCap <= 0}
           isSingleSelect={isSingleSelect}
           showQuantity={showQuantity}
           formatPrice={formatPrice}
@@ -596,6 +626,7 @@ function ModifierRow({
   modifier,
   selected,
   quantity,
+  listCapReached,
   isSingleSelect,
   showQuantity,
   formatPrice,
@@ -606,6 +637,10 @@ function ModifierRow({
   modifier: PublicModifier;
   selected: boolean;
   quantity: number;
+  /** True when the list's total-qty cap is reached. Used to disable
+   *  this row's + stepper (when selected) so the customer can't
+   *  inflate this row past the list-wide ceiling. */
+  listCapReached: boolean;
   isSingleSelect: boolean;
   showQuantity: boolean;
   formatPrice: (cents: number) => string;
@@ -653,6 +688,7 @@ function ModifierRow({
         {showQuantity && selected ? (
           <QuantityStepper
             quantity={quantity}
+            canIncrement={!listCapReached}
             onChange={onQuantityChange}
           />
         ) : null}
@@ -667,13 +703,21 @@ function ModifierRow({
 
 function QuantityStepper({
   quantity,
+  canIncrement: canIncrementProp = true,
   onChange,
 }: {
   quantity: number;
+  /** Caller-supplied gate. The stepper still hard-caps at
+   *  MAX_PER_MODIFIER_QUANTITY internally — `canIncrement` from the
+   *  caller is the EXTRA constraint (typically the list-wide
+   *  total-qty cap). Defaults to true so non-cap-aware callers keep
+   *  working. */
+  canIncrement?: boolean;
   onChange: (next: number) => void;
 }) {
   const canDecrement = quantity > 1;
-  const canIncrement = quantity < MAX_PER_MODIFIER_QUANTITY;
+  const canIncrement =
+    canIncrementProp && quantity < MAX_PER_MODIFIER_QUANTITY;
   return (
     // stopPropagation so clicks on the stepper don't trigger the
     // surrounding <Label>'s checkbox/radio toggle (that would deselect

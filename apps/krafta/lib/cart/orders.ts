@@ -350,17 +350,19 @@ export function resolveModifierSelections(
       }
       continue;
     }
-    // list-mode: count DISTINCT selections. Per-modifier quantity is
-    // independent and bounded by the client; here we only validate the
-    // catalog-level min/max for the list.
+    // list-mode: validate the TOTAL quantity across all selections in
+    // this list. Matches the customer-facing "Up to N" hint and the
+    // client's stepper cap (modifier-picker.tsx). The per-modifier
+    // quantity stepper enforces a separate MAX_PER_MODIFIER_QUANTITY
+    // ceiling client-side; here we only validate the list-wide min/max.
     const minSelected = iml.min_selected_override ?? list.min_selected;
     const maxSelected = iml.max_selected_override ?? list.max_selected;
     const sels = listSelectionsByList.get(list.id) ?? [];
-    const distinctCount = sels.length;
-    if (distinctCount < minSelected) {
+    const totalQuantity = sels.reduce((sum, s) => sum + s.quantity, 0);
+    if (totalQuantity < minSelected) {
       throw new Error("Please make the required modifier selections.");
     }
-    if (maxSelected !== null && distinctCount > maxSelected) {
+    if (maxSelected !== null && totalQuantity > maxSelected) {
       throw new Error("Too many modifiers selected.");
     }
   }
