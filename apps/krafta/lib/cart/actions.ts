@@ -5,9 +5,7 @@ import { revalidatePath } from "next/cache";
 import { ensureCartIdentity, type CartIdentity } from "./identity";
 import { withIdempotency } from "./idempotency";
 import {
-  clearCart as clearCartImpl,
   getCartSummary as getCartSummaryImpl,
-  getOrCreateDraftOrder as getOrCreateDraftOrderImpl,
   type CartSummary,
 } from "./orders";
 import {
@@ -16,9 +14,9 @@ import {
   type PlaceOrderResult,
 } from "./checkout";
 import {
-  setLineQuantity as setLineQuantityImpl,
-  type SetLineQuantityInput,
-} from "./set-line-quantity";
+  upsertCartLines as upsertCartLinesImpl,
+  type UpsertCartLinesInput,
+} from "./upsert-cart-lines";
 
 // Cart mutations DELIBERATELY skip revalidatePath of the catalog path:
 //
@@ -58,13 +56,6 @@ export async function ensureCartIdentityAction(
 // round-trip. RLS still scopes every read/write to `auth.uid()`, so a forged
 // hint can't widen privilege. Likewise `orderId` lets getCartSummaryImpl skip
 // the orders lookup on the post-mutation reconcile.
-//
-// Performance impact (KRA cart latency cut, 2026-05): with both hints, a
-// cart mutation round-trip is one ensureCartIdentity, one parallel reads
-// block (draft+item+variation+IMLs), one candidate query, one upsert —
-// down from ~10 sequential queries to ~4. Combined with the embedded
-// select in getCartSummary, the action drops from ~2.7s to <1s on dev
-// (and proportionally faster on prod).
 
 export async function getCartSummaryAction(input: {
   orgId: string;
@@ -73,37 +64,6 @@ export async function getCartSummaryAction(input: {
   orderId?: string;
 }): Promise<CartSummary> {
   return getCartSummaryImpl(input);
-}
-
-export async function clearCartAction(input: {
-  orgId: string;
-  venueId: string;
-  catalogPath: string;
-  identity?: CartIdentity;
-  orderId?: string;
-  /** KRA-108 idempotency key — same dedup contract setLineQuantityAction uses. */
-  idempotencyKey?: string;
-}): Promise<CartSummary> {
-  const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
-  return withIdempotency(input.idempotencyKey, identity.userId, async () => {
-    // If the client knows orderId (the common case after the cart has any
-    // line), skip the getOrCreateDraftOrder lookup entirely and clear
-    // directly.
-    const orderId =
-      input.orderId ??
-      (await getOrCreateDraftOrderImpl({
-        orgId: input.orgId,
-        venueId: input.venueId,
-        identity,
-      })).orderId;
-    await clearCartImpl(orderId);
-    return getCartSummaryImpl({
-      orgId: input.orgId,
-      venueId: input.venueId,
-      identity,
-      orderId,
-    });
-  });
 }
 
 export async function placeOrderAction(
@@ -115,27 +75,32 @@ export async function placeOrderAction(
 }
 
 /**
- * cart-v3 mutation action — set the absolute quantity for a single
- * line, addressed by its tuple (itemId, variationId, modifierSig).
- * Replaces add / update / remove with one verb.
+ * cart-v3 batch upsert action. The provider's debounced scheduler
+ * fires this once per batch window with the absolute target qty for
+ * every line the customer touched during the window. See
+ * `lib/cart/upsert-cart-lines.ts` for the atomic-write semantics
+ * and the JS-side validation contract.
  *
- * The provider (P3) routes every cart mutation through this. We keep
- * the cart-v2 actions above for now as a back-compat shim during the
- * P2 → P3 transition; once P3 lands and the steppers are off the
- * cart-v2 surface, the deprecated actions go away in P5.
+ * The `idempotencyKey` is regenerated per flush attempt by the client
+ * — if the batch payload grows between attempts (because more taps
+ * arrived during the network blip), the new attempt gets a new key
+ * and runs fresh. Same-payload retries (callWithRetry) replay with
+ * the same key and hit the server cache.
  *
- * See `lib/cart/set-line-quantity.ts` for the absolute-qty semantics
- * (qty > 0 = upsert, qty <= 0 = delete) and the dedup contract
- * (visible-modifier signature).
+ * This is the only cart-line mutation action. `clear()` on the
+ * client side schedules N qty=0 entries through the same batch path;
+ * `addItem` / `updateQuantity` / `removeItem` route through the
+ * scheduler too. The cart-v2 setLineQuantityAction / clearCartAction
+ * primitives have been removed (P5).
  */
-export async function setLineQuantityAction(
-  input: SetLineQuantityInput & {
+export async function upsertCartLinesAction(
+  input: UpsertCartLinesInput & {
     catalogPath: string;
     idempotencyKey?: string;
   },
 ): Promise<CartSummary> {
   const identity = input.identity ?? (await ensureCartIdentity(input.orgId));
   return withIdempotency(input.idempotencyKey, identity.userId, async () => {
-    return setLineQuantityImpl({ ...input, identity });
+    return upsertCartLinesImpl({ ...input, identity });
   });
 }

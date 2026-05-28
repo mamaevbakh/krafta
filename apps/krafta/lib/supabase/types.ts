@@ -1030,6 +1030,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cart_apply_writes: {
+        Args: {
+          p_order_id: string
+          p_org_id: string
+          p_client_id: string
+          p_inserts: Json
+          p_updates: Json
+          p_deletes: string[]
+        }
+        Returns: undefined
+      }
       order_belongs_to_current_user: {
         Args: { _order_id: string }
         Returns: boolean

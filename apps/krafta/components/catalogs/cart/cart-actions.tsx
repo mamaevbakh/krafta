@@ -191,16 +191,24 @@ export function CartActions({
   // effect; the next render with `hasMounted=true && totalQty > 0` swaps
   // to the stepper.
   if (!hasMounted || totalQty === 0) {
+    // While the cart is still hydrating (cold-cache visitor), disable
+    // the Add pill. Tapping during hydration would dispatch with a
+    // pre-hydration optimisticCart of {empty}, so target qty=1 lands
+    // even if the customer's draft already has the item — see the
+    // hydration-gating note in the batch refactor brief.
+    const isHydrating = cart.isHydrating;
     return (
       <Button
         type="button"
         data-cart-action
         onClick={handleAdd}
+        disabled={isHydrating}
         className={cn(
           "variant-default border border-black/15 shadow-lg",
           position === "floating" && "absolute bottom-3 right-3 z-10",
         )}
         aria-label={`Add ${itemName} to cart`}
+        aria-busy={isHydrating || undefined}
       >
         Add
       </Button>

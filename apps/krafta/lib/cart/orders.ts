@@ -432,16 +432,6 @@ export function resolveModifierSelections(
   return resolved;
 }
 
-export async function clearCart(orderId: string): Promise<void> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .schema("commerce")
-    .from("order_line_items")
-    .delete()
-    .eq("order_id", orderId);
-  if (error) throw new Error(error.message);
-}
-
 /**
  * Reads the cart for the current customer at the given venue. Returns null-ish
  * shape (no order, empty lines) when the customer has no draft yet so

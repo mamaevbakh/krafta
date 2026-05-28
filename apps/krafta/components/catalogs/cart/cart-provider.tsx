@@ -15,14 +15,17 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import {
-  clearCartAction,
   ensureCartIdentityAction,
   getCartSummaryAction,
   placeOrderAction,
-  setLineQuantityAction,
+  upsertCartLinesAction,
 } from "@/lib/cart/actions";
 import type { CartIdentity } from "@/lib/cart/identity";
-import { lineKeyFromServerLine, makeLineKey } from "@/lib/cart/line-key";
+import {
+  lineKeyFromServerLine,
+  makeLineKey,
+  type LineKey,
+} from "@/lib/cart/line-key";
 import type {
   CartLineItem,
   CartLineItemModifier,
@@ -40,9 +43,9 @@ import {
 
 import {
   applyAction,
-  toModifierSelections,
   useOptimisticCart,
   type OptimisticCartAction,
+  type SetLineTarget,
 } from "./use-optimistic-cart";
 
 export type CartFulfillmentMode = "dine_in" | "pickup" | "delivery";
@@ -87,6 +90,52 @@ export type PlacedOrderSnapshot =
     };
 
 // ────────────────────────────────────────────────────────────────────────────
+// Batch tuning
+
+/**
+ * Trailing-edge debounce window for the batch upserter. Every tap on
+ * the optimistic cart restarts this timer; when it fires (no new taps
+ * for BATCH_WINDOW_MS), the accumulated state ships in one
+ * `upsertCartLinesAction` call.
+ *
+ * Trade-off:
+ *   - Lower (~150ms): less delay before the server first hears about
+ *     a single tap. Rapid taps still collapse, but the first tap of
+ *     a sequence holds optimistic state for less time before being
+ *     persisted — better for refresh-recovery, slightly worse for
+ *     coalesce ratio.
+ *   - Higher (~500ms): more rapid taps absorbed per batch, better
+ *     server throughput, but the first tap waits longer before
+ *     hitting the server. Customer refresh during the window loses
+ *     more state.
+ *
+ * 250ms is the launch default. Env-tunable for ops.
+ */
+const DEFAULT_BATCH_WINDOW_MS = 250;
+
+function resolveBatchWindowMs(): number {
+  if (typeof process !== "undefined") {
+    const raw =
+      process.env.NEXT_PUBLIC_CART_BATCH_WINDOW_MS ??
+      process.env.CART_BATCH_WINDOW_MS;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed >= 0 && parsed < 5000) {
+        return parsed;
+      }
+    }
+  }
+  return DEFAULT_BATCH_WINDOW_MS;
+}
+
+const BATCH_WINDOW_MS = resolveBatchWindowMs();
+
+/** Hard ceiling on flush() drain iterations. New taps arriving during
+ *  a batch in-flight count as a follow-up flush; we drain in a loop
+ *  but bail if taps keep coming indefinitely (UI shouldn't allow it). */
+const FLUSH_MAX_ITERATIONS = 5;
+
+// ────────────────────────────────────────────────────────────────────────────
 // Context value
 
 type CartContextValue = {
@@ -112,13 +161,11 @@ type CartContextValue = {
   addItem: (input: {
     itemId: string;
     variationId?: string;
-    /**
-     * cart-v3 P3: the item's resolved default variation id, threaded
-     * from the catalog at render time. Used when the caller didn't
-     * explicitly pick a variation (catalog-card Add path) so the
-     * client lineKey matches the server-materialized line's lineKey
-     * by construction — no swap on first response, no flicker.
-     */
+    /** The item's resolved default variation id, threaded from the
+     *  catalog. Required when `variationId` is missing (catalog-card
+     *  Add path). The placeholder's lineKey is constructed from one
+     *  of these so the client and server lineKeys converge by
+     *  construction — no flicker on first server response. */
     defaultVariationId?: string;
     quantity?: number;
     name?: string;
@@ -134,16 +181,16 @@ type CartContextValue = {
     }>;
   }) => Promise<void>;
   updateQuantity: (lineItemId: string, quantity: number) => Promise<void>;
-  /** Delta-based stepper. Reads the latest line qty from the optimistic
-   *  cart (always derived fresh from server + in-flight actions, so no
-   *  stale-closure race) and dispatches an absolute updateQuantity. */
+  /** Delta-based stepper. Reads latest qty from optimisticCartRef
+   *  (synchronously advanced per tap), routes through the batch
+   *  scheduler. */
   bumpQuantity: (lineItemId: string, delta: number) => void;
   removeItem: (lineItemId: string) => Promise<void>;
   clear: () => Promise<void>;
   refresh: () => Promise<void>;
-  /** Await all in-flight cart mutations. Called by placeOrder so the
-   *  server's view of the cart is complete before the draft → open
-   *  transition fires. */
+  /** Await all in-flight cart batches + drain any pending taps. Called
+   *  by placeOrder so the server's view of the cart is complete
+   *  before the draft → open transition fires. */
   flush: () => Promise<void>;
   placeOrder: (
     input:
@@ -169,6 +216,12 @@ type CartContextValue = {
           };
         },
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Reset cart-session guards (`placedRef`, drawer state) so the
+   *  next customer interaction creates a fresh draft. Wired into
+   *  `close()` and `setStep` transitions away from "placed" — most
+   *  callers don't need this directly, but exposed for explicit
+   *  control from any "start a new order" UI. */
+  resetForNewCart: () => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -181,27 +234,9 @@ const EMPTY_SUMMARY: CartSummary = {
 };
 
 /**
- * cart-v3 P3: rewrite each server line's `id` to its tuple-derived
- * `lineKey` BEFORE the cart enters React state. This is the move that
- * collapses the cart-v2 "server uuid for materialized lines, local-uuid
- * for placeholders, swap on first response" identity dance into a single
- * stable key.
- *
- * Once the server cart is normalized:
- *   - React keys off `line.id` (== lineKey) — same value across the
- *     line's whole lifetime, no reconciler thrash on materialization.
- *   - The optimistic reducer's placeholderId is also a lineKey, so a
- *     placeholder and its server-materialized commit are indistinguishable
- *     from the reducer's perspective.
- *   - Stepper handlers (cart-actions, cart-drawer, customisations-drawer)
- *     keep passing `line.id` to bumpQuantity / removeItem; that value is
- *     now a lineKey, which routes cleanly through setLineQuantityAction.
- *
- * Legacy rows with NULL catalog_item_id / catalog_variation_id can't form
- * a lineKey — those keep their server uuid and remain effectively
- * orphaned (no client mutation can target them). Acceptable: every row
- * written post-KRA-77 has both fields populated, and the only paths that
- * could produce a NULL are migrations we've already retired.
+ * Rewrite each server line's `id` to its tuple-derived `lineKey`
+ * BEFORE the cart enters React state. Stable identity from the moment
+ * the line lands client-side; React keys off it cleanly.
  */
 function normalizeSummary(summary: CartSummary): CartSummary {
   return {
@@ -216,20 +251,26 @@ function normalizeSummary(summary: CartSummary): CartSummary {
 /** Per-action idempotency key. UUID when crypto.randomUUID is available;
  *  fallback for ancient browsers. Server's withIdempotency wrapper caches
  *  the result for 24h, so the same key returned twice produces one DB
- *  write — the dedup contract every mutation in this file relies on. */
+ *  write — the dedup contract every batch flush attempt relies on. */
 function newIdempotencyKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `mut-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** Per-tap action id — purely informational, for trace logging. */
+function newActionId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `act-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 /**
  * Heuristic for transient failures that benefit from retry. Network-
- * layer faults manifest as `TypeError("Failed to fetch")` (browser
- * fetch policy) or messages that mention network/timeout/abort. Server-
- * side validation errors ("Item not found", "price_changed", RLS denial)
- * have specific human-readable text from setLineQuantity and aren't
- * fixed by retrying — they go straight to the toast.
+ * layer faults manifest as TypeError("Failed to fetch") or messages
+ * mentioning network/timeout/abort. Server-side validation errors
+ * (item_not_found, variation_not_found, modifier_invalid) are terminal
+ * — they surface to the toast and trigger a refresh().
  */
 function isRetryableMutationError(err: unknown): boolean {
   if (err instanceof TypeError) return true;
@@ -244,16 +285,10 @@ function isRetryableMutationError(err: unknown): boolean {
 }
 
 /**
- * Retry a cart mutation with exponential-ish backoff on transient
+ * Retry a cart batch with exponential-ish backoff on transient
  * failures. Backoff schedule 200ms → 500ms → 1500ms (4 attempts total
- * worst case). Idempotency keys make this safe: same key replays land
- * the same DB result via commerce.processed_actions, so a network blip
- * that swallowed the response doesn't cause a double-write.
- *
- * Held inside the runMutation serialize lock — rapid taps that follow
- * a retrying mutation pile up optimistic state but their server calls
- * don't fire until the retry settles. The customer's UI stays at the
- * dispatched target qty throughout.
+ * worst case). The same idempotency key is reused on retries — server
+ * dedup short-circuits if the first attempt actually landed.
  */
 async function callWithRetry<T>(fn: () => Promise<T>): Promise<T> {
   const delays = [200, 500, 1500];
@@ -272,6 +307,26 @@ async function callWithRetry<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Batch state machine
+
+/** One pending entry per lineKey, drained into the next batch flush
+ *  payload. Carries enough metadata to address the server's RPC even
+ *  when the entry is a delete (qty=0) — the modifier list / variation
+ *  has to be resolvable from the entry alone, since the optimistic
+ *  state has already dropped the line by the time the flush fires. */
+type PendingBatchEntry = {
+  itemId: string;
+  variationId: string;
+  qty: number;
+  modifiers: Array<{
+    modifierListId: string;
+    modifierId: string | null;
+    quantity: number;
+    text_value: string | null;
+  }>;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
 // Provider
 
 type CartProviderProps = {
@@ -285,26 +340,22 @@ type CartProviderProps = {
 };
 
 /**
- * Hydrogen-style cart provider (KRA-108).
+ * cart-v3 batch-debounced cart provider.
  *
- * Three layers of state:
- *   1. `serverCart` — last known canonical cart from the server
- *   2. `optimisticCart` — `serverCart` + replay of in-flight optimistic
- *      actions, derived fresh every render via `useOptimisticCart`
- *   3. Pending promise set — tracked so `flush()` can await them all
- *      before `placeOrder` commits the draft
+ * Optimistic UI is per-tap (every tap synchronously updates
+ * `optimisticCartRef.current` + addOptimistic). Server writes are
+ * batched: rapid taps within `BATCH_WINDOW_MS` collapse to a single
+ * `upsertCartLinesAction` call carrying the absolute target qty for
+ * every line that was touched.
  *
- * Each cart mutation:
- *   - Generates `crypto.randomUUID()` as idempotency key
- *   - `startTransition` → `addOptimistic` for instant UI
- *   - Calls the server action with the key
- *   - `setServerCart(result)` — React clears this transition's optimistic
- *      AND commits the new server state in one tick (no double-count)
+ * The Place Order path awaits `flush()`, which cancels any pending
+ * debounce, fires the batch immediately, and awaits the in-flight
+ * lock — so placeOrder lands on a server-side cart that fully
+ * reflects every tap the customer made.
  *
- * The server's `withIdempotency()` wrapper (lib/cart/idempotency.ts)
- * caches the result per key, so duplicate dispatches (multi-tab,
- * strict-mode double-invoke, browser refresh during in-flight) return
- * the cached cart instead of re-executing the mutation.
+ * Realtime cross-tab sync filters out self-events via
+ * `written_by_client` so a tab's own batch landing doesn't fire a
+ * redundant refresh().
  */
 export function CartProvider({
   orgId,
@@ -315,77 +366,88 @@ export function CartProvider({
   initialSummary,
   children,
 }: CartProviderProps) {
-  // ── Cart state (the actual refactored thing) ──────────────────────────
+  // ── Cart state ────────────────────────────────────────────────────────
   const [serverCart, setServerCart] = useState<CartSummary>(
     initialSummary ? normalizeSummary(initialSummary) : EMPTY_SUMMARY,
   );
   const [optimisticCart, addOptimistic] = useOptimisticCart(serverCart);
   const [, startTransition] = useTransition();
 
-  // Live mirror of serverCart, read inside serverCall closures so each
-  // mutation can pass the latest committed orderId hint to the server.
-  // The runMutation lock guarantees a serverCall only fires after the
-  // previous mutation's setServerCart has landed, so by the time we
-  // read this ref, it reflects every prior tap's outcome.
-  //
-  // Why a ref and not a useCallback dep: putting serverCart on addItem's
-  // deps re-creates the callback on every mutation, which cascades
-  // through the context-value memo and forces every cart-consuming
-  // component to re-render. The ref keeps the callback stable while
-  // still giving us a fresh read at server-call time.
+  // Live mirror of serverCart for ref-based reads inside flushBatch
+  // (which needs the latest committed orderId without depending on
+  // serverCart as a useCallback dep).
   const serverCartRef = useRef(serverCart);
   serverCartRef.current = serverCart;
 
-  // Live mirror of optimisticCart, read at addItem DISPATCH time to
-  // compute the absolute targetQty (= existing + delta). Reading the
-  // optimistic view rather than serverCart means rapid taps stack
-  // correctly: tap 2's dispatch sees tap 1's pending optimistic, so
-  // targetQty for tap 2 is `1 + 1 = 2`, not `0 + 1 = 1`. Server-side,
-  // the runMutation lock + idempotency keys + absolute setLineQuantityAction
-  // semantics ensure the final state matches the last dispatched tap.
+  // Live mirror of optimisticCart. Read at every scheduleSetLine
+  // dispatch to compute the absolute targetQty against pending taps.
+  // Manually pre-advanced in scheduleSetLine so back-to-back
+  // synchronous taps see each other's effects.
   const optimisticCartRef = useRef(optimisticCart);
   optimisticCartRef.current = optimisticCart;
 
-  // Track in-flight mutation promises so flush() can await them before
-  // placeOrder commits. A WeakRef-free Set keeps this simple; each entry
-  // self-removes in the action's finally clause.
-  const pendingPromisesRef = useRef<Set<Promise<unknown>>>(new Set());
-
-  // Identity cache — bootstrap once, reuse for every mutation. Skips
-  // ~200-400ms of auth.getUser() + customers SELECT per call on dev.
-  // Forged hints are RLS-safe (server scopes by auth.uid()).
+  // ── Identity + clientId ──────────────────────────────────────────────
   const identityRef = useRef<CartIdentity | null>(null);
 
-  // Hydration state: true until the first server roundtrip lands. Only
-  // matters when initialSummary wasn't passed (no SSR cart preload).
+  /** Per-tab UUID. Generated once at mount, stamped on every server
+   *  write so the Realtime subscription can deterministically skip
+   *  this tab's own events. */
+  const clientIdRef = useRef<string>("");
+  if (clientIdRef.current === "") {
+    clientIdRef.current = newIdempotencyKey();
+  }
+
+  // ── Pending batch state ──────────────────────────────────────────────
+  const pendingByLineKey = useRef<Map<LineKey, PendingBatchEntry>>(new Map());
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Held while a batch is in-flight. Subsequent flushes await this
+   *  to serialize batch dispatch — same semantics as the old
+   *  per-tap lock, just at batch granularity. */
+  const flushLockRef = useRef<Promise<void>>(Promise.resolve());
+
+  /** Tracks all in-flight batch promises so flush() can await them.
+   *  Each runs through the lock chain, but having an explicit set
+   *  protects against future code paths that bypass the lock. */
+  const pendingPromisesRef = useRef<Set<Promise<unknown>>>(new Set());
+
+  /** Pending startTransition resolvers — one per dispatched optimistic
+   *  action. Each scheduleSetLine call creates a Promise that stays
+   *  pending (and keeps the transition pending, which is what makes
+   *  the optimistic UI visible) until the next batch flush completes.
+   *  flushBatch fires every resolver in a single sync loop after
+   *  setServerCart commits, so all pending transitions complete
+   *  atomically — same tick that the new server state lands, so
+   *  useOptimistic re-derives from `serverCart + []` and the
+   *  optimistic UI converges to the canonical state without flicker. */
+  const pendingTxResolversRef = useRef<Array<() => void>>([]);
+
+  // ── Hydration + Place guards ─────────────────────────────────────────
   const [isHydrating, setIsHydrating] = useState(!initialSummary);
+  const isHydratingRef = useRef(isHydrating);
+  isHydratingRef.current = isHydrating;
 
-  // Refresh, threaded through a ref so the Realtime subscription effect
-  // below can call the latest closure without listing `refresh` as a
-  // dep (which would tear the subscription down on every cart
-  // mutation, since refresh changes when serverCart.orderId changes).
-  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  /** Set true the moment placeOrderAction returns success. Blocks
+   *  scheduleSetLine from creating phantom lines on the now-stale
+   *  cart between Place success and the placed-screen dismissal.
+   *  Cleared by resetForNewCart() (called from close() / setStep
+   *  when transitioning away from "placed"). */
+  const placedRef = useRef(false);
 
-  // One-time mount: identity bootstrap + initial cart fetch in parallel.
-  // No drain loop, no localStorage cache hydration, no race-aware
-  // filter — the v1 cart machinery is gone.
+  // ── Bootstrap ────────────────────────────────────────────────────────
   const hasBootstrappedRef = useRef(false);
   useEffect(() => {
     if (hasBootstrappedRef.current) return;
     hasBootstrappedRef.current = true;
 
-    // Identity: fire-and-forget. If it lands before the first mutation,
-    // we save a round-trip; if not, the mutation falls back to
-    // server-side ensureCartIdentity.
     ensureCartIdentityAction(orgId)
       .then((id) => {
         identityRef.current = id;
       })
       .catch(() => {
-        // Silent — mutations work without the cached identity (slower).
+        /* Silent — mutations work without the cached identity (slower). */
       });
 
-    // Skip the initial fetch if SSR pre-populated the cart.
     if (initialSummary) {
       setIsHydrating(false);
       return;
@@ -394,99 +456,12 @@ export function CartProvider({
     getCartSummaryAction({ orgId, venueId })
       .then((next) => setServerCart(normalizeSummary(next)))
       .catch(() => {
-        // Silent — cart stays empty. User can still add items; the
-        // first mutation will populate state from its return value.
+        /* Silent — cart stays empty. */
       })
       .finally(() => setIsHydrating(false));
   }, [initialSummary, orgId, venueId]);
 
-  // ── Mutation helpers ──────────────────────────────────────────────────
-  //
-  // Pattern (used by every action below):
-  //   1. crypto.randomUUID() per logical user action
-  //   2. startTransition(async () => {
-  //        addOptimistic({...})           ← instant UI, in dispatch order
-  //        await mutationLockRef.current  ← serialize the SERVER CALL only
-  //        const next = await serverCall()
-  //        setServerCart(next)            ← React clears this transition's
-  //                                          optimistic + commits server in one tick
-  //      })
-  //
-  // Why the lock (KRA-108 auto-add bug, 2026-05-27): without it, rapid
-  // taps fire concurrent server calls. Responses arrive in unpredictable
-  // order due to network jitter — and each response is the cart state at
-  // its commit moment. When `setServerCart` lands with state that already
-  // reflects siblings' commits, useOptimistic re-derives by re-applying
-  // still-pending optimistic actions on top → phantom qty overshoot
-  // (taps=3, server qty=3, UI briefly flashes 4 or 5). Serializing the
-  // server call eliminates the out-of-order arrival; the optimistic UI
-  // stays instant because addOptimistic still fires before the lock await.
-  //
-  // Idempotency keys at the server side still close any retry/replay
-  // duplicates the lock doesn't cover (multi-tab, refresh-mid-flight).
-
-  const mutationLockRef = useRef<Promise<void>>(Promise.resolve());
-
-  const runMutation = useCallback(
-    <T,>(opts: {
-      optimistic: OptimisticCartAction;
-      serverCall: () => Promise<T>;
-      onError?: (err: unknown) => void;
-    }) => {
-      // Chain this mutation's server call onto the lock BEFORE entering
-      // the transition. Two reasons it has to be sync at dispatch time:
-      // (1) two near-simultaneous taps both reading `mutationLockRef.current`
-      // inside their async transitions could see the SAME prior promise
-      // and serialize against IT instead of each other — defeating the
-      // chain. (2) The lock has to advance in dispatch order, which is
-      // the order React fires startTransition callbacks; doing the swap
-      // synchronously here pins that order.
-      const prior = mutationLockRef.current;
-      let releaseLock!: () => void;
-      mutationLockRef.current = new Promise<void>((r) => {
-        releaseLock = r;
-      });
-
-      startTransition(async () => {
-        addOptimistic(opts.optimistic);
-        try {
-          await prior;
-          // Wrap serverCall in retry-with-backoff (P5b) for transient
-          // network failures. Same idempotencyKey on retries → server
-          // dedup returns the cached result if the first call already
-          // landed, so no double-write.
-          const promise = callWithRetry(opts.serverCall);
-          pendingPromisesRef.current.add(promise);
-          try {
-            const next = (await promise) as unknown as CartSummary;
-            const normalized = normalizeSummary(next);
-            // Sync the ref IMMEDIATELY (don't wait for React's next
-            // render of `serverCartRef.current = serverCart`). The
-            // next runMutation in the chain awaits `prior` — that
-            // await returns the moment we call releaseLock() below,
-            // BEFORE React has had a chance to flush this setServerCart
-            // into a re-render. If we leave the ref to update on re-
-            // render, the next mutation's serverCall reads stale state
-            // (still pre-this-mutation), computes targetQty against the
-            // old quantity, and the server sees the same qty twice in
-            // a row → rapid taps stall at qty=2 instead of walking to 3.
-            serverCartRef.current = normalized;
-            setServerCart(normalized);
-          } finally {
-            pendingPromisesRef.current.delete(promise);
-          }
-        } catch (err) {
-          opts.onError?.(err);
-        } finally {
-          releaseLock();
-        }
-      });
-    },
-    [addOptimistic],
-  );
-
-  // Toast wrapper used by all mutation onError paths. Pulls the latest
-  // translator from the ref so re-renders don't force a callback rebuild.
+  // ── Toast wrapper for batch errors ───────────────────────────────────
   const onMutationError = useCallback((err: unknown) => {
     toast.error(
       err instanceof Error
@@ -494,6 +469,221 @@ export function CartProvider({
         : tRef.current("errors.cart_save_failed"),
     );
   }, []);
+
+  // ── refresh() (Realtime + manual) ────────────────────────────────────
+  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
+  const refresh: CartContextValue["refresh"] = useCallback(async () => {
+    try {
+      const next = await getCartSummaryAction({
+        orgId,
+        venueId,
+        identity: identityRef.current ?? undefined,
+        orderId: serverCartRef.current.orderId ?? undefined,
+      });
+      const normalized = normalizeSummary(next);
+      serverCartRef.current = normalized;
+      setServerCart(normalized);
+    } catch {
+      /* Silent — refresh is best-effort. */
+    }
+  }, [orgId, venueId]);
+  refreshRef.current = refresh;
+
+  // ── Batch flush ──────────────────────────────────────────────────────
+
+  /** Drain pendingByLineKey into a snapshot payload. The pending map
+   *  is cleared atomically so new taps after this point land in the
+   *  NEXT batch. */
+  const drainPayload = useCallback((): PendingBatchEntry[] => {
+    const out: PendingBatchEntry[] = [];
+    for (const entry of pendingByLineKey.current.values()) {
+      out.push(entry);
+    }
+    pendingByLineKey.current.clear();
+    return out;
+  }, []);
+
+  const flushBatch = useCallback(async (): Promise<void> => {
+    // Cancel the debounce timer if it's scheduled — we're firing now.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
+    const lines = drainPayload();
+    if (lines.length === 0) return;
+
+    // Fresh idempotency key per flush attempt. callWithRetry retries
+    // with the same key (server dedup); a NEW batch (because more taps
+    // came in after this one started) gets its own fresh key.
+    const idempotencyKey = newIdempotencyKey();
+
+    const prior = flushLockRef.current;
+    let releaseLock!: () => void;
+    flushLockRef.current = new Promise<void>((r) => {
+      releaseLock = r;
+    });
+
+    const batchPromise = (async () => {
+      try {
+        await prior;
+        const result = await callWithRetry(() =>
+          upsertCartLinesAction({
+            orgId,
+            venueId,
+            catalogPath,
+            clientId: clientIdRef.current,
+            lines,
+            orderId: serverCartRef.current.orderId ?? undefined,
+            identity: identityRef.current ?? undefined,
+            idempotencyKey,
+          }),
+        );
+        const normalized = normalizeSummary(result);
+        serverCartRef.current = normalized;
+        setServerCart(normalized);
+      } catch (err) {
+        onMutationError(err);
+        // Validation failures usually mean the optimistic cart is
+        // stale (item was deleted from the catalog, etc). Refresh
+        // to re-sync against the server's truth.
+        void refresh();
+      } finally {
+        // Fire every pending optimistic-tx resolver. Each resolver
+        // completes its startTransition, which clears the corresponding
+        // pending optimistic action. We fire them all here (success
+        // OR failure) so the optimistic UI can't get stuck — on
+        // success the resolved transitions clear in the same tick as
+        // setServerCart, so the canonical state lands cleanly; on
+        // failure the optimistic actions clear and the UI reverts to
+        // whatever the last good serverCart was (the customer sees
+        // their taps undo + the error toast).
+        const resolvers = pendingTxResolversRef.current;
+        pendingTxResolversRef.current = [];
+        for (const resolve of resolvers) resolve();
+        releaseLock();
+      }
+    })();
+
+    pendingPromisesRef.current.add(batchPromise);
+    try {
+      await batchPromise;
+    } finally {
+      pendingPromisesRef.current.delete(batchPromise);
+    }
+  }, [catalogPath, drainPayload, onMutationError, orgId, refresh, venueId]);
+
+  /** Reset/extend the debounce timer. No-op while hydration is in
+   *  flight or after a placeOrder (placedRef blocks new schedules
+   *  until resetForNewCart fires). */
+  const schedule = useCallback(() => {
+    if (placedRef.current) return;
+    if (isHydratingRef.current) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      void flushBatch();
+    }, BATCH_WINDOW_MS);
+  }, [flushBatch]);
+
+  // ── scheduleSetLine — single entry point for every cart mutation ─────
+  const scheduleSetLine = useCallback(
+    (lineKey: LineKey, target: SetLineTarget | null) => {
+      if (placedRef.current) {
+        /* Cart is closed for this session — silent drop. The placed
+         * screen is a modal so the customer can't actually see a stale
+         * stepper to tap; this guard catches the race where a tap
+         * was queued in the same event loop as Place succeeded. */
+        return;
+      }
+
+      // For deletes (target=null), the OPTIMISTIC action only needs the
+      // lineKey, but the BATCH PAYLOAD needs the line's metadata
+      // (item, variation, modifiers) to address the server-side row.
+      // Capture metadata from optimisticCartRef BEFORE the reducer
+      // removes the line.
+      let batchEntry: PendingBatchEntry | null = null;
+      if (target === null) {
+        const existing = optimisticCartRef.current.lineItems.find(
+          (l) => l.id === lineKey,
+        );
+        if (existing && existing.catalog_item_id && existing.catalog_variation_id) {
+          batchEntry = {
+            itemId: existing.catalog_item_id,
+            variationId: existing.catalog_variation_id,
+            qty: 0,
+            modifiers: existing.modifiers
+              .filter((m) => m.catalog_modifier_list_id !== null)
+              .map((m) => ({
+                modifierListId: m.catalog_modifier_list_id as string,
+                modifierId: m.catalog_modifier_id,
+                quantity: m.quantity,
+                text_value: m.text_value,
+              })),
+          };
+        }
+        /* No existing line → no batch entry needed; the optimistic
+         * delete is a no-op on the reducer side too. */
+      } else {
+        batchEntry = {
+          itemId: target.itemId,
+          variationId: target.variationId,
+          qty: target.qty,
+          modifiers: target.modifiers
+            .filter((m) => m.catalog_modifier_list_id !== null)
+            .map((m) => ({
+              modifierListId: m.catalog_modifier_list_id as string,
+              modifierId: m.catalog_modifier_id,
+              quantity: m.quantity,
+              text_value: m.text_value,
+            })),
+        };
+      }
+
+      // Build + dispatch the optimistic action. The transition stays
+      // pending until the next batch flush completes — without that,
+      // a sync `startTransition(() => addOptimistic(action))` returns
+      // immediately, React commits the transition (clearing the
+      // optimistic action), and the optimistic UI never renders. The
+      // tx resolver pushed below fires from flushBatch's setServerCart
+      // path, so the optimistic clears in the same tick the new server
+      // state commits.
+      const action: OptimisticCartAction = {
+        type: "setLine",
+        lineKey,
+        target,
+        actionId: newActionId(),
+      };
+      startTransition(async () => {
+        addOptimistic(action);
+        await new Promise<void>((resolve) => {
+          pendingTxResolversRef.current.push(resolve);
+        });
+      });
+      // Synchronously advance the ref — rapid synchronous taps in the
+      // same event-loop iteration read this updated value when computing
+      // their own next target.
+      optimisticCartRef.current = applyAction(
+        optimisticCartRef.current,
+        action,
+      );
+
+      // Update the pending batch entry for this lineKey. Coalesce:
+      // multiple taps on the same lineKey collapse to the LATEST
+      // target. A delete after a pending insert wipes the insert.
+      if (batchEntry) {
+        pendingByLineKey.current.set(lineKey, batchEntry);
+      } else {
+        pendingByLineKey.current.delete(lineKey);
+      }
+
+      schedule();
+    },
+    [addOptimistic, schedule],
+  );
+
+  // ── Public mutation API ──────────────────────────────────────────────
 
   const addItem: CartContextValue["addItem"] = useCallback(
     async ({
@@ -506,10 +696,18 @@ export function CartProvider({
       variationName = null,
       modifiers,
     }) => {
-      const idempotencyKey = newIdempotencyKey();
+      const resolvedVariationId = variationId ?? defaultVariationId ?? null;
+      if (!resolvedVariationId) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            "[cart] addItem called without variationId or defaultVariationId",
+            { itemId },
+          );
+        }
+        return;
+      }
 
       const resolvedName = name ?? tRef.current("add_to_cart.adding");
-      const modifierSelections = toModifierSelections(modifiers);
       const lineModifiers: CartLineItemModifier[] = (modifiers ?? []).map(
         (m, index) => ({
           id:
@@ -524,216 +722,103 @@ export function CartProvider({
           text_value: m.text_value,
         }),
       );
-      const sig = modifierSignature(modifierSelections);
-
-      // cart-v3 P3 line identity resolution.
-      //
-      // resolvedVariationId comes from either the explicit pick (item-
-      // detail) or the catalog-threaded default (CartActions). Either
-      // way, by the time we get here we should have a real uuid — the
-      // local-uuid fallback below is a defensive catch for the case
-      // where some new caller forgets to thread defaultVariationId.
-      // When the lineKey is constructible, the placeholder's id matches
-      // what normalizeSummary will write back from the server response,
-      // so the placeholder and its materialized commit are the same
-      // React identity (no key change, no reconciler thrash on first
-      // round-trip).
-      const resolvedVariationId = variationId ?? defaultVariationId ?? null;
-      let placeholderId: string;
-      if (resolvedVariationId) {
-        placeholderId = makeLineKey(itemId, resolvedVariationId, sig);
-      } else {
-        if (process.env.NODE_ENV !== "production") {
-          console.warn(
-            "[cart] addItem called without variationId or defaultVariationId — falling back to local-uuid placeholder",
-            { itemId },
-          );
-        }
-        placeholderId =
-          "local-" +
-          (typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID()
-            : Math.random().toString(36).slice(2));
-      }
-
-      // Compute the absolute targetQty at DISPATCH time using the
-      // latest optimisticCart (which includes any prior in-flight taps).
-      // Reading optimistic — not serverCart — is what makes rapid
-      // taps stack correctly: tap 2 sees tap 1's pending optimistic,
-      // so targetQty = 1 + 1 = 2. We use the same value for the
-      // optimistic dispatch AND the server call so they converge by
-      // construction.
-      const optExisting = optimisticCartRef.current.lineItems.find(
-        (l) => l.id === placeholderId,
+      const sig = modifierSignature(
+        (modifiers ?? []).map((m) => ({
+          listId: m.modifierListId,
+          modifierId: m.modifierId,
+          quantity: m.quantity,
+          text_value: m.text_value,
+        })),
       );
-      const targetQty = (optExisting?.quantity ?? 0) + quantity;
-      const optimisticAction: OptimisticCartAction = {
-        type: "add",
+      const lineKey = makeLineKey(itemId, resolvedVariationId, sig);
+
+      // Read the LATEST optimistic qty for this line and add the
+      // delta. Reading from the ref (not React state) means rapid
+      // synchronous taps see each other's effects.
+      const existing = optimisticCartRef.current.lineItems.find(
+        (l) => l.id === lineKey,
+      );
+      const targetQty = (existing?.quantity ?? 0) + quantity;
+
+      const modifierDeltaSum = lineModifiers.reduce(
+        (sum, m) => sum + m.base_price_cents_delta * m.quantity,
+        0,
+      );
+      const perUnitCents = basePriceCents + modifierDeltaSum;
+
+      scheduleSetLine(lineKey, {
+        qty: targetQty,
         itemId,
         variationId: resolvedVariationId,
-        targetQty,
         name: resolvedName,
         variationName,
         basePriceCents,
+        perUnitCents,
         modifiers: lineModifiers,
         modifierSig: sig,
-        idempotencyKey,
-        placeholderId,
-      };
-      // Pre-advance the optimisticCart ref to what this dispatch will
-      // produce. addOptimistic + useOptimistic's reducer only update
-      // the ref on the NEXT React render — between two synchronous
-      // rapid taps in the same event handler, there is no render, so
-      // tap 2 would otherwise still see tap 1's pre-dispatch state.
-      // We run the same exported reducer against the same action so
-      // the ref and the eventual render converge byte-for-byte.
-      optimisticCartRef.current = applyAction(
-        optimisticCartRef.current,
-        optimisticAction,
-      );
-
-      runMutation({
-        optimistic: optimisticAction,
-        serverCall: () => {
-          if (!resolvedVariationId) {
-            // Defensive: dev-warn already fired above. The mutation
-            // can't address a setLineQuantityAction without a variation
-            // uuid, so we throw — the toast layer surfaces it.
-            throw new Error(
-              "Cart add missing variation — thread defaultVariationId on the call site.",
-            );
-          }
-          return setLineQuantityAction({
-            orgId,
-            venueId,
-            itemId,
-            variationId: resolvedVariationId,
-            qty: targetQty,
-            modifiers: modifierSelections.map((m) => ({
-              modifierListId: m.listId,
-              modifierId: m.modifierId,
-              quantity: m.quantity,
-              text_value: m.text_value,
-            })),
-            catalogPath,
-            identity: identityRef.current ?? undefined,
-            orderId: serverCartRef.current.orderId ?? undefined,
-            idempotencyKey,
-          });
-        },
-        onError: onMutationError,
       });
     },
-    [catalogPath, onMutationError, orgId, runMutation, venueId],
+    [scheduleSetLine],
   );
 
   const updateQuantity: CartContextValue["updateQuantity"] = useCallback(
     async (lineItemId, quantity) => {
-      const idempotencyKey = newIdempotencyKey();
-      // cart-v3: lineItemId is a lineKey now (post-normalizeSummary).
-      // Look up the line in optimisticCart so a stepper tap on a line
-      // whose server roundtrip hasn't yet committed still has the
-      // metadata we need to address setLineQuantityAction. Legacy rows
-      // missing item/variation can't form a tuple, so we silently
-      // skip rather than crash the render.
-      const line = optimisticCart.lineItems.find((l) => l.id === lineItemId);
-      if (!line || !line.catalog_item_id || !line.catalog_variation_id) {
+      const line = optimisticCartRef.current.lineItems.find(
+        (l) => l.id === lineItemId,
+      );
+      if (!line || !line.catalog_item_id || !line.catalog_variation_id) return;
+
+      if (quantity <= 0) {
+        scheduleSetLine(lineItemId, null);
         return;
       }
-      const itemId = line.catalog_item_id;
-      const variationId = line.catalog_variation_id;
-      // Visible modifiers only — the server re-applies hidden auto-mods
-      // from canonical catalog state. Passing only visible mods keeps
-      // the client and server signature byte-aligned (same contract
-      // addLineItem uses).
-      const modifierSelections = line.modifiers
-        .filter((m) => m.catalog_modifier_list_id !== null)
-        .map((m) => ({
-          modifierListId: m.catalog_modifier_list_id as string,
-          modifierId: m.catalog_modifier_id,
-          quantity: m.quantity,
-          text_value: m.text_value,
-        }));
 
-      runMutation({
-        optimistic: { type: "updateQuantity", lineItemId, quantity, idempotencyKey },
-        serverCall: () =>
-          setLineQuantityAction({
-            orgId,
-            venueId,
-            itemId,
-            variationId,
-            qty: quantity,
-            modifiers: modifierSelections,
-            catalogPath,
-            identity: identityRef.current ?? undefined,
-            orderId: serverCartRef.current.orderId ?? undefined,
-            idempotencyKey,
-          }),
-        onError: onMutationError,
+      const modifierDeltaSum = line.modifiers.reduce(
+        (sum, m) => sum + m.base_price_cents_delta * m.quantity,
+        0,
+      );
+      const perUnitCents = line.base_price_cents + modifierDeltaSum;
+      const sig = modifierSignature(
+        line.modifiers
+          .filter((m) => m.catalog_modifier_list_id !== null)
+          .map((m) => ({
+            listId: m.catalog_modifier_list_id as string,
+            modifierId: m.catalog_modifier_id,
+            quantity: m.quantity,
+            text_value: m.text_value,
+          })),
+      );
+
+      scheduleSetLine(lineItemId, {
+        qty: quantity,
+        itemId: line.catalog_item_id,
+        variationId: line.catalog_variation_id,
+        name: line.name,
+        variationName: line.variation_name,
+        basePriceCents: line.base_price_cents,
+        perUnitCents,
+        modifiers: line.modifiers,
+        modifierSig: sig,
       });
     },
-    [catalogPath, onMutationError, optimisticCart, orgId, runMutation, venueId],
+    [scheduleSetLine],
   );
 
   const removeItem: CartContextValue["removeItem"] = useCallback(
     async (lineItemId) => {
-      const idempotencyKey = newIdempotencyKey();
-      // cart-v3: lineItemId is a lineKey. Look up in optimisticCart so
-      // a stepper "− at qty=1" on a freshly-added placeholder still
-      // has the metadata it needs to address the server delete. No
-      // more 'invalid input syntax for type uuid' on placeholders.
-      const line = optimisticCart.lineItems.find((l) => l.id === lineItemId);
-      if (!line || !line.catalog_item_id || !line.catalog_variation_id) {
-        return;
-      }
-      const itemId = line.catalog_item_id;
-      const variationId = line.catalog_variation_id;
-      const modifierSelections = line.modifiers
-        .filter((m) => m.catalog_modifier_list_id !== null)
-        .map((m) => ({
-          modifierListId: m.catalog_modifier_list_id as string,
-          modifierId: m.catalog_modifier_id,
-          quantity: m.quantity,
-          text_value: m.text_value,
-        }));
-
-      runMutation({
-        optimistic: { type: "remove", lineItemId, idempotencyKey },
-        serverCall: () =>
-          setLineQuantityAction({
-            orgId,
-            venueId,
-            itemId,
-            variationId,
-            qty: 0,
-            modifiers: modifierSelections,
-            catalogPath,
-            identity: identityRef.current ?? undefined,
-            orderId: serverCartRef.current.orderId ?? undefined,
-            idempotencyKey,
-          }),
-        onError: onMutationError,
-      });
+      scheduleSetLine(lineItemId, null);
     },
-    [catalogPath, onMutationError, optimisticCart, orgId, runMutation, venueId],
+    [scheduleSetLine],
   );
 
   const bumpQuantity: CartContextValue["bumpQuantity"] = useCallback(
     (lineItemId, delta) => {
-      // Read latest qty from optimistic cart so two rapid taps in the
-      // same render don't both compute the same target. optimisticCart
-      // is always fresh because useOptimistic re-derives it every
-      // render from server + in-flight optimistic actions.
-      //
-      // cart-v3 P3: the placeholder-vs-materialized branch that used
-      // to live here is gone. With lineKey-based identity, a
-      // placeholder line and its server-materialized commit share the
-      // same `id`, so updateQuantity / removeItem can address either
-      // directly via setLineQuantityAction (which takes the (item,
-      // variation, modifier) tuple, not a server uuid). No more
-      // 'invalid input syntax for type uuid' on rapid taps.
-      const line = optimisticCart.lineItems.find((l) => l.id === lineItemId);
+      // Read the latest qty from the REF (synchronously pre-advanced
+      // per tap). Two rapid taps in the same render see each other's
+      // effects and compute distinct targets.
+      const line = optimisticCartRef.current.lineItems.find(
+        (l) => l.id === lineItemId,
+      );
       if (!line) return;
 
       const next = line.quantity + delta;
@@ -743,81 +828,42 @@ export function CartProvider({
         void updateQuantity(lineItemId, next);
       }
     },
-    [optimisticCart, removeItem, updateQuantity],
+    [removeItem, updateQuantity],
   );
 
   const clear: CartContextValue["clear"] = useCallback(async () => {
-    const idempotencyKey = newIdempotencyKey();
-
-    runMutation({
-      optimistic: { type: "clear", idempotencyKey },
-      serverCall: () =>
-        clearCartAction({
-          orgId,
-          venueId,
-          catalogPath,
-          identity: identityRef.current ?? undefined,
-          orderId: serverCart.orderId ?? undefined,
-          idempotencyKey,
-        }),
-      onError: onMutationError,
-    });
-  }, [
-    catalogPath,
-    onMutationError,
-    orgId,
-    runMutation,
-    serverCart.orderId,
-    venueId,
-  ]);
-
-  const refresh: CartContextValue["refresh"] = useCallback(async () => {
-    try {
-      const next = await getCartSummaryAction({
-        orgId,
-        venueId,
-        identity: identityRef.current ?? undefined,
-        orderId: serverCart.orderId ?? undefined,
-      });
-      const normalized = normalizeSummary(next);
-      // Manual ref sync — same rationale as the runMutation post-
-      // setServerCart sync: keep serverCartRef ahead of React's next
-      // render so any rapid mutation that fires immediately after a
-      // Realtime-driven refresh sees the latest committed state.
-      serverCartRef.current = normalized;
-      setServerCart(normalized);
-    } catch {
-      // Silent — refresh is best-effort. The cart still has its last
-      // known state; the next mutation's response will hydrate fresh.
+    // Schedule a delete for every line currently in optimistic state.
+    // Each lands in pendingByLineKey as a separate entry, drained
+    // together in the next batch flush.
+    const lines = [...optimisticCartRef.current.lineItems];
+    for (const line of lines) {
+      scheduleSetLine(line.id, null);
     }
-  }, [orgId, serverCart.orderId, venueId]);
-  refreshRef.current = refresh;
+  }, [scheduleSetLine]);
 
-  // ── Realtime cross-tab sync (P4) ──────────────────────────────────────
-  //
-  // Subscribe to commerce.order_line_items mutations scoped to the
-  // current draft order_id. Any insert / update / delete event triggers
-  // a refresh() so Tab B picks up Tab A's changes within ~200ms (the
-  // round-trip floor of Supabase Realtime's WebSocket).
-  //
-  // Self-events (this tab's own mutation fires through Realtime too)
-  // are not filtered out — refresh() lands the same state we already
-  // committed via setServerCart, so the optimistic re-derive is a
-  // no-op visually. The absolute-quantity optimistic action makes
-  // re-application idempotent.
-  //
-  // Resubscribe on orderId change: when the customer places an order
-  // the draft transitions to state='open' and setServerCart(EMPTY)
-  // clears orderId. The cleanup runs, the effect returns early on
-  // null orderId, and the next addItem creates a new draft → orderId
-  // becomes non-null → effect re-runs and subscribes to the fresh
-  // channel.
-  //
-  // refreshRef indirection: `refresh` changes whenever its deps
-  // change (specifically serverCart.orderId), so listing it in this
-  // effect's deps would tear the subscription down on every cart
-  // mutation. The ref dereference inside the handler reads the latest
-  // closure without churning the WebSocket.
+  // ── flush — used by placeOrder and visibility/unload handlers ────────
+  const flush: CartContextValue["flush"] = useCallback(async () => {
+    // Drain any pending taps into batches. We loop because new taps
+    // can land while a batch is in-flight (UI shouldn't allow this
+    // post-Place, but be defensive against race conditions).
+    for (let i = 0; i < FLUSH_MAX_ITERATIONS; i++) {
+      if (pendingByLineKey.current.size === 0 && debounceRef.current === null) {
+        break;
+      }
+      await flushBatch();
+    }
+    // Await the lock head so any batches dispatched outside flush()
+    // (e.g. a debounce that fired while flush was working) settle.
+    await flushLockRef.current;
+
+    // Then drain any tracked promises that bypassed the lock (defense
+    // in depth — currently nothing does this, but cheap insurance).
+    const pending = [...pendingPromisesRef.current];
+    if (pending.length === 0) return;
+    await Promise.allSettled(pending);
+  }, [flushBatch]);
+
+  // ── Realtime cross-tab sync ─────────────────────────────────────────
   useEffect(() => {
     const orderId = serverCart.orderId;
     if (!orderId) return;
@@ -827,10 +873,6 @@ export function CartProvider({
     let channelRef: ReturnType<typeof supabase.channel> | null = null;
 
     (async () => {
-      // Pin the customer's JWT on Realtime before subscribing — RLS
-      // on commerce.order_line_items scopes by auth.uid(), so anon
-      // events get filtered out and the subscription would silently
-      // never deliver.
       await pinRealtimeAuth(supabase);
       if (cancelled) return;
 
@@ -844,7 +886,23 @@ export function CartProvider({
             table: "order_line_items",
             filter: `order_id=eq.${orderId}`,
           },
-          () => {
+          (payload) => {
+            // Self-event filter: skip events this tab wrote. The
+            // batch RPC stamps `written_by_client = clientIdRef.current`
+            // on every INSERT/UPDATE. DELETE events carry only `old`,
+            // which inherits whichever client stamped the row last.
+            // If the last writer is this tab, skip. If it was another
+            // tab, refresh — even if we initiated the actual delete,
+            // catching up to server state via refresh is harmless.
+            const newRow = (payload as { new?: { written_by_client?: string } })
+              .new;
+            const oldRow = (payload as { old?: { written_by_client?: string } })
+              .old;
+            const writtenBy =
+              newRow?.written_by_client ?? oldRow?.written_by_client ?? null;
+            if (writtenBy && writtenBy === clientIdRef.current) {
+              return;
+            }
             void refreshRef.current();
           },
         )
@@ -857,32 +915,31 @@ export function CartProvider({
     };
   }, [serverCart.orderId]);
 
-  const flush: CartContextValue["flush"] = useCallback(async () => {
-    // Await the serialize chain head FIRST. Each runMutation captures
-    // `prior` synchronously at dispatch and only releases its own lock
-    // after its server call resolves, so awaiting the current ref
-    // subsumes every dispatched-but-not-yet-started mutation in the
-    // queue. Without this, rapid-tap + + + Place could land here with
-    // taps 2 and 3 still parked behind `await prior` — their server
-    // promises haven't been added to pendingPromisesRef yet, so the
-    // Promise.allSettled below would walk past them and placeOrder
-    // would transition the draft → open before they ran. Their add
-    // server calls would then land on a fresh new draft, depositing
-    // phantom lines on the customer's next order.
-    await mutationLockRef.current;
+  // ── Visibility + unload flushing ─────────────────────────────────────
+  // Background tabs throttle setTimeout (iOS Safari ≥1s minimum), so a
+  // pending debounce can stall indefinitely. Flush eagerly on
+  // backgrounding / unload so cross-tab sync stays within ~1s and
+  // closing the tab mid-burst best-effort persists everything.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        void flush();
+      }
+    };
+    const onPageHide = () => {
+      void flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [flush]);
 
-    // Then drain any in-flight promises that aren't part of the
-    // serialize chain (currently none, but cheap insurance for
-    // future code that bypasses runMutation).
-    const pending = [...pendingPromisesRef.current];
-    if (pending.length === 0) return;
-    await Promise.allSettled(pending);
-  }, []);
-
-  // ── Sister state (preserved from pre-v2) ──────────────────────────────
-
+  // ── Sister state (drawer + place + dine-in lock) ─────────────────────
   const [isOpen, setIsOpen] = useState(false);
-  const [step, setStep] = useState<CartStep>("cart");
+  const [step, setStepInternal] = useState<CartStep>("cart");
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [placedOrder, setPlacedOrder] = useState<PlacedOrderSnapshot | null>(
     null,
@@ -896,8 +953,36 @@ export function CartProvider({
     "pickup" | "delivery" | null
   >(null);
 
-  // QR-driven dine-in lock — unchanged from pre-v2. See git history for the
-  // full source-of-truth-chain comment (?qr= → ?mode= → sessionStorage → free).
+  const resetForNewCart = useCallback(() => {
+    placedRef.current = false;
+    setPlacedOrderId(null);
+    setPlacedOrder(null);
+    setStepInternal("cart");
+  }, []);
+
+  // Wrap setStep so transitions OUT of "placed" automatically clear
+  // the placedRef guard. The placed step's "Back to menu" CTA calls
+  // setStep("cart") which routes through this.
+  const setStep = useCallback(
+    (next: CartStep) => {
+      if (step === "placed" && next !== "placed") {
+        placedRef.current = false;
+      }
+      setStepInternal(next);
+    },
+    [step],
+  );
+
+  // Wrap close() so closing from the "placed" step resets the
+  // session — same effect as resetForNewCart for the dismissal path.
+  const close = useCallback(() => {
+    if (step === "placed") {
+      resetForNewCart();
+    }
+    setIsOpen(false);
+  }, [resetForNewCart, step]);
+
+  // QR-driven dine-in lock — unchanged from pre-batch.
   const searchParams = useSearchParams();
   const storageKey = `krafta.cart.dineIn.${venueId}`;
   useEffect(() => {
@@ -990,14 +1075,23 @@ export function CartProvider({
   tRef.current = (key) =>
     getStorefrontMessage(key, { activeLocale, defaultLocale });
 
-  // Reset tip when cart empties so a leftover tip from a placed order
-  // doesn't apply to a fresh cart.
+  // Reset tip when the cart empties so a leftover tip doesn't apply
+  // to a fresh cart.
   useEffect(() => {
     if (optimisticCart.lineItems.length === 0) setTipCents(0);
   }, [optimisticCart.lineItems.length]);
 
-  // ── placeOrder — preserved from pre-v2 ────────────────────────────────
+  // After hydration completes, if any taps landed while isHydrating
+  // was true (rare with SSR — only happens for cold-cache visitors
+  // who tapped during the bootstrap fetch), kick off the debounce
+  // timer to drain them.
+  useEffect(() => {
+    if (!isHydrating && pendingByLineKey.current.size > 0) {
+      schedule();
+    }
+  }, [isHydrating, schedule]);
 
+  // ── placeOrder ───────────────────────────────────────────────────────
   const placeInFlightRef = useRef(false);
 
   const placeOrder: CartContextValue["placeOrder"] = useCallback(
@@ -1008,9 +1102,9 @@ export function CartProvider({
       placeInFlightRef.current = true;
       setIsPlacingOrder(true);
       try {
-        // Wait for any in-flight cart mutations to land server-side
-        // before transitioning the order. Without this, late adds could
-        // race the place and end up on a different (new) draft.
+        // Drain pending batches + await in-flight before transitioning
+        // the draft. Without this, late taps could race the place and
+        // end up on a different (new) draft.
         await flush();
 
         const result = await placeOrderAction({
@@ -1036,11 +1130,13 @@ export function CartProvider({
 
         setPlacedOrder(snapshot);
         setPlacedOrderId(result.orderId);
-        setStep("placed");
-        // Reset cart to empty — the draft is now in state='open', the
-        // existing draft order is gone. The next addItem will create a
-        // fresh draft.
+        // Mark the cart closed for this session — blocks scheduleSetLine
+        // from creating phantom lines on a new draft while the placed
+        // screen is showing. resetForNewCart() clears it on dismiss.
+        placedRef.current = true;
+        setStepInternal("placed");
         setServerCart(EMPTY_SUMMARY);
+        serverCartRef.current = EMPTY_SUMMARY;
         return { ok: true } as const;
       } catch (err) {
         const rawMessage = err instanceof Error ? err.message : null;
@@ -1088,7 +1184,6 @@ export function CartProvider({
   );
 
   // ── Context value ─────────────────────────────────────────────────────
-
   const itemCount = optimisticCart.lineItems.reduce(
     (sum, line) => sum + line.quantity,
     0,
@@ -1101,7 +1196,7 @@ export function CartProvider({
       isHydrating,
       isOpen,
       open: () => setIsOpen(true),
-      close: () => setIsOpen(false),
+      close,
       setOpen: setIsOpen,
       modes,
       taxes,
@@ -1123,12 +1218,14 @@ export function CartProvider({
       refresh,
       flush,
       placeOrder,
+      resetForNewCart,
     }),
     [
       addItem,
       bumpQuantity,
       clear,
       clearDineInLock,
+      close,
       dineInLock,
       flush,
       initialModeHint,
@@ -1143,6 +1240,8 @@ export function CartProvider({
       placedOrderId,
       refresh,
       removeItem,
+      resetForNewCart,
+      setStep,
       step,
       taxes,
       tipCents,
