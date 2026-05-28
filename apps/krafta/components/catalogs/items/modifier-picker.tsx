@@ -318,30 +318,37 @@ export function ModifierPicker({
               ? "satisfied"
               : "neutral";
         return (
-          <fieldset
+          <div
             key={list.id}
             id={modifierListFieldsetId(list.id)}
+            role="group"
+            aria-labelledby={`${modifierListFieldsetId(list.id)}-title`}
             className={cn(
-              "rounded-md transition-colors",
-              // Pointer attention: orange border around the whole
-              // fieldset to direct the customer's eye. Only fires in
-              // guided mode and only for the single pointer list.
+              // Every modifier list is a card — consistent chrome
+              // regardless of state (DESIGN.md: cards earn their
+              // existence, each list is a logical unit of content +
+              // interaction). State only flips the border color so
+              // the card geometry never shifts when guidance activates.
+              "space-y-3 rounded-lg border bg-card p-4 transition-colors",
               isPointer
-                ? "border-2 border-warning -m-3 p-3 space-y-2 bg-warning-muted/40"
-                : "space-y-2",
+                ? "border-warning bg-warning-muted/30"
+                : "border-border",
             )}
           >
-            <legend className="flex w-full items-baseline justify-between gap-2">
-              <span className="text-sm font-medium text-foreground">
-                {localizedListNameById.get(list.id) ?? list.name}
-              </span>
-              <div className="flex items-center gap-2 shrink-0">
+            <header className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span
+                  id={`${modifierListFieldsetId(list.id)}-title`}
+                  className="text-sm font-medium text-foreground"
+                >
+                  {localizedListNameById.get(list.id) ?? list.name}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {selectionHint(list)}
                 </span>
-                {pillState ? <RequiredPill state={pillState} /> : null}
               </div>
-            </legend>
+              {pillState ? <RequiredPill state={pillState} /> : null}
+            </header>
 
             {list.modifier_type === "text" ? (
               <TextModifierInput
@@ -373,7 +380,7 @@ export function ModifierPicker({
                 formatPrice={formatPrice}
               />
             )}
-          </fieldset>
+          </div>
         );
       })}
     </div>
