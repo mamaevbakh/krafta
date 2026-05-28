@@ -406,17 +406,27 @@ function initialDefaults(
   return out;
 }
 
+/**
+ * Customer-facing hint that goes under the section title. Communicates
+ * the cap / constraint in natural language. When the list is required,
+ * the Required pill carries the "min ≥ 1" requirement — the hint just
+ * conveys the cap so we don't double up ("Required · 1–10" reads like
+ * two requirements; "Up to 10" + Required pill reads like one).
+ */
 function selectionHint(list: PublicModifierList): string {
   if (list.modifier_type === "text") {
+    // For required text, the pill says "Required"; the hint just
+    // carries the length cap when present.
     if (list.text_required) {
       return list.max_length !== null
-        ? `Required · up to ${list.max_length} chars`
-        : "Required";
+        ? `Up to ${list.max_length} chars`
+        : "";
     }
     return list.max_length !== null
       ? `Optional · up to ${list.max_length} chars`
       : "Optional";
   }
+  // List-mode
   if (list.min_selected === 1 && list.max_selected === 1) return "Choose 1";
   if (list.max_selected === null && list.min_selected === 0) return "Optional";
   if (list.min_selected === 0 && list.max_selected !== null) {
@@ -426,7 +436,14 @@ function selectionHint(list: PublicModifierList): string {
     return `Choose ${list.min_selected}`;
   }
   if (list.max_selected === null) return `At least ${list.min_selected}`;
-  return `${list.min_selected}–${list.max_selected}`;
+  // Required with a cap (min=1, max=N): the pill carries Required;
+  // the hint just shows the cap. "Up to 10" reads naturally next to
+  // a "Required" pill where "1–10" reads as a confusing range.
+  if (list.min_selected === 1) {
+    return `Up to ${list.max_selected}`;
+  }
+  // Multi-required with a separate cap — rarer edge case.
+  return `Choose ${list.min_selected} to ${list.max_selected}`;
 }
 
 // ============================================================================
@@ -620,12 +637,9 @@ function ModifierRow({
         <span className="truncate text-foreground">{displayName}</span>
       </span>
       <span className="flex shrink-0 items-center gap-3">
-        {showQuantity && selected ? (
-          <QuantityStepper
-            quantity={quantity}
-            onChange={onQuantityChange}
-          />
-        ) : null}
+        {/* Price reads before the stepper — the customer's eye flows
+         *  name → price → action. Putting the stepper at the rightmost
+         *  edge also makes it the thumb-zone affordance on mobile. */}
         {unit > 0 ? (
           <span className="font-mono text-xs text-muted-foreground tabular-nums">
             +{formatPrice(showQuantity && selected ? total : unit)}
@@ -635,6 +649,12 @@ function ModifierRow({
               </span>
             ) : null}
           </span>
+        ) : null}
+        {showQuantity && selected ? (
+          <QuantityStepper
+            quantity={quantity}
+            onChange={onQuantityChange}
+          />
         ) : null}
       </span>
     </Label>
