@@ -236,6 +236,7 @@ export function ItemDetailFullscreen({
     selections: [],
     isValid: !hasVisibleModifierLists,
     firstInvalidListId: null,
+    invalidRequiredListIds: [],
     invalidRequiredCount: 0,
   });
   const handlePickerChange = useCallback(
@@ -243,28 +244,64 @@ export function ItemDetailFullscreen({
     [],
   );
 
-  // Flash state for the "scroll to first invalid required list" affordance.
-  // Set when the customer presses Add and validation fails; cleared after
-  // ~900ms so the destructive ring fades rather than flickers.
-  const [flashListId, setFlashListId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!flashListId) return;
-    const timer = window.setTimeout(() => setFlashListId(null), 900);
-    return () => window.clearTimeout(timer);
-  }, [flashListId]);
+  // ── Guided required-selection flow ────────────────────────────────
+  //
+  // When the customer taps the "Make N required selections" button,
+  // the detail enters `inGuidedMode`. The current pointer is always
+  // the HEAD of `pickerState.invalidRequiredListIds` — as the customer
+  // satisfies each required section, the head shifts, and we auto-
+  // scroll to the new head. When the list becomes empty, all required
+  // selections are complete and guided mode ends (the Add button
+  // copy flips to "Add to cart · $X.XX").
+  //
+  // The picker reads `inGuidedMode` + `guidedPointerListId` to render
+  // its three-state Required pills (neutral / satisfied / attention)
+  // and to apply the orange border on the pointer's fieldset. Until
+  // the customer opts in by tapping the button, every required list
+  // shows a calm neutral pill — no colors compete for attention
+  // during normal scroll-and-pick browsing.
+  const [inGuidedMode, setInGuidedMode] = useState(false);
+  const guidedPointerListId = inGuidedMode
+    ? pickerState.invalidRequiredListIds[0] ?? null
+    : null;
 
-  // Returns true when the click should proceed to add-to-cart; false
-  // when validation failed and we redirected the customer's eye instead.
-  const validateBeforeAdd = useCallback((): boolean => {
-    if (pickerState.isValid) return true;
-    const targetId = pickerState.firstInvalidListId;
-    if (targetId) {
-      const el = document.getElementById(modifierListFieldsetId(targetId));
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
-      setFlashListId(targetId);
+  // Exit guided mode automatically once everything required is
+  // satisfied. The Add CTA's copy flips and the customer's next tap
+  // adds to cart cleanly.
+  useEffect(() => {
+    if (inGuidedMode && pickerState.invalidRequiredListIds.length === 0) {
+      setInGuidedMode(false);
     }
-    return false;
-  }, [pickerState.firstInvalidListId, pickerState.isValid]);
+  }, [inGuidedMode, pickerState.invalidRequiredListIds]);
+
+  // When the guided pointer advances (customer satisfied the current
+  // section), scroll the next un-satisfied required list into view.
+  // Triggers on every guidedPointerListId change while in guided mode.
+  useEffect(() => {
+    if (!inGuidedMode || !guidedPointerListId) return;
+    const el = document.getElementById(
+      modifierListFieldsetId(guidedPointerListId),
+    );
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [inGuidedMode, guidedPointerListId]);
+
+  // Handler the Add button calls when there are still required
+  // selections. Enters guided mode + scrolls to the first
+  // un-satisfied section. The button stays clickable throughout —
+  // tapping it again while already in guided mode just re-scrolls,
+  // which is a useful "I lost the pointer, take me back" affordance.
+  const enterGuidedMode = useCallback((): void => {
+    const firstUnsatisfied = pickerState.invalidRequiredListIds[0];
+    if (!firstUnsatisfied) return;
+    setInGuidedMode(true);
+    // Trigger an immediate scroll for the case where setInGuidedMode
+    // doesn't change state (already true) — the useEffect above
+    // wouldn't re-fire.
+    const el = document.getElementById(
+      modifierListFieldsetId(firstUnsatisfied),
+    );
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [pickerState.invalidRequiredListIds]);
 
   const handleShare = async () => {
     if (typeof window === "undefined") return;
@@ -453,7 +490,8 @@ export function ItemDetailFullscreen({
               modifierLists={item.modifier_lists}
               onChange={handlePickerChange}
               formatPrice={(cents) => formatPriceCents(cents, currencySettings)}
-              flashListId={flashListId}
+              inGuidedMode={inGuidedMode}
+              guidedPointerListId={guidedPointerListId}
             />
           </div>
         ) : null}
@@ -478,7 +516,7 @@ export function ItemDetailFullscreen({
               variationName={selectedVariationName}
               currencySettings={currencySettings}
               pickerState={pickerState}
-              onValidateBeforeAdd={validateBeforeAdd}
+              onEnterGuidedMode={enterGuidedMode}
               onClose={onClose}
             />
           ) : onClose ? (
@@ -551,7 +589,12 @@ function ItemDetailBottomCta(props: {
   variationName?: string | null;
   currencySettings: CurrencySettings | undefined;
   pickerState: ModifierPickerChange;
-  onValidateBeforeAdd: () => boolean;
+  /** Called when the customer taps the Add CTA while required
+   *  selections are still un-satisfied. Promotes the detail into
+   *  guided mode: scrolls to the first un-satisfied required list
+   *  and arms the colored pill / orange border affordance in the
+   *  picker. */
+  onEnterGuidedMode: () => void;
   onClose?: () => void;
 }) {
   const {
@@ -563,7 +606,7 @@ function ItemDetailBottomCta(props: {
     variationName = null,
     currencySettings,
     pickerState,
-    onValidateBeforeAdd,
+    onEnterGuidedMode,
     onClose,
   } = props;
   const { activeLocale, defaultLocale } = useStorefrontLocale();
@@ -627,7 +670,15 @@ function ItemDetailBottomCta(props: {
   const isGated = requiredCount > 0;
 
   const handleAdd = async () => {
-    if (!onValidateBeforeAdd()) return;
+    // Gated state: customer tapped the CTA while required selections
+    // are pending. Don't add to cart — instead, enter guided mode and
+    // scroll to the first un-satisfied required list. The button copy
+    // stays "Make N required selections" until the customer satisfies
+    // every required modifier.
+    if (isGated) {
+      onEnterGuidedMode();
+      return;
+    }
     try {
       await cart.addItem({
         itemId,
@@ -720,11 +771,9 @@ function ItemDetailBottomCta(props: {
       type="button"
       size="lg"
       onClick={handleAdd}
-      disabled={isGated}
-      className={cn(
-        "h-11 w-full min-w-0 text-sm font-semibold tabular-nums",
-        "disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground",
-      )}
+      // Always clickable. The gated state's onClick routes through
+      // onEnterGuidedMode instead of cart.addItem (see handleAdd above).
+      className="h-11 w-full min-w-0 text-sm font-semibold tabular-nums"
     >
       <ShoppingCart className="mr-2 size-4 shrink-0" aria-hidden />
       <span className="min-w-0 truncate">{addButtonLabel}</span>

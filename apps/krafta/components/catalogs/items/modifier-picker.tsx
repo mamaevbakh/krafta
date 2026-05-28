@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { AlertTriangle, Check, Minus, Plus } from "lucide-react";
 
 import type {
   PublicModifier,
@@ -44,6 +44,14 @@ export type ModifierPickerChange = {
    *  modifier. Drives the "scroll to first invalid required list"
    *  affordance on add-to-cart. */
   firstInvalidListId: string | null;
+  /**
+   * Ordered list ids of every REQUIRED modifier list that's still
+   * un-satisfied. In document order (matches the visual layout), so
+   * the head is always the "next thing the customer should fix." The
+   * guided required-selection flow walks this array as the customer
+   * makes selections.
+   */
+  invalidRequiredListIds: string[];
   /** Count of required selections the customer hasn't completed yet.
    *  Drives the item-detail Add button copy ("Make 2 required selections
    *  • Add ₿50"). 0 when everything required is satisfied. */
@@ -54,11 +62,28 @@ type Props = {
   modifierLists: PublicModifierList[];
   onChange: (change: ModifierPickerChange) => void;
   formatPrice: (cents: number) => string;
-  /** When set to the id of a modifier list, that list briefly highlights
-   *  (destructive ring) to draw attention. Used to nudge the customer
-   *  toward a required field they skipped. The picker doesn't manage
-   *  the timer — the parent clears `flashListId` after ~800ms. */
-  flashListId?: string | null;
+  /**
+   * Guided required-selection flow (Careem-style).
+   *
+   * When `inGuidedMode` is true, each required list renders a colored
+   * pill:
+   *   • Satisfied → green "✓ Required"
+   *   • The current pointer (matches `guidedPointerListId`) → orange
+   *     "⚠ Required" + an orange border around the fieldset
+   *   • Other un-satisfied required → neutral gray "Required"
+   *
+   * When `inGuidedMode` is false (default — the customer hasn't tapped
+   * the "Make N required selections" button), every required list
+   * shows a neutral gray pill regardless of satisfaction, so the
+   * customer can scroll and choose calmly without colors competing
+   * for attention. The pill states only flip on once the customer
+   * opts into the guided flow.
+   *
+   * Optional lists never show a pill — only an "Optional" hint in the
+   * right-side gutter.
+   */
+  inGuidedMode?: boolean;
+  guidedPointerListId?: string | null;
 };
 
 /** Stable id pattern for the modifier-list fieldset, exported so callers
@@ -86,7 +111,8 @@ export function ModifierPicker({
   modifierLists,
   onChange,
   formatPrice,
-  flashListId = null,
+  inGuidedMode = false,
+  guidedPointerListId = null,
 }: Props) {
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const visibleLists = useMemo(
@@ -169,6 +195,7 @@ export function ModifierPicker({
     let valid = true;
     let firstInvalidListId: string | null = null;
     let invalidRequiredCount = 0;
+    const invalidRequiredListIds: string[] = [];
 
     for (const list of visibleLists) {
       if (list.modifier_type === "text") {
@@ -185,6 +212,7 @@ export function ModifierPicker({
         if (required && !hasValue) {
           valid = false;
           invalidRequiredCount += 1;
+          invalidRequiredListIds.push(list.id);
           if (!firstInvalidListId) firstInvalidListId = list.id;
         }
         if (exceedsMax) {
@@ -215,6 +243,7 @@ export function ModifierPicker({
       if (distinctCount < list.min_selected) {
         valid = false;
         invalidRequiredCount += 1;
+        invalidRequiredListIds.push(list.id);
         if (!firstInvalidListId) firstInvalidListId = list.id;
       }
       if (
@@ -240,6 +269,7 @@ export function ModifierPicker({
       selections: flat,
       isValid: valid,
       firstInvalidListId,
+      invalidRequiredListIds,
       invalidRequiredCount,
     });
   }, [
@@ -253,6 +283,24 @@ export function ModifierPicker({
 
   if (visibleLists.length === 0) return null;
 
+  // Derive per-list satisfied-ness for pill rendering. A required
+  // list is "satisfied" when its constraints are met right now (not
+  // included in invalidRequiredListIds-equivalent computation that's
+  // done inside the effect above). We re-compute it here cheaply
+  // because the picker already iterates these lists.
+  function isRequiredListSatisfied(list: PublicModifierList): boolean {
+    if (list.modifier_type === "text") {
+      if (!list.text_required) return true;
+      const raw = textValueByList.get(list.id) ?? "";
+      const trimmed = raw.trim();
+      const exceedsMax =
+        list.max_length !== null && raw.length > list.max_length;
+      return trimmed.length > 0 && !exceedsMax;
+    }
+    const picked = selectionsByList.get(list.id) ?? new Map<string, number>();
+    return picked.size >= list.min_selected;
+  }
+
   return (
     <div className="space-y-5">
       {visibleLists.map((list) => {
@@ -260,27 +308,39 @@ export function ModifierPicker({
           list.modifier_type === "text"
             ? list.text_required
             : list.min_selected >= 1;
-        const isFlashed = flashListId === list.id;
+        const isPointer = inGuidedMode && guidedPointerListId === list.id;
+        const isSatisfied = inGuidedMode && required && isRequiredListSatisfied(list);
+        const pillState: RequiredPillState | null = !required
+          ? null
+          : isPointer
+            ? "attention"
+            : isSatisfied
+              ? "satisfied"
+              : "neutral";
         return (
           <fieldset
             key={list.id}
             id={modifierListFieldsetId(list.id)}
             className={cn(
-              "space-y-2 rounded-md transition-shadow",
-              isFlashed &&
-                "ring-2 ring-destructive ring-offset-2 ring-offset-background -mx-1 px-1 py-1",
+              "rounded-md transition-colors",
+              // Pointer attention: orange border around the whole
+              // fieldset to direct the customer's eye. Only fires in
+              // guided mode and only for the single pointer list.
+              isPointer
+                ? "border-2 border-warning -m-3 p-3 space-y-2 bg-warning-muted/40"
+                : "space-y-2",
             )}
           >
-            <legend className="flex w-full items-baseline justify-between">
+            <legend className="flex w-full items-baseline justify-between gap-2">
               <span className="text-sm font-medium text-foreground">
                 {localizedListNameById.get(list.id) ?? list.name}
-                {required ? (
-                  <span className="ml-1 text-destructive">*</span>
-                ) : null}
               </span>
-              <span className="text-xs text-muted-foreground">
-                {selectionHint(list)}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-muted-foreground">
+                  {selectionHint(list)}
+                </span>
+                {pillState ? <RequiredPill state={pillState} /> : null}
+              </div>
             </legend>
 
             {list.modifier_type === "text" ? (
@@ -621,5 +681,65 @@ function QuantityStepper({
         <Plus className="size-3" aria-hidden="true" />
       </Button>
     </div>
+  );
+}
+
+// ============================================================================
+// RequiredPill — three-state status badge used by the guided flow
+// ============================================================================
+
+export type RequiredPillState = "neutral" | "satisfied" | "attention";
+
+/**
+ * The "Required" status pill rendered to the right of each required
+ * modifier list's name. Has three states, all reusing the same chip
+ * shape and dimensions so width never shifts between transitions:
+ *
+ *   neutral    — gray pill, no icon. Default when the customer hasn't
+ *                opted into the guided flow yet (button hasn't been
+ *                tapped) OR when the list is required but un-satisfied
+ *                and not the current pointer.
+ *   satisfied  — green pill with ✓ icon. Only rendered when the
+ *                guided flow is active AND this list's constraints
+ *                are satisfied. Acts as the "this one's done"
+ *                marker.
+ *   attention  — orange pill with ⚠ icon. Only ever set for ONE list
+ *                at a time — the current pointer in the guided flow.
+ *                Pairs with an orange fieldset border to draw the
+ *                customer's eye unambiguously.
+ *
+ * Color tokens come from packages/theme/src/styles.css. Light + dark
+ * variants are handled by the CSS layer.
+ */
+function RequiredPill({ state }: { state: RequiredPillState }) {
+  if (state === "satisfied") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-success-muted px-2 py-0.5 text-[11px] font-medium text-success"
+        aria-label="Required (satisfied)"
+      >
+        <Check className="size-3" aria-hidden />
+        Required
+      </span>
+    );
+  }
+  if (state === "attention") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md border border-warning bg-warning-muted px-2 py-0.5 text-[11px] font-medium text-warning"
+        aria-label="Required (pending)"
+      >
+        <AlertTriangle className="size-3" aria-hidden />
+        Required
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+      aria-label="Required"
+    >
+      Required
+    </span>
   );
 }

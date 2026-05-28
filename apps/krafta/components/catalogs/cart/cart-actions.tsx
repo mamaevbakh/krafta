@@ -139,44 +139,32 @@ export function CartActions({
 
   const handleIncrement = () => {
     if (!lastLine) return;
-    // Customisable + MULTIPLE configs in cart: open the disambiguation
-    // drawer so the customer picks which config to bump. Opening the
-    // drawer for a single config (the common case) is unnecessary
-    // friction — there's nothing to disambiguate, just silently bump
-    // the only config. Drawer is reserved for the ambiguous case.
-    if (hasModifiers && matchingLines.length > 1) {
+    // Customisable items: ALWAYS route through the disambiguation drawer
+    // (even with a single config in cart). The drawer is the management
+    // surface for customisable items — Careem / DoorDash / Uber Eats
+    // pattern. The customer sees their existing config(s) at a glance
+    // ("1× Double Cheese Burger, 1× Coca-Cola, ..."), can bump qty per
+    // config, and has an explicit "Add new customised item" path to a
+    // second config. Without this, there's no discoverable way to add
+    // a second configuration once the catalog card has flipped to a
+    // stepper.
+    if (hasModifiers && matchingLines.length >= 1) {
       setCustomisationsOpen(true);
       return;
     }
-    // Single config (simple OR customisable): bump by line id via the
-    // same path the cart-drawer stepper uses. This is the line-id-keyed
-    // updateQuantity flow — no match-by-(item, variation, sig), no
-    // permissive-variation papering over placeholder gaps, no chance of
-    // creating a second line from a stale optimistic snapshot.
-    //
-    // History: this used to call cart.addItem(...) so it could share the
-    // pre-v2 cart's debounce key with the item-detail's "+". That whole
-    // debounce mechanism is gone (KRA-108) — the surviving justification
-    // for taking the racy path was the debounce-key sharing, which no
-    // longer applies. Going through bumpQuantity makes the card stepper
-    // symmetric with the drawer stepper and eliminates the rapid-fire
-    // overshoot the customer was seeing on the card surface.
+    // Simple item (no modifiers): bump directly via lineKey. Same path
+    // the cart-drawer stepper uses.
     cart.bumpQuantity(lastLine.id, +1);
   };
 
   const handleDecrement = () => {
     if (!lastLine) return;
-    // Same rule as +: drawer only when there's actual ambiguity
-    // (multiple configs). Single config = silent decrement / remove.
-    if (hasModifiers && matchingLines.length > 1) {
+    // Same rule as +: drawer is the universal manager for customisable
+    // items. Simple items decrement / remove silently.
+    if (hasModifiers && matchingLines.length >= 1) {
       setCustomisationsOpen(true);
       return;
     }
-    // bumpQuantity reads latest qty from the optimistic cart (which is
-    // always fresh because it derives from server + in-flight optimistic
-    // actions every render), so rapid taps don't all compute the same
-    // target. Routes to removeItem internally when next ≤ 0, swapping
-    // the icon back to Trash on the next render.
     cart.bumpQuantity(lastLine.id, -1);
   };
 
