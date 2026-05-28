@@ -59,6 +59,10 @@ export type CartEntry = {
   /** Derived: (base + sum(modifier deltas)) * qty. Kept on the entry
    *  so renders are O(1) per entry. */
   totalPriceCents: number;
+  /** Item photo URL, snapshotted into the local cache so a cold-cache
+   *  refresh still paints the thumbnail before the server response
+   *  lands. NULL when the item has no photo. */
+  imageUrl: string | null;
 };
 
 /**
@@ -128,6 +132,7 @@ export function cartFromSummary(summary: CartSummary): Cart {
       qty: line.quantity,
       lineId: line.id,
       totalPriceCents: line.total_price_cents,
+      imageUrl: line.image_url,
     });
   }
   return {
@@ -163,6 +168,7 @@ export function summaryFromCart(cart: Cart): CartSummary {
       base_price_cents: entry.basePriceCents,
       total_price_cents: entry.totalPriceCents,
       modifiers: entry.modifiers,
+      image_url: entry.imageUrl,
     });
   }
   return {

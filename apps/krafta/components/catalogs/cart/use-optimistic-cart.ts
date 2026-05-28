@@ -51,6 +51,11 @@ export type SetLineTarget = {
   perUnitCents: number;
   modifiers: CartLineItemModifier[];
   modifierSig: string;
+  /** Optional item photo URL. When the caller knows it (catalog card,
+   *  item-detail sheet), thread it through so the optimistic placeholder
+   *  renders the thumbnail immediately instead of flashing a muted
+   *  square until the server response lands. */
+  imageUrl?: string | null;
 };
 
 export type OptimisticCartAction = {
@@ -86,6 +91,10 @@ function buildPlaceholderLine(
     base_price_cents: target.basePriceCents,
     total_price_cents: target.perUnitCents * target.qty,
     modifiers: target.modifiers,
+    // Placeholder doesn't carry an image URL — the server response
+    // (~250ms later) brings it in via the catalog_items join. The cart
+    // drawer renders a muted square in the interim.
+    image_url: target.imageUrl ?? null,
   };
 }
 

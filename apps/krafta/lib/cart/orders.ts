@@ -3,6 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
+import { getItemImageUrl } from "@/lib/catalogs/media";
 import { QR_SOURCE_COOKIE } from "./qr-source-cookie";
 import { ensureCartIdentity, type CartIdentity } from "./identity";
 import { modifierSignature, type ModifierSelection } from "./modifier-signature";
@@ -72,6 +73,10 @@ export type CartLineItem = {
   base_price_cents: number;
   total_price_cents: number;
   modifiers: CartLineItemModifier[];
+  /** Public storage URL for the item's photo, joined from `catalog.items.image_path`.
+   *  NULL when the item has no photo or the line predates the join. Used by the
+   *  cart drawer / placed step to render a thumbnail. */
+  image_url: string | null;
 };
 
 export type CartSummary = {
@@ -470,12 +475,12 @@ export async function getCartSummary(input: {
       .order("created_at", { ascending: true });
     if (linesError) throw new Error(linesError.message);
 
-    const hiddenByItem = await fetchHiddenModifierListsForItems(
-      supabase,
-      lines ?? [],
-    );
+    const [hiddenByItem, imagePathByItem] = await Promise.all([
+      fetchHiddenModifierListsForItems(supabase, lines ?? []),
+      fetchImagePathsForItems(supabase, lines ?? []),
+    ]);
     const lineItems = (lines ?? []).map((row) =>
-      normalizeLineItem(row, hiddenByItem),
+      normalizeLineItem(row, hiddenByItem, imagePathByItem),
     );
     return {
       orderId: input.orderId,
@@ -519,12 +524,12 @@ export async function getCartSummary(input: {
 
   if (linesError) throw new Error(linesError.message);
 
-  const hiddenByItem = await fetchHiddenModifierListsForItems(
-    supabase,
-    lines ?? [],
-  );
+  const [hiddenByItem, imagePathByItem] = await Promise.all([
+    fetchHiddenModifierListsForItems(supabase, lines ?? []),
+    fetchImagePathsForItems(supabase, lines ?? []),
+  ]);
   const lineItems = (lines ?? []).map((row) =>
-    normalizeLineItem(row, hiddenByItem),
+    normalizeLineItem(row, hiddenByItem, imagePathByItem),
   );
   const subtotalCents = lineItems.reduce(
     (sum, line) => sum + line.total_price_cents,
@@ -622,6 +627,7 @@ type RawLineItem = {
 function normalizeLineItem(
   row: RawLineItem,
   hiddenByItem: Map<string, Set<string>>,
+  imagePathByItem: Map<string, string | null>,
 ): CartLineItem {
   // Hidden modifiers are kitchen-only / VAT / surcharge auto-applies. They
   // exist on the DB row (kitchen receipts need them) but must not surface
@@ -657,5 +663,44 @@ function normalizeLineItem(
     base_price_cents: row.base_price_cents,
     total_price_cents: row.total_price_cents,
     modifiers,
+    image_url: getItemImageUrl({
+      image_path:
+        row.catalog_item_id !== null
+          ? imagePathByItem.get(row.catalog_item_id) ?? null
+          : null,
+    }),
   };
+}
+
+// Cross-schema embeds (commerce.order_line_items → public.items) aren't
+// visible in the PostgREST schema cache. Fetch image_path in a separate
+// batched round-trip instead. One query per cart summary, indexed by PK.
+async function fetchImagePathsForItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  lines: ReadonlyArray<{ catalog_item_id: string | null }>,
+): Promise<Map<string, string | null>> {
+  const result = new Map<string, string | null>();
+  const itemIds = Array.from(
+    new Set(
+      lines
+        .map((l) => l.catalog_item_id)
+        .filter((id): id is string => id !== null),
+    ),
+  );
+  if (itemIds.length === 0) return result;
+
+  const { data: items, error } = await supabase
+    .from("items")
+    .select("id, image_path")
+    .in("id", itemIds);
+
+  // Image fetch is best-effort — if RLS rejects or the schema cache is
+  // stale, the cart still renders, just without thumbnails. We log to
+  // server stderr for diagnosis but don't bubble the error to callers.
+  if (error || !items) return result;
+
+  for (const row of items as Array<{ id: string; image_path: string | null }>) {
+    result.set(row.id, row.image_path);
+  }
+  return result;
 }

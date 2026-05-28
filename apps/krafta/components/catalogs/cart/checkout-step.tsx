@@ -258,14 +258,20 @@ export function CartCheckoutStep({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    // flex-1 + min-h-0: drawer-content is a flex column with a 24px
+    // handle as its first child. The default `min-height: auto` on flex
+    // items prevents flex-1 from shrinking below the natural content
+    // height, so the column overflows by the handle's 24px. min-h-0
+    // lets flex-1 cap at the drawer's available height. Without this
+    // fix, the Place order button was clipped ~8px off-screen on mobile.
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* sr-only title satisfies Radix Dialog a11y; the visible UI carries
           its own headings (Back button + per-mode field labels). */}
       <DrawerTitle className="sr-only">{t("checkout.title")}</DrawerTitle>
       <DrawerDescription className="sr-only">
         {t("checkout.title")}
       </DrawerDescription>
-      <div className="flex items-center gap-2 px-4 pb-2 pt-1">
+      <div className="mx-auto flex w-full max-w-md items-center gap-2 px-4 pb-2 pt-1">
         <Button
           type="button"
           size="sm"
@@ -277,7 +283,7 @@ export function CartCheckoutStep({
         </Button>
       </div>
 
-      <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-4">
+      <div className="mx-auto w-full max-w-md flex-1 space-y-6 overflow-y-auto px-4 pb-4">
         {/* When the customer arrived via a table QR, hide the
             pickup/delivery picker entirely — their intent is locked. The
             mode pill in the cart-list header still shows "Dine-in · Table
@@ -546,16 +552,24 @@ export function CartCheckoutStep({
         />
       </div>
 
-      <div className="border-t border-border/60 px-4 pb-6 pt-4">
-        <Button
-          type="button"
-          size="lg"
-          className="w-full"
-          disabled={!canSubmit}
-          onClick={handleSubmit}
-        >
-          {isPlacingOrder ? t("checkout.placing") : t("checkout.place_order")}
-        </Button>
+      {/* Sticky footer with safe-area padding so the CTA never hugs the
+          home-indicator on iOS PWAs. bg-background/80 + backdrop-blur
+          gives the same "fixed bottom row" lift the cart list step uses,
+          so the two steps feel continuous. Inner max-w-md mirrors the
+          scroll content so the CTA reads at the same width on wider
+          drawers (tablet, webviews). */}
+      <div className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <Button
+            type="button"
+            size="lg"
+            className="w-full"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+          >
+            {isPlacingOrder ? t("checkout.placing") : t("checkout.place_order")}
+          </Button>
+        </div>
       </div>
     </div>
   );
