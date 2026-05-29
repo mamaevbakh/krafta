@@ -6,6 +6,7 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { cn } from "@/lib/utils";
 import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
 import { LocaleSwitcher } from "./locale-switcher";
+import { ModeToggle } from "./mode-toggle";
 
 type CatalogHeaderProps = {
   catalogName: string;
@@ -61,7 +62,8 @@ export function CatalogHeaderBasicFreeLogo({
           identity. z-10 keeps it above the banner image; the popover
           itself portals to body so layering inside the rounded card
           doesn't clip the dropdown. */}
-      <div className="absolute right-3 top-3 z-10">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+        <ModeToggle />
         <LocaleSwitcher options={locales} activeLocale={activeLocale} />
       </div>
 

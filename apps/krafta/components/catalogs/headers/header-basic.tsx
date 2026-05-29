@@ -3,6 +3,7 @@ import type { JSX } from "react";
 
 import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
 import { LocaleSwitcher } from "./locale-switcher";
+import { ModeToggle } from "./mode-toggle";
 
 type CatalogHeaderProps = {
   catalogName: string;
@@ -46,7 +47,12 @@ export function CatalogHeader({
           {catalogName}
         </h1>
 
-        <LocaleSwitcher options={locales} activeLocale={activeLocale} />
+        {/* Mode toggle sits LEFT of the locale switcher so the two
+            icon buttons cluster as a single trailing utility group. */}
+        <div className="flex items-center gap-2">
+          <ModeToggle />
+          <LocaleSwitcher options={locales} activeLocale={activeLocale} />
+        </div>
       </div>
 
       {/* Middle: description */}
