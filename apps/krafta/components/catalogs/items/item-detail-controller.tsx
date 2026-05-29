@@ -23,10 +23,19 @@ import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 // is the only render mode. The variant prop on the provider stays for
 // backward compatibility with callers that still pass it (RSC catalog
 // layout, preview page) but is otherwise unused.
-const ItemDetailFullscreen = dynamic(() =>
-  import("@/components/catalogs/items/item-detail-fullscreen-view").then(
-    (module) => module.ItemDetailFullscreen,
-  ),
+//
+// `loading: () => null` overrides the default Suspense fallback (which
+// would otherwise bubble to the page-level loading.tsx and flash the
+// catalog skeleton over the catalog for ~350ms the FIRST time any item
+// detail opens — the chunk fetch is what suspends). A blank fallback
+// means the catalog stays painted while the ~50kB detail chunk lands;
+// the dialog opens in one frame on subsequent clicks once cached.
+const ItemDetailFullscreen = dynamic(
+  () =>
+    import("@/components/catalogs/items/item-detail-fullscreen-view").then(
+      (module) => module.ItemDetailFullscreen,
+    ),
+  { loading: () => null },
 );
 
 // ---- context --------------------------------------------------------------
@@ -220,7 +229,13 @@ export function ItemSheetProvider({
     setCurrentCategorySlug(derivedCategorySlug ?? null);
     setOpen(true);
 
-    window.history.pushState(null, "", pathWithPreview);
+    // `{ __NA: true }` tells Next 16's patched pushState to skip the
+    // ACTION_RESTORE dispatch (see next/dist/client/components/
+    // app-router.js). Without it, every detail open re-renders the
+    // catch-all [...slug] route, which flashes loading.tsx for ~350ms
+    // while the new RSC payload is fetched. We manage the dialog and
+    // URL ourselves; Next.js doesn't need to react.
+    window.history.pushState({ __NA: true }, "", pathWithPreview);
   }, [
     activeCategorySlug,
     buildPath,
@@ -238,7 +253,9 @@ export function ItemSheetProvider({
     setOpen(false);
     setCurrentItemSlug(null);
 
-    window.history.replaceState(null, "", pathWithPreview);
+    // `{ __NA: true }` keeps Next 16 from treating this as a navigation —
+    // see matching note in openItem above.
+    window.history.replaceState({ __NA: true }, "", pathWithPreview);
   }, [activeCategorySlug, buildPath]);
 
   const ctxValue: ItemSheetContextValue = useMemo(
