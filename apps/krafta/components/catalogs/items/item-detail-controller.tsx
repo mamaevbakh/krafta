@@ -310,6 +310,14 @@ export function ItemSheetTrigger({
   // non-trigger zone — taps there mutate the cart instead of opening
   // the item detail. More reliable than e.stopPropagation across
   // React's delegated event chain.
+  //
+  // Portal escape: descendants like the customisations vaul-drawer are
+  // *DOM-portaled to body* but stay React-descendants of this trigger,
+  // so their overlay clicks synthetically bubble up through us and fire
+  // openItem (closing the disambiguation drawer would open the item
+  // detail underneath). Guard with `currentTarget.contains(target)` —
+  // portaled elements aren't DOM descendants, so the check rejects them
+  // even though the React event still bubbles here.
   return (
     <div
       role="button"
@@ -317,12 +325,14 @@ export function ItemSheetTrigger({
       onClick={(e) => {
         const target = e.target as HTMLElement | null;
         if (target?.closest("[data-cart-action]")) return;
+        if (target && !e.currentTarget.contains(target)) return;
         openItem(itemSlug, categorySlug);
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           const target = e.target as HTMLElement | null;
           if (target?.closest("[data-cart-action]")) return;
+          if (target && !e.currentTarget.contains(target)) return;
           e.preventDefault();
           openItem(itemSlug, categorySlug);
         }
