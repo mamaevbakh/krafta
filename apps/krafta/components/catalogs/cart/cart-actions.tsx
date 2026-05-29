@@ -116,6 +116,18 @@ export function CartActions({
 
   const totalQty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
 
+  // Reset the open flag when the last matching line is removed. Without
+  // this, the drawer unmounts directly (we render the Add-pill branch
+  // below when totalQty===0) without going through vaul's
+  // onOpenChange(false), so `customisationsOpen` stays `true`. Next time
+  // the customer re-adds the item the drawer remounts with `open=true`
+  // and the disambig auto-appears as a ghost on top of the catalog.
+  React.useEffect(() => {
+    if (totalQty === 0 && customisationsOpen) {
+      setCustomisationsOpen(false);
+    }
+  }, [totalQty, customisationsOpen]);
+
   // "Most recent" = last in cart-provider's lineItems array (the array
   // is sorted ASC by created_at; optimistic placeholders are appended).
   const lastLine = matchingLines.at(-1);
