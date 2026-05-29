@@ -946,6 +946,19 @@ export function CartProvider({
   }, [flush]);
 
   // ── Sister state (drawer + place + dine-in lock) ─────────────────────
+
+  // Persisted placed-state survives router-refresh remounts. After
+  // placeOrderAction calls revalidatePath(catalogPath), Next 16 auto-
+  // refreshes the router; if the cart-provider remounts in the brief
+  // window where the placed step is showing, the customer would
+  // briefly see "Order placed" flash then snap to the empty cart on
+  // remount. sessionStorage gives us a one-render hop to restore.
+  //
+  // Cleared by resetForNewCart() — i.e., the customer dismissing the
+  // placed step ("Done") or moving back to the cart ("Order more").
+  // Reads happen client-side only; hydration runs in an effect, not
+  // initial state, so SSR HTML stays cart-default and matches.
+  const PLACED_STORAGE_KEY = `krafta.cart.placed.${venueId}`;
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStepInternal] = useState<CartStep>("cart");
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
@@ -961,24 +974,91 @@ export function CartProvider({
     "pickup" | "delivery" | null
   >(null);
 
+  // Restore the placed snapshot on mount if one was persisted in this
+  // session. Without this, the revalidatePath that placeOrderAction
+  // fires can race the placed-step render — the customer sees "Order
+  // placed" for ~50ms, then the provider remounts and the drawer snaps
+  // back to the empty-cart state. The persist + restore pair survives
+  // the remount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem(PLACED_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        placedOrder: PlacedOrderSnapshot;
+        placedOrderId: string;
+        isOpen: boolean;
+      };
+      if (!parsed.placedOrder || !parsed.placedOrderId) return;
+      setPlacedOrder(parsed.placedOrder);
+      setPlacedOrderId(parsed.placedOrderId);
+      setStepInternal("placed");
+      placedRef.current = true;
+      if (parsed.isOpen) setIsOpen(true);
+    } catch {
+      // Corrupted JSON / sessionStorage disabled — silently drop.
+    }
+    // Intentionally only runs once on mount; setters are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the persisted snapshot's `isOpen` in sync with live state so
+  // a swipe-down dismissal on the placed step doesn't get undone by a
+  // subsequent remount restoring the drawer back to open. We only
+  // touch the existing entry; we don't create one if the customer
+  // isn't in the placed flow.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (step !== "placed") return;
+    try {
+      const raw = sessionStorage.getItem(PLACED_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { isOpen?: boolean };
+      if (parsed.isOpen === isOpen) return;
+      sessionStorage.setItem(
+        PLACED_STORAGE_KEY,
+        JSON.stringify({ ...parsed, isOpen }),
+      );
+    } catch {
+      /* noop */
+    }
+  }, [PLACED_STORAGE_KEY, isOpen, step]);
+
   const resetForNewCart = useCallback(() => {
     placedRef.current = false;
     setPlacedOrderId(null);
     setPlacedOrder(null);
     setStepInternal("cart");
-  }, []);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem(PLACED_STORAGE_KEY);
+      } catch {
+        /* noop */
+      }
+    }
+  }, [PLACED_STORAGE_KEY]);
 
   // Wrap setStep so transitions OUT of "placed" automatically clear
   // the placedRef guard. The placed step's "Back to menu" CTA calls
-  // setStep("cart") which routes through this.
+  // setStep("cart") which routes through this. We also clear the
+  // sessionStorage persisted snapshot so a subsequent remount doesn't
+  // pull the customer back into "placed" against their explicit move.
   const setStep = useCallback(
     (next: CartStep) => {
       if (step === "placed" && next !== "placed") {
         placedRef.current = false;
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.removeItem(PLACED_STORAGE_KEY);
+          } catch {
+            /* noop */
+          }
+        }
       }
       setStepInternal(next);
     },
-    [step],
+    [PLACED_STORAGE_KEY, step],
   );
 
   // Wrap close() so closing from the "placed" step resets the
@@ -1145,6 +1225,24 @@ export function CartProvider({
         setStepInternal("placed");
         setServerCart(EMPTY_SUMMARY);
         serverCartRef.current = EMPTY_SUMMARY;
+        // Persist the placed snapshot so a router-refresh remount (Next
+        // 16 auto-refreshes after the revalidatePath fired inside
+        // placeOrderAction) restores the placed step on the next mount
+        // instead of snapping back to the empty cart.
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem(
+              PLACED_STORAGE_KEY,
+              JSON.stringify({
+                placedOrder: snapshot,
+                placedOrderId: result.orderId,
+                isOpen: true,
+              }),
+            );
+          } catch {
+            /* noop */
+          }
+        }
         return { ok: true } as const;
       } catch (err) {
         const rawMessage = err instanceof Error ? err.message : null;
