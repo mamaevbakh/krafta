@@ -18,24 +18,28 @@ import type { ItemDetailVariant } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { ItemDetailSkeleton } from "@/components/catalogs/items/item-detail-skeleton";
 
 // S6 (2026-05-25): the legacy bottom-sheet variant is gone — fullscreen
 // is the only render mode. The variant prop on the provider stays for
 // backward compatibility with callers that still pass it (RSC catalog
 // layout, preview page) but is otherwise unused.
 //
-// `loading: () => null` overrides the default Suspense fallback (which
-// would otherwise bubble to the page-level loading.tsx and flash the
-// catalog skeleton over the catalog for ~350ms the FIRST time any item
-// detail opens — the chunk fetch is what suspends). A blank fallback
-// means the catalog stays painted while the ~50kB detail chunk lands;
-// the dialog opens in one frame on subsequent clicks once cached.
+// `loading: ItemDetailSkeleton` overrides the default Suspense fallback.
+// Without it, the dynamic chunk fetch suspends to the nearest Suspense
+// boundary — the page-level loading.tsx — which flashes the whole
+// CATALOG skeleton over the catalog for ~350ms the FIRST time any item
+// detail opens. The dedicated skeleton renders INSIDE the dialog
+// overlay with the detail's exact shape (image band + title/price +
+// modifier rows + sticky CTA), so the open feels instant and there's
+// zero layout shift when the real component lands. Subsequent opens
+// are one-frame instant once the chunk is cached.
 const ItemDetailFullscreen = dynamic(
   () =>
     import("@/components/catalogs/items/item-detail-fullscreen-view").then(
       (module) => module.ItemDetailFullscreen,
     ),
-  { loading: () => null },
+  { loading: ItemDetailSkeleton },
 );
 
 // ---- context --------------------------------------------------------------
