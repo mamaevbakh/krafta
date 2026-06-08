@@ -45,6 +45,9 @@ export function TelegramFrame() {
     wa.disableVerticalSwipes?.();
 
     const root = document.documentElement;
+    // Marker class so the storefront can hide chrome that Telegram already
+    // provides (its own back/close/share) and offset sticky elements.
+    root.classList.add("tg-app");
     const zero: TgInsets = { top: 0, bottom: 0, left: 0, right: 0 };
     const applyInsets = () => {
       const s = wa.safeAreaInset ?? zero;
@@ -70,6 +73,7 @@ export function TelegramFrame() {
       wa.offEvent?.("safeAreaChanged", applyInsets);
       wa.offEvent?.("contentSafeAreaChanged", applyInsets);
       wa.offEvent?.("fullscreenChanged", applyInsets);
+      root.classList.remove("tg-app");
     };
   }, []);
 

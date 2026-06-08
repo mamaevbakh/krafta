@@ -356,6 +356,9 @@ export function ItemDetailFullscreen({
   return (
     <div
       className="mx-auto flex h-dvh w-full max-w-[480px] flex-col overflow-y-auto bg-background text-foreground md:h-[85dvh] md:rounded-sm md:shadow-xl [&::-webkit-scrollbar]:hidden [scrollbar-width:none]"
+      // In Telegram fullscreen, clear the status bar + floating controls so
+      // the image isn't cut off at the top. 0 on the web / desktop modal.
+      style={{ paddingTop: "var(--tg-safe-top, 0px)" }}
     >
       {/* Floating chrome — Share + Close. The outer sticky div has
           h-0 + no background so it takes ZERO vertical space; the
@@ -366,7 +369,9 @@ export function ItemDetailFullscreen({
           border-white/15) reads cleanly over any image brightness —
           this is the YouTube / Instagram / Apple Photos media-button
           convention. backdrop-blur + shadow keep the floating feel. */}
-      <div className="sticky top-0 z-20 h-0">
+      {/* data-tg-hide: inside Telegram, the native back/close + share controls
+          already cover this, and they'd collide in the same top-right corner. */}
+      <div data-tg-hide className="sticky top-0 z-20 h-0">
         <div className="absolute right-3 top-3 flex items-center gap-2">
           <Button
             type="button"
@@ -498,7 +503,7 @@ export function ItemDetailFullscreen({
           On Close-only mode (no cart context) we fall back to the
           previous Close button.   */}
       <div className="sticky bottom-0 z-10 mt-auto w-full border-t border-border/60 bg-background/95 backdrop-blur">
-        <div className="mx-auto flex w-full flex-col gap-3 px-5 py-4">
+        <div className="mx-auto flex w-full flex-col gap-3 px-5 pt-4 pb-[calc(1rem+var(--tg-safe-bottom,0px))]">
           {cart ? (
             <ItemDetailBottomCta
               cart={cart}

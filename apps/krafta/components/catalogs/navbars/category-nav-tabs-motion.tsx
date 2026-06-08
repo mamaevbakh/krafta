@@ -289,7 +289,9 @@ export function CategoryNavTabsMotion({
 
       <div
         className={cn(
-          "sticky top-0 z-30 -mx-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur",
+          // top offset clears the Telegram status bar + floating controls in
+          // the Mini App (--tg-safe-top); resolves to 0 on the public web.
+          "sticky top-[var(--tg-safe-top,0px)] z-30 -mx-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur",
           isStuck ? "border-b border-border" : "border-b border-transparent",
         )}
       >

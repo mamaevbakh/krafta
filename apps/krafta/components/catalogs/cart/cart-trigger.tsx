@@ -63,6 +63,9 @@ export function CartTrigger({
       size="icon"
       variant="secondary"
       onClick={open}
+      // Inside Telegram the native MainButton ("View cart · total") owns cart
+      // access, so this dock icon is redundant — hide it (see globals.css).
+      data-tg-hide
       aria-label={
         showCount ? `Open cart (${itemCount} items)` : "Open cart"
       }

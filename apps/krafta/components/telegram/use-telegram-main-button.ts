@@ -43,7 +43,18 @@ export function useTelegramMainButton(state: MainButtonState | null) {
     const mb = getWebApp()?.MainButton;
     if (!mb) return;
     if (visible) {
-      mb.setParams({ text, is_visible: true, is_active: !progress });
+      // Brand colors (DESIGN.md zinc primary), NOT Telegram's theme accent
+      // (often purple). Track light/dark so it matches the in-app surfaces.
+      const dark =
+        typeof document !== "undefined" &&
+        document.documentElement.classList.contains("dark");
+      mb.setParams({
+        text,
+        color: dark ? "#fafafa" : "#18181b",
+        text_color: dark ? "#18181b" : "#fafafa",
+        is_visible: true,
+        is_active: !progress,
+      });
       if (progress) mb.showProgress(true);
       else mb.hideProgress();
     } else {

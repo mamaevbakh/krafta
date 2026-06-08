@@ -257,3 +257,11 @@
   --animate-collapsible-up: collapsible-up 200ms ease-out;
   --animate-cart-qty-pulse: cart-qty-pulse 280ms ease-out;
 }
+/* ── Telegram Mini App ──────────────────────────────────────────────────
+   `.tg-app` is set on <html> by TelegramFrame when running inside Telegram.
+   Inside the app, hide chrome that Telegram already provides natively (its
+   own back/close/share controls) so we don't double up or collide with the
+   floating controls. No effect on the public web. */
+.tg-app [data-tg-hide] {
+  display: none !important;
+}
