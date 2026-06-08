@@ -32,10 +32,22 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
   const { data: venue } = await supabase
     .from("venues")
     .select(
-      "name, status, modes_enabled, business_hours, currency, timezone, language_code, address",
+      "id, name, status, modes_enabled, business_hours, currency, timezone, language_code, address",
     )
     .eq("catalog_id", catalog.id)
     .maybeSingle();
+
+  // Current Telegram notification state for the Notifications tab. Select
+  // ONLY non-secret columns — the encrypted token never reaches the
+  // browser. Connectivity is derived from bot_username / chat_id presence.
+  const { data: telegram } = venue
+    ? await supabase
+        .schema("commerce")
+        .from("venue_telegram_settings")
+        .select("bot_username, chat_id, chat_title, is_active")
+        .eq("venue_id", venue.id)
+        .maybeSingle()
+    : { data: null };
 
   return (
     <SettingsPanel
@@ -47,6 +59,17 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       tags={catalog.tags ?? []}
       logoPath={catalog.logo_path ?? ""}
       venue={venue}
+      venueId={venue?.id ?? null}
+      telegram={
+        telegram
+          ? {
+              botUsername: telegram.bot_username,
+              chatConnected: Boolean(telegram.chat_id),
+              chatTitle: telegram.chat_title,
+              isActive: telegram.is_active,
+            }
+          : null
+      }
     />
   );
 }

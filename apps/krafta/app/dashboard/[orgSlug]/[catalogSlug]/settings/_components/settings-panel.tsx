@@ -21,6 +21,7 @@ import { getCatalogAssetUrl } from "@/lib/catalogs/media";
 import { cn } from "@/lib/utils";
 import { updateCatalogSettings } from "./actions";
 import { VenueForm } from "./venue-form";
+import { NotificationsForm, type TelegramInitial } from "./notifications-form";
 
 type VenueRow = {
   name: string;
@@ -42,6 +43,8 @@ type SettingsPanelProps = {
   tags: string[];
   logoPath: string;
   venue: VenueRow | null;
+  venueId: string | null;
+  telegram: TelegramInitial | null;
 };
 
 function normalizeTag(value: string) {
@@ -74,6 +77,8 @@ export function SettingsPanel({
   tags,
   logoPath,
   venue,
+  venueId,
+  telegram,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
@@ -227,6 +232,7 @@ export function SettingsPanel({
               {[
                 { id: "venue", label: "Venue" },
                 { id: "catalog", label: "Catalog" },
+                { id: "notifications", label: "Notifications" },
                 { id: "account", label: "Account" },
                 { id: "organization", label: "Organization" },
               ].map((tab) => (
@@ -261,7 +267,13 @@ export function SettingsPanel({
                     Venue row not found for this catalog. Contact support.
                   </div>
                 )
-              ) : activeTab !== "catalog" ? (
+              ) : activeTab === "notifications" ? (
+                <NotificationsForm
+                  venueId={venueId}
+                  orgId={orgId}
+                  initial={telegram}
+                />
+              ) : activeTab === "account" || activeTab === "organization" ? (
                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                   {activeTab === "account"
                     ? "Account settings are coming soon."
