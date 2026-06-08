@@ -29,6 +29,22 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
+  // OIDC discovery for the Telegram Mini App third-party-auth issuer. Supabase
+  // fetches `<issuer>/.well-known/openid-configuration`; App Router won't route
+  // a literal `.well-known` folder, so map both the OIDC-append and RFC 8414
+  // path-insert forms to the discovery route. See app/api/tma/oidc/route.ts.
+  async rewrites() {
+    return [
+      {
+        source: "/api/tma/.well-known/openid-configuration",
+        destination: "/api/tma/oidc",
+      },
+      {
+        source: "/.well-known/openid-configuration/api/tma",
+        destination: "/api/tma/oidc",
+      },
+    ];
+  },
   images: {
     // Custom loader routes <Image> requests through Supabase's image
     // transformation endpoint (Pro plan feature). Single-hop CDN delivery,
