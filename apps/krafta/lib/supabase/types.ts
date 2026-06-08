@@ -12,7 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-<<<<<<< Updated upstream
   commerce: {
     Tables: {
       customers: {
@@ -2246,8 +2245,6 @@ export type Database = {
       [_ in never]: never
     }
   }
-=======
->>>>>>> Stashed changes
   public: {
     Tables: {
       auth_authorization_codes: {
@@ -2341,10 +2338,7 @@ export type Database = {
           catalog_id: string
           created_at: string
           current_source_hash: string | null
-<<<<<<< Updated upstream
           description: string | null
-=======
->>>>>>> Stashed changes
           id: string
           is_active: boolean
           name: string
@@ -2355,10 +2349,7 @@ export type Database = {
           catalog_id: string
           created_at?: string
           current_source_hash?: string | null
-<<<<<<< Updated upstream
           description?: string | null
-=======
->>>>>>> Stashed changes
           id?: string
           is_active?: boolean
           name: string
@@ -2369,10 +2360,7 @@ export type Database = {
           catalog_id?: string
           created_at?: string
           current_source_hash?: string | null
-<<<<<<< Updated upstream
           description?: string | null
-=======
->>>>>>> Stashed changes
           id?: string
           is_active?: boolean
           name?: string
@@ -4171,10 +4159,7 @@ export type Database = {
         | "modifier"
         | "modifier_list"
         | "category"
-<<<<<<< Updated upstream
         | "catalog"
-=======
->>>>>>> Stashed changes
       translation_job_status:
         | "queued"
         | "running"
@@ -4308,6 +4293,55 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  commerce: {
+    Enums: {
+      applied_scope: ["order", "line_item"],
+      customer_creation_source: [
+        "instant_profile",
+        "dashboard",
+        "guest_checkout",
+        "tg_login",
+      ],
+      delivery_provider: ["merchant", "yandex", "glovo", "other"],
+      fulfillment_line_item_application: ["all", "entry_list"],
+      fulfillment_schedule_type: ["asap", "scheduled"],
+      fulfillment_state: [
+        "proposed",
+        "reserved",
+        "prepared",
+        "completed",
+        "canceled",
+        "failed",
+      ],
+      fulfillment_type: ["dine_in", "pickup", "delivery", "digital"],
+      order_discount_type: ["percentage", "fixed_amount"],
+      order_event_actor: [
+        "customer",
+        "merchant_staff",
+        "system",
+        "krafta_admin",
+      ],
+      order_payment_source: ["cash", "external_card_recorded", "krafta_pay"],
+      order_payment_status: [
+        "pending",
+        "approved",
+        "completed",
+        "canceled",
+        "failed",
+      ],
+      order_refund_status: ["pending", "completed", "failed"],
+      order_source: ["web", "tma", "qr_scan", "dashboard"],
+      order_state: ["draft", "open", "completed", "canceled"],
+      order_tax_type: ["percentage", "fixed"],
+      table_session_status: ["open", "closed"],
+    },
+  },
+  payments: {
+    Enums: {
+      environment: ["test", "live"],
+      org_provider_account_status: ["active", "disabled"],
+    },
+  },
   public: {
     Enums: {
       catalog_item_product_type: [
@@ -4342,10 +4376,7 @@ export const Constants = {
         "modifier",
         "modifier_list",
         "category",
-<<<<<<< Updated upstream
         "catalog",
-=======
->>>>>>> Stashed changes
       ],
       translation_job_status: [
         "queued",
