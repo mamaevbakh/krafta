@@ -1025,6 +1025,48 @@ export type Database = {
         }
         Relationships: []
       }
+      venue_telegram_settings: {
+        Row: {
+          bot_token_encrypted: Json | null
+          bot_username: string | null
+          chat_id: string | null
+          chat_title: string | null
+          connect_code: string | null
+          connect_code_expires_at: string | null
+          created_at: string
+          is_active: boolean
+          org_id: string
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          bot_token_encrypted?: Json | null
+          bot_username?: string | null
+          chat_id?: string | null
+          chat_title?: string | null
+          connect_code?: string | null
+          connect_code_expires_at?: string | null
+          created_at?: string
+          is_active?: boolean
+          org_id: string
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          bot_token_encrypted?: Json | null
+          bot_username?: string | null
+          chat_id?: string | null
+          chat_title?: string | null
+          connect_code?: string | null
+          connect_code_expires_at?: string | null
+          created_at?: string
+          is_active?: boolean
+          org_id?: string
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

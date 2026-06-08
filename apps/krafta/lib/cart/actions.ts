@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { ensureCartIdentity, type CartIdentity } from "./identity";
+import { notifyMerchantOfOrder } from "./order-notification";
 import { withIdempotency } from "./idempotency";
 import {
   getCartSummary as getCartSummaryImpl,
@@ -70,6 +72,23 @@ export async function placeOrderAction(
   input: PlaceOrderInput & { catalogPath: string },
 ): Promise<PlaceOrderResult> {
   const result = await placeOrderImpl(input);
+
+  // Notify the merchant via Telegram. `after()` runs the send AFTER the
+  // response is flushed (the customer's "Order placed" screen renders
+  // immediately, unblocked by the network hop). notifyMerchantOfOrder
+  // is itself fire-and-forget — a Telegram failure never surfaces here.
+  // We narrow back to the mode/fields union so the notifier gets a
+  // well-typed payload.
+  after(async () => {
+    await notifyMerchantOfOrder({
+      orderId: result.orderId,
+      venueId: input.venueId,
+      mode: input.mode,
+      fields: input.fields,
+      tipCents: input.tipCents,
+    } as Parameters<typeof notifyMerchantOfOrder>[0]);
+  });
+
   revalidatePath(input.catalogPath);
   return result;
 }
