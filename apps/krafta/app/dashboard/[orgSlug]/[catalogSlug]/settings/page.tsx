@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { renderQrSvg } from "@/lib/qr/render";
 import { SettingsPanel } from "./_components/settings-panel";
 
 type PageProps = {
@@ -32,7 +33,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
   const { data: venue } = await supabase
     .from("venues")
     .select(
-      "id, name, status, modes_enabled, business_hours, currency, timezone, language_code, address",
+      "id, name, status, modes_enabled, business_hours, currency, timezone, language_code, address, tma_enabled",
     )
     .eq("catalog_id", catalog.id)
     .maybeSingle();
@@ -48,6 +49,19 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
         .eq("venue_id", venue.id)
         .maybeSingle()
     : { data: null };
+
+  // Telegram Mini App: one shared bot hosts every storefront via `startapp`.
+  // The deep link + branded QR are derived from the catalog slug; both are
+  // shown regardless of the enabled toggle so the merchant can preview before
+  // turning it on.
+  const tmaBotUsername =
+    process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null;
+  const tmaDeepLink = tmaBotUsername
+    ? `https://t.me/${tmaBotUsername}?startapp=${catalogSlug}`
+    : null;
+  const tmaQrSvg = tmaDeepLink
+    ? await renderQrSvg(tmaDeepLink, { size: 320 })
+    : null;
 
   return (
     <SettingsPanel
@@ -70,6 +84,12 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
             }
           : null
       }
+      miniApp={{
+        enabled: venue?.tma_enabled ?? false,
+        deepLink: tmaDeepLink,
+        botUsername: tmaBotUsername,
+        qrSvg: tmaQrSvg,
+      }}
     />
   );
 }

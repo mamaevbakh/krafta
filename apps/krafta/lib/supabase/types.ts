@@ -26,6 +26,7 @@ export type Database = {
           org_id: string
           phone: string | null
           preferred_locale: string | null
+          telegram_user_id: string | null
           updated_at: string
           user_id: string | null
           version: number
@@ -41,6 +42,7 @@ export type Database = {
           org_id: string
           phone?: string | null
           preferred_locale?: string | null
+          telegram_user_id?: string | null
           updated_at?: string
           user_id?: string | null
           version?: number
@@ -56,6 +58,7 @@ export type Database = {
           org_id?: string
           phone?: string | null
           preferred_locale?: string | null
+          telegram_user_id?: string | null
           updated_at?: string
           user_id?: string | null
           version?: number
@@ -3914,6 +3917,7 @@ export type Database = {
           slug: string
           status: Database["public"]["Enums"]["venue_status"]
           timezone: string
+          tma_enabled: boolean
           updated_at: string
           version: number
         }
@@ -3932,6 +3936,7 @@ export type Database = {
           slug: string
           status?: Database["public"]["Enums"]["venue_status"]
           timezone?: string
+          tma_enabled?: boolean
           updated_at?: string
           version?: number
         }
@@ -3950,6 +3955,7 @@ export type Database = {
           slug?: string
           status?: Database["public"]["Enums"]["venue_status"]
           timezone?: string
+          tma_enabled?: boolean
           updated_at?: string
           version?: number
         }

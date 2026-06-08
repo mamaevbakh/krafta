@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { updateCatalogSettings } from "./actions";
 import { VenueForm } from "./venue-form";
 import { NotificationsForm, type TelegramInitial } from "./notifications-form";
+import { MiniAppForm, type MiniAppInitial } from "./mini-app-form";
 
 type VenueRow = {
   name: string;
@@ -45,6 +46,7 @@ type SettingsPanelProps = {
   venue: VenueRow | null;
   venueId: string | null;
   telegram: TelegramInitial | null;
+  miniApp: MiniAppInitial;
 };
 
 function normalizeTag(value: string) {
@@ -79,6 +81,7 @@ export function SettingsPanel({
   venue,
   venueId,
   telegram,
+  miniApp,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
@@ -232,6 +235,7 @@ export function SettingsPanel({
               {[
                 { id: "venue", label: "Venue" },
                 { id: "catalog", label: "Catalog" },
+                { id: "miniapp", label: "Mini App" },
                 { id: "notifications", label: "Notifications" },
                 { id: "account", label: "Account" },
                 { id: "organization", label: "Organization" },
@@ -267,6 +271,8 @@ export function SettingsPanel({
                     Venue row not found for this catalog. Contact support.
                   </div>
                 )
+              ) : activeTab === "miniapp" ? (
+                <MiniAppForm venueId={venueId} initial={miniApp} />
               ) : activeTab === "notifications" ? (
                 <NotificationsForm
                   venueId={venueId}
