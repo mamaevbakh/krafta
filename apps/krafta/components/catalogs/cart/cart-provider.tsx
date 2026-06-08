@@ -34,6 +34,7 @@ import type {
 import { modifierSignature } from "@/lib/cart/modifier-signature";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { pinRealtimeAuth } from "@/lib/supabase/realtime";
+import { haptic } from "@/lib/telegram/webapp";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import type { PublicTax } from "@/lib/catalogs/types";
 import {
@@ -714,6 +715,8 @@ export function CartProvider({
         }
         return;
       }
+      // Native tap feedback inside Telegram (no-op on the web).
+      haptic.impact("light");
 
       const resolvedName = name ?? tRef.current("add_to_cart.adding");
       const lineModifiers: CartLineItemModifier[] = (modifiers ?? []).map(
@@ -828,6 +831,7 @@ export function CartProvider({
         (l) => l.id === lineItemId,
       );
       if (!line) return;
+      haptic.selection();
 
       const next = line.quantity + delta;
       if (next <= 0) {
@@ -1223,6 +1227,8 @@ export function CartProvider({
         // screen is showing. resetForNewCart() clears it on dismiss.
         placedRef.current = true;
         setStepInternal("placed");
+        // Success buzz at the climax of the flow (no-op on the web).
+        haptic.notify("success");
         setServerCart(EMPTY_SUMMARY);
         serverCartRef.current = EMPTY_SUMMARY;
         // Persist the placed snapshot so a router-refresh remount (Next

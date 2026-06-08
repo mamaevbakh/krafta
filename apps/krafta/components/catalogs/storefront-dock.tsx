@@ -84,7 +84,10 @@ export function StorefrontDock({
       <div
         className={cn(
           "fixed inset-x-0 bottom-0 z-40 px-4",
-          "pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2",
+          // Telegram fullscreen exposes the home-indicator inset via
+          // --tg-safe-bottom (env() is often 0 in the webview); take the
+          // larger of the two so the dock clears it without double-counting.
+          "pb-[calc(max(env(safe-area-inset-bottom),var(--tg-safe-bottom,0px))+1rem)] pt-2",
         )}
       >
         <div className="mx-auto flex w-full max-w-md items-center justify-center">

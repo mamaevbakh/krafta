@@ -19,6 +19,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { ItemDetailSkeleton } from "@/components/catalogs/items/item-detail-skeleton";
+import { TelegramBackButton } from "@/components/telegram/telegram-back-button";
 
 // S6 (2026-05-25): the legacy bottom-sheet variant is gone — fullscreen
 // is the only render mode. The variant prop on the provider stays for
@@ -45,6 +46,8 @@ const ItemDetailFullscreen = dynamic(
 // ---- context --------------------------------------------------------------
 
 type ItemSheetContextValue = {
+  /** Whether the item-detail overlay is currently open. */
+  isOpen: boolean;
   openItem: (itemSlug: string, categorySlug?: string | null) => void;
   closeItem: () => void;
 };
@@ -264,10 +267,11 @@ export function ItemSheetProvider({
 
   const ctxValue: ItemSheetContextValue = useMemo(
     () => ({
+      isOpen: open,
       openItem,
       closeItem,
     }),
-    [closeItem, openItem],
+    [open, closeItem, openItem],
   );
 
   if (!categoriesWithItems.length) {
@@ -277,6 +281,8 @@ export function ItemSheetProvider({
   return (
     <ItemSheetContext.Provider value={ctxValue}>
       {children}
+      {/* Native Telegram Back control while the detail overlay is open. */}
+      <TelegramBackButton active={open} onBack={closeItem} />
       {open && currentItem && (
         <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:p-6">
           <ItemDetailFullscreen
@@ -371,4 +377,9 @@ export function useItemSheet() {
     throw new Error("ItemSheet components must be used inside ItemSheetProvider.");
   }
   return ctx;
+}
+
+/** Null-safe variant for components that may render outside the provider. */
+export function useOptionalItemSheet(): ItemSheetContextValue | null {
+  return useContext(ItemSheetContext);
 }

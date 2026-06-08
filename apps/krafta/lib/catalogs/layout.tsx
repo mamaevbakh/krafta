@@ -30,6 +30,8 @@ import {
 } from "@/components/catalogs/cart";
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
+import { TelegramFrame } from "@/components/telegram/telegram-frame";
+import { TelegramCartButton } from "@/components/telegram/telegram-cart-button";
 import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
 import { getCartSummary, type CartSummary } from "@/lib/cart/orders";
 
@@ -150,7 +152,15 @@ export async function CatalogLayout({
         itemDetailVariant={resolvedLayout.itemDetailVariant}
         currencySettings={resolvedCurrency}
       >
-        <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
+        {/* Telegram Mini App frame: fullscreen + safe-area vars + swipe
+            guard. No-ops on the public web. */}
+        <TelegramFrame />
+        <main
+          className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 pb-8 text-foreground"
+          // In Telegram fullscreen the content runs edge-to-edge, so clear
+          // the status bar + floating controls. var resolves to 0 on the web.
+          style={{ paddingTop: "calc(2rem + var(--tg-safe-top, 0px))" }}
+        >
           <Header
             catalogName={catalog.name}
             catalog={catalog}
@@ -278,6 +288,9 @@ export async function CatalogLayout({
           categoriesWithItems={categoriesWithItems}
           currencySettings={resolvedCurrency}
         />
+        {/* Drives the native MainButton "View cart" + closing confirmation
+            from cart state inside Telegram. No-ops on the web / cart-off. */}
+        <TelegramCartButton currencySettings={resolvedCurrency} />
       </ItemSheetProvider>
     </StorefrontLocaleProvider>
   );

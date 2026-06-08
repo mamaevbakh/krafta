@@ -18,6 +18,7 @@ import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
+import { TelegramBackButton } from "@/components/telegram/telegram-back-button";
 
 import { CartStepper } from "./cart-stepper";
 import { useCart } from "./cart-provider";
@@ -32,13 +33,19 @@ type CartDrawerProps = {
 export function CartDrawer({
   currencySettings = defaultCurrencySettings,
 }: CartDrawerProps) {
-  const { isOpen, setOpen, step } = useCart();
+  const { isOpen, setOpen, step, setStep, close } = useCart();
 
   return (
     // shouldScaleBackground lets vaul transform the [vaul-drawer-wrapper]
     // element (set in app/[...slug]/layout.tsx) — the page tucks behind
     // the drawer with a small inset + rounded corners, iOS-card-stack feel.
     <Drawer open={isOpen} onOpenChange={setOpen} shouldScaleBackground>
+      {/* Telegram Back control: on checkout step go back to the list,
+          otherwise close the drawer (close() also resets the placed step). */}
+      <TelegramBackButton
+        active={isOpen}
+        onBack={() => (step === "checkout" ? setStep("cart") : close())}
+      />
       <DrawerContent
         className={cn(
           "data-[vaul-drawer-direction=bottom]:max-h-[92dvh]",

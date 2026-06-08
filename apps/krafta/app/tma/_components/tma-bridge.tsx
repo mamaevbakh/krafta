@@ -30,6 +30,8 @@ type TelegramWebApp = {
   initDataUnsafe?: { start_param?: string };
   ready: () => void;
   expand?: () => void;
+  requestFullscreen?: () => void;
+  isVersionAtLeast?: (version: string) => boolean;
   disableVerticalSwipes?: () => void;
 };
 
@@ -98,7 +100,17 @@ export function TmaBridge() {
 
       try {
         webApp.ready();
-        webApp.expand?.();
+        // Fullscreen from the splash on (8.0+), else plain expand. The
+        // storefront's TelegramFrame re-affirms this after navigation.
+        if (webApp.isVersionAtLeast?.("8.0") && webApp.requestFullscreen) {
+          try {
+            webApp.requestFullscreen();
+          } catch {
+            webApp.expand?.();
+          }
+        } else {
+          webApp.expand?.();
+        }
         webApp.disableVerticalSwipes?.();
       } catch {
         /* viewport niceties are best-effort */
