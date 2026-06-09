@@ -28,6 +28,7 @@ import {
   CartDrawer,
   CartProvider,
 } from "@/components/catalogs/cart";
+import { TableCheck } from "@/components/catalogs/cart/table-check";
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
 import { TelegramFrame } from "@/components/telegram/telegram-frame";
@@ -396,6 +397,13 @@ export async function CatalogLayout({
     >
       {tree}
       <CartDrawer currencySettings={resolvedCurrency} />
+      {/* Dine-in running check (ADR 0004 / KRA-116): persistent table-tab bar
+          + Table Check sheet. No-ops outside an active dine-in session. */}
+      <TableCheck
+        orgId={venue.org_id}
+        venueId={venue.id}
+        currencySettings={resolvedCurrency}
+      />
     </CartProvider>
   );
 }
