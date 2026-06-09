@@ -93,10 +93,11 @@ export function StorefrontDock({
         <div className="mx-auto flex w-full max-w-md items-center justify-center">
           <div
             className={cn(
-              // Outer dock pill: rounded-full, subtle border + shadow,
-              // frosted-glass background. Padding p-1 gives breathing
-              // room around the inner h-10 children.
-              "flex items-center gap-1 rounded-full border border-border bg-background/85 p-1 shadow-lg backdrop-blur-xl",
+              // Outer dock pill: clean frosted-glass surface. Border + strong
+              // backdrop blur do the "floating" separation — no decorative
+              // shadow (DESIGN.md: borders + weight, not shadows). p-1 gives
+              // breathing room around the inner h-10 children.
+              "flex items-center gap-1 rounded-full border border-border bg-background/75 p-1 backdrop-blur-2xl",
               "w-full",
             )}
           >
