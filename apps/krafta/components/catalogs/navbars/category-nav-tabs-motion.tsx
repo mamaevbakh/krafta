@@ -309,9 +309,18 @@ export function CategoryNavTabsMotion({
           isStuck ? "border-b border-border" : "border-b border-transparent",
         )}
       >
-        {/* iOS-style progressive blur behind the tabs, fading out below — no
-            hard edge. Replaces the old uniform backdrop-blur. */}
-        <ProgressiveBlur className="absolute inset-x-0 top-0 h-[calc(100%+1.25rem)]" />
+        {/* Chrome surface behind the tabs, fading out below. When stuck it
+            extends UP through the safe area to the very top of the screen
+            (behind the Telegram status bar + controls); at rest it only backs
+            the tab strip. (--tg-safe-top resolves to 0 on the web.) */}
+        <ProgressiveBlur
+          className={cn(
+            "absolute inset-x-0",
+            isStuck
+              ? "top-[calc(-1_*_var(--tg-safe-top,0px))] h-[calc(100%_+_var(--tg-safe-top,0px)_+_1rem)]"
+              : "top-0 h-[calc(100%_+_1rem)]",
+          )}
+        />
         <nav
           ref={navRef}
           className="relative z-10 no-scrollbar flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
