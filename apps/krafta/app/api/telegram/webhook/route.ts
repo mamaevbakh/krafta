@@ -12,6 +12,11 @@
  * reject anything that doesn't match TELEGRAM_WEBHOOK_SECRET — that's the
  * only caller that should ever hit this route.
  *
+ * Ops note: TELEGRAM_WEBHOOK_SECRET must exist in EVERY Vercel environment
+ * that serves the app — Production, Preview, AND the `staging` custom env
+ * behind dev.krafta.org. If it's missing in the serving env, `expected` is
+ * undefined and every Telegram call 401s (cost us a debugging session).
+ *
  * Always returns 200 quickly (Telegram retries non-200 with backoff).
  * All work is best-effort; we never surface errors to Telegram.
  *
