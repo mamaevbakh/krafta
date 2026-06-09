@@ -205,15 +205,37 @@ export function NotificationsForm({
               {pending ? <Spinner className="size-4" /> : "Connect order alerts"}
             </Button>
             <FieldDescription>
-              Connect a private Telegram chat or a team group. You and your
-              staff get every order instantly — customers never see it.
+              Connect a Telegram group for your team — or a private chat
+              just for you. Every order arrives instantly; customers never
+              see it.
             </FieldDescription>
           </Field>
         ) : (
-          // ── Code minted — show the two ways to connect ─────────────
+          // ── Code minted — pick who receives the orders ────────────
           <>
+            <FieldDescription>
+              Where should orders land? Pick one.
+            </FieldDescription>
+
             <Field>
-              <FieldLabel>1 · Personal chat (fastest)</FieldLabel>
+              <FieldLabel>My team</FieldLabel>
+              <FieldDescription>
+                Add{" "}
+                <span className="font-mono">@{connect.botUsername}</span>{" "}
+                to your team&rsquo;s Telegram group, then send this message
+                in the group:
+              </FieldDescription>
+              <code className="mt-1 inline-block w-fit rounded-md border bg-muted px-3 py-1.5 font-mono text-sm">
+                /connect {connect.code}
+              </code>
+              <FieldDescription>
+                Everyone in the group sees every order. Best when more than
+                one person works the counter.
+              </FieldDescription>
+            </Field>
+
+            <Field>
+              <FieldLabel>Just me</FieldLabel>
               <Button asChild className="w-fit">
                 <a
                   href={connect.deepLink}
@@ -224,20 +246,9 @@ export function NotificationsForm({
                 </a>
               </Button>
               <FieldDescription>
-                Opens the bot — tap <b>Start</b>. Orders arrive in your DM.
+                Tap <b>Start</b> — orders arrive in your private chat with
+                the bot. Best for a one-person shop.
               </FieldDescription>
-            </Field>
-
-            <Field>
-              <FieldLabel>2 · Team group (recommended)</FieldLabel>
-              <FieldDescription>
-                Add{" "}
-                <span className="font-mono">@{connect.botUsername}</span> to
-                your &ldquo;Orders&rdquo; group, then send this in the group:
-              </FieldDescription>
-              <code className="mt-1 inline-block w-fit rounded-md border bg-muted px-3 py-1.5 font-mono text-sm">
-                /connect {connect.code}
-              </code>
             </Field>
 
             <Field>
