@@ -59,6 +59,10 @@ export function ModeToggle({ className }: ModeToggleProps) {
           size="icon"
           variant="outline"
           aria-label="Toggle theme"
+          // Inside the Mini App the theme follows Telegram automatically
+          // (TelegramThemeSync), so this manual control is redundant — hide
+          // it in-app via .tg-app [data-tg-hide]. Stays visible on the web.
+          data-tg-hide
           className={cn(
             // Match LocaleSwitcher / cart-trigger tonality so the three
             // icon buttons read as siblings in the same visual family.
