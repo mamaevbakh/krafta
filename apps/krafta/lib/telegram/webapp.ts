@@ -41,6 +41,8 @@ type TgBackButton = {
 export type TelegramWebApp = {
   initData: string;
   version: string;
+  colorScheme?: "light" | "dark";
+  themeParams?: Record<string, string>;
   isFullscreen?: boolean;
   ready: () => void;
   expand?: () => void;
@@ -49,6 +51,7 @@ export type TelegramWebApp = {
   disableVerticalSwipes?: () => void;
   enableClosingConfirmation?: () => void;
   disableClosingConfirmation?: () => void;
+  openTelegramLink?: (url: string) => void;
   isVersionAtLeast?: (version: string) => boolean;
   onEvent?: (event: string, cb: () => void) => void;
   offEvent?: (event: string, cb: () => void) => void;
@@ -79,6 +82,30 @@ export function isTelegramMiniApp(): boolean {
 
 export function tgVersionAtLeast(version: string): boolean {
   return getWebApp()?.isVersionAtLeast?.(version) ?? false;
+}
+
+/** Telegram's current light/dark scheme, or null when off-Telegram. */
+export function getColorScheme(): "light" | "dark" | null {
+  const s = getWebApp()?.colorScheme;
+  return s === "light" || s === "dark" ? s : null;
+}
+
+/**
+ * Open Telegram's native share sheet to forward `url` (with an optional
+ * caption) into a chat or channel. No-op off-Telegram / on clients without
+ * openTelegramLink support.
+ */
+export function shareToChat(url: string, text?: string): void {
+  const wa = getWebApp();
+  if (!wa?.openTelegramLink) return;
+  const share =
+    `https://t.me/share/url?url=${encodeURIComponent(url)}` +
+    (text ? `&text=${encodeURIComponent(text)}` : "");
+  try {
+    wa.openTelegramLink(share);
+  } catch {
+    /* unsupported client */
+  }
 }
 
 /** Fire-and-forget haptics; no-ops off-Telegram or on clients without support. */

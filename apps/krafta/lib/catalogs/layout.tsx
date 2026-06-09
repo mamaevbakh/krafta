@@ -31,10 +31,12 @@ import {
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
 import { TelegramFrame } from "@/components/telegram/telegram-frame";
+import { TelegramThemeSync } from "@/components/telegram/telegram-theme-sync";
 import { TelegramSafeAreaBlur } from "@/components/telegram/telegram-safe-area-blur";
 import { TelegramNavTitle } from "@/components/telegram/telegram-nav-title";
 import { TelegramCartButton } from "@/components/telegram/telegram-cart-button";
 import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
+import { TmaShareProvider } from "@/lib/telegram/tma-share-context";
 import { getCartSummary, type CartSummary } from "@/lib/cart/orders";
 
 type Props = {
@@ -121,6 +123,15 @@ export async function CatalogLayout({
 
   const logoUrl = getCatalogLogoUrl(catalog);
 
+  // Telegram share-to-chat (KRA-50): the shop's Mini App deep link, forwarded
+  // by the header's TMA-only share button. null when no platform bot is set
+  // (the button then never renders).
+  const tgShareBot =
+    process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") || null;
+  const tmaShareUrl = tgShareBot
+    ? `https://t.me/${tgShareBot}?startapp=${catalog.slug}`
+    : null;
+
   // ✅ from normalized layout.itemCard
   const itemCardColumns = resolvedLayout.itemCard.columns;
   const itemImageAspectRatio = resolvedLayout.itemCard.aspectRatio;
@@ -143,6 +154,13 @@ export async function CatalogLayout({
       activeLocale={activeLocale}
       defaultLocale={defaultLocale}
     >
+      <TmaShareProvider
+        value={
+          tmaShareUrl
+            ? { deepLink: tmaShareUrl, shopName: catalog.name }
+            : null
+        }
+      >
       <ItemSheetProvider
         key={`${activeCategorySlugResolved ?? "none"}:${activeItemSlug ?? "none"}`}
         categoriesWithItems={categoriesWithItems}
@@ -157,6 +175,9 @@ export async function CatalogLayout({
         {/* Telegram Mini App frame: fullscreen + safe-area vars + swipe
             guard. No-ops on the public web. */}
         <TelegramFrame />
+        {/* Sync light/dark to the user's Telegram theme (mode only — keeps
+            Krafta's zinc palette per DESIGN.md). No-op on web. */}
+        <TelegramThemeSync />
         {/* Frosted strip over the Telegram safe-area so content scrolling
             behind the floating controls is blurred, not sharp. 0px on web. */}
         <TelegramSafeAreaBlur />
@@ -304,6 +325,7 @@ export async function CatalogLayout({
             swipe-down doesn't drop an order. No-ops on the web / cart-off. */}
         <TelegramCartButton />
       </ItemSheetProvider>
+      </TmaShareProvider>
     </StorefrontLocaleProvider>
   );
 

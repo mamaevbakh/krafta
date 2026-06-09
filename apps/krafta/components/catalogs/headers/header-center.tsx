@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
 import { LocaleSwitcher } from "./locale-switcher";
 import { ModeToggle } from "./mode-toggle";
+import { TelegramShareButton } from "@/components/telegram/telegram-share-button";
 
 type CatalogHeaderCenterProps = {
   catalogName: string;
@@ -32,6 +33,7 @@ export function CatalogHeaderCenter({
       <div className="absolute right-0 top-0 flex items-center gap-2">
         <ModeToggle />
         <LocaleSwitcher options={locales} activeLocale={activeLocale} />
+        <TelegramShareButton />
       </div>
 
       {logoUrl && (
