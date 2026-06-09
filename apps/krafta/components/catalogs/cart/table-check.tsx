@@ -57,6 +57,7 @@ export function TableCheck({
   const [check, setCheck] = React.useState<RunningCheck | null>(null);
   const [open, setOpen] = React.useState(false);
   const [requesting, setRequesting] = React.useState(false);
+  const [billRequestedLocal, setBillRequestedLocal] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     if (!tableLabel) {
@@ -86,15 +87,18 @@ export function TableCheck({
   }
 
   const money = (cents: number) => formatPriceCents(cents, currencySettings);
-  const billRequested = Boolean(check.billRequestedAt);
+  const billRequested = Boolean(check.billRequestedAt) || billRequestedLocal;
 
   const onAskBill = async () => {
     if (requesting || billRequested) return;
     setRequesting(true);
     haptic.impact("medium");
     try {
-      await requestBillAction({ orgId, venueId, tableLabel });
-      await refresh();
+      const res = await requestBillAction({ orgId, venueId, tableLabel });
+      // Flip immediately on success — don't make the guest wait on a second
+      // full check fetch. Sync server state in the background.
+      if (res.ok) setBillRequestedLocal(true);
+      void refresh();
     } finally {
       setRequesting(false);
     }
@@ -212,7 +216,11 @@ export function TableCheck({
                     disabled={requesting || billRequested}
                     onClick={onAskBill}
                   >
-                    {billRequested ? "Счёт запрошен" : "Попросить счёт"}
+                    {billRequested
+                      ? "Счёт запрошен"
+                      : requesting
+                        ? "Запрашиваем…"
+                        : "Попросить счёт"}
                   </Button>
                 </div>
               </div>
