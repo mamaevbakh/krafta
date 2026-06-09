@@ -13,7 +13,6 @@ import type { CategoryNavProps } from "@/lib/catalogs/layout-registry";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
-import { ProgressiveBlur } from "@/components/catalogs/progressive-blur";
 
 const TOP_OFFSET_PX = 60;
 const ALL_SCROLL_Y = 100;
@@ -305,25 +304,16 @@ export function CategoryNavTabsDashboard({
         className={cn(
           // top offset clears the Telegram status bar + floating controls in
           // the Mini App (--tg-safe-top); resolves to 0 on the public web.
-          "sticky top-[var(--tg-safe-top,0px)] z-30 -mx-4",
+          // Solid surface — tabs stay crisp over product photos; the bottom
+          // border does the separation when stuck (DESIGN.md: borders, not
+          // effects). --tg-safe-top resolves to 0 on the web.
+          "sticky top-[var(--tg-safe-top,0px)] z-30 -mx-4 bg-background dark:bg-secondary-background",
           isStuck ? "border-b border-border" : "border-b border-transparent",
         )}
       >
-        {/* Chrome surface behind the tabs, fading out below. When stuck it
-            extends UP through the safe area to the very top of the screen
-            (behind the Telegram status bar + controls); at rest it only backs
-            the tab strip. (--tg-safe-top resolves to 0 on the web.) */}
-        <ProgressiveBlur
-          className={cn(
-            "absolute inset-x-0",
-            isStuck
-              ? "top-[calc(-1_*_var(--tg-safe-top,0px))] h-[calc(100%_+_var(--tg-safe-top,0px)_+_1rem)]"
-              : "top-0 h-[calc(100%_+_1rem)]",
-          )}
-        />
         <nav
           ref={navRef}
-          className="relative z-10 no-scrollbar flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
+          className="no-scrollbar flex gap-2 overflow-x-auto pb-2 pt-2 px-4"
         >
           {[
             {

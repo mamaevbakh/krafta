@@ -48,8 +48,10 @@ export function TelegramNavTitle({
       aria-hidden
       className={cn(
         // Centered between Telegram's leading/trailing controls; px keeps the
-        // title clear of them, truncating long names.
-        "pointer-events-none fixed inset-x-0 z-40 flex items-center justify-center gap-1.5 px-28",
+        // title clear of them, truncating long names. overflow-hidden clips the
+        // text to the inset height — which is 0 off-Telegram, so the title is
+        // invisible on the public web (no leaking above the navbar).
+        "pointer-events-none fixed inset-x-0 z-40 flex items-center justify-center gap-1.5 overflow-hidden px-28",
         "transition-opacity duration-200 ease-out",
         revealed ? "opacity-100" : "opacity-0",
       )}

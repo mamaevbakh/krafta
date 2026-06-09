@@ -21,9 +21,10 @@ export function TelegramSafeAreaBlur({ className }: { className?: string }) {
     <div
       aria-hidden
       className={cn(
-        // Match the category-nav surface (bg-background/92 + 8px blur) so the
-        // strip and the nav read as one continuous bar where they meet.
-        "pointer-events-none fixed inset-x-0 top-0 z-40 bg-background/92 backdrop-blur",
+        // Solid scrim matching the category-nav surface, so the strip and the
+        // nav read as one continuous bar (no blur — content scrolling behind
+        // Telegram's controls is hidden, not frosted).
+        "pointer-events-none fixed inset-x-0 top-0 z-40 bg-background dark:bg-secondary-background",
         className,
       )}
       style={{ height: "var(--tg-safe-top, 0px)" }}
