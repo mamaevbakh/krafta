@@ -286,6 +286,11 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     .single();
   if (fulfillmentError) throw new Error(fulfillmentError.message);
 
+  // KRA-44 foundation: promote the checkout phone onto the customer row so it
+  // becomes a durable identity handle (the cross-surface phone bridge keys off
+  // it). Captured per-mode below; written once after the fulfillment branch.
+  let customerPhone: string | null = null;
+
   if (input.mode === "dine_in") {
     if (!tableSessionId || !guestSessionId) {
       throw new Error("Dine-in fulfillment requires table + guest sessions.");
@@ -314,6 +319,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       normalizedPickupPhone = normalizeUzPhone(recipientPhone);
       if (!normalizedPickupPhone) throw new Error("phone_invalid");
     }
+    customerPhone = normalizedPickupPhone;
     const { error } = await supabase
       .schema("commerce")
       .from("fulfillment_pickup_details")
@@ -337,6 +343,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     // Phone is required for delivery — courier needs to call.
     const normalizedDeliveryPhone = normalizeUzPhone(recipientPhone);
     if (!normalizedDeliveryPhone) throw new Error("phone_invalid");
+    customerPhone = normalizedDeliveryPhone;
 
     const { error } = await supabase
       .schema("commerce")
@@ -352,6 +359,20 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         placed_at: new Date().toISOString(),
       });
     if (error) throw new Error(error.message);
+  }
+
+  // Promote the checkout phone onto the customer (KRA-44 foundation). Only
+  // fills an empty phone — never clobbers a number the customer already has,
+  // so the order-for-a-friend case can't overwrite their own. Best-effort:
+  // the order is already placed, so a failed promotion must not fail checkout.
+  // The full (org, phone) dedup/merge lands with the identity-links epic.
+  if (customerPhone) {
+    await supabase
+      .schema("commerce")
+      .from("customers")
+      .update({ phone: customerPhone })
+      .eq("id", customerId)
+      .is("phone", null);
   }
 
   // ---- Taxes / service fees + payments (KRA-63) ---------------------------
