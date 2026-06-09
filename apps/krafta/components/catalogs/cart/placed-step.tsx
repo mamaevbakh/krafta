@@ -67,7 +67,7 @@ export function CartPlacedStep({
           </div>
         </div>
         <div className="border-t border-border bg-background/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <Button type="button" size="lg" className="w-full" onClick={close}>
+          <Button type="button" size="xl" className="w-full" onClick={close}>
             {t("placed.done")}
           </Button>
         </div>
@@ -151,14 +151,14 @@ export function CartPlacedStep({
             order. */}
         <Button
           type="button"
-          size="lg"
+          size="xl"
           variant="outline"
           className="flex-1"
           onClick={() => setStep("cart")}
         >
           {t("placed.order_more")}
         </Button>
-        <Button type="button" size="lg" className="flex-1" onClick={close}>
+        <Button type="button" size="xl" className="flex-1" onClick={close}>
           {t("placed.done")}
         </Button>
       </div>

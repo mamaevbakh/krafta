@@ -125,7 +125,7 @@ export function StorefrontDock({
                 // The chat-composer reference had both elements as
                 // visually distinct affordances; we match by giving
                 // the search slot its own bg-muted surface too.
-                "flex h-10 flex-1 cursor-pointer items-center gap-2 rounded-full bg-muted px-4",
+                "flex h-12 flex-1 cursor-pointer items-center gap-2 rounded-full bg-muted px-4",
                 "text-sm text-muted-foreground transition-colors",
                 "hover:bg-muted/70",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",

@@ -300,9 +300,9 @@ export async function CatalogLayout({
           categoriesWithItems={categoriesWithItems}
           currencySettings={resolvedCurrency}
         />
-        {/* Drives the native MainButton "View cart" + closing confirmation
-            from cart state inside Telegram. No-ops on the web / cart-off. */}
-        <TelegramCartButton currencySettings={resolvedCurrency} />
+        {/* Arms Telegram's closing confirmation while the cart has items, so a
+            swipe-down doesn't drop an order. No-ops on the web / cart-off. */}
+        <TelegramCartButton />
       </ItemSheetProvider>
     </StorefrontLocaleProvider>
   );

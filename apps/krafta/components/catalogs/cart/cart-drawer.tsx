@@ -168,7 +168,7 @@ function CartListStep({
             />
             <Button
               type="button"
-              size="lg"
+              size="xl"
               className="mt-3 w-full"
               onClick={() => setStep("checkout")}
             >

@@ -562,7 +562,7 @@ export function CartCheckoutStep({
         <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           <Button
             type="button"
-            size="lg"
+            size="xl"
             className="w-full"
             disabled={!canSubmit}
             onClick={handleSubmit}

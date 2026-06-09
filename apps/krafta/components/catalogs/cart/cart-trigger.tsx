@@ -63,9 +63,6 @@ export function CartTrigger({
       size="icon"
       variant="secondary"
       onClick={open}
-      // Inside Telegram the native MainButton ("View cart · total") owns cart
-      // access, so this dock icon is redundant — hide it (see globals.css).
-      data-tg-hide
       aria-label={
         showCount ? `Open cart (${itemCount} items)` : "Open cart"
       }
@@ -75,7 +72,7 @@ export function CartTrigger({
         // instead of reading as a bright sticker pasted on the dark
         // pill. The badge does the work of attention-grabbing; the
         // button doesn't need to scream.
-        "relative h-10 w-10 rounded-full bg-muted text-foreground hover:bg-muted/80",
+        "relative h-12 w-12 rounded-full bg-muted text-foreground hover:bg-muted/80",
         className,
       )}
     >
