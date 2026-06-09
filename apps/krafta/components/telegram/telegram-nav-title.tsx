@@ -54,7 +54,9 @@ export function TelegramNavTitle({
         revealed ? "opacity-100" : "opacity-0",
       )}
       style={{
-        top: "var(--tg-safe-area-device, 0px)",
+        // Telegram seats its controls a bit below the inset's dead center, so
+        // nudge the title down to line up. Tune this px value to taste.
+        top: "calc(var(--tg-safe-area-device, 0px) + 6px)",
         height: "var(--tg-content-safe-top, 0px)",
       }}
     >
