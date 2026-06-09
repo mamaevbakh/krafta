@@ -296,7 +296,7 @@ export function CategoryNavTabsDashboard({
   return (
     <>
       <div
-        id="catalog-category-nav-sentinel "
+        id="catalog-category-nav-sentinel"
         aria-hidden="true"
         className="h-px"
       />

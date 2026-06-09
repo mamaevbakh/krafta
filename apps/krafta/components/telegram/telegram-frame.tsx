@@ -62,6 +62,10 @@ export function TelegramFrame() {
         "--tg-safe-right",
         `${(s.right ?? 0) + (c.right ?? 0)}px`,
       );
+      // Split insets so a nav title can sit exactly in Telegram's controls row:
+      // device = status-bar height, content-top = the floating-controls strip.
+      root.style.setProperty("--tg-safe-area-device", `${s.top ?? 0}px`);
+      root.style.setProperty("--tg-content-safe-top", `${c.top ?? 0}px`);
     };
 
     applyInsets();

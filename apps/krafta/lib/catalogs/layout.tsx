@@ -32,6 +32,7 @@ import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
 import { TelegramFrame } from "@/components/telegram/telegram-frame";
 import { TelegramSafeAreaBlur } from "@/components/telegram/telegram-safe-area-blur";
+import { TelegramNavTitle } from "@/components/telegram/telegram-nav-title";
 import { TelegramCartButton } from "@/components/telegram/telegram-cart-button";
 import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
 import { getCartSummary, type CartSummary } from "@/lib/cart/orders";
@@ -159,6 +160,9 @@ export async function CatalogLayout({
         {/* Frosted strip over the Telegram safe-area so content scrolling
             behind the floating controls is blurred, not sharp. 0px on web. */}
         <TelegramSafeAreaBlur />
+        {/* Shop name in Telegram's controls row, revealed once the hero header
+            scrolls past (#tma-title-sentinel). No-op on web. */}
+        <TelegramNavTitle name={catalog.name} logoUrl={logoUrl} />
         <main
           className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 pb-8 text-foreground"
           // In Telegram fullscreen the content runs edge-to-edge, so clear
@@ -175,6 +179,10 @@ export async function CatalogLayout({
             locales={locales}
             activeLocale={activeLocale}
           />
+
+          {/* Reveal trigger for the Telegram nav title: once this scrolls
+              past the top, the shop name fades into the controls row. */}
+          <div id="tma-title-sentinel" aria-hidden className="h-px" />
 
           {CategoryNav && (
             <CategoryNav
