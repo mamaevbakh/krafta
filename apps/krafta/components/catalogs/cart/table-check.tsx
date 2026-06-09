@@ -107,8 +107,11 @@ export function TableCheck({
   return (
     <>
       {/* Persistent table-tab bar — sits just above the storefront dock so the
-          running total is never lost while the guest browses for more. */}
-      <div className="fixed inset-x-0 z-40 px-4 bottom-[calc(5rem+max(env(safe-area-inset-bottom),var(--tg-safe-bottom,0px)))]">
+          running total is never lost while the guest browses for more. The 6rem
+          base clears the dock's ~82px content height (5rem overlapped it by 2px)
+          with a ~14px gap; the safe-area term keeps that gap on notched devices,
+          where the dock's own padding grows by the same amount. */}
+      <div className="fixed inset-x-0 z-40 px-4 bottom-[calc(6rem+max(env(safe-area-inset-bottom),var(--tg-safe-bottom,0px)))]">
         <button
           type="button"
           onClick={() => {
