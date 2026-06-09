@@ -71,6 +71,7 @@ function loadTelegramSdk(): Promise<TelegramWebApp | null> {
 type Phase =
   | { kind: "loading" }
   | { kind: "outside" }
+  | { kind: "no_shop" }
   | { kind: "error" };
 
 export function TmaBridge() {
@@ -128,18 +129,33 @@ export function TmaBridge() {
         });
 
         if (!res.ok) {
-          if (!cancelled) setPhase({ kind: "error" });
+          // 409 = no start_param + no remembered shop (a bare reopen with no
+          // history). Show a friendly empty state, not an error.
+          if (!cancelled) {
+            setPhase({ kind: res.status === 409 ? "no_shop" : "error" });
+          }
           return;
         }
 
-        const data = (await res.json()) as { catalog_slug?: string };
+        const data = (await res.json()) as {
+          catalog_slug?: string;
+          mode?: string | null;
+          table?: string | null;
+        };
         if (!data.catalog_slug) {
           if (!cancelled) setPhase({ kind: "error" });
           return;
         }
 
+        // Carry QR-decoded fulfillment context into the storefront URL so the
+        // existing dine-in / pickup / delivery cart logic kicks in unchanged.
+        const params = new URLSearchParams();
+        if (data.mode) params.set("mode", data.mode);
+        if (data.table) params.set("table", data.table);
+        const qs = params.toString();
+
         if (cancelled) return;
-        router.replace(`/${data.catalog_slug}`);
+        router.replace(`/${data.catalog_slug}${qs ? `?${qs}` : ""}`);
       } catch {
         if (!cancelled) setPhase({ kind: "error" });
       }
@@ -162,6 +178,10 @@ export function TmaBridge() {
       ) : phase.kind === "outside" ? (
         <p className="max-w-xs text-sm text-muted-foreground">
           Откройте эту страницу через Telegram, чтобы сделать заказ.
+        </p>
+      ) : phase.kind === "no_shop" ? (
+        <p className="max-w-xs text-sm text-muted-foreground">
+          Откройте магазин по ссылке или QR-коду, чтобы сделать заказ.
         </p>
       ) : (
         <div className="flex flex-col items-center gap-4">

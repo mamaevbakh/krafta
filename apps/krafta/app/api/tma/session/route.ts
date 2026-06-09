@@ -18,6 +18,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createTmaSession } from "@/lib/telegram/tma-session";
 import { buildTmaSessionCookie } from "@/lib/supabase/tma-cookie";
 
+// Remembers the last shop this device opened, so a bare Main Mini App reopen
+// (Telegram app list → no start_param) lands back in the shop instead of a dead
+// end. httpOnly: only this session route reads it.
+const LAST_SHOP_COOKIE = "krafta.tma.last";
+const LAST_SHOP_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+
 export async function POST(req: NextRequest) {
   let body: { initData?: unknown; startParam?: unknown };
   try {
@@ -28,13 +34,29 @@ export async function POST(req: NextRequest) {
 
   const initData = typeof body.initData === "string" ? body.initData : "";
   const startParam =
-    typeof body.startParam === "string" ? body.startParam : null;
+    typeof body.startParam === "string" && body.startParam.trim()
+      ? body.startParam.trim()
+      : null;
   if (!initData) {
     return NextResponse.json({ error: "missing_init_data" }, { status: 400 });
   }
 
-  const result = await createTmaSession({ initData, startParam });
+  // Bare reopen carries no start_param — fall back to the last shop this device
+  // opened so the customer returns to their shop instead of a dead end.
+  const lastShop = req.cookies.get(LAST_SHOP_COOKIE)?.value ?? null;
+  const effectiveStart = startParam ?? lastShop;
+
+  const result = await createTmaSession({
+    initData,
+    startParam: effectiveStart,
+  });
   if (!result.ok) {
+    // No start_param AND no remembered shop → a first bare reopen with nothing
+    // to resolve. Distinct code so the bridge shows a friendly empty state
+    // instead of a generic error.
+    if (result.error === "missing_shop" && !effectiveStart) {
+      return NextResponse.json({ error: "no_shop_history" }, { status: 409 });
+    }
     // 401 for auth failures, 400 for shop/config problems — both opaque.
     const authErrors = new Set([
       "invalid_init_data",
@@ -58,8 +80,17 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({
     catalog_slug: result.catalogSlug,
+    mode: result.mode,
+    table: result.table,
     expires_in: result.expiresIn,
   });
   res.cookies.set(cookie.name, cookie.value, cookie.options);
+  // Remember this shop for a bare reopen on the same device (30 days).
+  res.cookies.set(LAST_SHOP_COOKIE, result.catalogSlug, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: LAST_SHOP_MAX_AGE_SECONDS,
+  });
   return res;
 }

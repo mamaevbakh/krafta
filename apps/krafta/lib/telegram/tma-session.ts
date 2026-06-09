@@ -96,6 +96,10 @@ export type TmaSessionResult =
       sub: string;
       expiresIn: number;
       catalogSlug: string;
+      /** Fulfillment context decoded from a `q_<shortcode>` QR start_param;
+       *  null for plain-slug entries (share link / Main Mini App reopen). */
+      mode: "dine_in" | "pickup" | "delivery" | null;
+      table: string | null;
     }
   | { ok: false; error: string };
 
@@ -126,13 +130,28 @@ export async function createTmaSession(input: {
   if (!tgUser?.id) return { ok: false, error: "no_telegram_user" };
   const telegramUserId = String(tgUser.id);
 
-  // 2. Resolve the shop from start_param (catalog slug). Prefer the signed
-  //    value from initData; fall back to the explicit param.
-  const slug = (data.start_param ?? input.startParam ?? "").trim();
-  if (!slug) return { ok: false, error: "missing_shop" };
-
   const supabase = adminClient();
   if (!supabase) return { ok: false, error: "server_misconfigured" };
+
+  // 2. Resolve the shop from start_param. It's either a plain catalog slug
+  //    (share link / Main Mini App reopen) or a `q_<shortcode>` token from a
+  //    scanned QR, which we expand to the catalog slug + dine-in/pickup/
+  //    delivery context so the storefront opens in the right mode.
+  const rawStart = (data.start_param ?? input.startParam ?? "").trim();
+  let slug = rawStart;
+  let mode: "dine_in" | "pickup" | "delivery" | null = null;
+  let table: string | null = null;
+
+  const qrMatch = rawStart.match(/^q_([a-f0-9]{1,32})$/i);
+  if (qrMatch) {
+    const qr = await resolveQrShortcode(supabase, qrMatch[1]);
+    if (qr) {
+      slug = qr.slug;
+      mode = qr.mode;
+      table = qr.table;
+    }
+  }
+  if (!slug) return { ok: false, error: "missing_shop" };
 
   const { data: catalog } = await supabase
     .from("catalogs")
@@ -191,7 +210,65 @@ export async function createTmaSession(input: {
     sub,
     expiresIn: ACCESS_TTL_SECONDS,
     catalogSlug: slug,
+    mode,
+    table,
   };
+}
+
+type QrShortcodeRow = {
+  kind: "main" | "table" | "pickup" | "delivery";
+  table_label: string | null;
+  tables:
+    | { label: string; is_active: boolean }
+    | { label: string; is_active: boolean }[]
+    | null;
+  catalogs: { slug: string } | { slug: string }[] | null;
+};
+
+/**
+ * Expand a QR `q_<shortcode>` token to its catalog slug + fulfillment mode +
+ * table. Mirrors the resolution in app/q/[code]/route.ts. Returns null for an
+ * unknown / inactive shortcode, in which case the caller treats start_param as
+ * a plain slug.
+ */
+async function resolveQrShortcode(
+  supabase: NonNullable<ReturnType<typeof adminClient>>,
+  code: string,
+): Promise<{
+  slug: string;
+  mode: "dine_in" | "pickup" | "delivery" | null;
+  table: string | null;
+} | null> {
+  const { data } = await supabase
+    .from("qr_codes")
+    .select("kind, table_label, tables(label, is_active), catalogs(slug)")
+    .eq("shortcode", code)
+    .eq("is_active", true)
+    .maybeSingle<QrShortcodeRow>();
+  if (!data) return null;
+
+  const catRel = data.catalogs;
+  const slug = Array.isArray(catRel) ? catRel[0]?.slug : catRel?.slug;
+  if (!slug) return null;
+
+  let mode: "dine_in" | "pickup" | "delivery" | null = null;
+  let table: string | null = null;
+  if (data.kind === "table") {
+    const tRel = data.tables;
+    const t = Array.isArray(tRel) ? tRel[0] : tRel;
+    if (t?.is_active) {
+      mode = "dine_in";
+      table = t.label;
+    } else if (data.table_label) {
+      mode = "dine_in";
+      table = data.table_label;
+    }
+  } else if (data.kind === "pickup") {
+    mode = "pickup";
+  } else if (data.kind === "delivery") {
+    mode = "delivery";
+  }
+  return { slug, mode, table };
 }
 
 async function resolveCustomer(
