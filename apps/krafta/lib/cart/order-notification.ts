@@ -149,6 +149,66 @@ export async function notifyMerchantOfOrder(input: NotifyInput): Promise<void> {
   }
 }
 
+/**
+ * notifyMerchantOfBillRequest — dedicated "ask for the bill" alert (ADR 0004
+ * §3.4). A first-class event, not an order ping. Same fire-and-forget contract
+ * + venue Telegram target as notifyMerchantOfOrder.
+ */
+export async function notifyMerchantOfBillRequest(input: {
+  venueId: string;
+  tableLabel: string;
+  totalCents: number;
+}): Promise<void> {
+  try {
+    const target = await getVenueTelegramTargetForDispatch(input.venueId);
+    if (!target) return;
+
+    // Currency for formatting the total (venue → catalog → settings_currency).
+    let currency = normalizeCurrencySettings({});
+    const supabase = getAdminClient();
+    if (supabase) {
+      const { data: venue } = await supabase
+        .from("venues")
+        .select("catalog_id")
+        .eq("id", input.venueId)
+        .maybeSingle();
+      if (venue?.catalog_id) {
+        const { data: catalog } = await supabase
+          .from("catalogs")
+          .select("settings_currency")
+          .eq("id", venue.catalog_id)
+          .maybeSingle();
+        currency = normalizeCurrencySettings(
+          (catalog?.settings_currency ?? {}) as Record<string, unknown>,
+        );
+      }
+    }
+
+    const money = (cents: number) => formatPriceCents(cents, currency);
+    const text = [
+      "🧾 <b>Гость просит счёт</b>",
+      `🍽 Столик ${escapeHtml(input.tableLabel)}`,
+      `<b>Итого: ${money(input.totalCents)}</b>`,
+    ].join("\n");
+
+    const res = await sendTelegramMessage(target.botToken, {
+      chatId: target.chatId,
+      text,
+    });
+    if (!res.ok) {
+      console.error("[bill-request-notification] send failed", {
+        venueId: input.venueId,
+        error: res.error,
+      });
+    }
+  } catch (err) {
+    console.error("[bill-request-notification] notify failed", {
+      venueId: input.venueId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 // ── message formatting (RU primary) ─────────────────────────────────────────
 
 type CurrencyArg = Parameters<typeof formatPriceCents>[1];

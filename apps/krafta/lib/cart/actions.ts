@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { ensureCartIdentity, type CartIdentity } from "./identity";
-import { notifyMerchantOfOrder } from "./order-notification";
+import {
+  notifyMerchantOfOrder,
+  notifyMerchantOfBillRequest,
+} from "./order-notification";
 import { withIdempotency } from "./idempotency";
 import {
   getCartSummary as getCartSummaryImpl,
@@ -19,6 +22,11 @@ import {
   upsertCartLines as upsertCartLinesImpl,
   type UpsertCartLinesInput,
 } from "./upsert-cart-lines";
+import {
+  getDineInRunningCheck,
+  markBillRequested,
+  type RunningCheck,
+} from "./running-check";
 
 // Cart mutations DELIBERATELY skip revalidatePath of the catalog path:
 //
@@ -122,4 +130,40 @@ export async function upsertCartLinesAction(
   return withIdempotency(input.idempotencyKey, identity.userId, async () => {
     return upsertCartLinesImpl({ ...input, identity });
   });
+}
+
+/**
+ * Dine-in running check (ADR 0004): the caller's own placed rounds for a table
+ * + running total + bill/close state. Read by the storefront Table Check sheet.
+ */
+export async function getRunningCheckAction(input: {
+  orgId: string;
+  venueId: string;
+  tableLabel: string;
+}): Promise<RunningCheck> {
+  return getDineInRunningCheck(input);
+}
+
+/**
+ * Ask for the bill (ADR 0004 §3.4). Flags the caller's open table_session +
+ * pings the merchant via the dedicated bill_requested notification. Returns
+ * { ok: false } when the caller has no active check at this table.
+ */
+export async function requestBillAction(input: {
+  orgId: string;
+  venueId: string;
+  tableLabel: string;
+}): Promise<{ ok: boolean }> {
+  const result = await markBillRequested(input);
+  if (!result.ok) return { ok: false };
+
+  after(async () => {
+    await notifyMerchantOfBillRequest({
+      venueId: input.venueId,
+      tableLabel: input.tableLabel,
+      totalCents: result.totalCents ?? 0,
+    });
+  });
+
+  return { ok: true };
 }
