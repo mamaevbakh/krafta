@@ -32,6 +32,10 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { Separator } from "@/components/ui/separator";
+import {
+  TelegramLoginButton,
+  type TelegramAuthPayload,
+} from "@/components/telegram-login-button";
 import { isValidSlug } from "@/lib/onboarding/slug";
 import { signInWithEmail, verifyOtpCode } from "@/lib/auth/actions";
 
@@ -42,6 +46,7 @@ import {
   linkGoogleForPublish,
   publishShop,
   registerPublishEmail,
+  registerPublishTelegram,
   removeDemoItems,
   verifyPublishOtp,
   type PublishPreflight,
@@ -190,6 +195,27 @@ export function PublishDialog({
       return;
     }
     window.location.assign(res.url);
+  };
+
+  // Telegram register (KRA-46): the widget callback hands us the signed
+  // payload in-page — one server action attaches the identity to the anon
+  // user (or claims the draft into an existing account on collision) and the
+  // machine proceeds straight to publish. No redirect, no resume state.
+  const handleTelegram = async (payload: TelegramAuthPayload) => {
+    if (!preflight) return;
+    setBusy(true);
+    setError(null);
+    const res = await registerPublishTelegram(payload);
+    setBusy(false);
+    if ("error" in res) {
+      setError(res.error);
+      return;
+    }
+    // No router.refresh() here: publish_shop renames the slugs, and a
+    // concurrent RSC re-fetch of the OLD /dashboard/[slug] route 404s and
+    // unmounts the dialog mid-celebration. finishToDashboard routes to the
+    // new slugs once the merchant leaves the dialog (same as the email leg).
+    void doPublish(preflight.orgId, slug);
   };
 
   const handleSendEmail = async (e: React.FormEvent) => {
@@ -419,6 +445,13 @@ export function PublishDialog({
                 {busy ? <Loader2 className="animate-spin" /> : null}
                 Continue with Google
               </Button>
+              {preflight?.telegramBotUsername && (
+                <TelegramLoginButton
+                  botUsername={preflight.telegramBotUsername}
+                  onAuth={(payload) => void handleTelegram(payload)}
+                  disabled={busy}
+                />
+              )}
               <div className="flex items-center gap-3">
                 <Separator className="flex-1" />
                 <span className="text-xs text-muted-foreground">

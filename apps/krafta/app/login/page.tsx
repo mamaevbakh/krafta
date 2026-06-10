@@ -3,6 +3,7 @@ import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { createClient } from "@/lib/supabase/server";
 import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
 import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
+import { telegramLoginConfigured } from "@/lib/auth/telegram-bridge";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -37,7 +38,14 @@ export default async function LoginPage({
         <Link href="/" className="flex items-center gap-2 self-center font-medium">
           <BrandWordmark className="text-3xl" />
         </Link>
-        <LoginForm next={next} />
+        <LoginForm
+          next={next}
+          telegramBotUsername={
+            telegramLoginConfigured()
+              ? (process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") ?? null)
+              : null
+          }
+        />
       </div>
     </div>
   );

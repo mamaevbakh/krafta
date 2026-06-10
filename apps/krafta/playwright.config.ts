@@ -1,6 +1,6 @@
-// ADR 0005 test plan (eng review D12) — Playwright harness.
+// ADR 0005/0006 test plan — Playwright harness.
 //
-// Two funnel specs live in e2e/:
+// Funnel specs in e2e/:
 //   onboarding-wow-path  — CTA → wizard → seeded Studio. Doubles as the
 //                          MANDATORY regression test for the CTA semantics
 //                          change (create-now → wizard-first). Needs only a
@@ -9,8 +9,19 @@
 //                          leg reads the code from the local stack's
 //                          inbucket; the spec self-skips when inbucket is
 //                          not reachable (e.g. no Docker on the machine).
+//   telegram-login       — KRA-46 / ADR 0006: Telegram register-at-publish +
+//                          fresh /login sign-in. Signs a widget payload with
+//                          the dev TELEGRAM_BOT_TOKEN and drives the page's
+//                          onTelegramAuth hook directly (the iframe is the
+//                          only un-automatable part); self-skips when the
+//                          token isn't configured.
 //
 // Run: pnpm exec playwright test   (starts next dev itself if needed)
+//
+// NOTE: the funnel specs each mint anonymous Supabase sessions; the hosted
+// dev project caps anonymous sign-ins at 30/hour. Looping the whole suite
+// against one shared `next dev` can exhaust that window or saturate the dev
+// server — prefer `--workers=1` and a single target spec when iterating.
 
 import { defineConfig, devices } from "@playwright/test";
 

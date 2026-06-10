@@ -17,9 +17,16 @@
 import { headers } from "next/headers";
 
 import { getRequestOrigin } from "@/lib/auth/redirect";
+import {
+  attachTelegramToUser,
+  mintSessionForTelegramUser,
+  telegramAdminClient,
+  telegramLoginConfigured,
+} from "@/lib/auth/telegram-bridge";
 import { isValidSlug, suffixSlug, suggestSlug } from "@/lib/onboarding/slug";
 import { renderQrSvg } from "@/lib/qr/render";
 import { createClient } from "@/lib/supabase/server";
+import { validateTelegramLoginPayload } from "@/lib/telegram/login-widget";
 
 export type PublishPreflight = {
   orgId: string;
@@ -31,6 +38,8 @@ export type PublishPreflight = {
   /** Seeded items never edited since creation (D19). */
   demoItems: { id: string; name: string }[];
   isAnonymous: boolean;
+  /** Set when the Telegram register leg is available (KRA-46 / ADR 0006). */
+  telegramBotUsername: string | null;
 };
 
 export async function getPublishPreflight(params: {
@@ -85,6 +94,9 @@ export async function getPublishPreflight(params: {
     isAnonymous: Boolean(
       (user as { is_anonymous?: boolean }).is_anonymous ?? false,
     ),
+    telegramBotUsername: telegramLoginConfigured()
+      ? (process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") ?? null)
+      : null,
   };
 }
 
@@ -184,6 +196,91 @@ export async function linkGoogleForPublish(
   if (error) return { error: error.message };
   if (data.url) return { url: data.url };
   return { error: "Failed to start Google sign-in." };
+}
+
+// ---------------------------------------------------------------------------
+// Register: Telegram (KRA-46 / ADR 0006 — verified widget payload → attach
+// to the CURRENT anon user, uid preserved). Unlike the Google leg there is
+// no redirect round-trip: the widget's data-onauth callback hands us the
+// payload in-page, so even the collision case resolves in this ONE action —
+// initiate-claim (as the anon owner) → mint a session for the existing
+// account → complete-claim (as that account) — because both sessions live
+// in the same server-side cookie jar sequentially. The claim code never
+// reaches the browser.
+// ---------------------------------------------------------------------------
+
+export async function registerPublishTelegram(
+  rawPayload: Record<string, unknown>,
+): Promise<{ registered: true; claimed: boolean } | { error: string }> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const admin = telegramAdminClient();
+  if (!botToken || !admin) {
+    return { error: "Telegram sign-in is not configured." };
+  }
+
+  let tg;
+  try {
+    tg = validateTelegramLoginPayload(rawPayload, { botToken });
+  } catch {
+    return { error: "Telegram sign-in could not be verified. Please try again." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+  if (!((user as { is_anonymous?: boolean }).is_anonymous ?? false)) {
+    // Already registered (double-tap after a slow response): nothing to do.
+    return { registered: true, claimed: false };
+  }
+
+  const attach = await attachTelegramToUser(admin, { userId: user.id, tg });
+
+  if ("ok" in attach) {
+    // The is_anonymous flip happened on the user ROW; one refresh re-derives
+    // the JWT claim (ADR 0006 F4) so publish_shop and the trigger guards see
+    // a registered caller. Same uid, same refresh-token family.
+    const { data: refreshed, error: refreshErr } =
+      await supabase.auth.refreshSession();
+    if (refreshErr || !refreshed.session) {
+      return { error: "Could not refresh your session. Please try again." };
+    }
+    return { registered: true, claimed: false };
+  }
+
+  if ("collision" in attach) {
+    // This Telegram account already owns a Krafta account: claim handshake
+    // (ADR 0005 §4 D2), fully server-side. Initiate FIRST — the code can
+    // only be minted while we are still the anonymous draft owner.
+    const { data: code, error: initiateErr } = await supabase.rpc(
+      "claim_draft_shop_initiate",
+    );
+    if (initiateErr || !code) {
+      return { error: "Could not start the draft transfer. Please try again." };
+    }
+
+    const minted = await mintSessionForTelegramUser(admin, supabase, {
+      userId: attach.existingUserId,
+      tg,
+    });
+    if ("error" in minted) {
+      return { error: "Could not sign in to your existing account. Please try again." };
+    }
+
+    const { error: completeErr } = await supabase
+      .rpc("claim_draft_shop_complete", { p_claim_code: code as string })
+      .single();
+    if (completeErr) {
+      return { error: "Signed in, but the draft transfer failed. Please try again." };
+    }
+    return { registered: true, claimed: true };
+  }
+
+  if (attach.error === "account_already_linked") {
+    return { error: "This account is already linked to a different Telegram user." };
+  }
+  return { error: "Telegram registration failed. Please try again." };
 }
 
 // ---------------------------------------------------------------------------

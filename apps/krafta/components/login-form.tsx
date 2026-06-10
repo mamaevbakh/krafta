@@ -26,17 +26,25 @@ import {
 } from "@/components/ui/input-otp";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { signInWithEmail, verifyOtpCode, signInWithGoogle } from "@/lib/auth/actions";
+import { signInWithTelegram } from "@/lib/auth/telegram-actions";
+import {
+  TelegramLoginButton,
+  type TelegramAuthPayload,
+} from "@/components/telegram-login-button";
 import { toast } from "sonner";
 
 type Step = "email" | "otp";
 
 type LoginFormProps = React.ComponentProps<"div"> & {
   next?: string;
+  /** Enables the Telegram leg (KRA-46) when the server has it configured. */
+  telegramBotUsername?: string | null;
 };
 
 export function LoginForm({
   className,
   next = "/dashboard",
+  telegramBotUsername = null,
   ...props
 }: LoginFormProps) {
   const [step, setStep] = useState<Step>("email");
@@ -93,6 +101,17 @@ export function LoginForm({
     });
   };
 
+  const handleTelegramAuth = (payload: TelegramAuthPayload) => {
+    startTransition(async () => {
+      const result = await signInWithTelegram(payload, next);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      window.location.href = result.next;
+    });
+  };
+
   const handleBack = () => {
     setStep("email");
     setOtpCode("");
@@ -132,6 +151,15 @@ export function LoginForm({
                     Continue with Google
                   </Button>
                 </Field>
+                {telegramBotUsername && (
+                  <Field>
+                    <TelegramLoginButton
+                      botUsername={telegramBotUsername}
+                      onAuth={handleTelegramAuth}
+                      disabled={isPending}
+                    />
+                  </Field>
+                )}
                 <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
                   Or continue with email
                 </FieldSeparator>
