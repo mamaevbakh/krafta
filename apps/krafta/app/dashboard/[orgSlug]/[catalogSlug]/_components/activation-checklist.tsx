@@ -5,8 +5,11 @@
 // A floating bottom-right setup guide (Shopify-style), styled to match the
 // Library's other floating pill (the bottom-center view toggle): same z-30
 // layer, same frosted rounded surface. Expanded panel on first visit;
-// collapses to a compact progress pill; both the collapsed state and the
-// forever-dismiss live in localStorage (the one non-derivable bit, D9).
+// collapses to a compact progress pill (localStorage, per catalog — the one
+// non-derivable bit, D9). Deliberately NO forever-dismiss: a one-click
+// permanent kill next to the collapse button was a fat-finger trap with no
+// undo and no re-entry point. The widget's natural exit is completing the
+// list — it removes itself when every row is done.
 //
 // Every row's done-state is computed from the shop itself (page fetch + one
 // venue wave), so the checklist can never disagree with reality.
@@ -23,7 +26,6 @@ import {
   ChevronRight,
   Circle,
   ListTodo,
-  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -48,22 +50,19 @@ export function ActivationChecklist({
   catalogId: string;
   entries: ChecklistEntry[];
 }) {
-  const dismissKey = `krafta.checklist.dismissed.${catalogId}`;
   const openKey = `krafta.checklist.open.${catalogId}`;
   // Render nothing until localStorage resolves — avoids flashing the panel
-  // for merchants who dismissed or collapsed it.
+  // for merchants who collapsed it.
   const [ready, setReady] = React.useState(false);
-  const [dismissed, setDismissed] = React.useState(true);
   const [open, setOpen] = React.useState(true);
 
   React.useEffect(() => {
-    setDismissed(localStorage.getItem(dismissKey) === "1");
     setOpen(localStorage.getItem(openKey) !== "0");
     setReady(true);
-  }, [dismissKey, openKey]);
+  }, [openKey]);
 
   const doneCount = entries.filter((e) => e.done).length;
-  if (!ready || dismissed || entries.length === 0 || doneCount === entries.length) {
+  if (!ready || entries.length === 0 || doneCount === entries.length) {
     return null;
   }
 
@@ -74,10 +73,6 @@ export function ActivationChecklist({
   const expand = () => {
     localStorage.setItem(openKey, "1");
     setOpen(true);
-  };
-  const dismiss = () => {
-    localStorage.setItem(dismissKey, "1");
-    setDismissed(true);
   };
 
   if (!open) {
@@ -129,16 +124,6 @@ export function ActivationChecklist({
           aria-label="Collapse checklist"
         >
           <ChevronDown className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 text-muted-foreground"
-          onClick={dismiss}
-          aria-label="Dismiss checklist"
-        >
-          <X className="size-4" />
         </Button>
       </header>
       <ul className="max-h-[min(20rem,50vh)] overflow-y-auto">
