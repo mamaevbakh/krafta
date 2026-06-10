@@ -21,6 +21,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createDraftShopForAnonUser } from "@/lib/auth/merchant-shop";
+import { getLocaleDefinition } from "@/lib/locales/registry";
 import { suggestSlug } from "@/lib/onboarding/slug";
 import { createClient } from "@/lib/supabase/server";
 import { createTable } from "@/lib/tables/actions";
@@ -129,7 +130,13 @@ const wizardPayloadSchema = z.object({
   sections: z.array(wizardSectionSchema).min(0).max(8),
   modes: z.array(z.enum(["dine_in", "pickup", "delivery"])).min(1).max(3),
   tableCount: z.number().int().min(0).max(50),
-  locales: z.array(z.enum(["uz", "en"])).max(2),
+  locales: z
+    .array(z.object({ code: z.string().min(2).max(16), isDefault: z.boolean() }))
+    .min(1)
+    .max(6)
+    .refine((ls) => ls.filter((l) => l.isDefault).length === 1, "Pick one default language.")
+    .refine((ls) => new Set(ls.map((l) => l.code)).size === ls.length, "Duplicate language.")
+    .refine((ls) => ls.every((l) => getLocaleDefinition(l.code)), "Unknown language."),
   phone: z.string().trim().max(32),
   city: z.string().trim().max(64),
 });
@@ -203,7 +210,6 @@ export async function createShopFromWizard(
 
   // Catalog identity + currency, venue modes + contacts, locales — small
   // single-row writes under owner RLS.
-  const enabledLocales = ["ru", ...input.locales];
   const [catalogRes, venueRes, localesRes] = await Promise.all([
     supabase
       .from("catalogs")
@@ -226,15 +232,19 @@ export async function createShopFromWizard(
           .eq("id", venue.id)
       : Promise.resolve({ error: null }),
     supabase.from("catalog_locales").insert(
-      enabledLocales.map((locale, i) => ({
-        catalog_id: shop.catalogId,
-        locale,
-        is_default: locale === "ru",
-        is_enabled: true,
-        sort_order: i,
-        display_name: locale === "ru" ? "Русский" : locale === "uz" ? "Oʻzbekcha" : "English",
-        text_direction: "ltr",
-      })),
+      input.locales.map((l, i) => {
+        // Registry resolves display metadata — validated above, never a guess.
+        const def = getLocaleDefinition(l.code)!;
+        return {
+          catalog_id: shop.catalogId,
+          locale: l.code,
+          is_default: l.isDefault,
+          is_enabled: true,
+          sort_order: i,
+          display_name: def.nativeName,
+          text_direction: def.direction,
+        };
+      }),
     ),
   ]);
   const settingsError = catalogRes.error ?? venueRes.error ?? localesRes.error;
@@ -244,8 +254,33 @@ export async function createShopFromWizard(
   }
 
   // The curated menu — one atomic RPC under the merchant's own RLS.
-  const localeFilter = (tr: Record<string, unknown>) =>
-    Object.fromEntries(Object.entries(tr).filter(([k]) => input.locales.includes(k as "uz" | "en")));
+  //
+  // Canonical strings follow the DEFAULT locale: templates are RU-canonical,
+  // so when the merchant picks e.g. Uzbek as default, untouched suggestions
+  // take their uz-Latn template string as the item/category NAME and Russian
+  // drops into translations (if enabled). Locales without template strings
+  // simply have no row — the workbench fills them later.
+  const defaultCode = input.locales.find((l) => l.isDefault)!.code;
+  const nonDefaultCodes = input.locales.filter((l) => !l.isDefault).map((l) => l.code);
+  const localize = (
+    tr: Record<string, { name: string; description?: string | null }>,
+    ruName: string,
+    ruDescription: string | null,
+  ) => {
+    const canonical =
+      defaultCode === "ru" || !tr[defaultCode]
+        ? { name: ruName, description: ruDescription }
+        : { name: tr[defaultCode].name, description: tr[defaultCode].description ?? null };
+    const translations: Record<string, { name: string; description?: string | null }> = {};
+    for (const code of nonDefaultCodes) {
+      if (code === "ru" && defaultCode !== "ru") {
+        translations.ru = { name: ruName, description: ruDescription };
+      } else if (tr[code]) {
+        translations[code] = tr[code];
+      }
+    }
+    return { canonical, translations };
+  };
   const usedSlugs = new Set<string>();
   const uniqueSlug = (base: string, fallback: string) => {
     let s = suggestSlug(base) || fallback;
@@ -258,14 +293,17 @@ export async function createShopFromWizard(
       const suggestedSection = section.suggestionSlug
         ? (suggestionIndex.get(`section:${section.suggestionSlug}`) as SuggestedSection | undefined)
         : undefined;
+      const sectionUntouched = Boolean(
+        suggestedSection && section.name === suggestedSection.name,
+      );
+      const sectionLoc = sectionUntouched
+        ? localize(suggestedSection!.translations, suggestedSection!.name, null)
+        : null;
       return {
-        name: section.name,
+        name: sectionLoc ? sectionLoc.canonical.name : section.name,
         slug: uniqueSlug(section.suggestionSlug ?? section.name, `section-${sIdx + 1}`),
         position: sIdx,
-        translations:
-          suggestedSection && section.name === suggestedSection.name
-            ? localeFilter(suggestedSection.translations)
-            : {},
+        translations: sectionLoc ? sectionLoc.translations : {},
         items: section.items.map((item, iIdx) => {
           const suggested = item.suggestionSlug
             ? (suggestionIndex.get(`item:${item.suggestionSlug}`) as SuggestedItem | undefined)
@@ -276,16 +314,19 @@ export async function createShopFromWizard(
               item.name === suggested.name &&
               item.priceCents === suggested.defaultPriceCents,
           );
+          const itemLoc = untouched
+            ? localize(suggested!.translations, suggested!.name, suggested!.description)
+            : null;
           return {
-            name: item.name,
+            name: itemLoc ? itemLoc.canonical.name : item.name,
             slug: uniqueSlug(item.suggestionSlug ?? item.name, `item-${sIdx + 1}-${iIdx + 1}`),
             position: iIdx,
-            description: untouched ? (suggested?.description ?? null) : null,
+            description: itemLoc ? itemLoc.canonical.description : null,
             seeded: untouched,
             variations: untouched
               ? suggested!.variations
               : [{ name: "Стандарт", price_cents: item.priceCents, ordinal: 0, is_default: true }],
-            translations: untouched ? localeFilter(suggested!.translations) : {},
+            translations: itemLoc ? itemLoc.translations : {},
           };
         }),
       };

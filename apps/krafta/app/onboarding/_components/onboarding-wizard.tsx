@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LocalePicker } from "@/components/locales/locale-picker";
+import { getLocaleDefinition } from "@/lib/locales/registry";
 import { cn } from "@/lib/utils";
 
 import {
@@ -84,10 +86,13 @@ export function OnboardingWizard() {
   const [sections, setSections] = React.useState<SectionDraft[]>([]);
   const [modes, setModes] = React.useState<VenueMode[]>(["pickup"]);
   const [tableCount, setTableCount] = React.useState(8);
-  const [locales, setLocales] = React.useState<{ uz: boolean; en: boolean }>({
-    uz: true,
-    en: true,
-  });
+  const [locales, setLocales] = React.useState<
+    { code: string; isDefault: boolean }[]
+  >([
+    { code: "ru", isDefault: true },
+    { code: "uz-Latn", isDefault: false },
+    { code: "en", isDefault: false },
+  ]);
   const [phone, setPhone] = React.useState("");
   const [city, setCity] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -162,7 +167,7 @@ export function OnboardingWizard() {
         })),
       modes,
       tableCount: modes.includes("dine_in") ? tableCount : 0,
-      locales: (["uz", "en"] as const).filter((l) => locales[l]),
+      locales,
       phone: withContacts ? phone.trim() : "",
       city: withContacts ? city.trim() : "",
     };
@@ -482,36 +487,75 @@ export function OnboardingWizard() {
 
   // ── ⑥ languages ───────────────────────────────────────────────────────────
   if (step === "languages") {
+    const makeDefault = (code: string) =>
+      setLocales((prev) => prev.map((l) => ({ ...l, isDefault: l.code === code })));
+    const removeLocale = (code: string) =>
+      setLocales((prev) =>
+        prev.length > 1 ? prev.filter((l) => l.code !== code) : prev,
+      );
+    const addLocale = (code: string) =>
+      setLocales((prev) =>
+        prev.some((l) => l.code === code) ? prev : [...prev, { code, isDefault: false }],
+      );
     return (
       <section>
         {header(
           "Menu languages",
-          "Suggested items come already translated. Your own items can be translated later in the workbench.",
+          "Suggested items ship translated in Russian, Uzbek and English. Other languages can be translated later in the workbench.",
           "modes",
         )}
         <div className="mt-6 flex flex-col gap-2">
-          <div className="flex min-h-12 items-center gap-3 rounded-lg border bg-card px-4 py-2.5">
-            <Check className="size-4 text-muted-foreground" />
-            <span className="min-w-0 flex-1 text-sm font-medium">Русский</span>
-            <Badge variant="outline">Default</Badge>
-          </div>
-          {(
-            [
-              ["uz", "Oʻzbekcha"],
-              ["en", "English"],
-            ] as const
-          ).map(([code, label]) => (
-            <label
-              key={code}
-              className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-2.5 transition-colors hover:bg-accent"
-            >
-              <Checkbox
-                checked={locales[code]}
-                onCheckedChange={() => setLocales((p) => ({ ...p, [code]: !p[code] }))}
-              />
-              <span className="min-w-0 flex-1 text-sm font-medium">{label}</span>
-            </label>
-          ))}
+          {locales.map((l) => {
+            const def = getLocaleDefinition(l.code);
+            return (
+              <div
+                key={l.code}
+                className="flex min-h-12 items-center gap-2 rounded-lg border bg-card py-2.5 pl-4 pr-2"
+              >
+                <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                  <span className="truncate text-sm font-medium">
+                    {def?.nativeName ?? l.code}
+                  </span>
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                    {def?.englishName}
+                  </span>
+                </span>
+                {l.isDefault ? (
+                  <Badge variant="outline" className="mr-2 shrink-0">
+                    <Check className="size-3" />
+                    Default
+                  </Badge>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-muted-foreground"
+                      onClick={() => makeDefault(l.code)}
+                    >
+                      Make default
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 text-muted-foreground"
+                      onClick={() => removeLocale(l.code)}
+                      aria-label={`Remove ${def?.englishName ?? l.code}`}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          <LocalePicker
+            value={null}
+            onChange={addLocale}
+            excludeCodes={locales.map((l) => l.code)}
+          />
         </div>
         {continueButton(() => setStep("contacts"))}
       </section>
