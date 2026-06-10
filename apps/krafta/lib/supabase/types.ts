@@ -3795,6 +3795,33 @@ export type Database = {
           },
         ]
       }
+      telegram_merchant_identities: {
+        Row: {
+          created_at: string
+          first_name: string | null
+          photo_url: string | null
+          telegram_user_id: string
+          user_id: string
+          username: string | null
+        }
+        Insert: {
+          created_at?: string
+          first_name?: string | null
+          photo_url?: string | null
+          telegram_user_id: string
+          user_id: string
+          username?: string | null
+        }
+        Update: {
+          created_at?: string
+          first_name?: string | null
+          photo_url?: string | null
+          telegram_user_id?: string
+          user_id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
       translation_history: {
         Row: {
           edited_at: string
@@ -4142,6 +4169,10 @@ export type Database = {
           catalog_id: string
           org_id: string
         }[]
+      }
+      create_wizard_menu: {
+        Args: { p_catalog_id: string; p_menu: Json }
+        Returns: undefined
       }
       duplicate_item: {
         Args: { p_catalog_id: string; p_item_id: string }

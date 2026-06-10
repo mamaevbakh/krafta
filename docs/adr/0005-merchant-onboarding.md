@@ -33,20 +33,39 @@ Going live is a **dual gate**: `catalogs.status` `draft→published` *and* `venu
 
 The invariant "register gates going live" is **DB-enforced, not a UI convention**: `publish_shop` rejects anonymous JWTs, and `BEFORE UPDATE` trigger guards on `venues.status→active` and `catalogs.status→published` reject callers with the `is_anonymous` claim on *every* path (settings UI, raw PostgREST, future code). Registered merchants' pause/unpause from settings (KRA-34) is untouched.
 
-### §2 — Flow shape: "**2 + Studio**", not 8 gating screens
+### §2 — Flow shape: "**guided seeding — 7 + Studio**" *(amended 2026-06-10, wizard v2)*
 
-Compress the pre-Studio wizard to the two load-bearing inputs, then land in the Studio with everything else pre-filled and editable in place.
+> **Amendment (2026-06-10):** the original "2 + Studio" shape shipped, then was
+> superseded the same day by product direction: the merchant should *walk
+> through* shop creation, not inherit a demo to edit. The research constraint
+> survives in two guarantees: **every screen is one tap if defaults are
+> trusted** (suggestions arrive pre-checked from `vertical_templates`), and
+> **nothing is created until the final submit** (abandoning mid-wizard leaves
+> zero rows — which also shrank the orphan-shop problem). A menu the merchant
+> assembled — even from suggestions — is a menu they'll publish.
 
 ```
-①  Vertical            cafe / restaurant / retail                 (the "prompt": drives prefill + default modes + theme)
-②  Shop name           name only — no slug UI here                (drives storefront identity in the canvas)
-──▶  STUDIO (Library Canvas)  — vertical-prefilled, branded catalog renders instantly; merchant edits in place.
-     Activation checklist (non-blocking): edit items · add a photo · languages · order modes · theme · hours · notifications
-④  Publish modal:  slug confirm (transliterated suggestion, frozen on publish)
-                    → demo-data nudge (untouched seed items: remove / publish anyway)
-                    → Register (Google / email OTP)
+①  Type        cafe / restaurant / retail              (loads the suggestions)
+②  Name        shop name — no slug UI here             (storefront identity)
+③  Sections    vertical's categories PRE-CHECKED       (toggle · add your own)
+④  Items       suggestions PRE-CHECKED, names + prices (edit inline · add your own;
+               editable inline                          untouched = keeps template
+                                                        sizes/translations + demo marker)
+⑤  Modes       vertical defaults; dine-in adds a       (table count → paired table
+               table-count stepper                      QR codes via lib/tables)
+⑥  Languages   RU default · UZ/EN pre-checked          (suggested items ship translated)
+⑦  Contacts    phone + city — SKIPPABLE                (stored in venue address)
+──▶ submit: bare create_draft_shop + curated create_wizard_menu (SECURITY INVOKER,
+    atomic, every row authorized by owner RLS — D7's "definer never takes client
+    payloads" still holds) ──▶ STUDIO with THEIR menu · checklist takes over
+⑧  Publish modal:  slug confirm (transliterated suggestion, frozen on publish)
+                    → demo-data nudge (untouched suggestions: remove / publish anyway)
+                    → Register (Google / email OTP / Telegram)
                     → publish_shop  ──▶  "Your shop is live" + link/QR  ──▶  "Get order alerts in Telegram" (KRA-66)
 ```
+
+Kept OUT of the wizard (checklist territory): photos (upload friction is the
+classic abandon point), business hours, theme, Telegram alerts (celebration).
 
 - **Slug lives at Publish, not at ②** (it's pure publish-time information — the moment it matters is the moment it's frozen onto printed QRs). Creation keeps today's random base36 slug internally; `publish_shop(p_final_slug)` updates org/catalog/venue slugs and flips both statuses in one transaction. Suggestion = RU/UZ Cyrillic→Latin transliteration of the shop name, numeric suffix on collision, random fallback for untransliterable input. **Frozen after publish** (QR permanence; renames are a non-goal).
 - **Resume / wizard entry:** an anon session that already owns a shop skips the wizard entirely and lands in the Studio. Enforced by RPC-level idempotency (§6), not just routing.

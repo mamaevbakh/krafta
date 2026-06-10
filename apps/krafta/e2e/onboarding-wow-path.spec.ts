@@ -17,7 +17,7 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
     page.getByRole("heading", { name: "What are you opening?" }),
   ).toBeVisible();
 
-  // ① vertical — tapping advances immediately.
+  // ① vertical — tapping advances (and loads the suggestions).
   await page.getByRole("button", { name: /Cafe/ }).click();
   await expect(
     page.getByRole("heading", { name: "Name your shop" }),
@@ -25,7 +25,40 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
 
   // ② name — Cyrillic on purpose: the market's real input.
   await page.getByLabel("Shop name").fill("Чойхона Тест");
-  await page.getByRole("button", { name: "Create my shop" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ③ sections — vertical suggestions arrive pre-checked (fast path: 1 tap).
+  await expect(
+    page.getByRole("heading", { name: "Your menu sections" }),
+  ).toBeVisible();
+  await expect(page.getByText("Кофе")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ④ items — suggested items with editable prices, pre-checked.
+  await expect(
+    page.getByRole("heading", { name: "Your first items" }),
+  ).toBeVisible();
+  await expect(page.locator('input[value="Капучино"]')).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ⑤ modes — cafe defaults (pickup + dine-in) with the table-count stepper.
+  await expect(
+    page.getByRole("heading", { name: "How do customers order?" }),
+  ).toBeVisible();
+  await expect(page.getByText("Tables at your venue")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ⑥ languages — ru default, uz/en pre-checked.
+  await expect(
+    page.getByRole("heading", { name: "Menu languages" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ⑦ contacts — skippable; skipping still creates the shop.
+  await expect(
+    page.getByRole("heading", { name: "How can customers reach you?" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
 
   // Lands in the Studio with the cafe starter catalog rendered.
   await expect(page).toHaveURL(/\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\/items/, {

@@ -9,7 +9,11 @@ test("publish nudge removes untouched demo items", async ({ page }) => {
   await page.goto("/onboarding");
   await page.getByRole("button", { name: /Cafe/ }).click();
   await page.getByLabel("Shop name").fill("Demo Removal QA");
-  await page.getByRole("button", { name: "Create my shop" }).click();
+  // Fast path: one tap per screen, suggestions kept untouched (= demo items).
+  for (let i = 0; i < 5; i++) {
+    await page.getByRole("button", { name: "Continue" }).click();
+  }
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await page.waitForURL(/\/items/, { timeout: 60_000 });
 
   // Seeded cafe canvas: 5 items across 2 categories.

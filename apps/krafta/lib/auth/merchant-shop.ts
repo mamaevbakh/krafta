@@ -78,8 +78,10 @@ export async function findOwnedShop(): Promise<DraftShop | null> {
  * the RPC never reseeds an existing owner.
  */
 export async function createDraftShopForAnonUser(options?: {
-  vertical: ShopVertical;
-  name: string;
+  /** When set, the RPC seeds the vertical starter catalog (legacy path —
+   *  wizard v2 curates the menu itself and passes name only). */
+  vertical?: ShopVertical;
+  name?: string;
 }): Promise<DraftShop> {
   const supabase = await createClient();
 
@@ -113,7 +115,8 @@ export async function createDraftShopForAnonUser(options?: {
     const { data, error } = await supabase
       .rpc("create_draft_shop", {
         p_slug: slug,
-        ...(options ? { p_vertical: options.vertical, p_name: options.name } : {}),
+        ...(options?.vertical ? { p_vertical: options.vertical } : {}),
+        ...(options?.name ? { p_name: options.name } : {}),
       })
       .single();
     if (error) {
