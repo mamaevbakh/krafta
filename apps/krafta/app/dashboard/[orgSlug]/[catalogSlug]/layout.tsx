@@ -15,6 +15,7 @@ import { CatalogSwitcherSkeleton } from "@/components/dashboard/catalog-switcher
 import type { OrgOption } from "@/components/dashboard/org-switcher";
 import { OrgSwitcherSkeleton } from "@/components/dashboard/org-switcher";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
+import { PublishBanner } from "./_components/publish-banner";
 
 type CatalogLayoutProps = {
   children: ReactNode;
@@ -75,6 +76,14 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
   const entitlement = orgRecord
     ? await getOrgBillingEntitlement(orgRecord.id)
     : null;
+
+  // ADR 0005 §4: a paused venue shows the draft banner + Publish entry point.
+  const { data: venueRecord } = await supabase
+    .from("venues")
+    .select("status")
+    .eq("catalog_id", catalogRecord.id)
+    .maybeSingle();
+
   const { user: authUser } = await getUserSafely(supabase);
   const user = {
     name: authUser?.user_metadata?.full_name || authUser?.email?.split("@")[0] || "User",
@@ -92,6 +101,15 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
         user={user}
         showUpgradeCta={!entitlement || entitlement.status === "locked"}
       />
+      {venueRecord?.status === "paused" && (
+        <PublishBanner
+          orgSlug={orgSlug}
+          catalogSlug={catalogSlug}
+          isAnonymousUser={Boolean(
+            (authUser as { is_anonymous?: boolean } | null)?.is_anonymous,
+          )}
+        />
+      )}
       <main className="flex-1 bg-secondary-background">{children}</main>
     </div>
   );
