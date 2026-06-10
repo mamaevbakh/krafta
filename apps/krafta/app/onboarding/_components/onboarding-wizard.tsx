@@ -21,6 +21,7 @@ import {
   Loader2,
   Minus,
   Plus,
+  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -599,59 +600,89 @@ function AddRow({
   onAdd?: (name: string) => void;
   onAddWithPrice?: (name: string, priceSum: string) => void;
 }) {
+  // Progressive disclosure: idle = an explicit "+ Add" button; tapping it
+  // reveals a real, visibly-bordered input. An always-on borderless input
+  // read as decorative text, not as a field.
+  const [editing, setEditing] = React.useState(false);
   const [value, setValue] = React.useState("");
   const [price, setPrice] = React.useState("");
+  const reset = () => {
+    setEditing(false);
+    setValue("");
+    setPrice("");
+  };
   const commit = () => {
     if (!value.trim()) return;
     if (withPrice) onAddWithPrice?.(value, price);
     else onAdd?.(value);
+    // Stay open for rapid multi-add; the input keeps focus.
     setValue("");
     setPrice("");
   };
+  const keyHandler = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    }
+    if (e.key === "Escape") reset();
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="flex min-h-12 w-full items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Plus className="size-4 shrink-0" />
+        {placeholder}
+      </button>
+    );
+  }
+
   return (
     <div className="flex min-h-12 items-center gap-2 rounded-lg border border-dashed px-3 py-2">
-      <Plus className="size-4 shrink-0 text-muted-foreground" />
       <Input
+        autoFocus
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          }
-        }}
+        onKeyDown={keyHandler}
         placeholder={placeholder}
         maxLength={80}
-        className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
+        className="h-8 min-w-0 flex-1"
       />
       {withPrice ? (
         <div className="flex shrink-0 items-center gap-1">
           <Input
             value={price.replace(/\B(?=(\d{3})+(?!\d))/g, " ")}
             onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              }
-            }}
+            onKeyDown={keyHandler}
             inputMode="numeric"
             placeholder="0"
             aria-label="Price in sums"
-            className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
+            className="h-8 w-24 text-right font-mono tabular-nums"
           />
           <span className="text-xs text-muted-foreground">сум</span>
         </div>
       ) : null}
       <Button
         type="button"
-        variant="ghost"
         size="sm"
         className="shrink-0"
         onClick={commit}
         disabled={!value.trim()}
       >
         Add
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 text-muted-foreground"
+        onClick={reset}
+        aria-label="Cancel adding"
+      >
+        <X className="size-4" />
       </Button>
     </div>
   );
