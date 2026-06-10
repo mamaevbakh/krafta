@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import localFont from "next/font/local";
@@ -9,7 +8,6 @@ import { Toaster } from "@/components/ui/sonner"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
 import { HapticsProvider } from "@/components/krafta/haptics-provider";
-import { Spinner } from "@/components/ui/spinner";
 
 const KraftaBrandFont = localFont({
   src: "../public/fonts/helveticaneue-bold.woff2",
@@ -37,22 +35,20 @@ export default function RootLayout({
       >
         <SpeedInsights />
         <Analytics />
-        <Suspense
-          fallback={
-            <div className="min-h-svh bg-background flex items-center justify-center">
-              <Spinner className="size-6 text-muted-foreground" />
-            </div>
-          }
+        {/* No Suspense here, on purpose. A root-level boundary makes the
+            html+fallback shell flush (and commit HTTP 200) before ANY page
+            can run notFound()/redirect with a real status code — every
+            unknown storefront slug became a soft-404. Routes that stream
+            own their boundary below the status decision (loading.tsx or an
+            explicit <Suspense> in the page). */}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
         >
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-          >
-            <HapticsProvider />
-            {children}
-          </ThemeProvider>
-        </Suspense>
+          <HapticsProvider />
+          {children}
+        </ThemeProvider>
         <Toaster position="top-center" />
       </body>
     </html>
