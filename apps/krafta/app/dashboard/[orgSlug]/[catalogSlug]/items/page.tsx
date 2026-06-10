@@ -5,6 +5,10 @@ import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
 // based on merchant's localStorage preference. Mobile always renders
 // Canvas. Both views consume the same data shape this page fetches.
 import { LibraryRoot } from "./_components/library-root";
+import {
+  ActivationChecklist,
+  type ChecklistEntry,
+} from "./_components/activation-checklist";
 
 type PageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
@@ -17,7 +21,7 @@ export default async function DashboardItemsPage({ params }: PageProps) {
 
   const { data: catalog } = await supabase
     .from("catalogs")
-    .select("id, org_id, pricing_config, settings_currency")
+    .select("id, org_id, pricing_config, settings_currency, settings_branding")
     .eq("slug", catalogSlug)
     .maybeSingle();
 
@@ -92,8 +96,23 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     max_selected_override: number | null;
     hidden_from_customer_override: boolean;
   }[] = [];
+  // ADR 0005 §3 (D9/D13): activation-checklist facts ride the SAME parallel
+  // waves as the canvas data — venue (status/hours/modes) and the Telegram
+  // alert binding are two single-row indexed lookups, zero added waterfall.
+  type VenueFacts = {
+    id: string;
+    status: string;
+    modes_enabled: string[];
+    business_hours: Record<string, unknown>;
+    created_at: string;
+    updated_at: string;
+  };
+  let venue: VenueFacts | null = null;
+  let telegramConnected = false;
+  let menuEdited = false;
+
   if (catalog?.id) {
-    const [itemsResponse, categoriesResponse, localesResponse] =
+    const [itemsResponse, categoriesResponse, localesResponse, venueResponse, telegramResponse] =
       await Promise.all([
         // KRA-86 — embed the FULL item_variations array per item, ordered
         // by ordinal. The legacy `!inner` + is_default filter is dropped:
@@ -108,7 +127,7 @@ export default async function DashboardItemsPage({ params }: PageProps) {
         supabase
           .from("items")
           .select(
-            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, item_variations(id, item_id, catalog_id, name, price_cents, ordinal, is_default, is_sold_out, is_active)",
+            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, seeded_at, item_variations(id, item_id, catalog_id, name, price_cents, ordinal, is_default, is_sold_out, is_active)",
           )
           .eq("catalog_id", catalog.id)
           .eq("item_variations.is_active", true)
@@ -124,10 +143,29 @@ export default async function DashboardItemsPage({ params }: PageProps) {
           .select("id, locale, is_default, is_enabled, sort_order")
           .eq("catalog_id", catalog.id)
           .order("sort_order", { ascending: true }),
+        supabase
+          .from("venues")
+          .select(
+            "id, status, modes_enabled, business_hours, created_at, updated_at",
+          )
+          .eq("catalog_id", catalog.id)
+          .maybeSingle(),
+        supabase
+          .schema("commerce")
+          .from("venue_telegram_settings")
+          .select("chat_id, is_active")
+          .eq("org_id", catalog.org_id)
+          .maybeSingle(),
       ]);
+
+    venue = (venueResponse.data ?? null) as VenueFacts | null;
+    telegramConnected = Boolean(
+      telegramResponse.data?.chat_id && telegramResponse.data.is_active,
+    );
 
     const itemsRaw = (itemsResponse.data ?? []) as Array<
       Omit<Item, "price_cents" | "variations"> & {
+        seeded_at: string | null;
         item_variations: Array<{
           id: string;
           item_id: string;
@@ -141,6 +179,12 @@ export default async function DashboardItemsPage({ params }: PageProps) {
         }>;
       }
     >;
+    // "Menu touched" = the merchant added an item of their own or edited a
+    // seeded one (updated_at moves on first edit). Pure seed = not yet.
+    menuEdited = itemsRaw.some(
+      (i) => !i.seeded_at || i.updated_at !== i.created_at,
+    );
+
     items = itemsRaw.map(({ item_variations, ...rest }) => {
       const variations = item_variations ?? [];
       // Default price = the one row with is_default=true. Fallback to 0
@@ -232,19 +276,68 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     );
   }
 
+  const { orgSlug } = await params;
+  const settingsHref = `/dashboard/${orgSlug}/${catalogSlug}/settings`;
+  const branding = (catalog.settings_branding ?? {}) as Record<string, unknown>;
+  const checklistEntries: ChecklistEntry[] = venue
+    ? [
+        { key: "menu", label: "Make the menu yours — edit or add an item", done: menuEdited },
+        { key: "photo", label: "Add a real photo", done: media.length > 0 },
+        {
+          key: "modes",
+          label: "Review your order modes",
+          done: venue.updated_at !== venue.created_at,
+          href: settingsHref,
+        },
+        {
+          key: "hours",
+          label: "Set your opening hours",
+          done: Object.keys(venue.business_hours ?? {}).length > 0,
+          href: settingsHref,
+        },
+        {
+          key: "theme",
+          label: "Pick your look",
+          done: Object.keys(branding).length > 0,
+          href: `/dashboard/${orgSlug}/${catalogSlug}/studio`,
+        },
+        {
+          key: "alerts",
+          label: "Get order alerts in Telegram",
+          done: telegramConnected,
+          href: settingsHref,
+        },
+        {
+          key: "publish",
+          label: "Publish your shop",
+          done: venue.status === "active",
+        },
+      ]
+    : [];
+
   return (
-    <LibraryRoot
-      catalogId={catalog.id}
-      catalogSlug={catalogSlug}
-      orgId={catalog.org_id}
-      categories={categories}
-      items={items}
-      locales={locales}
-      translations={translations}
-      media={media}
-      modifierLists={modifierLists}
-      itemModifierLists={itemModifierLists}
-      currencySettings={currencySettings}
-    />
+    <>
+      {checklistEntries.length > 0 && (
+        <div className="mx-auto w-full max-w-[1248px] px-6 pt-6">
+          <ActivationChecklist
+            catalogId={catalog.id}
+            entries={checklistEntries}
+          />
+        </div>
+      )}
+      <LibraryRoot
+        catalogId={catalog.id}
+        catalogSlug={catalogSlug}
+        orgId={catalog.org_id}
+        categories={categories}
+        items={items}
+        locales={locales}
+        translations={translations}
+        media={media}
+        modifierLists={modifierLists}
+        itemModifierLists={itemModifierLists}
+        currencySettings={currencySettings}
+      />
+    </>
   );
 }
