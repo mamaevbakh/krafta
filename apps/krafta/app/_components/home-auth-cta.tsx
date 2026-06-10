@@ -4,8 +4,6 @@ import { getUserSafely } from "@krafta/supabase/auth";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 
-import { startShopAction } from "./start-shop-action";
-
 export function HomeAuthCtaFallback() {
   return (
     <Button variant="outline" disabled aria-busy="true">
@@ -29,16 +27,15 @@ export async function HomeAuthCta() {
     );
   }
 
-  // First-time visitor: two paths. "Create your shop" stamps an anon
-  // session + draft shop (KRA-41) — no signup wall. "Sign in" is for
-  // returning users who already registered.
+  // First-time visitor: two paths. "Create your shop" opens the 2-screen
+  // wizard (KRA-42): vertical + name, then a vertical-seeded draft shop with
+  // no signup wall (anon session, ADR 0005 §2). "Sign in" is for returning
+  // users who already registered.
   return (
     <>
-      <form action={startShopAction}>
-        <Button type="submit" variant="default">
-          Create your shop
-        </Button>
-      </form>
+      <Button asChild variant="default">
+        <Link href="/onboarding">Create your shop</Link>
+      </Button>
       <Button asChild variant="outline">
         <Link href={{ pathname: "/auth/sso/start", query: { next: "/dashboard" } }}>
           Sign In
