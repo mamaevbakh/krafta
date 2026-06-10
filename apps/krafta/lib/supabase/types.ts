@@ -556,6 +556,7 @@ export type Database = {
           text_value: string | null
           uid: string
           updated_at: string
+          written_by_client: string | null
         }
         Insert: {
           base_price_cents_delta?: number
@@ -574,6 +575,7 @@ export type Database = {
           text_value?: string | null
           uid: string
           updated_at?: string
+          written_by_client?: string | null
         }
         Update: {
           base_price_cents_delta?: number
@@ -592,15 +594,9 @@ export type Database = {
           text_value?: string | null
           uid?: string
           updated_at?: string
+          written_by_client?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "order_line_item_modifiers_catalog_modifier_list_id_fkey"
-            columns: ["catalog_modifier_list_id"]
-            isOneToOne: false
-            referencedRelation: "modifier_lists"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "order_line_item_modifiers_line_item_id_fkey"
             columns: ["line_item_id"]
@@ -630,6 +626,7 @@ export type Database = {
           uid: string
           updated_at: string
           variation_name: string | null
+          written_by_client: string | null
         }
         Insert: {
           base_price_cents?: number
@@ -650,6 +647,7 @@ export type Database = {
           uid: string
           updated_at?: string
           variation_name?: string | null
+          written_by_client?: string | null
         }
         Update: {
           base_price_cents?: number
@@ -670,6 +668,7 @@ export type Database = {
           uid?: string
           updated_at?: string
           variation_name?: string | null
+          written_by_client?: string | null
         }
         Relationships: [
           {
@@ -994,6 +993,7 @@ export type Database = {
       }
       table_sessions: {
         Row: {
+          bill_requested_at: string | null
           closed_at: string | null
           id: string
           metadata: Json
@@ -1005,6 +1005,7 @@ export type Database = {
           venue_id: string
         }
         Insert: {
+          bill_requested_at?: string | null
           closed_at?: string | null
           id?: string
           metadata?: Json
@@ -1016,6 +1017,7 @@ export type Database = {
           venue_id: string
         }
         Update: {
+          bill_requested_at?: string | null
           closed_at?: string | null
           id?: string
           metadata?: Json
@@ -1077,12 +1079,12 @@ export type Database = {
     Functions: {
       cart_apply_writes: {
         Args: {
+          p_client_id: string
+          p_deletes: string[]
+          p_inserts: Json
           p_order_id: string
           p_org_id: string
-          p_client_id: string
-          p_inserts: Json
           p_updates: Json
-          p_deletes: string[]
         }
         Returns: undefined
       }
@@ -2424,53 +2426,6 @@ export type Database = {
           },
         ]
       }
-      catalog_translations: {
-        Row: {
-          catalog_id: string
-          created_at: string
-          description: string | null
-          id: string
-          is_ai_translated: boolean
-          last_edited_by: string | null
-          locale: string
-          name: string
-          source_hash: string | null
-          updated_at: string
-        }
-        Insert: {
-          catalog_id: string
-          created_at?: string
-          description?: string | null
-          id?: string
-          is_ai_translated?: boolean
-          last_edited_by?: string | null
-          locale: string
-          name: string
-          source_hash?: string | null
-          updated_at?: string
-        }
-        Update: {
-          catalog_id?: string
-          created_at?: string
-          description?: string | null
-          id?: string
-          is_ai_translated?: boolean
-          last_edited_by?: string | null
-          locale?: string
-          name?: string
-          source_hash?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "catalog_translations_catalog_id_fkey"
-            columns: ["catalog_id"]
-            isOneToOne: false
-            referencedRelation: "catalogs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       catalog_item_type_feature_requests: {
         Row: {
           catalog_id: string
@@ -2657,6 +2612,53 @@ export type Database = {
           },
         ]
       }
+      catalog_translations: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_ai_translated: boolean
+          last_edited_by: string | null
+          locale: string
+          name: string
+          source_hash: string | null
+          updated_at: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale: string
+          name: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ai_translated?: boolean
+          last_edited_by?: string | null
+          locale?: string
+          name?: string
+          source_hash?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_translations_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalogs: {
         Row: {
           created_at: string
@@ -2675,6 +2677,7 @@ export type Database = {
           slug: string
           status: Database["public"]["Enums"]["catalog_status"]
           tags: string[] | null
+          vertical: Database["public"]["Enums"]["shop_vertical"] | null
         }
         Insert: {
           created_at?: string
@@ -2693,6 +2696,7 @@ export type Database = {
           slug: string
           status?: Database["public"]["Enums"]["catalog_status"]
           tags?: string[] | null
+          vertical?: Database["public"]["Enums"]["shop_vertical"] | null
         }
         Update: {
           created_at?: string
@@ -2711,6 +2715,7 @@ export type Database = {
           slug?: string
           status?: Database["public"]["Enums"]["catalog_status"]
           tags?: string[] | null
+          vertical?: Database["public"]["Enums"]["shop_vertical"] | null
         }
         Relationships: [
           {
@@ -2771,6 +2776,38 @@ export type Database = {
             columns: ["catalog_id"]
             isOneToOne: false
             referencedRelation: "catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      draft_shop_claims: {
+        Row: {
+          claimed_from: string
+          code: string
+          created_at: string
+          expires_at: string
+          org_id: string
+        }
+        Insert: {
+          claimed_from: string
+          code?: string
+          created_at?: string
+          expires_at?: string
+          org_id: string
+        }
+        Update: {
+          claimed_from?: string
+          code?: string
+          created_at?: string
+          expires_at?: string
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "draft_shop_claims_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3104,6 +3141,7 @@ export type Database = {
           name: string
           position: number
           product_type: Database["public"]["Enums"]["catalog_item_product_type"]
+          seeded_at: string | null
           slug: string
           updated_at: string
           version: number
@@ -3123,6 +3161,7 @@ export type Database = {
           name: string
           position?: number
           product_type?: Database["public"]["Enums"]["catalog_item_product_type"]
+          seeded_at?: string | null
           slug: string
           updated_at?: string
           version?: number
@@ -3142,6 +3181,7 @@ export type Database = {
           name?: string
           position?: number
           product_type?: Database["public"]["Enums"]["catalog_item_product_type"]
+          seeded_at?: string | null
           slug?: string
           updated_at?: string
           version?: number
@@ -3513,45 +3553,34 @@ export type Database = {
         ]
       }
       qr_scans: {
-        // KRA-26 follow-up — hand-added until the next `pnpm gen:types`.
-        // See supabase/migrations/20260525150000_kra26_qr_scans.sql.
         Row: {
           id: string
-          qr_code_id: string
-          org_id: string
-          scanned_at: string
           ip_hash: string | null
-          ua_hash: string | null
+          org_id: string
+          qr_code_id: string
           referrer: string | null
+          scanned_at: string
+          ua_hash: string | null
         }
         Insert: {
           id?: string
-          qr_code_id: string
-          // BEFORE INSERT trigger fills org_id from the qr_codes row; any
-          // uuid here is overwritten. Mirrors the qr_codes/tables pattern.
-          org_id?: string
-          scanned_at?: string
           ip_hash?: string | null
-          ua_hash?: string | null
+          org_id: string
+          qr_code_id: string
           referrer?: string | null
+          scanned_at?: string
+          ua_hash?: string | null
         }
         Update: {
           id?: string
-          qr_code_id?: string
-          org_id?: string
-          scanned_at?: string
           ip_hash?: string | null
-          ua_hash?: string | null
+          org_id?: string
+          qr_code_id?: string
           referrer?: string | null
+          scanned_at?: string
+          ua_hash?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "qr_scans_qr_code_id_fkey"
-            columns: ["qr_code_id"]
-            isOneToOne: false
-            referencedRelation: "qr_codes"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "qr_scans_org_id_fkey"
             columns: ["org_id"]
@@ -3559,52 +3588,11 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      tables: {
-        Row: {
-          id: string
-          org_id: string
-          venue_id: string
-          label: string
-          position: number
-          is_active: boolean
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          org_id?: string
-          venue_id: string
-          label: string
-          position?: number
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          org_id?: string
-          venue_id?: string
-          label?: string
-          position?: number
-          is_active?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
           {
-            foreignKeyName: "tables_org_id_fkey"
-            columns: ["org_id"]
+            foreignKeyName: "qr_scans_qr_code_id_fkey"
+            columns: ["qr_code_id"]
             isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tables_venue_id_fkey"
-            columns: ["venue_id"]
-            isOneToOne: false
-            referencedRelation: "venues"
+            referencedRelation: "qr_codes"
             referencedColumns: ["id"]
           },
         ]
@@ -3659,6 +3647,54 @@ export type Database = {
           term?: string
         }
         Relationships: []
+      }
+      tables: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          org_id: string
+          position: number
+          updated_at: string
+          venue_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          org_id: string
+          position?: number
+          updated_at?: string
+          venue_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          org_id?: string
+          position?: number
+          updated_at?: string
+          venue_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tables_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tables_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tax_categories: {
         Row: {
@@ -3976,6 +4012,27 @@ export type Database = {
           },
         ]
       }
+      vertical_templates: {
+        Row: {
+          created_at: string
+          key: Database["public"]["Enums"]["shop_vertical"]
+          template: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          key: Database["public"]["Enums"]["shop_vertical"]
+          template: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          key?: Database["public"]["Enums"]["shop_vertical"]
+          template?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       translation_completeness_view: {
@@ -4067,8 +4124,20 @@ export type Database = {
         Args: { p_item_id: string }
         Returns: undefined
       }
+      claim_draft_shop_complete: {
+        Args: { p_claim_code: string }
+        Returns: {
+          catalog_slug: string
+          org_slug: string
+        }[]
+      }
+      claim_draft_shop_initiate: { Args: never; Returns: string }
       create_draft_shop: {
-        Args: { p_slug: string }
+        Args: {
+          p_name?: string
+          p_slug: string
+          p_vertical?: Database["public"]["Enums"]["shop_vertical"]
+        }
         Returns: {
           catalog_id: string
           org_id: string
@@ -4077,6 +4146,14 @@ export type Database = {
       duplicate_item: {
         Args: { p_catalog_id: string; p_item_id: string }
         Returns: string
+      }
+      increment_translation_quota: {
+        Args: {
+          p_catalog_id: string
+          p_tokens_used: number
+          p_usd_estimated: number
+        }
+        Returns: undefined
       }
       is_org_role: {
         Args: { _org_id: string; _roles?: string[] }
@@ -4093,6 +4170,16 @@ export type Database = {
           p_top_result_id: string
         }
         Returns: undefined
+      }
+      pg_advisory_unlock_text: { Args: { p_key: string }; Returns: boolean }
+      pg_try_advisory_lock_text: { Args: { p_key: string }; Returns: boolean }
+      publish_shop: {
+        Args: { p_final_slug?: string; p_org_id: string }
+        Returns: {
+          catalog_slug: string
+          org_slug: string
+          venue_slug: string
+        }[]
       }
       reorder_categories: {
         Args: { p_catalog_id: string; p_changes: Json }
@@ -4119,6 +4206,21 @@ export type Database = {
         Args: { p_embedding_text: string; p_id: string }
         Returns: undefined
       }
+      translation_worker_claim_batch: {
+        Args: { p_batch_size?: number }
+        Returns: {
+          attempts: number
+          catalog_id: string
+          entity_id: string
+          entity_kind: Database["public"]["Enums"]["translatable_entity_kind"]
+          id: string
+          llm_provider: string
+          max_attempts: number
+          target_locale: string
+        }[]
+      }
+      translation_worker_reset_daily_quotas: { Args: never; Returns: number }
+      translation_worker_watchdog: { Args: never; Returns: number }
       update_item_with_variations: {
         Args: {
           p_item_fields: Json
@@ -4149,6 +4251,7 @@ export type Database = {
       modifier_list_kind: "list" | "text"
       qr_kind: "main" | "table" | "pickup" | "delivery"
       role: "owner" | "member" | "admin"
+      shop_vertical: "cafe" | "restaurant" | "retail"
       tax_applies_to: "all_items" | "by_category"
       tax_calculation_phase: "subtotal" | "total"
       tax_inclusion_type: "included" | "additive"
@@ -4366,6 +4469,7 @@ export const Constants = {
       modifier_list_kind: ["list", "text"],
       qr_kind: ["main", "table", "pickup", "delivery"],
       role: ["owner", "member", "admin"],
+      shop_vertical: ["cafe", "restaurant", "retail"],
       tax_applies_to: ["all_items", "by_category"],
       tax_calculation_phase: ["subtotal", "total"],
       tax_inclusion_type: ["included", "additive"],
