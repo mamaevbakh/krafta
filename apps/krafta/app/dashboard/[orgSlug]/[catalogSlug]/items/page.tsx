@@ -318,12 +318,11 @@ export default async function DashboardItemsPage({ params }: PageProps) {
   return (
     <>
       {checklistEntries.length > 0 && (
-        <div className="mx-auto w-full max-w-[1248px] px-6 pt-6">
-          <ActivationChecklist
-            catalogId={catalog.id}
-            entries={checklistEntries}
-          />
-        </div>
+        // Floating bottom-right widget — fixed-positioned, out of the page flow.
+        <ActivationChecklist
+          catalogId={catalog.id}
+          entries={checklistEntries}
+        />
       )}
       <LibraryRoot
         catalogId={catalog.id}
