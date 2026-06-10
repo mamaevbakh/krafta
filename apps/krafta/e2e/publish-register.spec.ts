@@ -1,0 +1,89 @@
+// ADR 0005 — the publish path: Publish → slug confirm → demo nudge →
+// register (email OTP) → dual-gate flip → live storefront.
+//
+// The OTP arrives by email; against the LOCAL Supabase stack the message is
+// readable from inbucket (http://127.0.0.1:54324). When inbucket isn't
+// reachable (no local stack on this machine), the spec skips itself rather
+// than pretend — the publish RPC surface is separately covered by pgTAP
+// (supabase/tests/publish_guards_test.sql) and SQL probes.
+
+import { expect, test } from "@playwright/test";
+
+const INBUCKET = "http://127.0.0.1:54324";
+
+async function inbucketReachable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${INBUCKET}/api/v1/mailbox/probe`, {
+      signal: AbortSignal.timeout(2_000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function latestOtp(mailbox: string): Promise<string | null> {
+  const list = await fetch(
+    `${INBUCKET}/api/v1/mailbox/${encodeURIComponent(mailbox)}`,
+  ).then((r) => r.json() as Promise<Array<{ id: string }>>);
+  const newest = list.at(-1);
+  if (!newest) return null;
+  const msg = await fetch(
+    `${INBUCKET}/api/v1/mailbox/${encodeURIComponent(mailbox)}/${newest.id}`,
+  ).then((r) => r.json() as Promise<{ body: { text: string } }>);
+  return msg.body.text.match(/\b(\d{6})\b/)?.[1] ?? null;
+}
+
+test("publish → register with email OTP → storefront live", async ({ page }) => {
+  test.skip(!(await inbucketReachable()), "local Supabase stack (inbucket) not running");
+
+  const mailbox = `merchant-${Date.now()}`;
+  const email = `${mailbox}@krafta-e2e.test`;
+
+  // Build a draft shop first (same path the wow spec covers).
+  await page.goto("/onboarding");
+  await page.getByRole("button", { name: /Restaurant/ }).click();
+  await page.getByLabel("Shop name").fill("Ош Маркази E2E");
+  await page.getByRole("button", { name: "Create my shop" }).click();
+  await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
+
+  // Publish: slug step (suggestion is transliterated from the name).
+  await page.getByRole("button", { name: "Publish" }).click();
+  const slugInput = page.getByRole("textbox", { name: "Shop link" });
+  await expect(slugInput).toHaveValue(/osh-markazi/);
+  const finalSlug = `osh-e2e-${Date.now().toString(36)}`;
+  await slugInput.fill(finalSlug);
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // Demo nudge: untouched seeds are listed; keep them (non-blocking, D19).
+  await expect(page.getByText("You still have demo items")).toBeVisible();
+  await page.getByRole("button", { name: "Keep them and publish" }).click();
+
+  // Register: email OTP (anon → permanent on the SAME user, D2).
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByText("Enter the code")).toBeVisible();
+
+  const otp = await expect
+    .poll(() => latestOtp(mailbox), { timeout: 30_000 })
+    .toBeTruthy()
+    .then(() => latestOtp(mailbox));
+  for (const [i, digit] of [...(otp ?? "")].entries()) {
+    await page.locator(`[data-slot=input-otp-slot]`).nth(i).click();
+    await page.keyboard.type(digit);
+  }
+  await page.getByRole("button", { name: "Verify and publish" }).click();
+
+  // Celebration: dual gate flipped, final slug installed.
+  await expect(page.getByText("Your shop is live")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText(finalSlug)).toBeVisible();
+
+  // The storefront is publicly reachable — fresh context, no cookies.
+  const anon = await page.context().browser()!.newContext();
+  const customer = await anon.newPage();
+  await customer.goto(`/${finalSlug}`);
+  await expect(customer.getByText("Плов").first()).toBeVisible();
+  await anon.close();
+});
