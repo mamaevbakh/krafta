@@ -124,10 +124,12 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   }
   await expect(page.getByText("Get ready to open")).toBeVisible();
 
-  // REGRESSION: "Pick your look" must land in the Studio (/builder), not 404
-  // — the route segment is "builder" while the product name is "Studio".
-  await page.getByRole("link", { name: "Pick your look" }).click();
-  await expect(page).toHaveURL(/\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\/builder/);
+  // REGRESSION: the Studio lives at the /builder segment (nav label ≠ route
+  // name) and must not 404. The checklist's "Pick your look" row is born-done
+  // since the wizard's Look screen writes settings_branding, so it no longer
+  // renders a link — assert the route directly.
+  const slugs = page.url().match(/\/dashboard\/([a-z0-9-]+)\/([a-z0-9-]+)/);
+  await page.goto(`/dashboard/${slugs![1]}/${slugs![2]}/builder`);
   await expect(
     page.getByRole("heading", { name: "Studio", exact: true }),
   ).toBeVisible();
