@@ -39,6 +39,7 @@ export async function POST(
       payBaseUrl
     );
 
+    if (!redirectUrl) throw new Error("provider_did_not_return_redirect_url");
     redirect(redirectUrl);
   } catch (error) {
     // In Next.js, `redirect()` works by throwing a special error.

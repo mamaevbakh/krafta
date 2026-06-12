@@ -143,6 +143,9 @@ export async function POST(
       },
     });
 
+    if (!selection.redirectUrl) {
+      return redirectToPortal(req, session_token, { error: "payment_method_update_start_failed" });
+    }
     return NextResponse.redirect(selection.redirectUrl, { status: 303 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "payment_method_update_start_failed";

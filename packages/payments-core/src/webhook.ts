@@ -3,6 +3,7 @@ import type { HandleWebhookInput, HandleWebhookResult } from "./types";
 import { writePaymentDebugLog } from "./debug-log";
 import {
   finalizeInitialPayment,
+  activateSubscriptionAfterCharge,
   completeStandaloneCheckoutSession,
   markStandaloneCheckoutFailed,
   markPaymentFailed,
@@ -322,55 +323,24 @@ export async function handleWebhookEvent(
               },
             });
 
-            const normalizedAttemptStatus =
-              chargeResult.status === "succeeded"
-                ? "succeeded"
-                : chargeResult.status === "processing"
-                  ? "processing"
-                  : "failed";
-            const { error: attemptUpdateErr } = await supabase
-              .schema("payments")
-              .from("payment_attempts")
-              .update({
-                status: normalizedAttemptStatus,
-                provider_payment_id: chargeAttemptProviderPaymentId ?? null,
-                raw_init_response: {
-                  attemptKind: "initial_charge_post_bind",
-                  bindingWebhookPayload: payload,
-                  chargeResult: chargeResult.raw,
-                  providerRefs: uzumRefs,
-                },
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", matchedAttempt.id);
-            if (attemptUpdateErr) throw attemptUpdateErr;
-
-            if (chargeResult.status === "succeeded") {
-              await finalizeInitialPayment(supabase, {
-                paymentIntentId: matchedAttempt.payment_intent_id,
-                providerId: input.providerId,
-                providerPaymentId: chargeAttemptProviderPaymentId ?? null,
-                payload,
-                attemptId: matchedAttempt.id,
-              });
-            } else if (chargeResult.status === "failed") {
-              await markPaymentFailed(supabase, {
-                paymentIntentId: matchedAttempt.payment_intent_id,
-                providerId: input.providerId,
-                providerPaymentId: chargeAttemptProviderPaymentId ?? null,
-                payload: chargeResult.raw,
-              });
-            } else {
-              const { error: intentProcessingErr } = await supabase
-                .schema("payments")
-                .from("payment_intents")
-                .update({
-                  status: "processing",
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", matchedAttempt.payment_intent_id);
-              if (intentProcessingErr) throw intentProcessingErr;
-            }
+            // Shared activation path: identical state transitions whether the
+            // charge came from Uzum (here, via createUzumRecurringCharge) or, in
+            // Phase 1, from Atmos's synchronous inline apply route.
+            await activateSubscriptionAfterCharge(supabase, {
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              providerId: input.providerId,
+              attemptId: matchedAttempt.id,
+              chargeStatus: chargeResult.status,
+              providerPaymentId: chargeAttemptProviderPaymentId ?? null,
+              attemptRawResponse: {
+                attemptKind: "initial_charge_post_bind",
+                bindingWebhookPayload: payload,
+                chargeResult: chargeResult.raw,
+                providerRefs: uzumRefs,
+              },
+              finalizePayload: payload,
+              failurePayload: chargeResult.raw,
+            });
             }
           } else {
             await finalizeInitialPayment(supabase, {

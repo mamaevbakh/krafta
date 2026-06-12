@@ -35,7 +35,11 @@ export type SelectProviderInput = {
 
 export type SelectProviderResult = {
   attemptId: string;
-  redirectUrl: string;          // provider checkout URL (MVP)
+  // How the client should present the next step:
+  // - "redirect": navigate to redirectUrl (Uzum and other hosted-page providers)
+  // - "inline":   render the provider card form on pay.krafta.uz (Atmos); no redirectUrl
+  mode?: "redirect" | "inline";
+  redirectUrl?: string;         // present for redirect-mode providers
 };
 
 export type HandleWebhookInput = {

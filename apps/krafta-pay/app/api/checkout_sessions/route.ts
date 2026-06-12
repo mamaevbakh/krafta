@@ -1,23 +1,36 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createCheckoutSession } from "@krafta/payments-core";
+import { authenticateMerchantApiKey } from "@/lib/api-keys";
 
 export async function POST(req: Request) {
+  const supabase = createAdminSupabase();
+
+  // Require a merchant API key. orgId is derived from the authenticated key, so a
+  // caller can never create checkout sessions (or capture card data, once Atmos
+  // inline lands) under another merchant's organization.
+  let merchantOrgId: string;
   try {
-    const supabase = createAdminSupabase();
+    const auth = await authenticateMerchantApiKey({
+      supabase,
+      authorizationHeader: req.headers.get("authorization"),
+    });
+    merchantOrgId = auth.merchantOrgId;
+  } catch {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  try {
     const body = await req.json();
 
     const payBaseUrl = process.env.PAY_BASE_URL;
     if (!payBaseUrl) {
-      return NextResponse.json(
-        { error: "PAY_BASE_URL is not set" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "configuration_error" }, { status: 500 });
     }
 
-    if (!body?.orgId || !body?.amountMinor || !body?.currency) {
+    if (!body?.amountMinor || !body?.currency) {
       return NextResponse.json(
-        { error: "orgId, amountMinor, and currency are required" },
+        { error: "amountMinor and currency are required" },
         { status: 400 }
       );
     }
@@ -25,7 +38,7 @@ export async function POST(req: Request) {
     const result = await createCheckoutSession(
       supabase,
       {
-        orgId: body.orgId,
+        orgId: merchantOrgId,
         amountMinor: body.amountMinor,
         currency: body.currency,
         description: body.description,
@@ -41,21 +54,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    const err = error as {
-      message?: string;
-      code?: string;
-      details?: string;
-      hint?: string;
-    };
-    const message =
-      err?.message ?? (typeof error === "string" ? error : "Unknown error");
-    const payload = {
-      error: message,
-      code: err?.code,
-      details: err?.details,
-      hint: err?.hint,
-    };
-    console.error("checkout_sessions POST failed", payload);
-    return NextResponse.json(payload, { status: 500 });
+    // Never echo provider/DB error internals (message/code/details/hint) to the
+    // caller — they can leak schema or identifiers. Keep details server-side.
+    console.error("checkout_sessions POST failed", error);
+    return NextResponse.json(
+      { error: "checkout_session_create_failed" },
+      { status: 500 }
+    );
   }
 }

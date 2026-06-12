@@ -1,3 +1,5 @@
+import { redactSensitive } from "./redact";
+
 type PaymentDebugLogInput = {
   type?: string;
   // Backward-compatible alias for older callsites.
@@ -36,7 +38,9 @@ export async function writePaymentLog(
         payment_intent_id: input.paymentIntentId ?? null,
         payment_attempt_id: input.paymentAttemptId ?? null,
         public_token: input.publicToken ?? null,
-        data: input.data ?? {},
+        // Fail-safe: mask PAN/OTP/token/secret keys + PAN-shaped digit runs even
+        // if a caller forgot to pre-redact. Redaction is the default, not opt-in.
+        data: redactSensitive(input.data ?? {}),
       });
   } catch (error) {
     console.warn("payment log insert failed", {

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { createUzumRecurringCharge, extractUzumChargeProviderRefs } from "./providers/uzum";
+import { redactSensitive } from "./redact";
 
 const RETRY_SCHEDULE_DAYS = [3, 7, 14] as const;
 
@@ -1057,7 +1058,7 @@ export async function finalizeInitialPayment(
   const { data: intent, error: intentErr } = await supabase
     .schema("payments")
     .from("payment_intents")
-    .select("id, metadata, amount_minor, currency")
+    .select("id, status, metadata, amount_minor, currency")
     .eq("id", input.paymentIntentId)
     .maybeSingle();
   if (intentErr) throw intentErr;
@@ -1082,6 +1083,13 @@ export async function finalizeInitialPayment(
   const subscriptionId = subscriptionIdFromMetadata ?? invoice?.subscription_id;
   if (!invoiceId || !subscriptionId) {
     throw new Error("subscription_or_invoice_missing_for_payment_intent");
+  }
+
+  // Idempotency: if this intent was already finalized (e.g. a synchronous inline
+  // apply succeeded and a late provider webhook arrives for the same charge), do
+  // not re-run side effects — no duplicate subscription_events, no period reset.
+  if (intent.status === "succeeded") {
+    return { subscriptionId, invoiceId, paymentIntentId: intent.id };
   }
 
   let attempt: {
@@ -1306,6 +1314,81 @@ export async function markPaymentFailed(
           next_due_at: dueAt,
         },
       });
+  }
+}
+
+/**
+ * Shared post-charge activation, used by BOTH the Uzum webhook (after
+ * createUzumRecurringCharge) and, in Phase 1, the Atmos inline apply route
+ * (after a synchronous atmosApply). The provider-specific charge happens in the
+ * caller; this function only records the outcome and drives the subscription
+ * state machine, so both providers produce identical transitions.
+ *
+ * The card binding/token must already be persisted by the caller BEFORE the
+ * charge (so a saved card survives a failed first charge for retry/renewal);
+ * this function does not persist it.
+ */
+export async function activateSubscriptionAfterCharge(
+  supabase: SupabaseClient,
+  input: {
+    paymentIntentId: string;
+    providerId: string;
+    attemptId: string;
+    chargeStatus: "succeeded" | "processing" | "failed";
+    providerPaymentId?: string | null;
+    // Provider bookkeeping persisted on the attempt; redacted before write so a
+    // raw provider body can never leak a PAN/OTP/token into raw_init_response.
+    attemptRawResponse?: Record<string, unknown>;
+    // Passed to finalizeInitialPayment on success (used there for binding
+    // extraction + audit). Callers must pass a payload safe to persist: Uzum
+    // passes its webhook payload; Atmos passes a minimal allowlisted object.
+    finalizePayload?: unknown;
+    // Passed to markPaymentFailed on failure (audit only).
+    failurePayload?: unknown;
+  },
+) {
+  const nowIso = new Date().toISOString();
+  const attemptStatus =
+    input.chargeStatus === "succeeded"
+      ? "succeeded"
+      : input.chargeStatus === "processing"
+        ? "processing"
+        : "failed";
+
+  const { error: attemptUpdateErr } = await supabase
+    .schema("payments")
+    .from("payment_attempts")
+    .update({
+      status: attemptStatus,
+      provider_payment_id: input.providerPaymentId ?? null,
+      raw_init_response: redactSensitive(input.attemptRawResponse ?? {}),
+      updated_at: nowIso,
+    })
+    .eq("id", input.attemptId);
+  if (attemptUpdateErr) throw attemptUpdateErr;
+
+  if (input.chargeStatus === "succeeded") {
+    await finalizeInitialPayment(supabase, {
+      paymentIntentId: input.paymentIntentId,
+      providerId: input.providerId,
+      providerPaymentId: input.providerPaymentId ?? null,
+      payload: input.finalizePayload,
+      attemptId: input.attemptId,
+    });
+  } else if (input.chargeStatus === "failed") {
+    await markPaymentFailed(supabase, {
+      paymentIntentId: input.paymentIntentId,
+      providerId: input.providerId,
+      providerPaymentId: input.providerPaymentId ?? null,
+      payload: input.failurePayload,
+    });
+  } else {
+    const { error: intentProcessingErr } = await supabase
+      .schema("payments")
+      .from("payment_intents")
+      .update({ status: "processing", updated_at: nowIso })
+      .eq("id", input.paymentIntentId);
+    if (intentProcessingErr) throw intentProcessingErr;
   }
 }
 
@@ -1535,9 +1618,15 @@ export async function chargeRenewal(
     });
     return { skipped: true, reason: "default_payment_method_not_found" as const };
   }
-  if (paymentMethod.provider_id !== "uzum") {
+  // Providers that support off-session recurring charges. Phase 1 adds "atmos"
+  // alongside a charge-fn dispatch below; payme/click remain unsupported.
+  const RECURRING_PROVIDERS = new Set(["uzum"]);
+  if (!RECURRING_PROVIDERS.has(paymentMethod.provider_id)) {
     throw new Error("unsupported_recurring_provider");
   }
+  // Attribute every renewal record to the saved card's actual provider rather
+  // than a hardcoded "uzum", so an Atmos renewal is recorded as atmos in Phase 1.
+  const renewalProviderId = paymentMethod.provider_id;
 
   const { data: customer, error: customerErr } = await supabase
     .schema("payments")
@@ -1552,7 +1641,7 @@ export async function chargeRenewal(
     .from("payment_attempts")
     .insert({
       payment_intent_id: renewal.paymentIntentId,
-      provider_id: "uzum",
+      provider_id: renewalProviderId,
       org_provider_account_id: paymentMethod.org_provider_account_id,
       status: "initialized",
       raw_init_response: {},
@@ -1591,11 +1680,11 @@ export async function chargeRenewal(
           : chargeResult.status === "processing"
             ? "processing"
             : "failed",
-      raw_init_response: {
+      raw_init_response: redactSensitive({
         attemptKind: "renewal_off_session",
         ...(chargeResult.raw ?? {}),
         providerRefs: uzumRefs,
-      },
+      }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", attempt.id);
@@ -1604,7 +1693,7 @@ export async function chargeRenewal(
   if (chargeResult.status === "succeeded") {
     await finalizeInitialPayment(supabase, {
       paymentIntentId: renewal.paymentIntentId,
-      providerId: "uzum",
+      providerId: renewalProviderId,
       providerPaymentId: chargeAttemptProviderPaymentId,
       attemptId: attempt.id,
     });
@@ -1641,7 +1730,7 @@ export async function chargeRenewal(
   if (chargeResult.status === "failed") {
     await markPaymentFailed(supabase, {
       paymentIntentId: renewal.paymentIntentId,
-      providerId: "uzum",
+      providerId: renewalProviderId,
       providerPaymentId: chargeAttemptProviderPaymentId,
       payload: chargeResult.raw,
     });

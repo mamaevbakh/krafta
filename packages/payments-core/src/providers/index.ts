@@ -16,7 +16,10 @@ type CreateAttemptCtx = {
 };
 
 export type ProviderAttemptResult = {
-  redirectUrl: string;
+  // "redirect" (default) hands the client a redirectUrl to navigate to.
+  // "inline" providers (Atmos) collect the card on pay.krafta.uz and have no redirectUrl.
+  mode?: "redirect" | "inline";
+  redirectUrl?: string;
   providerPaymentId?: string;
   status?: "requires_action" | "processing";
   raw?: Record<string, unknown>;
