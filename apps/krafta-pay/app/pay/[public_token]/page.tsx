@@ -48,7 +48,7 @@ export default async function PayPage({
   const providers =
     (accounts ?? [])
       .filter((a: any) => a.providers?.is_active)
-      .filter((a: any) => a.provider_id === "uzum")
+      .filter((a: any) => a.provider_id === "uzum" || a.provider_id === "atmos")
       .map((a: any) => ({
         id: a.provider_id as string,
         name: a.providers.display_name as string,
@@ -116,7 +116,12 @@ export default async function PayPage({
         <div className="text-sm font-medium">Choose payment method</div>
 
         {!isTerminal ? (
-          <ProviderPicker publicToken={public_token} providers={providers} />
+          <ProviderPicker
+            publicToken={public_token}
+            providers={providers}
+            amountMinor={intent?.amount_minor ?? 0}
+            currency={intent?.currency ?? "UZS"}
+          />
         ) : (
           <div className="mt-3 text-sm text-muted-foreground">
             This checkout session is no longer accepting new payment attempts.
