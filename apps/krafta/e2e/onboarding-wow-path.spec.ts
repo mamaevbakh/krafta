@@ -44,7 +44,14 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   await expect(page.locator('input[value="Круассан"]')).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ⑥ modes — cafe defaults (pickup + dine-in), vertical-aware option list.
+  // ⑥ look — tappable presets with live mini-previews; Classic pre-selected.
+  await expect(
+    page.getByRole("heading", { name: "Pick your look" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Showcase/ })).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ⑦ modes — cafe defaults (pickup + dine-in), vertical-aware option list.
   await expect(
     page.getByRole("heading", { name: "How do customers order?" }),
   ).toBeVisible();
@@ -69,18 +76,38 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Skip for now" }).click();
 
-  // ⑩ city — tap-chip screen, skippable; skipping still creates the shop.
+  // ⑪ city — tap-chip screen, skippable; skipping still creates the shop.
   await expect(
     page.getByRole("heading", { name: "Where is your shop?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Skip for now" }).click();
 
-  // Lands in the Studio with the cafe starter catalog rendered.
+  // Building theater plays while the RPC runs, then the reveal: the
+  // merchant's own storefront in a phone frame + the dashboard CTA.
+  await expect(page.getByRole("heading", { name: /is ready/ })).toBeVisible({
+    timeout: 60_000,
+  });
+  await page.getByRole("link", { name: "Open my dashboard" }).click();
+
+  // Lands in the Studio with the cafe starter catalog rendered. Scope to
+  // the Library row buttons: the reveal's phone-frame preview also says
+  // "Капучино" while the route transition streams, so a bare text match
+  // is ambiguous.
   await expect(page).toHaveURL(/\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\/items/, {
     timeout: 60_000,
   });
-  await expect(page.getByText("Капучино")).toBeVisible();
-  await expect(page.getByText("Круассан")).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Капучино — click to edit, drag to reorder",
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByRole("button", {
+      name: "Круассан — click to edit, drag to reorder",
+      exact: true,
+    }),
+  ).toBeVisible();
 
   // The draft banner gates going live (ADR 0005 §1).
   await expect(page.getByText("Draft")).toBeVisible();

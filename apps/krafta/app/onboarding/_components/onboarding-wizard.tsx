@@ -20,6 +20,7 @@
 // zero rows.
 
 import * as React from "react";
+import Link from "next/link";
 import {
   ArrowLeft,
   Check,
@@ -45,6 +46,7 @@ import {
   type WizardPayload,
 } from "./actions";
 import { CITY_CHIPS, fmt, wizardCopy } from "./copy";
+import { LOOK_KEYS, isLookKey, type LookKey } from "./presets";
 import {
   VERTICALS,
   VERTICAL_KEYS,
@@ -52,6 +54,10 @@ import {
   type ShopVertical,
   type VenueMode,
 } from "./verticals";
+import {
+  WizardLookPreview,
+  type PreviewSection,
+} from "./wizard-look-preview";
 
 type ItemDraft = {
   key: string;
@@ -76,6 +82,7 @@ type Step =
   | { kind: "name" }
   | { kind: "sections" }
   | { kind: "items"; sectionKey: string }
+  | { kind: "look" }
   | { kind: "modes" }
   | { kind: "tables" }
   | { kind: "languages" }
@@ -90,6 +97,7 @@ function buildSteps(sections: SectionDraft[], modes: VenueMode[]): Step[] {
     ...sections
       .filter((s) => s.checked)
       .map((s): Step => ({ kind: "items", sectionKey: s.key })),
+    { kind: "look" },
     { kind: "modes" },
     ...(modes.includes("dine_in") ? [{ kind: "tables" } as Step] : []),
     { kind: "languages" },
@@ -123,6 +131,8 @@ type WizardDraft = {
   vertical: ShopVertical | null;
   name: string;
   sections: SectionDraft[];
+  /** Look preset key; absent in pre-PR2 drafts → defaults to "classic". */
+  look?: LookKey;
   modes: VenueMode[];
   tableCount: number;
   locales: { code: string; isDefault: boolean }[];
@@ -130,6 +140,14 @@ type WizardDraft = {
   city: string;
   customCity: boolean;
 };
+
+/** Minimum time the building theater stays on screen — the staged labels
+ *  need a beat each even when the RPC finishes in under two seconds. */
+const BUILDING_MIN_MS = 2600;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function OnboardingWizard() {
   const [hydrated, setHydrated] = React.useState(false);
@@ -149,11 +167,17 @@ export function OnboardingWizard() {
   const [phone, setPhone] = React.useState("");
   const [city, setCity] = React.useState("");
   const [customCity, setCustomCity] = React.useState(false);
+  const [look, setLook] = React.useState<LookKey>("classic");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   // Which final-screen button kicked off the submit — the busy spinner must
   // sit on the button the merchant actually pressed.
   const [submitVia, setSubmitVia] = React.useState<"create" | "skip" | null>(null);
+  // form → building (submit in flight, theater playing) → reveal (shop
+  // exists; phone-frame preview + dashboard CTA). Failures fall back to
+  // "form" with the error on the city screen.
+  const [phase, setPhase] = React.useState<"form" | "building" | "reveal">("form");
+  const [shop, setShop] = React.useState<{ orgSlug: string; catalogSlug: string } | null>(null);
 
   // Restore once, then persist on every change.
   React.useEffect(() => {
@@ -173,6 +197,7 @@ export function OnboardingWizard() {
           if (typeof d.phone === "string") setPhone(d.phone);
           if (typeof d.city === "string") setCity(d.city);
           if (typeof d.customCity === "boolean") setCustomCity(d.customCity);
+          if (typeof d.look === "string" && isLookKey(d.look)) setLook(d.look);
           if (Number.isInteger(d.cursor)) setCursor(Math.max(0, d.cursor as number));
         }
       }
@@ -183,7 +208,9 @@ export function OnboardingWizard() {
   }, []);
 
   React.useEffect(() => {
-    if (!hydrated) return;
+    // Stop persisting once the submit succeeds — the draft is cleared on
+    // success and must not be resurrected by a late state change.
+    if (!hydrated || phase !== "form") return;
     try {
       const draft: WizardDraft = {
         v: 1,
@@ -191,6 +218,7 @@ export function OnboardingWizard() {
         vertical,
         name,
         sections,
+        look,
         modes,
         tableCount,
         locales,
@@ -202,7 +230,7 @@ export function OnboardingWizard() {
     } catch {
       // Storage full/blocked — persistence is best-effort.
     }
-  }, [hydrated, cursor, vertical, name, sections, modes, tableCount, locales, phone, city, customCity]);
+  }, [hydrated, phase, cursor, vertical, name, sections, look, modes, tableCount, locales, phone, city, customCity]);
 
   const steps = buildSteps(sections, modes);
   const safeCursor = Math.min(Math.max(cursor, 0), steps.length - 1);
@@ -292,16 +320,35 @@ export function OnboardingWizard() {
               ),
             })),
         })),
+      look,
       modes,
       tableCount: modes.includes("dine_in") ? tableCount : 0,
       locales,
       phone: phone.trim(),
       city: opts.includeCity ? city.trim() : "",
     };
-    const res = await createShopFromWizard(payload);
-    // On success the action redirects; reaching here means an error state.
+    // The theater plays while the RPC runs; both must finish before the
+    // reveal so the staged labels get their beat even on a fast network.
+    setPhase("building");
+    const [res] = await Promise.all([
+      createShopFromWizard(payload).catch(() => ({
+        error: "We couldn't set up your shop. Check your connection and try again.",
+      })),
+      delay(BUILDING_MIN_MS),
+    ]);
     setBusy(false);
-    if (res?.error) setError(res.error);
+    if ("error" in res) {
+      setPhase("form");
+      setError(res.error);
+      return;
+    }
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Best-effort; a stale draft is inert once the session owns a shop.
+    }
+    setShop({ orgSlug: res.orgSlug, catalogSlug: res.catalogSlug });
+    setPhase("reveal");
   };
 
   const header = (title: string, subtitle: string, showBack = true) => (
@@ -350,6 +397,64 @@ export function OnboardingWizard() {
       {label}
     </Button>
   );
+
+  const previewSections: PreviewSection[] = sections
+    .filter((s) => s.checked && s.name.trim())
+    .map((s) => ({
+      name: s.name,
+      items: s.items
+        .filter((i) => i.checked && i.name.trim())
+        .map((i) => ({ name: i.name, priceCents: parseSum(i.priceSum) * 100 })),
+    }));
+
+  // ── building / reveal phases override the step machine ───────────────────
+  if (phase === "building") {
+    const stages = wizardCopy.building.stages.filter(
+      (_, i) =>
+        i !== wizardCopy.building.tablesStageIndex ||
+        (modes.includes("dine_in") && tableCount > 0),
+    );
+    return <BuildingScreen stages={stages} />;
+  }
+
+  if (phase === "reveal" && shop) {
+    return (
+      <section key="reveal">
+        <div
+          role="progressbar"
+          aria-label={wizardCopy.common.progressLabel}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={100}
+          className="h-1 w-full overflow-hidden rounded-full bg-muted"
+        >
+          <div className="h-full w-full rounded-full bg-primary" />
+        </div>
+        <h1 className="mt-8 text-2xl font-semibold tracking-tight">
+          {fmt(wizardCopy.reveal.title, { name: name.trim() })}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {wizardCopy.reveal.subtitle}
+        </p>
+        <div className="mx-auto mt-6 w-full max-w-[300px] overflow-hidden rounded-[2rem] border-4 border-foreground/80 bg-background">
+          <div className="h-[540px] overflow-hidden">
+            <WizardLookPreview
+              look={look}
+              shopName={name.trim()}
+              sections={previewSections}
+              maxSections={3}
+              maxItemsPerSection={3}
+            />
+          </div>
+        </div>
+        <Button asChild className="mt-6 w-full">
+          <Link href={`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/items`}>
+            {wizardCopy.reveal.cta}
+          </Link>
+        </Button>
+      </section>
+    );
+  }
 
   // ── ① type ────────────────────────────────────────────────────────────────
   if (current.kind === "type") {
@@ -549,6 +654,68 @@ export function OnboardingWizard() {
             withPrice
             onAddWithPrice={addItem}
           />
+        </div>
+        {continueButton(goNext)}
+      </section>
+    );
+  }
+
+  // ── look — tappable storefront presets, live mini-previews ───────────────
+  if (current.kind === "look") {
+    return (
+      <section key="look">
+        {header(wizardCopy.look.title, wizardCopy.look.subtitle)}
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          {LOOK_KEYS.map((key) => {
+            const preset = wizardCopy.look.presets[key];
+            const selected = look === key;
+            // The preview embeds real storefront chrome (its headers carry
+            // their own buttons), so the card can't BE a <button> — the tap
+            // target is an overlay button layered over the inert preview.
+            return (
+              <div
+                key={key}
+                className={cn(
+                  "relative flex flex-col overflow-hidden rounded-lg border bg-card",
+                  selected && "border-primary ring-1 ring-primary",
+                )}
+              >
+                <span className="relative block h-44 overflow-hidden border-b bg-background">
+                  <span
+                    className="absolute left-0 top-0 block origin-top-left"
+                    style={{ width: 380, transform: "scale(0.42)" }}
+                  >
+                    <WizardLookPreview
+                      look={key}
+                      shopName={name.trim() || wizardCopy.name.placeholder}
+                      sections={previewSections}
+                      maxSections={2}
+                      maxItemsPerSection={2}
+                    />
+                  </span>
+                  {selected ? (
+                    <span className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="size-4" />
+                    </span>
+                  ) : null}
+                </span>
+                <span className="px-3 py-2">
+                  <span className="block text-sm font-medium">{preset.label}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {preset.hint}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLook(key)}
+                  aria-pressed={selected}
+                  className="absolute inset-0 rounded-lg transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="sr-only">{preset.label}</span>
+                </button>
+              </div>
+            );
+          })}
         </div>
         {continueButton(goNext)}
       </section>
@@ -837,6 +1004,57 @@ export function OnboardingWizard() {
           )}
         </Button>
       </form>
+    </section>
+  );
+}
+
+// ── building theater ─────────────────────────────────────────────────────────
+
+function BuildingScreen({ stages }: { stages: readonly string[] }) {
+  // Honest theater: every label names a write the submit really performs.
+  // The timer paces the labels; the reveal is gated on BOTH the timer's
+  // minimum and the actual RPC completing (see submit()).
+  const [stageIdx, setStageIdx] = React.useState(0);
+  React.useEffect(() => {
+    const t = setInterval(
+      () => setStageIdx((i) => Math.min(i + 1, stages.length - 1)),
+      750,
+    );
+    return () => clearInterval(t);
+  }, [stages.length]);
+
+  return (
+    <section key="building" role="status" aria-live="polite">
+      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+        <div className="h-full w-full animate-pulse rounded-full bg-primary" />
+      </div>
+      <h1 className="mt-8 text-2xl font-semibold tracking-tight">
+        {wizardCopy.building.title}
+      </h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {wizardCopy.building.subtitle}
+      </p>
+      <ul className="mt-6 flex flex-col gap-3">
+        {stages.map((stage, i) => (
+          <li
+            key={stage}
+            className={cn(
+              "flex items-center gap-2.5 text-sm transition-opacity duration-200",
+              i < stageIdx && "text-muted-foreground",
+              i > stageIdx && "opacity-40",
+            )}
+          >
+            {i < stageIdx ? (
+              <Check className="size-4 shrink-0" />
+            ) : i === stageIdx ? (
+              <Loader2 className="size-4 shrink-0 animate-spin" />
+            ) : (
+              <span className="size-4 shrink-0" />
+            )}
+            {stage}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

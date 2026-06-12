@@ -4162,8 +4162,10 @@ export type Database = {
       complete_wizard: {
         Args: {
           p_address: Json
+          p_branding?: Json
           p_catalog_id: string
           p_currency: Json
+          p_layout?: Json
           p_locales: Json
           p_menu: Json
           p_modes: string[]

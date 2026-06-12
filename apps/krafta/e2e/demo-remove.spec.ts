@@ -10,19 +10,30 @@ test("publish nudge removes untouched demo items", async ({ page }) => {
   await page.getByRole("button", { name: /Cafe/ }).click();
   await page.getByLabel("Shop name").fill("Demo Removal QA");
   // Fast path: one tap per screen, suggestions kept untouched (= demo items).
-  // Wizard v3 cafe walk: sections, items ×2 (one screen per section), modes,
-  // tables, languages, phone — then the city screen submits.
-  for (let i = 0; i < 8; i++) {
+  // Wizard v3 cafe walk: sections, items ×2 (one screen per section), look,
+  // modes, tables, languages, phone — then the city screen submits.
+  for (let i = 0; i < 9; i++) {
     await page.getByRole("button", { name: "Continue" }).click();
   }
   await expect(
     page.getByRole("heading", { name: "Where is your shop?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Skip for now" }).click();
+  // Reveal: building theater → preview + dashboard CTA.
+  await page
+    .getByRole("link", { name: "Open my dashboard" })
+    .click({ timeout: 60_000 });
   await page.waitForURL(/\/items/, { timeout: 60_000 });
 
-  // Seeded cafe canvas: 5 items across 2 categories.
-  await expect(page.getByText("Капучино")).toBeVisible();
+  // Seeded cafe canvas: 5 items across 2 categories. Scope to the Library
+  // row button — the reveal's preview also says "Капучино" while the
+  // route transition streams.
+  await expect(
+    page.getByRole("button", {
+      name: "Капучино — click to edit, drag to reorder",
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 60_000 });
 
   await page.getByRole("button", { name: "Publish" }).click();
   await page.getByRole("textbox", { name: "Shop link" }).waitFor();

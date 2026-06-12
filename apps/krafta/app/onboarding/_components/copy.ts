@@ -52,6 +52,17 @@ export const wizardCopy = {
     priceAria: "Price in sums",
     currencySuffix: "сум",
   },
+  look: {
+    title: "Pick your look",
+    subtitle: "How your menu greets customers — change it anytime in the Studio.",
+    presets: {
+      classic: { label: "Classic", hint: "Balanced and familiar" },
+      showcase: { label: "Showcase", hint: "Big header, photo-forward" },
+      list: { label: "Menu list", hint: "Dense, like a printed menu" },
+      minimal: { label: "Minimal", hint: "Just names and prices" },
+    },
+    selectedAria: "Selected look",
+  },
   modes: {
     title: "How do customers order?",
     subtitle: "Pick what you serve today — you can change this later.",
@@ -94,6 +105,24 @@ export const wizardCopy = {
     create: "Create my shop",
     creating: "Setting up your shop…",
     skip: "Skip for now",
+  },
+  building: {
+    title: "Setting up your shop",
+    subtitle: "A few seconds — don't close this tab.",
+    stages: [
+      "Creating your shop…",
+      "Building your menu…",
+      "Translating your items…",
+      "Preparing table QR codes…",
+      "Almost there…",
+    ],
+    /** Stage index to skip when the shop has no dine-in tables. */
+    tablesStageIndex: 3,
+  },
+  reveal: {
+    title: "{name} is ready",
+    subtitle: "This is what your customers will see. Everything stays editable.",
+    cta: "Open my dashboard",
   },
 } as const;
 
