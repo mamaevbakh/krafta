@@ -65,12 +65,17 @@ async function buildDraftShop(page: Page, name: string) {
   ).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click(); // → items: Кофе
   await page.getByRole("button", { name: "Continue" }).click(); // → items: Выпечка
+  await page.getByRole("button", { name: "Continue" }).click(); // → look
   await page.getByRole("button", { name: "Continue" }).click(); // → modes
   await page.getByRole("button", { name: "Continue" }).click(); // → tables
   await page.getByRole("button", { name: "Continue" }).click(); // → languages
   await page.getByRole("button", { name: "Continue" }).click(); // → phone
   await page.getByRole("button", { name: "Continue" }).click(); // → city
   await page.getByRole("button", { name: "Skip for now" }).click();
+  // Reveal: building theater → preview + dashboard CTA.
+  await page
+    .getByRole("link", { name: "Open my dashboard" })
+    .click({ timeout: 60_000 });
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
 }
 
@@ -103,6 +108,23 @@ test("publish → register with Telegram → storefront live (uid preserved)", a
       page.evaluate(() => typeof window.onTelegramAuth === "function"),
     )
     .toBe(true);
+
+  // Regression guard (slug-rename race): between register and celebration no
+  // server action may revalidate the router. A session-cookie write inside a
+  // server action makes Next.js re-render the current (old-slug) route, which
+  // races publish_shop's rename — when it loses, /dashboard/[slug] 404s and
+  // unmounts the dialog mid-celebration. Session install must stay in the
+  // browser (publish-dialog handleTelegram).
+  const revalidatedActions: string[] = [];
+  page.on("response", (res) => {
+    if (
+      res.request().method() === "POST" &&
+      res.headers()["x-action-revalidated"]
+    ) {
+      revalidatedActions.push(res.url());
+    }
+  });
+
   await page.evaluate(
     (payload) => window.onTelegramAuth!(payload),
     freshTelegramUser(BOT_TOKEN!, "Bobur"),
@@ -114,6 +136,15 @@ test("publish → register with Telegram → storefront live (uid preserved)", a
     page.getByRole("heading", { name: "Your shop is live" }),
   ).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(`/${slug}`).first()).toBeVisible();
+
+  // Regression guard (slug-rename race): the celebration must SURVIVE — a
+  // losing race used to swap the route to 404 and kill the dialog a beat
+  // after it appeared.
+  await page.waitForTimeout(2500);
+  await expect(
+    page.getByRole("heading", { name: "Your shop is live" }),
+  ).toBeVisible();
+  expect(revalidatedActions).toEqual([]);
 
   // The storefront is publicly reachable (dual gate flipped).
   const storefront = await page.context().newPage();

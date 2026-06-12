@@ -41,17 +41,22 @@ test("publish → register with email OTP → storefront live", async ({ page })
   const email = `${mailbox}@krafta-e2e.test`;
 
   // Build a draft shop first (wizard v3, same path the wow spec covers).
-  // Restaurant walk: sections, items ×3, modes, tables, languages, phone.
+  // Restaurant walk: sections, items ×3, look, modes, tables, languages,
+  // phone — then the city screen submits.
   await page.goto("/onboarding");
   await page.getByRole("button", { name: /Restaurant/ }).click();
   await page.getByLabel("Shop name").fill("Ош Маркази E2E");
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 10; i++) {
     await page.getByRole("button", { name: "Continue" }).click();
   }
   await expect(
     page.getByRole("heading", { name: "Where is your shop?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Create my shop" }).click();
+  // Reveal: building theater → preview + dashboard CTA.
+  await page
+    .getByRole("link", { name: "Open my dashboard" })
+    .click({ timeout: 60_000 });
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
 
   // Publish: slug step (suggestion is transliterated from the name).
@@ -79,13 +84,41 @@ test("publish → register with email OTP → storefront live", async ({ page })
     await page.locator(`[data-slot=input-otp-slot]`).nth(i).click();
     await page.keyboard.type(digit);
   }
+
+  // Regression guard (slug-rename race): between OTP verify and celebration
+  // no server action may revalidate the router. A session-cookie write inside
+  // a server action makes Next.js re-render the current (old-slug) route,
+  // which races publish_shop's rename — when it loses, /dashboard/[slug] 404s
+  // and unmounts the dialog mid-celebration. The OTP verify must stay in the
+  // browser (publish-dialog handleVerifyOtp). The listener starts HERE, after
+  // "Send code": registerPublishEmail's updateUser legitimately touches the
+  // session cookie, and pre-publish revalidations are harmless.
+  const revalidatedActions: string[] = [];
+  page.on("response", (res) => {
+    if (
+      res.request().method() === "POST" &&
+      res.headers()["x-action-revalidated"]
+    ) {
+      revalidatedActions.push(res.url());
+    }
+  });
+
   await page.getByRole("button", { name: "Verify and publish" }).click();
 
   // Celebration: dual gate flipped, final slug installed.
-  await expect(page.getByText("Your shop is live")).toBeVisible({
-    timeout: 60_000,
-  });
+  await expect(
+    page.getByRole("heading", { name: "Your shop is live" }),
+  ).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(finalSlug)).toBeVisible();
+
+  // Regression guard (slug-rename race): the celebration must SURVIVE — a
+  // losing race used to swap the route to 404 and kill the dialog a beat
+  // after it appeared.
+  await page.waitForTimeout(2500);
+  await expect(
+    page.getByRole("heading", { name: "Your shop is live" }),
+  ).toBeVisible();
+  expect(revalidatedActions).toEqual([]);
 
   // The storefront is publicly reachable — fresh context, no cookies.
   const anon = await page.context().browser()!.newContext();

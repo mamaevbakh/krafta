@@ -7,8 +7,9 @@
 //   → celebration (live link + QR + Telegram order-alerts beat).
 //
 // Identity upgrade APIs are split by method (eng review D2):
-//   email  — updateUser({email}) + verifyOtp(type 'email_change'); NOT
-//            linkIdentity, which only does OAuth.
+//   email  — updateUser({email}) here; the OTP is verified on the BROWSER
+//            client in publish-dialog.tsx (cookie-write race, see below).
+//            NOT linkIdentity, which only does OAuth.
 //   google — linkIdentity (requires the manual-linking flag on the project).
 // Both hard-fail when the identity already belongs to another user; that
 // collision resolves through the claim handshake (claim_draft_shop_initiate /
@@ -19,7 +20,7 @@ import { headers } from "next/headers";
 import { getRequestOrigin } from "@/lib/auth/redirect";
 import {
   attachTelegramToUser,
-  mintSessionForTelegramUser,
+  mintDetachedSessionForTelegramUser,
   telegramAdminClient,
   telegramLoginConfigured,
 } from "@/lib/auth/telegram-bridge";
@@ -142,6 +143,14 @@ export async function removeDemoItems(params: {
 
 // ---------------------------------------------------------------------------
 // Register: email OTP (anon → permanent via updateUser + email_change OTP)
+//
+// Only the SEND half lives here. Verifying the OTP mints a session, and a
+// session-cookie write inside a server action makes Next.js re-render the
+// current route (ActionDidRevalidateStaticAndDynamic) — that re-render races
+// the publish_shop slug rename fired right after, and when it loses the old
+// /dashboard/[slug] route 404s and unmounts the dialog mid-celebration. So
+// verification runs on the BROWSER client in publish-dialog.tsx
+// (handleVerifyOtp / handleClaimVerify), same as the Telegram leg.
 // ---------------------------------------------------------------------------
 
 export async function registerPublishEmail(
@@ -157,25 +166,6 @@ export async function registerPublishEmail(
     return { error: error.message };
   }
   return { sent: true };
-}
-
-export async function verifyPublishOtp(
-  email: string,
-  token: string,
-): Promise<{ verified: true } | { error: string }> {
-  const supabase = await createClient();
-  // Anon → email conversion confirms as an email CHANGE on the existing user
-  // (the uid must survive — that's the whole point). Some project configs
-  // issue plain 'email' OTPs instead; try both before failing.
-  const change = await supabase.auth.verifyOtp({
-    email,
-    token,
-    type: "email_change",
-  });
-  if (!change.error && change.data.user) return { verified: true };
-  const plain = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  if (!plain.error && plain.data.user) return { verified: true };
-  return { error: change.error?.message ?? plain.error?.message ?? "Verification failed" };
 }
 
 // ---------------------------------------------------------------------------
@@ -203,15 +193,32 @@ export async function linkGoogleForPublish(
 // to the CURRENT anon user, uid preserved). Unlike the Google leg there is
 // no redirect round-trip: the widget's data-onauth callback hands us the
 // payload in-page, so even the collision case resolves in this ONE action —
-// initiate-claim (as the anon owner) → mint a session for the existing
-// account → complete-claim (as that account) — because both sessions live
-// in the same server-side cookie jar sequentially. The claim code never
-// reaches the browser.
+// initiate-claim (as the anon owner) → mint a detached session for the
+// existing account → complete-claim (through that session). The claim code
+// never reaches the browser.
+//
+// CRITICAL: this action must NOT write session cookies. A cookie mutation
+// inside a server action makes Next.js re-render the current route
+// (ActionDidRevalidateStaticAndDynamic), and that re-render races the
+// publish_shop slug rename fired right after — when it loses, the old
+// /dashboard/[slug] route 404s and unmounts the dialog mid-celebration.
+// Session installation (refresh / setSession) happens in the BROWSER, in
+// publish-dialog.tsx, where cookie writes leave the router untouched.
 // ---------------------------------------------------------------------------
+
+export type RegisterPublishTelegramResult =
+  | {
+      registered: true;
+      claimed: boolean;
+      /** Collision leg only: minted session for the existing account; the
+       *  browser installs it via supabase.auth.setSession(). */
+      session?: { access_token: string; refresh_token: string };
+    }
+  | { error: string };
 
 export async function registerPublishTelegram(
   rawPayload: Record<string, unknown>,
-): Promise<{ registered: true; claimed: boolean } | { error: string }> {
+): Promise<RegisterPublishTelegramResult> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const admin = telegramAdminClient();
   if (!botToken || !admin) {
@@ -240,12 +247,8 @@ export async function registerPublishTelegram(
   if ("ok" in attach) {
     // The is_anonymous flip happened on the user ROW; one refresh re-derives
     // the JWT claim (ADR 0006 F4) so publish_shop and the trigger guards see
-    // a registered caller. Same uid, same refresh-token family.
-    const { data: refreshed, error: refreshErr } =
-      await supabase.auth.refreshSession();
-    if (refreshErr || !refreshed.session) {
-      return { error: "Could not refresh your session. Please try again." };
-    }
+    // a registered caller. Same uid, same refresh-token family. The refresh
+    // itself runs in the BROWSER (see header comment) — never here.
     return { registered: true, claimed: false };
   }
 
@@ -260,7 +263,7 @@ export async function registerPublishTelegram(
       return { error: "Could not start the draft transfer. Please try again." };
     }
 
-    const minted = await mintSessionForTelegramUser(admin, supabase, {
+    const minted = await mintDetachedSessionForTelegramUser(admin, {
       userId: attach.existingUserId,
       tg,
     });
@@ -268,13 +271,20 @@ export async function registerPublishTelegram(
       return { error: "Could not sign in to your existing account. Please try again." };
     }
 
-    const { error: completeErr } = await supabase
+    const { error: completeErr } = await minted.client
       .rpc("claim_draft_shop_complete", { p_claim_code: code as string })
       .single();
     if (completeErr) {
       return { error: "Signed in, but the draft transfer failed. Please try again." };
     }
-    return { registered: true, claimed: true };
+    return {
+      registered: true,
+      claimed: true,
+      session: {
+        access_token: minted.session.access_token,
+        refresh_token: minted.session.refresh_token,
+      },
+    };
   }
 
   if (attach.error === "account_already_linked") {

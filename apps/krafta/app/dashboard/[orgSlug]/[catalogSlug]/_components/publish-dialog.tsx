@@ -37,7 +37,8 @@ import {
   type TelegramAuthPayload,
 } from "@/components/telegram-login-button";
 import { isValidSlug } from "@/lib/onboarding/slug";
-import { signInWithEmail, verifyOtpCode } from "@/lib/auth/actions";
+import { createClient } from "@/lib/supabase/client";
+import { signInWithEmail } from "@/lib/auth/actions";
 
 import {
   completeDraftClaim,
@@ -48,7 +49,6 @@ import {
   registerPublishEmail,
   registerPublishTelegram,
   removeDemoItems,
-  verifyPublishOtp,
   type PublishPreflight,
   type PublishResult,
 } from "./publish-actions";
@@ -206,15 +206,29 @@ export function PublishDialog({
     setBusy(true);
     setError(null);
     const res = await registerPublishTelegram(payload);
-    setBusy(false);
     if ("error" in res) {
+      setBusy(false);
       setError(res.error);
       return;
     }
-    // No router.refresh() here: publish_shop renames the slugs, and a
-    // concurrent RSC re-fetch of the OLD /dashboard/[slug] route 404s and
-    // unmounts the dialog mid-celebration. finishToDashboard routes to the
-    // new slugs once the merchant leaves the dialog (same as the email leg).
+    // Install the session in the BROWSER: the attach flipped is_anonymous on
+    // the user row, and publish_shop's guards read the JWT claim, so the
+    // token must be re-minted before publishing. Doing this client-side is
+    // load-bearing — a cookie write inside the server action would make
+    // Next.js re-render the current route, and that re-render races the
+    // publish_shop slug rename: when it loses, the OLD /dashboard/[slug]
+    // route 404s and unmounts this dialog mid-celebration. (Same reason
+    // there's no router.refresh() here; finishToDashboard routes to the new
+    // slugs once the merchant leaves the dialog.)
+    const supabase = createClient();
+    const { error: sessionErr } = res.session
+      ? await supabase.auth.setSession(res.session)
+      : await supabase.auth.refreshSession();
+    setBusy(false);
+    if (sessionErr) {
+      setError("Could not refresh your session. Please try again.");
+      return;
+    }
     void doPublish(preflight.orgId, slug);
   };
 
@@ -241,10 +255,34 @@ export function PublishDialog({
     if (!preflight) return;
     setBusy(true);
     setError(null);
-    const res = await verifyPublishOtp(email.trim(), otp);
+    // Verify the OTP on the BROWSER client so the new session's cookies are
+    // written client-side — same race as handleTelegram: a cookie write
+    // inside a server action re-renders the current route, and that render
+    // races the publish_shop slug rename into a 404 that unmounts this
+    // dialog mid-celebration. Anon → email conversion confirms as an email
+    // CHANGE on the existing user (the uid must survive); some project
+    // configs issue plain 'email' OTPs instead — try both before failing.
+    const supabase = createClient();
+    const change = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: otp,
+      type: "email_change",
+    });
+    const verified =
+      !change.error && change.data.user
+        ? change
+        : await supabase.auth.verifyOtp({
+            email: email.trim(),
+            token: otp,
+            type: "email",
+          });
     setBusy(false);
-    if ("error" in res) {
-      setError(res.error);
+    if (verified.error || !verified.data.user) {
+      setError(
+        change.error?.message ??
+          verified.error?.message ??
+          "Verification failed",
+      );
       return;
     }
     void doPublish(preflight.orgId, slug);
@@ -278,10 +316,21 @@ export function PublishDialog({
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const signin = await verifyOtpCode(email.trim(), otp);
-    if (signin && "error" in signin && signin.error) {
+    // Sign into the existing account on the BROWSER client (not the shared
+    // verifyOtpCode server action — that writes session cookies inside the
+    // action and re-renders the current route, racing the publish_shop slug
+    // rename; see handleVerifyOtp). completeDraftClaim below already runs
+    // under the new session: the client-side cookie write rides along on its
+    // request.
+    const supabase = createClient();
+    const signin = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: otp,
+      type: "email",
+    });
+    if (signin.error || !signin.data.session) {
       setBusy(false);
-      setError(signin.error);
+      setError(signin.error?.message ?? "Verification failed");
       return;
     }
     const code = sessionStorage.getItem(PENDING_CLAIM_KEY);

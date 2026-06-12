@@ -3,6 +3,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import {
   createClient as createSupabaseClient,
+  type Session,
   type SupabaseClient,
 } from "@supabase/supabase-js";
 
@@ -230,7 +231,7 @@ export async function mintSessionForTelegramUser(
   admin: Admin,
   cookieClient: SupabaseClient<Database>,
   args: { userId: string; tg: TelegramLoginPayload },
-): Promise<{ ok: true } | { error: string }> {
+): Promise<{ ok: true; session: Session } | { error: string }> {
   const { userId, tg } = args;
   const { data: userRes, error: getErr } =
     await admin.auth.admin.getUserById(userId);
@@ -281,5 +282,38 @@ export async function mintSessionForTelegramUser(
     });
     return { error: "mint_failed" };
   }
-  return { ok: true };
+  return { ok: true, session: verified.session };
+}
+
+/**
+ * mintSessionForTelegramUser, but WITHOUT touching the caller's cookie jar:
+ * the OTP is redeemed on a detached in-memory client and the session handed
+ * back. The publish flow needs this variant — writing session cookies inside
+ * a server action makes Next.js re-render the current route (cookie mutation
+ * ⇒ ActionDidRevalidateStaticAndDynamic), and that re-render races
+ * publish_shop's slug rename: when it loses, the old /dashboard/[slug] URL
+ * 404s and unmounts the publish dialog mid-celebration. The browser installs
+ * the returned session via supabase.auth.setSession() instead.
+ */
+export async function mintDetachedSessionForTelegramUser(
+  admin: Admin,
+  args: { userId: string; tg: TelegramLoginPayload },
+): Promise<
+  { session: Session; client: SupabaseClient<Database> } | { error: string }
+> {
+  const env = adminEnv();
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!env || !anonKey) return { error: "mint_failed" };
+  const detached = createSupabaseClient<Database>(env.url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const minted = await mintSessionForTelegramUser(admin, detached, args);
+  if ("error" in minted) return minted;
+  return { session: minted.session, client: detached };
 }
