@@ -16,7 +16,7 @@ export async function POST(
     const providerId = String(body.providerId ?? "");
     // Allowlist of providers wired end-to-end. Phase 1 adds "atmos" once its
     // adapter + inline routes exist; payme/click remain stubs and stay excluded.
-    const ENABLED_PROVIDERS = new Set(["uzum"]);
+    const ENABLED_PROVIDERS = new Set(["uzum", "atmos"]);
     if (!ENABLED_PROVIDERS.has(providerId)) {
       return NextResponse.json(
         { error: "provider_not_enabled" },

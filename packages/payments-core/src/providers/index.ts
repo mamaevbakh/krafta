@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createPaymeAttempt } from "./payme";
 import { createClickAttempt } from "./click";
 import { createUzumAttempt } from "./uzum";
+import { createAtmosAttempt } from "./atmos";
 
 type CreateAttemptCtx = {
   supabase: SupabaseClient;
@@ -33,6 +34,9 @@ export async function createProviderAttempt(ctx: CreateAttemptCtx): Promise<Prov
       return createClickAttempt(ctx);
     case "uzum":
       return createUzumAttempt(ctx);
+    case "atmos":
+      // Inline provider: card collected on pay.krafta.uz; no Atmos call here.
+      return createAtmosAttempt(ctx);
     default:
       throw new Error(`unsupported_provider: ${ctx.providerId}`);
   }

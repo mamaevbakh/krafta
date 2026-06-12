@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { createUzumRecurringCharge, extractUzumChargeProviderRefs } from "./providers/uzum";
+import { createAtmosRecurringCharge, extractAtmosChargeProviderRefs } from "./providers/atmos";
 import { redactSensitive } from "./redact";
 
 const RETRY_SCHEDULE_DAYS = [3, 7, 14] as const;
@@ -1620,7 +1621,7 @@ export async function chargeRenewal(
   }
   // Providers that support off-session recurring charges. Phase 1 adds "atmos"
   // alongside a charge-fn dispatch below; payme/click remain unsupported.
-  const RECURRING_PROVIDERS = new Set(["uzum"]);
+  const RECURRING_PROVIDERS = new Set(["uzum", "atmos"]);
   if (!RECURRING_PROVIDERS.has(paymentMethod.provider_id)) {
     throw new Error("unsupported_recurring_provider");
   }
@@ -1650,24 +1651,40 @@ export async function chargeRenewal(
     .single();
   if (attemptErr) throw attemptErr;
 
-  const chargeResult = await createUzumRecurringCharge({
-    supabase,
-    orgProviderAccountId: paymentMethod.org_provider_account_id,
-    paymentIntentId: renewal.paymentIntentId,
-    providerToken: paymentMethod.provider_token,
-    clientId: customer?.id ?? subscription.org_id,
-    description: "Subscription renewal",
-    // Uzum register may be idempotent by orderNumber. Renewal retries create a
-    // new payment_attempt, so use attempt id to force a fresh charge orderId.
-    orderNumber: `renewal-${attempt.id}`,
-    currency: plan.currency,
-    amountMinor: plan.amount_minor,
-    uzumCart: renewalUzumCart,
-    phoneNumber: customer?.phone,
-  });
-  const uzumRefs = extractUzumChargeProviderRefs(chargeResult.raw);
+  const chargeResult =
+    renewalProviderId === "atmos"
+      ? await createAtmosRecurringCharge({
+          supabase,
+          orgProviderAccountId: paymentMethod.org_provider_account_id,
+          providerToken: paymentMethod.provider_token,
+          amountMinor: plan.amount_minor,
+          // Atmos reconciliation id; the renewal intent id is stable per cycle.
+          account: renewal.paymentIntentId,
+        })
+      : await createUzumRecurringCharge({
+          supabase,
+          orgProviderAccountId: paymentMethod.org_provider_account_id,
+          paymentIntentId: renewal.paymentIntentId,
+          providerToken: paymentMethod.provider_token,
+          clientId: customer?.id ?? subscription.org_id,
+          description: "Subscription renewal",
+          // Uzum register may be idempotent by orderNumber. Renewal retries create a
+          // new payment_attempt, so use attempt id to force a fresh charge orderId.
+          orderNumber: `renewal-${attempt.id}`,
+          currency: plan.currency,
+          amountMinor: plan.amount_minor,
+          uzumCart: renewalUzumCart,
+          phoneNumber: customer?.phone,
+        });
+  const providerRefs =
+    renewalProviderId === "atmos"
+      ? extractAtmosChargeProviderRefs(chargeResult.raw)
+      : extractUzumChargeProviderRefs(chargeResult.raw);
   const chargeAttemptProviderPaymentId =
-    chargeResult.providerPaymentId ?? uzumRefs.chargeOrderId ?? null;
+    chargeResult.providerPaymentId ??
+    (renewalProviderId === "uzum"
+      ? (providerRefs as { chargeOrderId?: string | null }).chargeOrderId ?? null
+      : null);
 
   const { error: updateAttemptErr } = await supabase
     .schema("payments")
@@ -1683,7 +1700,7 @@ export async function chargeRenewal(
       raw_init_response: redactSensitive({
         attemptKind: "renewal_off_session",
         ...(chargeResult.raw ?? {}),
-        providerRefs: uzumRefs,
+        providerRefs,
       }),
       updated_at: new Date().toISOString(),
     })
