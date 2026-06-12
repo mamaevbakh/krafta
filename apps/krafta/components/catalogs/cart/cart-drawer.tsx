@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
+  DrawerDescription,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
@@ -100,6 +101,12 @@ function CartListStep({
     <div className="flex min-h-0 flex-1 flex-col">
       <DrawerHeader className="text-center">
         <DrawerTitle className="text-lg">{t("cart.title")}</DrawerTitle>
+        {/* sr-only: satisfies Radix's DialogContent describedby requirement
+            (silences the "Missing Description" console warning) without
+            adding visible subtitle chrome. Mirrors placed-step.tsx. */}
+        <DrawerDescription className="sr-only">
+          {t("cart.description")}
+        </DrawerDescription>
         {dineInLock ? (
           <p className="mx-auto mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-foreground">
             {t("cart.mode_pill.dine_in", { table: dineInLock.tableLabel })}

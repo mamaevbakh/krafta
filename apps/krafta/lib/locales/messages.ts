@@ -52,6 +52,7 @@ export type StorefrontMessageKey =
   | "all"
   // Cart drawer chrome
   | "cart.title"
+  | "cart.description"
   | "cart.empty"
   | "cart.empty.hint"
   | "cart.continue"
@@ -181,6 +182,7 @@ const EN: MessageTable = {
   all: "All",
 
   "cart.title": "Your cart",
+  "cart.description": "Review the items in your cart and continue to checkout.",
   "cart.empty": "Your cart is empty.",
   "cart.empty.hint": "Add items from the menu to get started.",
   "cart.continue": "Continue",
@@ -292,6 +294,7 @@ const RU: MessageTable = {
   all: "Все",
 
   "cart.title": "Корзина",
+  "cart.description": "Просмотрите позиции в корзине и перейдите к оформлению.",
   "cart.empty": "Ваша корзина пуста.",
   "cart.empty.hint": "Добавьте позиции из меню, чтобы начать.",
   "cart.continue": "Далее",
@@ -405,6 +408,7 @@ const UZ_LATN: MessageTable = {
   all: "Hammasi",
 
   "cart.title": "Savatcha",
+  "cart.description": "Savatchangizdagi taomlarni ko‘rib chiqing va buyurtma berishga o‘ting.",
   "cart.empty": "Savatchangiz bo‘sh.",
   "cart.empty.hint": "Boshlash uchun menyudan taom qo‘shing.",
   "cart.continue": "Davom etish",
