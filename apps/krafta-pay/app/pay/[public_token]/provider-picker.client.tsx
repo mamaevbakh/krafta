@@ -8,7 +8,7 @@ type Provider = {
 };
 
 type SelectProviderResponse =
-  | { attemptId: string; redirectUrl: string }
+  | { attemptId: string; mode?: "redirect" | "inline"; redirectUrl?: string }
   | { error: string };
 
 function getErrorMessage(error: unknown): string {

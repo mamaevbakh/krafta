@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { getCheckoutSessionByPublicToken, getOrgProviderAccountSecrets, getPaymentIntentById } from "../db";
 import { writePaymentDebugLog } from "../debug-log";
 import { decryptSecretJsonMaybe } from "../secrets";
+import { redactSensitive } from "../redact";
 
 type UzumCredentials = {
   apiBaseUrl: string;
@@ -76,20 +77,9 @@ function buildRecurringReturnUrl(returnUrl?: string | null) {
   return resolved;
 }
 
-function redactForDebug(value: unknown): unknown {
-  if (!value || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map(redactForDebug);
-
-  const out: Record<string, unknown> = {};
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (key.toLowerCase() === "cvc" && typeof raw === "string") {
-      out[key] = "***";
-      continue;
-    }
-    out[key] = redactForDebug(raw);
-  }
-  return out;
-}
+// Redaction is centralized in ../redact so PAN/OTP/token/secret keys are masked
+// consistently across providers, the debug logger, and persisted payloads.
+const redactForDebug = redactSensitive;
 
 function parseUzumCredentials(credentials: unknown): UzumCredentials {
   const decrypted = decryptSecretJsonMaybe(credentials);

@@ -120,7 +120,9 @@ export async function selectProviderCreateAttempt(
     const reusableStatuses = new Set(["initialized", "requires_action", "processing"]);
 
     if (existingAttempt && checkoutUrl && (!status || reusableStatuses.has(status))) {
-      return { attemptId: existingAttempt.id, redirectUrl: checkoutUrl };
+      // Reuse only fires for redirect providers in Phase 0 (checkout_url present).
+      // Inline (Atmos) re-selection reuse lands with the adapter in Phase 1.
+      return { attemptId: existingAttempt.id, mode: "redirect", redirectUrl: checkoutUrl };
     }
   }
 
@@ -212,7 +214,7 @@ export async function selectProviderCreateAttempt(
           })
           .eq("id", session.id);
 
-        return { attemptId: existing.id, redirectUrl: existing.checkout_url };
+        return { attemptId: existing.id, mode: "redirect", redirectUrl: existing.checkout_url };
       }
     }
 
@@ -232,6 +234,7 @@ export async function selectProviderCreateAttempt(
 
   return {
     attemptId: attempt.id,
+    mode: providerResult.mode ?? "redirect",
     redirectUrl: providerResult.redirectUrl,
   };
 }

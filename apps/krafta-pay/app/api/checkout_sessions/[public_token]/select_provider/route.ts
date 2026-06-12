@@ -14,9 +14,12 @@ export async function POST(
     const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
     const payBaseUrl = process.env.PAY_BASE_URL ?? "http://localhost:3001";
     const providerId = String(body.providerId ?? "");
-    if (providerId !== "uzum") {
+    // Allowlist of providers wired end-to-end. Phase 1 adds "atmos" once its
+    // adapter + inline routes exist; payme/click remain stubs and stay excluded.
+    const ENABLED_PROVIDERS = new Set(["uzum"]);
+    if (!ENABLED_PROVIDERS.has(providerId)) {
       return NextResponse.json(
-        { error: "provider_not_enabled_in_stage1" },
+        { error: "provider_not_enabled" },
         { status: 400 },
       );
     }
