@@ -34,29 +34,44 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   await expect(page.getByText("Кофе")).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ④ items — suggested items with editable prices, pre-checked.
-  await expect(
-    page.getByRole("heading", { name: "Your first items" }),
-  ).toBeVisible();
+  // ④⑤ items — one screen per checked section (wizard v3), suggested items
+  // pre-checked with editable prices.
+  await expect(page.getByRole("heading", { name: "Кофе" })).toBeVisible();
   await expect(page.locator('input[value="Капучино"]')).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ⑤ modes — cafe defaults (pickup + dine-in) with the table-count stepper.
+  await expect(page.getByRole("heading", { name: "Выпечка" })).toBeVisible();
+  await expect(page.locator('input[value="Круассан"]')).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ⑥ modes — cafe defaults (pickup + dine-in), vertical-aware option list.
   await expect(
     page.getByRole("heading", { name: "How do customers order?" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ⑦ tables — its own screen, present only because dine-in is on.
+  await expect(
+    page.getByRole("heading", { name: "How many tables?" }),
   ).toBeVisible();
   await expect(page.getByText("Tables at your venue")).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ⑥ languages — ru default, uz/en pre-checked.
+  // ⑧ languages — ru default, uz/en pre-checked.
   await expect(
     page.getByRole("heading", { name: "Menu languages" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ⑦ contacts — skippable; skipping still creates the shop.
+  // ⑨ phone — skippable on its own screen.
   await expect(
     page.getByRole("heading", { name: "How can customers reach you?" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+
+  // ⑩ city — tap-chip screen, skippable; skipping still creates the shop.
+  await expect(
+    page.getByRole("heading", { name: "Where is your shop?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Skip for now" }).click();
 
@@ -71,8 +86,24 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   await expect(page.getByText("Draft")).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish" })).toBeVisible();
 
-  // The activation checklist is present and non-blocking (§3).
+  // The activation checklist is present and non-blocking (§3). First-visit
+  // default: expanded on desktop, a compact pill on mobile (the panel would
+  // cover the freshly seeded menu) — expand it before asserting.
+  const checklistPill = page.getByRole("button", {
+    name: "Open setup checklist",
+  });
+  if (await checklistPill.isVisible()) {
+    await checklistPill.click();
+  }
   await expect(page.getByText("Get ready to open")).toBeVisible();
+
+  // REGRESSION: "Pick your look" must land in the Studio (/builder), not 404
+  // — the route segment is "builder" while the product name is "Studio".
+  await page.getByRole("link", { name: "Pick your look" }).click();
+  await expect(page).toHaveURL(/\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\/builder/);
+  await expect(
+    page.getByRole("heading", { name: "Studio", exact: true }),
+  ).toBeVisible();
 
   // Resume rule (D5): re-entering the wizard skips straight to the Studio.
   await page.goto("/onboarding");

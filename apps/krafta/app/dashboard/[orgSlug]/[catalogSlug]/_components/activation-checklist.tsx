@@ -4,9 +4,11 @@
 //
 // A floating bottom-right setup guide (Shopify-style), styled to match the
 // Library's other floating pill (the bottom-center view toggle): same z-30
-// layer, same frosted rounded surface. Expanded panel on first visit;
-// collapses to a compact progress pill (localStorage, per catalog — the one
-// non-derivable bit, D9). Deliberately NO forever-dismiss: a one-click
+// layer, same frosted rounded surface. First visit: expanded on md+ where
+// there's room, a compact pill on mobile — the expanded panel would cover
+// the merchant's freshly seeded menu, which is the payoff of the wizard.
+// After that the merchant's own choice persists (localStorage, per catalog —
+// the one non-derivable bit, D9). Deliberately NO forever-dismiss: a one-click
 // permanent kill next to the collapse button was a fat-finger trap with no
 // undo and no re-entry point. The widget's natural exit is completing the
 // list — it removes itself when every row is done.
@@ -57,7 +59,12 @@ export function ActivationChecklist({
   const [open, setOpen] = React.useState(true);
 
   React.useEffect(() => {
-    setOpen(localStorage.getItem(openKey) !== "0");
+    const stored = localStorage.getItem(openKey);
+    if (stored !== null) {
+      setOpen(stored !== "0");
+    } else {
+      setOpen(window.matchMedia("(min-width: 768px)").matches);
+    }
     setReady(true);
   }, [openKey]);
 

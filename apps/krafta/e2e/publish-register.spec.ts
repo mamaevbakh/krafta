@@ -40,10 +40,17 @@ test("publish → register with email OTP → storefront live", async ({ page })
   const mailbox = `merchant-${Date.now()}`;
   const email = `${mailbox}@krafta-e2e.test`;
 
-  // Build a draft shop first (same path the wow spec covers).
+  // Build a draft shop first (wizard v3, same path the wow spec covers).
+  // Restaurant walk: sections, items ×3, modes, tables, languages, phone.
   await page.goto("/onboarding");
   await page.getByRole("button", { name: /Restaurant/ }).click();
   await page.getByLabel("Shop name").fill("Ош Маркази E2E");
+  for (let i = 0; i < 9; i++) {
+    await page.getByRole("button", { name: "Continue" }).click();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Where is your shop?" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Create my shop" }).click();
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
 

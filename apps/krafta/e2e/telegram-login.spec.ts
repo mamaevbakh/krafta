@@ -52,8 +52,9 @@ function freshTelegramUser(botToken: string, name: string) {
   });
 }
 
-/** Drive the wizard-v2 fast path (7 steps, suggestions pre-checked) to a
- *  seeded draft Studio — same flow the wow-path spec covers in detail. */
+/** Drive the wizard-v3 fast path (one decision per screen, suggestions
+ *  pre-checked) to a seeded draft Studio — same flow the wow-path spec
+ *  covers in detail. */
 async function buildDraftShop(page: Page, name: string) {
   await page.goto("/onboarding");
   await page.getByRole("button", { name: /Cafe/ }).click();
@@ -62,10 +63,13 @@ async function buildDraftShop(page: Page, name: string) {
   await expect(
     page.getByRole("heading", { name: "Your menu sections" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click(); // → items
+  await page.getByRole("button", { name: "Continue" }).click(); // → items: Кофе
+  await page.getByRole("button", { name: "Continue" }).click(); // → items: Выпечка
   await page.getByRole("button", { name: "Continue" }).click(); // → modes
+  await page.getByRole("button", { name: "Continue" }).click(); // → tables
   await page.getByRole("button", { name: "Continue" }).click(); // → languages
-  await page.getByRole("button", { name: "Continue" }).click(); // → contacts
+  await page.getByRole("button", { name: "Continue" }).click(); // → phone
+  await page.getByRole("button", { name: "Continue" }).click(); // → city
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/items/, { timeout: 60_000 });
 }

@@ -27,7 +27,7 @@ export async function getChecklistEntries(
     await Promise.all([
       supabase
         .from("venues")
-        .select("status, business_hours, created_at, updated_at")
+        .select("status, business_hours")
         .eq("catalog_id", params.catalogId)
         .maybeSingle(),
       supabase
@@ -81,12 +81,11 @@ export async function getChecklistEntries(
       done: (mediaRes.data ?? []).length > 0,
       href: itemsHref,
     },
-    {
-      key: "modes",
-      label: "Review your order modes",
-      done: venue.updated_at !== venue.created_at,
-      href: settingsHref,
-    },
+    // "Review your order modes" was removed: the wizard updates the venue
+    // during creation, so its venue.updated_at !== created_at fact was true
+    // from birth for every wizard shop — a permanently pre-checked row is
+    // noise, not guidance. Its slot is reserved for "Secure your shop"
+    // (register without publishing) once that flow exists.
     {
       key: "hours",
       label: "Set your opening hours",
@@ -99,7 +98,8 @@ export async function getChecklistEntries(
       key: "theme",
       label: "Pick your look",
       done: Object.keys(branding).length > 0,
-      href: `/dashboard/${params.orgSlug}/${params.catalogSlug}/studio`,
+      // The Studio lives at the /builder segment (nav label ≠ route name).
+      href: `/dashboard/${params.orgSlug}/${params.catalogSlug}/builder`,
     },
     {
       key: "alerts",

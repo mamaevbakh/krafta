@@ -1,17 +1,20 @@
 "use server";
 
-// KRA-42 wizard v2 / ADR 0005 §2 (amended) — guided seeding.
+// KRA-42 wizard v3 / ADR 0005 §2 (amended) — guided seeding.
 //
 // The wizard collects vertical → name → curated sections → curated items →
 // order modes (+ table count) → languages → contacts, then submits ONCE:
 //
 //   ensure anon session
-//   → create_draft_shop(p_slug, NULL, p_name)        bare bootstrap (no seed)
-//   → catalog UPDATE (vertical, currency settings)    owner RLS
-//   → venue UPDATE (modes, contacts in address)       owner RLS
-//   → catalog_locales bulk insert                      owner RLS
-//   → create_wizard_menu(catalog, curated payload)    atomic, SECURITY INVOKER
-//   → createTable × N (paired table QRs)              existing lib action
+//   → create_draft_shop(p_slug, NULL, p_name)   bare bootstrap (no seed)
+//   → complete_wizard(...)                       everything else: catalog
+//     settings, venue modes/contacts, locales, curated menu, dine-in table
+//     QRs — ONE transactional SECURITY INVOKER call under owner RLS
+//
+// Two round-trips after auth instead of ~ten. Atomic: a failed submit rolls
+// back completely, so a retry never collides with half-written state. The
+// RPC is also idempotent (an existing menu no-ops), which covers the
+// resumed-wizard / double-submit races.
 //
 // Nothing exists until submit — abandoning the wizard leaves zero rows.
 // Untouched suggestions keep template variations + translations + the
@@ -24,7 +27,6 @@ import { createDraftShopForAnonUser } from "@/lib/auth/merchant-shop";
 import { getLocaleDefinition } from "@/lib/locales/registry";
 import { suggestSlug } from "@/lib/onboarding/slug";
 import { createClient } from "@/lib/supabase/server";
-import { createTable } from "@/lib/tables/actions";
 import type { Json } from "@/lib/supabase/types";
 
 import { isShopVertical, type ShopVertical } from "./verticals";
@@ -187,73 +189,7 @@ export async function createShopFromWizard(
 
   const supabase = await createClient();
 
-  // Idempotency guard: if this session already had a shop (double-submit,
-  // resumed wizard), the RPC returned the existing one — don't write a
-  // second menu onto it.
-  const { count: existingItems } = await supabase
-    .from("items")
-    .select("id", { count: "exact", head: true })
-    .eq("catalog_id", shop.catalogId);
-  const { count: existingCats } = await supabase
-    .from("catalog_categories")
-    .select("id", { count: "exact", head: true })
-    .eq("catalog_id", shop.catalogId);
-  if ((existingItems ?? 0) > 0 || (existingCats ?? 0) > 0) {
-    redirect(`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/items`);
-  }
-
-  const { data: venue } = await supabase
-    .from("venues")
-    .select("id, address")
-    .eq("catalog_id", shop.catalogId)
-    .maybeSingle();
-
-  // Catalog identity + currency, venue modes + contacts, locales — small
-  // single-row writes under owner RLS.
-  const [catalogRes, venueRes, localesRes] = await Promise.all([
-    supabase
-      .from("catalogs")
-      .update({
-        vertical: input.vertical as ShopVertical,
-        settings_currency: UZS_CURRENCY_SETTINGS,
-      })
-      .eq("id", shop.catalogId),
-    venue
-      ? supabase
-          .from("venues")
-          .update({
-            modes_enabled: input.modes,
-            address: {
-              ...((venue.address as Record<string, unknown>) ?? {}),
-              ...(input.city ? { city: input.city } : {}),
-              ...(input.phone ? { phone: input.phone } : {}),
-            },
-          })
-          .eq("id", venue.id)
-      : Promise.resolve({ error: null }),
-    supabase.from("catalog_locales").insert(
-      input.locales.map((l, i) => {
-        // Registry resolves display metadata — validated above, never a guess.
-        const def = getLocaleDefinition(l.code)!;
-        return {
-          catalog_id: shop.catalogId,
-          locale: l.code,
-          is_default: l.isDefault,
-          is_enabled: true,
-          sort_order: i,
-          display_name: def.nativeName,
-          text_direction: def.direction,
-        };
-      }),
-    ),
-  ]);
-  const settingsError = catalogRes.error ?? venueRes.error ?? localesRes.error;
-  if (settingsError) {
-    console.error("[onboarding] settings writes failed", settingsError);
-    return { error: "We couldn't save your shop settings. Try again." };
-  }
-
-  // The curated menu — one atomic RPC under the merchant's own RLS.
+  // The curated menu payload for complete_wizard.
   //
   // Canonical strings follow the DEFAULT locale: templates are RU-canonical,
   // so when the merchant picks e.g. Uzbek as default, untouched suggestions
@@ -333,32 +269,36 @@ export async function createShopFromWizard(
     }),
   };
 
-  if (menu.categories.length > 0) {
-    const { error: menuError } = await supabase.rpc("create_wizard_menu", {
-      p_catalog_id: shop.catalogId,
-      p_menu: menu as unknown as Json,
-    });
-    if (menuError) {
-      console.error("[onboarding] create_wizard_menu failed", menuError);
-      return { error: "We couldn't create your menu. Try again." };
-    }
-  }
-
-  // Dine-in tables → paired table QR codes (reuses the qr-codes page action;
-  // sequential because positions append). Best-effort: a table failure
-  // shouldn't strand the merchant outside their new shop.
-  if (input.modes.includes("dine_in") && input.tableCount > 0 && venue) {
-    for (let i = 1; i <= input.tableCount; i++) {
-      const res = await createTable({
-        venueId: venue.id,
-        label: String(i),
-        catalogSlug: shop.catalogSlug,
-      });
-      if (!res.ok) {
-        console.error("[onboarding] createTable failed", res.error);
-        break;
-      }
-    }
+  // Everything after shop creation rides ONE transactional RPC: catalog
+  // settings, venue modes + contacts, locales, menu and dine-in table QRs.
+  // Atomic (a failure rolls back cleanly for a safe retry) and idempotent
+  // (an existing menu no-ops — covers double-submits and resumed wizards).
+  const { error: completeError } = await supabase.rpc("complete_wizard", {
+    p_catalog_id: shop.catalogId,
+    p_vertical: input.vertical as ShopVertical,
+    p_currency: UZS_CURRENCY_SETTINGS,
+    p_modes: input.modes,
+    p_address: {
+      ...(input.city ? { city: input.city } : {}),
+      ...(input.phone ? { phone: input.phone } : {}),
+    },
+    p_locales: input.locales.map((l, i) => {
+      // Registry resolves display metadata — validated above, never a guess.
+      const def = getLocaleDefinition(l.code)!;
+      return {
+        locale: l.code,
+        is_default: l.isDefault,
+        sort_order: i,
+        display_name: def.nativeName,
+        text_direction: def.direction,
+      };
+    }),
+    p_menu: menu as unknown as Json,
+    p_table_count: input.modes.includes("dine_in") ? input.tableCount : 0,
+  });
+  if (completeError) {
+    console.error("[onboarding] complete_wizard failed", completeError);
+    return { error: "We couldn't set up your shop. Try again." };
   }
 
   redirect(`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/items`);

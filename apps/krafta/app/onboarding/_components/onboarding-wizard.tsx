@@ -1,17 +1,23 @@
 "use client";
 
-// KRA-42 wizard v2 / ADR 0005 §2 (amended) — guided seeding.
+// KRA-42 wizard v3 / ADR 0005 §2 (amended) — guided seeding, one decision
+// per screen.
 //
-//   ① type → ② name → ③ sections → ④ items + prices → ⑤ order modes
-//   (+ table count when dine-in) → ⑥ languages → ⑦ contacts (skippable)
-//   → single submit → Studio.
+//   ① type → ② name → ③ sections → ④…N items (one screen per checked
+//   section) → modes → tables (dine-in only) → languages → phone → city
+//   → single submit (complete_wizard RPC) → Studio.
 //
-// Every screen has a one-tap fast path: suggestions arrive pre-checked from
-// vertical_templates, modes/languages carry vertical defaults, contacts can
-// skip. Nothing is created until the final submit, so abandoning mid-wizard
-// leaves zero rows. Suggestions the merchant keeps untouched retain their
-// template richness (size variations, UZ/EN translations) and the seeded_at
-// demo marker; anything renamed, re-priced or added is theirs from birth.
+// The step list is computed from draft state, so the screen count adapts to
+// the merchant's own menu (a 3-section cafe walks 3 item screens). Progress
+// is a slim bar instead of "Step X of Y": the count is dynamic, and a bar
+// reads as momentum rather than burden.
+//
+// Every screen keeps a one-tap fast path: suggestions arrive pre-checked
+// from vertical_templates, modes/languages carry vertical defaults, phone
+// and city skip. The draft persists to sessionStorage on every change so an
+// Android back-gesture or a discarded tab no longer wipes typed prices.
+// Nothing is created until the final submit — abandoning mid-wizard leaves
+// zero rows.
 
 import * as React from "react";
 import {
@@ -38,10 +44,14 @@ import {
   getVerticalSuggestions,
   type WizardPayload,
 } from "./actions";
-import { VERTICALS, VERTICAL_KEYS, type ShopVertical } from "./verticals";
-
-const STEPS = ["type", "name", "sections", "items", "modes", "languages", "contacts"] as const;
-type StepKey = (typeof STEPS)[number];
+import { CITY_CHIPS, fmt, wizardCopy } from "./copy";
+import {
+  VERTICALS,
+  VERTICAL_KEYS,
+  isShopVertical,
+  type ShopVertical,
+  type VenueMode,
+} from "./verticals";
 
 type ItemDraft = {
   key: string;
@@ -61,13 +71,32 @@ type SectionDraft = {
   items: ItemDraft[];
 };
 
-type VenueMode = "dine_in" | "pickup" | "delivery";
+type Step =
+  | { kind: "type" }
+  | { kind: "name" }
+  | { kind: "sections" }
+  | { kind: "items"; sectionKey: string }
+  | { kind: "modes" }
+  | { kind: "tables" }
+  | { kind: "languages" }
+  | { kind: "phone" }
+  | { kind: "city" };
 
-const MODE_LABELS: Record<VenueMode, { label: string; hint: string }> = {
-  dine_in: { label: "Dine-in", hint: "QR on the table, orders to the kitchen" },
-  pickup: { label: "Pickup", hint: "Customers order ahead and collect" },
-  delivery: { label: "Delivery", hint: "You bring it to them" },
-};
+function buildSteps(sections: SectionDraft[], modes: VenueMode[]): Step[] {
+  return [
+    { kind: "type" },
+    { kind: "name" },
+    { kind: "sections" },
+    ...sections
+      .filter((s) => s.checked)
+      .map((s): Step => ({ kind: "items", sectionKey: s.key })),
+    { kind: "modes" },
+    ...(modes.includes("dine_in") ? [{ kind: "tables" } as Step] : []),
+    { kind: "languages" },
+    { kind: "phone" },
+    { kind: "city" },
+  ];
+}
 
 function parseSum(value: string): number {
   const n = Number(value.replace(/[^\d]/g, ""));
@@ -79,8 +108,32 @@ function formatSum(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
+// ── draft persistence ─────────────────────────────────────────────────────────
+//
+// sessionStorage, not localStorage: scoped to the tab (a shared device at the
+// counter doesn't leak one merchant's draft into another's session) and
+// cleared when the tab closes — exactly the reload/back-gesture window we
+// need to survive.
+
+const DRAFT_KEY = "krafta.wizard.draft.v1";
+
+type WizardDraft = {
+  v: 1;
+  cursor: number;
+  vertical: ShopVertical | null;
+  name: string;
+  sections: SectionDraft[];
+  modes: VenueMode[];
+  tableCount: number;
+  locales: { code: string; isDefault: boolean }[];
+  phone: string;
+  city: string;
+  customCity: boolean;
+};
+
 export function OnboardingWizard() {
-  const [step, setStep] = React.useState<StepKey>("type");
+  const [hydrated, setHydrated] = React.useState(false);
+  const [cursor, setCursor] = React.useState(0);
   const [vertical, setVertical] = React.useState<ShopVertical | null>(null);
   const [name, setName] = React.useState("");
   const [sections, setSections] = React.useState<SectionDraft[]>([]);
@@ -95,12 +148,83 @@ export function OnboardingWizard() {
   ]);
   const [phone, setPhone] = React.useState("");
   const [city, setCity] = React.useState("");
+  const [customCity, setCustomCity] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  // Which final-screen button kicked off the submit — the busy spinner must
+  // sit on the button the merchant actually pressed.
+  const [submitVia, setSubmitVia] = React.useState<"create" | "skip" | null>(null);
 
-  const stepIndex = STEPS.indexOf(step);
+  // Restore once, then persist on every change.
+  React.useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as Partial<WizardDraft>;
+        if (d?.v === 1) {
+          if (typeof d.vertical === "string" && isShopVertical(d.vertical)) {
+            setVertical(d.vertical);
+          }
+          if (typeof d.name === "string") setName(d.name);
+          if (Array.isArray(d.sections)) setSections(d.sections);
+          if (Array.isArray(d.modes)) setModes(d.modes);
+          if (typeof d.tableCount === "number") setTableCount(d.tableCount);
+          if (Array.isArray(d.locales) && d.locales.length > 0) setLocales(d.locales);
+          if (typeof d.phone === "string") setPhone(d.phone);
+          if (typeof d.city === "string") setCity(d.city);
+          if (typeof d.customCity === "boolean") setCustomCity(d.customCity);
+          if (Number.isInteger(d.cursor)) setCursor(Math.max(0, d.cursor as number));
+        }
+      }
+    } catch {
+      // Corrupt draft — start fresh.
+    }
+    setHydrated(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    try {
+      const draft: WizardDraft = {
+        v: 1,
+        cursor,
+        vertical,
+        name,
+        sections,
+        modes,
+        tableCount,
+        locales,
+        phone,
+        city,
+        customCity,
+      };
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // Storage full/blocked — persistence is best-effort.
+    }
+  }, [hydrated, cursor, vertical, name, sections, modes, tableCount, locales, phone, city, customCity]);
+
+  const steps = buildSteps(sections, modes);
+  const safeCursor = Math.min(Math.max(cursor, 0), steps.length - 1);
+  const current = steps[safeCursor];
+  const progressPct = Math.round(((safeCursor + 1) / steps.length) * 100);
+
+  const goNext = () => {
+    setError(null);
+    setCursor(Math.min(safeCursor + 1, steps.length - 1));
+  };
+  const goBack = () => {
+    setError(null);
+    setCursor(Math.max(safeCursor - 1, 0));
+  };
 
   const pickVertical = async (key: ShopVertical) => {
+    // Re-tapping the same vertical keeps the merchant's edits; only a fresh
+    // or changed pick refetches suggestions.
+    if (vertical === key && sections.length > 0) {
+      setCursor(1);
+      return;
+    }
     setBusy(true);
     setError(null);
     // Suggestions are a convenience, never a gate: any failure (cold server,
@@ -113,10 +237,8 @@ export function OnboardingWizard() {
     }
     setBusy(false);
     if ("error" in res) {
-      // Suggestions are a convenience — the merchant can still build from
-      // scratch on the sections/items screens.
       setSections([]);
-      setModes(["pickup"]);
+      setModes(VERTICALS[key].fallbackModes);
     } else {
       setSections(
         res.sections.map((s) => ({
@@ -134,15 +256,20 @@ export function OnboardingWizard() {
           })),
         })),
       );
-      setModes((res.defaultModes as VenueMode[]).filter((m) => m in MODE_LABELS));
+      setModes(
+        (res.defaultModes as VenueMode[]).filter((m) =>
+          VERTICALS[key].allowedModes.includes(m),
+        ),
+      );
     }
     setVertical(key);
-    setStep("name");
+    setCursor(1);
   };
 
-  const submit = async (withContacts: boolean) => {
+  const submit = async (opts: { includeCity: boolean }) => {
     if (!vertical) return;
     setBusy(true);
+    setSubmitVia(opts.includeCity ? "create" : "skip");
     setError(null);
     const payload: WizardPayload = {
       vertical,
@@ -168,8 +295,8 @@ export function OnboardingWizard() {
       modes,
       tableCount: modes.includes("dine_in") ? tableCount : 0,
       locales,
-      phone: withContacts ? phone.trim() : "",
-      city: withContacts ? city.trim() : "",
+      phone: phone.trim(),
+      city: opts.includeCity ? city.trim() : "",
     };
     const res = await createShopFromWizard(payload);
     // On success the action redirects; reaching here means an error state.
@@ -177,33 +304,47 @@ export function OnboardingWizard() {
     if (res?.error) setError(res.error);
   };
 
-  const header = (title: string, subtitle: string, backTo?: StepKey) => (
+  const header = (title: string, subtitle: string, showBack = true) => (
     <>
-      {backTo !== undefined ? (
+      <div
+        role="progressbar"
+        aria-label={wizardCopy.common.progressLabel}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progressPct}
+        className="h-1 w-full overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-200 ease-out"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+      {showBack ? (
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="-ml-2 mb-4 text-muted-foreground"
-          onClick={() => {
-            setError(null);
-            setStep(backTo);
-          }}
+          className="-ml-2 mb-4 mt-6 text-muted-foreground"
+          onClick={goBack}
           disabled={busy}
         >
           <ArrowLeft className="size-4" />
-          Back
+          {wizardCopy.common.back}
         </Button>
       ) : null}
-      <p className="text-xs text-muted-foreground">
-        Step {stepIndex + 1} of {STEPS.length}
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h1>
+      <h1
+        className={cn(
+          "text-2xl font-semibold tracking-tight",
+          !showBack && "mt-8",
+        )}
+      >
+        {title}
+      </h1>
       <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
     </>
   );
 
-  const continueButton = (onClick: () => void, label = "Continue", disabled = false) => (
+  const continueButton = (onClick: () => void, label = wizardCopy.common.continue, disabled = false) => (
     <Button type="button" className="mt-6 w-full" onClick={onClick} disabled={busy || disabled}>
       {busy ? <Loader2 className="animate-spin" /> : null}
       {label}
@@ -211,16 +352,10 @@ export function OnboardingWizard() {
   );
 
   // ── ① type ────────────────────────────────────────────────────────────────
-  if (step === "type") {
+  if (current.kind === "type") {
     return (
-      <section aria-labelledby="onboarding-heading">
-        <p className="text-xs text-muted-foreground">Step 1 of {STEPS.length}</p>
-        <h1 id="onboarding-heading" className="mt-2 text-2xl font-semibold tracking-tight">
-          What are you opening?
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          We&apos;ll suggest a starter menu you can shape in the next steps.
-        </p>
+      <section key="type" aria-labelledby="onboarding-heading">
+        {header(wizardCopy.type.title, wizardCopy.type.subtitle, false)}
         <div className="mt-6 flex flex-col gap-2">
           {VERTICAL_KEYS.map((key) => {
             const { label, description, icon: Icon } = VERTICALS[key];
@@ -251,36 +386,36 @@ export function OnboardingWizard() {
   }
 
   // ── ② name ────────────────────────────────────────────────────────────────
-  if (step === "name") {
+  if (current.kind === "name") {
     return (
-      <section>
-        {header("Name your shop", "Customers see this name. You can change it anytime.", "type")}
+      <section key="name">
+        {header(wizardCopy.name.title, wizardCopy.name.subtitle)}
         <form
           className="mt-6 flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (name.trim()) setStep("sections");
+            if (name.trim()) goNext();
           }}
         >
-          <Label htmlFor="wizard-name">Shop name</Label>
+          <Label htmlFor="wizard-name">{wizardCopy.name.label}</Label>
           <Input
             id="wizard-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Чойхона №1"
+            placeholder={wizardCopy.name.placeholder}
             maxLength={80}
             required
             autoFocus
             autoComplete="organization"
           />
-          {continueButton(() => name.trim() && setStep("sections"))}
+          {continueButton(() => name.trim() && goNext())}
         </form>
       </section>
     );
   }
 
   // ── ③ sections ────────────────────────────────────────────────────────────
-  if (step === "sections") {
+  if (current.kind === "sections") {
     const toggle = (key: string) =>
       setSections((prev) => prev.map((s) => (s.key === key ? { ...s, checked: !s.checked } : s)));
     const addSection = (sectionName: string) => {
@@ -292,11 +427,14 @@ export function OnboardingWizard() {
       ]);
     };
     return (
-      <section>
+      <section key="sections">
         {header(
-          "Your menu sections",
-          vertical ? `What we'd suggest for a ${VERTICALS[vertical].label.toLowerCase()} — drop or add your own.` : "Drop or add your own.",
-          "name",
+          wizardCopy.sections.title,
+          vertical
+            ? fmt(wizardCopy.sections.subtitleVertical, {
+                vertical: VERTICALS[vertical].label.toLowerCase(),
+              })
+            : wizardCopy.sections.subtitleBare,
         )}
         <div className="mt-6 flex flex-col gap-2">
           {sections.map((s) => (
@@ -311,33 +449,42 @@ export function OnboardingWizard() {
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{s.name}</span>
               {s.items.length > 0 ? (
                 <span className="text-xs text-muted-foreground">
-                  {s.items.length} suggested
+                  {fmt(wizardCopy.sections.suggestedCount, { n: s.items.length })}
                 </span>
               ) : null}
             </label>
           ))}
-          <AddRow placeholder="Add a section (e.g. Десерты)" onAdd={addSection} />
+          <AddRow placeholder={wizardCopy.sections.addPlaceholder} onAdd={addSection} />
         </div>
-        {continueButton(() => setStep("items"))}
+        {continueButton(goNext)}
       </section>
     );
   }
 
-  // ── ④ items ───────────────────────────────────────────────────────────────
-  if (step === "items") {
-    const checkedSections = sections.filter((s) => s.checked);
-    const patchItem = (sKey: string, iKey: string, patch: Partial<ItemDraft>) =>
+  // ── ④…N items — one screen per checked section ────────────────────────────
+  if (current.kind === "items") {
+    const section = sections.find((s) => s.key === current.sectionKey);
+    if (!section) {
+      // Stale draft pointer (section was unchecked elsewhere) — step past it.
+      return (
+        <section key="items-stale">
+          {header(wizardCopy.sections.title, wizardCopy.sections.subtitleBare)}
+          {continueButton(goNext)}
+        </section>
+      );
+    }
+    const patchItem = (iKey: string, patch: Partial<ItemDraft>) =>
       setSections((prev) =>
         prev.map((s) =>
-          s.key === sKey
+          s.key === section.key
             ? { ...s, items: s.items.map((i) => (i.key === iKey ? { ...i, ...patch } : i)) }
             : s,
         ),
       );
-    const addItem = (sKey: string, itemName: string, priceSum: string) =>
+    const addItem = (itemName: string, priceSum: string) =>
       setSections((prev) =>
         prev.map((s) =>
-          s.key === sKey
+          s.key === section.key
             ? {
                 ...s,
                 items: [
@@ -356,137 +503,135 @@ export function OnboardingWizard() {
         ),
       );
     return (
-      <section>
-        {header(
-          "Your first items",
-          "Set real prices now or keep ours — everything stays editable in the Studio.",
-          "sections",
-        )}
-        <div className="mt-6 flex flex-col gap-6">
-          {checkedSections.map((s) => (
-            <div key={s.key}>
-              <h2 className="mb-2 text-sm font-medium text-muted-foreground">{s.name}</h2>
-              <div className="flex flex-col gap-2">
-                {s.items.map((i) => (
-                  <div
-                    key={i.key}
-                    className={cn(
-                      "flex min-h-12 items-center gap-2 rounded-lg border bg-card px-3 py-2",
-                      !i.checked && "opacity-50",
-                    )}
-                  >
-                    <Checkbox
-                      checked={i.checked}
-                      onCheckedChange={() => patchItem(s.key, i.key, { checked: !i.checked })}
-                      aria-label={`Include ${i.name}`}
-                    />
-                    <Input
-                      value={i.name}
-                      onChange={(e) => patchItem(s.key, i.key, { name: e.target.value })}
-                      maxLength={80}
-                      aria-label="Item name"
-                      className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
-                    />
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Input
-                        value={formatSum(i.priceSum)}
-                        onChange={(e) =>
-                          patchItem(s.key, i.key, {
-                            priceSum: e.target.value.replace(/[^\d]/g, ""),
-                          })
-                        }
-                        inputMode="numeric"
-                        aria-label="Price in sums"
-                        className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
-                      />
-                      <span className="text-xs text-muted-foreground">сум</span>
-                    </div>
-                  </div>
-                ))}
-                <AddRow
-                  placeholder="Add an item"
-                  withPrice
-                  onAddWithPrice={(n, p) => addItem(s.key, n, p)}
+      <section key={`items-${section.key}`}>
+        {header(section.name, wizardCopy.items.subtitle)}
+        <div className="mt-6 flex flex-col gap-2">
+          {section.items.map((i) => (
+            <div
+              key={i.key}
+              className={cn(
+                "flex min-h-12 items-center gap-2 rounded-lg border bg-card px-3 py-2",
+                !i.checked && "opacity-50",
+              )}
+            >
+              <Checkbox
+                checked={i.checked}
+                onCheckedChange={() => patchItem(i.key, { checked: !i.checked })}
+                aria-label={fmt(wizardCopy.items.includeAria, { name: i.name })}
+              />
+              <Input
+                value={i.name}
+                onChange={(e) => patchItem(i.key, { name: e.target.value })}
+                maxLength={80}
+                aria-label={wizardCopy.items.nameAria}
+                className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
+              />
+              <div className="flex shrink-0 items-center gap-1">
+                <Input
+                  value={formatSum(i.priceSum)}
+                  onChange={(e) =>
+                    patchItem(i.key, {
+                      priceSum: e.target.value.replace(/[^\d]/g, ""),
+                    })
+                  }
+                  inputMode="numeric"
+                  aria-label={wizardCopy.items.priceAria}
+                  className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
                 />
+                <span className="text-xs text-muted-foreground">
+                  {wizardCopy.items.currencySuffix}
+                </span>
               </div>
             </div>
           ))}
-          {checkedSections.length === 0 ? (
-            <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-              No sections selected — go back and pick at least one, or continue
-              with an empty menu.
-            </p>
-          ) : null}
+          <AddRow
+            placeholder={wizardCopy.items.addPlaceholder}
+            withPrice
+            onAddWithPrice={addItem}
+          />
         </div>
-        {continueButton(() => setStep("modes"))}
+        {continueButton(goNext)}
       </section>
     );
   }
 
-  // ── ⑤ modes ───────────────────────────────────────────────────────────────
-  if (step === "modes") {
+  // ── modes ─────────────────────────────────────────────────────────────────
+  if (current.kind === "modes") {
     const toggleMode = (m: VenueMode) =>
       setModes((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
+    const availableModes = vertical
+      ? VERTICALS[vertical].allowedModes
+      : (Object.keys(wizardCopy.modes.labels) as VenueMode[]);
     return (
-      <section>
-        {header("How do customers order?", "Pick what you serve today — you can change this later.", "items")}
+      <section key="modes">
+        {header(wizardCopy.modes.title, wizardCopy.modes.subtitle)}
         <div className="mt-6 flex flex-col gap-2">
-          {(Object.keys(MODE_LABELS) as VenueMode[]).map((m) => (
+          {availableModes.map((m) => (
             <label
               key={m}
               className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-2.5 transition-colors hover:bg-accent"
             >
               <Checkbox checked={modes.includes(m)} onCheckedChange={() => toggleMode(m)} />
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm font-medium">{MODE_LABELS[m].label}</span>
-                <span className="truncate text-xs text-muted-foreground">{MODE_LABELS[m].hint}</span>
+                <span className="text-sm font-medium">{wizardCopy.modes.labels[m].label}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {wizardCopy.modes.labels[m].hint}
+                </span>
               </span>
             </label>
           ))}
         </div>
-        {modes.includes("dine_in") ? (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Tables at your venue</p>
-              <p className="text-xs text-muted-foreground">
-                We&apos;ll prepare a printable QR code for each table.
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-9"
-                onClick={() => setTableCount((n) => Math.max(0, n - 1))}
-                aria-label="Fewer tables"
-              >
-                <Minus className="size-4" />
-              </Button>
-              <span className="w-8 text-center font-mono text-sm tabular-nums">{tableCount}</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-9"
-                onClick={() => setTableCount((n) => Math.min(50, n + 1))}
-                aria-label="More tables"
-              >
-                <Plus className="size-4" />
-              </Button>
-            </div>
-          </div>
-        ) : null}
-        {continueButton(() => setStep("languages"), "Continue", modes.length === 0)}
+        {continueButton(goNext, wizardCopy.common.continue, modes.length === 0)}
         {modes.length === 0 ? (
-          <p className="mt-2 text-center text-xs text-destructive">Pick at least one way to order.</p>
+          <p className="mt-2 text-center text-xs text-destructive">
+            {wizardCopy.modes.atLeastOne}
+          </p>
         ) : null}
       </section>
     );
   }
 
-  // ── ⑥ languages ───────────────────────────────────────────────────────────
-  if (step === "languages") {
+  // ── tables (dine-in only) ─────────────────────────────────────────────────
+  if (current.kind === "tables") {
+    return (
+      <section key="tables">
+        {header(wizardCopy.tables.title, wizardCopy.tables.subtitle)}
+        <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{wizardCopy.tables.cardTitle}</p>
+            <p className="text-xs text-muted-foreground">{wizardCopy.tables.cardHint}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-9"
+              onClick={() => setTableCount((n) => Math.max(0, n - 1))}
+              aria-label={wizardCopy.tables.fewerAria}
+            >
+              <Minus className="size-4" />
+            </Button>
+            <span className="w-8 text-center font-mono text-sm tabular-nums">{tableCount}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-9"
+              onClick={() => setTableCount((n) => Math.min(50, n + 1))}
+              aria-label={wizardCopy.tables.moreAria}
+            >
+              <Plus className="size-4" />
+            </Button>
+          </div>
+        </div>
+        {continueButton(goNext)}
+      </section>
+    );
+  }
+
+  // ── languages ─────────────────────────────────────────────────────────────
+  if (current.kind === "languages") {
     const makeDefault = (code: string) =>
       setLocales((prev) => prev.map((l) => ({ ...l, isDefault: l.code === code })));
     const removeLocale = (code: string) =>
@@ -498,12 +643,8 @@ export function OnboardingWizard() {
         prev.some((l) => l.code === code) ? prev : [...prev, { code, isDefault: false }],
       );
     return (
-      <section>
-        {header(
-          "Menu languages",
-          "Suggested items ship translated in Russian, Uzbek and English. Other languages can be translated later in the workbench.",
-          "modes",
-        )}
+      <section key="languages">
+        {header(wizardCopy.languages.title, wizardCopy.languages.subtitle)}
         <div className="mt-6 flex flex-col gap-2">
           {locales.map((l) => {
             const def = getLocaleDefinition(l.code);
@@ -523,7 +664,7 @@ export function OnboardingWizard() {
                 {l.isDefault ? (
                   <Badge variant="outline" className="mr-2 shrink-0">
                     <Check className="size-3" />
-                    Default
+                    {wizardCopy.languages.defaultBadge}
                   </Badge>
                 ) : (
                   <>
@@ -534,7 +675,7 @@ export function OnboardingWizard() {
                       className="shrink-0 text-muted-foreground"
                       onClick={() => makeDefault(l.code)}
                     >
-                      Make default
+                      {wizardCopy.languages.makeDefault}
                     </Button>
                     <Button
                       type="button"
@@ -542,7 +683,9 @@ export function OnboardingWizard() {
                       size="icon"
                       className="size-8 shrink-0 text-muted-foreground"
                       onClick={() => removeLocale(l.code)}
-                      aria-label={`Remove ${def?.englishName ?? l.code}`}
+                      aria-label={fmt(wizardCopy.languages.removeAria, {
+                        name: def?.englishName ?? l.code,
+                      })}
                     >
                       <X className="size-4" />
                     </Button>
@@ -557,64 +700,124 @@ export function OnboardingWizard() {
             excludeCodes={locales.map((l) => l.code)}
           />
         </div>
-        {continueButton(() => setStep("contacts"))}
+        {continueButton(goNext)}
       </section>
     );
   }
 
-  // ── ⑦ contacts ────────────────────────────────────────────────────────────
-  return (
-    <section>
-      {header(
-        "How can customers reach you?",
-        "Optional — a phone number makes the shop feel open for business.",
-        "languages",
-      )}
-      <form
-        className="mt-6 flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit(true);
-        }}
-      >
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="wizard-phone">Phone</Label>
+  // ── phone ─────────────────────────────────────────────────────────────────
+  if (current.kind === "phone") {
+    return (
+      <section key="phone">
+        {header(wizardCopy.phone.title, wizardCopy.phone.subtitle)}
+        <form
+          className="mt-6 flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            goNext();
+          }}
+        >
+          <Label htmlFor="wizard-phone">{wizardCopy.phone.label}</Label>
           <Input
             id="wizard-phone"
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="+998 90 123 45 67"
+            placeholder={wizardCopy.phone.placeholder}
             maxLength={32}
             autoComplete="tel"
-            disabled={busy}
+            autoFocus
           />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="wizard-city">City</Label>
-          <Input
-            id="wizard-city"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="Ташкент"
-            maxLength={64}
-            autoComplete="address-level2"
+          {continueButton(goNext)}
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
             disabled={busy}
-          />
+            onClick={() => {
+              setPhone("");
+              goNext();
+            }}
+          >
+            {wizardCopy.phone.skip}
+          </Button>
+        </form>
+      </section>
+    );
+  }
+
+  // ── city (final screen — submit) ──────────────────────────────────────────
+  const pickCity = (value: string) => {
+    setCustomCity(false);
+    setCity((prev) => (prev === value ? "" : value));
+  };
+  return (
+    <section key="city">
+      {header(wizardCopy.city.title, wizardCopy.city.subtitle)}
+      <form
+        className="mt-6 flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit({ includeCity: true });
+        }}
+      >
+        <div className="flex flex-wrap gap-2">
+          {CITY_CHIPS.map((c) => (
+            <Button
+              key={c}
+              type="button"
+              variant={!customCity && city === c ? "default" : "outline"}
+              className="h-11 rounded-full px-4"
+              disabled={busy}
+              onClick={() => pickCity(c)}
+            >
+              {c}
+            </Button>
+          ))}
+          <Button
+            type="button"
+            variant={customCity ? "default" : "outline"}
+            className="h-11 rounded-full px-4"
+            disabled={busy}
+            onClick={() => {
+              setCustomCity((prev) => {
+                const next = !prev;
+                if (next || city) setCity("");
+                return next;
+              });
+            }}
+          >
+            {wizardCopy.city.otherChip}
+          </Button>
         </div>
+        {customCity ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="wizard-city">{wizardCopy.city.customLabel}</Label>
+            <Input
+              id="wizard-city"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder={wizardCopy.city.customPlaceholder}
+              maxLength={64}
+              autoComplete="address-level2"
+              autoFocus
+              disabled={busy}
+            />
+          </div>
+        ) : null}
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         ) : null}
         <Button type="submit" className="w-full" disabled={busy}>
-          {busy ? (
+          {busy && submitVia === "create" ? (
             <>
               <Loader2 className="animate-spin" />
-              Setting up your shop…
+              {wizardCopy.city.creating}
             </>
           ) : (
-            "Create my shop"
+            wizardCopy.city.create
           )}
         </Button>
         <Button
@@ -622,9 +825,16 @@ export function OnboardingWizard() {
           variant="ghost"
           className="w-full"
           disabled={busy}
-          onClick={() => void submit(false)}
+          onClick={() => void submit({ includeCity: false })}
         >
-          Skip for now
+          {busy && submitVia === "skip" ? (
+            <>
+              <Loader2 className="animate-spin" />
+              {wizardCopy.city.creating}
+            </>
+          ) : (
+            wizardCopy.city.skip
+          )}
         </Button>
       </form>
     </section>
@@ -703,10 +913,12 @@ function AddRow({
             onKeyDown={keyHandler}
             inputMode="numeric"
             placeholder="0"
-            aria-label="Price in sums"
+            aria-label={wizardCopy.items.priceAria}
             className="h-8 w-24 text-right font-mono tabular-nums"
           />
-          <span className="text-xs text-muted-foreground">сум</span>
+          <span className="text-xs text-muted-foreground">
+            {wizardCopy.items.currencySuffix}
+          </span>
         </div>
       ) : null}
       <Button
@@ -716,7 +928,7 @@ function AddRow({
         onClick={commit}
         disabled={!value.trim()}
       >
-        Add
+        {wizardCopy.common.add}
       </Button>
       <Button
         type="button"
@@ -724,7 +936,7 @@ function AddRow({
         size="icon"
         className="size-8 shrink-0 text-muted-foreground"
         onClick={reset}
-        aria-label="Cancel adding"
+        aria-label={wizardCopy.common.cancelAdd}
       >
         <X className="size-4" />
       </Button>

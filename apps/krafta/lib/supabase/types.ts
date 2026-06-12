@@ -4159,6 +4159,19 @@ export type Database = {
         }[]
       }
       claim_draft_shop_initiate: { Args: never; Returns: string }
+      complete_wizard: {
+        Args: {
+          p_address: Json
+          p_catalog_id: string
+          p_currency: Json
+          p_locales: Json
+          p_menu: Json
+          p_modes: string[]
+          p_table_count: number
+          p_vertical: Database["public"]["Enums"]["shop_vertical"]
+        }
+        Returns: undefined
+      }
       create_draft_shop: {
         Args: {
           p_name?: string
