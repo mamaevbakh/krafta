@@ -69,6 +69,7 @@ async function buildDraftShop(page: Page, name: string) {
   await page.getByRole("button", { name: "Continue" }).click(); // → modes
   await page.getByRole("button", { name: "Continue" }).click(); // → tables
   await page.getByRole("button", { name: "Continue" }).click(); // → languages
+  await page.getByRole("button", { name: "Continue" }).click(); // → alerts
   await page.getByRole("button", { name: "Continue" }).click(); // → phone
   await page.getByRole("button", { name: "Continue" }).click(); // → city
   await page.getByRole("button", { name: "Skip for now" }).click();

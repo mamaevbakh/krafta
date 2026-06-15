@@ -70,7 +70,13 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ⑨ phone — skippable on its own screen.
+  // ⑨ alerts — order-notification intent, Telegram pre-selected (one tap).
+  await expect(
+    page.getByRole("heading", { name: "Where should new orders find you?" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // ⑩ phone — skippable on its own screen.
   await expect(
     page.getByRole("heading", { name: "How can customers reach you?" }),
   ).toBeVisible();

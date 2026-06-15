@@ -9,7 +9,10 @@ import {
   type CookieSnapshot,
 } from "@/lib/dashboard/catalogs";
 import { createClient } from "@/lib/supabase/server";
-import { isSyntheticTelegramEmail } from "@/lib/auth/telegram-bridge";
+import {
+  isSyntheticTelegramEmail,
+  telegramLoginConfigured,
+} from "@/lib/auth/telegram-bridge";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { CatalogSwitcherSkeleton } from "@/components/dashboard/catalog-switcher";
@@ -87,6 +90,16 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
     .eq("catalog_id", catalogRecord.id)
     .maybeSingle();
 
+  const { user: authUser } = await getUserSafely(supabase);
+  const isAnonymousUser = Boolean(
+    (authUser as { is_anonymous?: boolean } | null)?.is_anonymous,
+  );
+  // Telegram-only register leg (KRA-46): the bot username drives the login
+  // widget in the "Secure your shop" dialog. Mirrors getPublishPreflight.
+  const telegramBotUsername = telegramLoginConfigured()
+    ? (process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") ?? null)
+    : null;
+
   // ADR 0005 §3: the floating setup guide follows the merchant across every
   // dashboard page (it renders here in the layout, bottom-right).
   const checklistEntries = await getChecklistEntries(supabase, {
@@ -94,9 +107,8 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
     catalogId: catalogRecord.id,
     orgSlug,
     catalogSlug,
+    isAnonymous: isAnonymousUser,
   });
-
-  const { user: authUser } = await getUserSafely(supabase);
   // Telegram-only accounts carry an unroutable synthetic address (KRA-46 /
   // ADR 0006) — show the Telegram handle instead, never the synthetic email.
   const telegramMeta = (
@@ -133,15 +145,16 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
         <PublishBanner
           orgSlug={orgSlug}
           catalogSlug={catalogSlug}
-          isAnonymousUser={Boolean(
-            (authUser as { is_anonymous?: boolean } | null)?.is_anonymous,
-          )}
+          isAnonymousUser={isAnonymousUser}
         />
       )}
       <main className="flex-1 bg-secondary-background">{children}</main>
       {checklistEntries.length > 0 && (
         <ActivationChecklist
           catalogId={catalogRecord.id}
+          orgSlug={orgSlug}
+          catalogSlug={catalogSlug}
+          telegramBotUsername={telegramBotUsername}
           entries={checklistEntries}
         />
       )}

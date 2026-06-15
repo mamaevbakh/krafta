@@ -89,6 +89,20 @@ export const wizardCopy = {
     makeDefault: "Make default",
     removeAria: "Remove {name}",
   },
+  alerts: {
+    title: "Where should new orders find you?",
+    subtitle: "Pick how you'll hear about an order — you'll set it up in a moment.",
+    options: {
+      telegram: {
+        label: "Telegram",
+        hint: "A ping on your phone the second an order lands",
+      },
+      dashboard: {
+        label: "I'll check the dashboard",
+        hint: "See new orders when you open Krafta",
+      },
+    },
+  },
   phone: {
     title: "How can customers reach you?",
     subtitle: "Optional — a phone number makes the shop feel open for business.",
@@ -123,6 +137,8 @@ export const wizardCopy = {
     title: "{name} is ready",
     subtitle: "This is what your customers will see. Everything stays editable.",
     cta: "Open my dashboard",
+    /** Secondary CTA shown only when the merchant asked for Telegram alerts. */
+    alertsCta: "Set up order alerts in Telegram",
   },
 } as const;
 
