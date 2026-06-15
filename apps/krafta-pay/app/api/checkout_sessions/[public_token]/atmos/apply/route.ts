@@ -116,7 +116,12 @@ export async function POST(
         publicToken: public_token,
         paymentIntentId: intent.id,
         paymentAttemptId: attempt.id,
-        data: { error: code },
+        data: {
+          error: code,
+          detail: bindError instanceof Error ? bindError.message : String(bindError),
+          cause: (bindError as { cause?: { code?: string } } | null)?.cause?.code ?? null,
+          atmos: bindError instanceof AtmosError ? bindError.raw : undefined,
+        },
       }).catch(() => {});
       return NextResponse.json({ error: code }, { status: 400 });
     }
@@ -201,7 +206,11 @@ export async function POST(
       level: "error",
       providerId: "atmos",
       publicToken: public_token,
-      data: { error: error instanceof Error ? error.message : "unknown" },
+      data: {
+        error: error instanceof Error ? error.message : "unknown",
+        cause: (error as { cause?: { code?: string } } | null)?.cause?.code ?? null,
+        atmos: error instanceof AtmosError ? error.raw : undefined,
+      },
     }).catch(() => {});
     return NextResponse.json({ error: "atmos_apply_failed" }, { status: 500 });
   }

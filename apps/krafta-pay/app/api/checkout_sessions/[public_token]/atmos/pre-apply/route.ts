@@ -95,7 +95,14 @@ export async function POST(
         level: "error",
         providerId: "atmos",
         publicToken: public_token,
-        data: { error: code },
+        data: {
+          error: code,
+          // underlying reason for diagnosis (redacted by the logger):
+          // e.g. a fetch ConnectTimeout = gateway unreachable, vs an Atmos result code.
+          detail: error instanceof Error ? error.message : String(error),
+          cause: (error as { cause?: { code?: string } } | null)?.cause?.code ?? null,
+          atmos: error instanceof AtmosError ? error.raw : undefined,
+        },
       });
     } catch {}
     return NextResponse.json({ error: code }, { status: 400 });
