@@ -21,6 +21,9 @@ export async function getChecklistEntries(
     catalogId: string;
     orgSlug: string;
     catalogSlug: string;
+    /** Anon merchants (the wizard's default path) still need to register;
+     *  registered merchants have nothing to secure, so the row is omitted. */
+    isAnonymous: boolean;
   },
 ): Promise<ChecklistEntry[]> {
   const [venueRes, catalogRes, itemsRes, mediaRes, telegramRes] =
@@ -81,11 +84,19 @@ export async function getChecklistEntries(
       done: (mediaRes.data ?? []).length > 0,
       href: itemsHref,
     },
-    // "Review your order modes" was removed: the wizard updates the venue
-    // during creation, so its venue.updated_at !== created_at fact was true
-    // from birth for every wizard shop — a permanently pre-checked row is
-    // noise, not guidance. Its slot is reserved for "Secure your shop"
-    // (register without publishing) once that flow exists.
+    // "Secure your shop": the anon-session SPOF mitigation. Shown only to
+    // anonymous merchants (registered ones have nothing to secure, so no
+    // born-done noise). Opens a register-without-publish dialog, not a link.
+    ...(params.isAnonymous
+      ? [
+          {
+            key: "secure",
+            label: "Secure your shop — add a login",
+            done: false,
+            action: "secure" as const,
+          },
+        ]
+      : []),
     {
       key: "hours",
       label: "Set your opening hours",

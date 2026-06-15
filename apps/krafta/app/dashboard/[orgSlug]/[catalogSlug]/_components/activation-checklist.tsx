@@ -33,11 +33,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { SecureAccountDialog } from "./secure-account-dialog";
+
 export type ChecklistEntry = {
   key: string;
   label: string;
   done: boolean;
   href?: string;
+  /** Rows that open a dialog instead of navigating (e.g. "Secure your shop"). */
+  action?: "secure";
 };
 
 // z-30: above the canvas, below the EditorSheet/Dialog backdrops (z-50) —
@@ -47,9 +51,15 @@ const CORNER = "fixed bottom-4 right-4 z-30 md:bottom-6 md:right-6";
 
 export function ActivationChecklist({
   catalogId,
+  orgSlug,
+  catalogSlug,
+  telegramBotUsername,
   entries,
 }: {
   catalogId: string;
+  orgSlug: string;
+  catalogSlug: string;
+  telegramBotUsername: string | null;
   entries: ChecklistEntry[];
 }) {
   const openKey = `krafta.checklist.open.${catalogId}`;
@@ -57,6 +67,7 @@ export function ActivationChecklist({
   // for merchants who collapsed it.
   const [ready, setReady] = React.useState(false);
   const [open, setOpen] = React.useState(true);
+  const [secureOpen, setSecureOpen] = React.useState(false);
 
   React.useEffect(() => {
     const stored = localStorage.getItem(openKey);
@@ -103,7 +114,18 @@ export function ActivationChecklist({
     );
   }
 
+  const secureDialog = (
+    <SecureAccountDialog
+      orgSlug={orgSlug}
+      catalogSlug={catalogSlug}
+      telegramBotUsername={telegramBotUsername}
+      open={secureOpen}
+      onOpenChange={setSecureOpen}
+    />
+  );
+
   return (
+    <>
     <section
       aria-label="Setup checklist"
       className={cn(
@@ -150,18 +172,25 @@ export function ActivationChecklist({
               >
                 {entry.label}
               </span>
-              {entry.href && !entry.done ? (
+              {(entry.href || entry.action) && !entry.done ? (
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               ) : null}
             </span>
           );
+          const interactiveClass =
+            "block w-full transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
           return (
             <li key={entry.key} className="border-b last:border-b-0">
-              {entry.href && !entry.done ? (
-                <Link
-                  href={entry.href}
-                  className="block transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              {entry.action === "secure" && !entry.done ? (
+                <button
+                  type="button"
+                  onClick={() => setSecureOpen(true)}
+                  className={interactiveClass}
                 >
+                  {row}
+                </button>
+              ) : entry.href && !entry.done ? (
+                <Link href={entry.href} className={interactiveClass}>
                   {row}
                 </Link>
               ) : (
@@ -172,5 +201,7 @@ export function ActivationChecklist({
         })}
       </ul>
     </section>
+    {secureDialog}
+    </>
   );
 }

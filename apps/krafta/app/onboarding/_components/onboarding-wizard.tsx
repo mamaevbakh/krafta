@@ -45,6 +45,7 @@ import {
   getVerticalSuggestions,
   type WizardPayload,
 } from "./actions";
+import { trackWizard } from "./analytics";
 import { CITY_CHIPS, fmt, wizardCopy } from "./copy";
 import { LOOK_KEYS, isLookKey, type LookKey } from "./presets";
 import {
@@ -77,6 +78,8 @@ type SectionDraft = {
   items: ItemDraft[];
 };
 
+type AlertsIntent = "telegram" | "dashboard";
+
 type Step =
   | { kind: "type" }
   | { kind: "name" }
@@ -86,6 +89,7 @@ type Step =
   | { kind: "modes" }
   | { kind: "tables" }
   | { kind: "languages" }
+  | { kind: "alerts" }
   | { kind: "phone" }
   | { kind: "city" };
 
@@ -101,6 +105,7 @@ function buildSteps(sections: SectionDraft[], modes: VenueMode[]): Step[] {
     { kind: "modes" },
     ...(modes.includes("dine_in") ? [{ kind: "tables" } as Step] : []),
     { kind: "languages" },
+    { kind: "alerts" },
     { kind: "phone" },
     { kind: "city" },
   ];
@@ -136,6 +141,8 @@ type WizardDraft = {
   modes: VenueMode[];
   tableCount: number;
   locales: { code: string; isDefault: boolean }[];
+  /** Order-alerts preference; absent in pre-PR3 drafts → "telegram". */
+  alertsIntent?: AlertsIntent;
   phone: string;
   city: string;
   customCity: boolean;
@@ -168,6 +175,7 @@ export function OnboardingWizard() {
   const [city, setCity] = React.useState("");
   const [customCity, setCustomCity] = React.useState(false);
   const [look, setLook] = React.useState<LookKey>("classic");
+  const [alertsIntent, setAlertsIntent] = React.useState<AlertsIntent>("telegram");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   // Which final-screen button kicked off the submit — the busy spinner must
@@ -198,6 +206,9 @@ export function OnboardingWizard() {
           if (typeof d.city === "string") setCity(d.city);
           if (typeof d.customCity === "boolean") setCustomCity(d.customCity);
           if (typeof d.look === "string" && isLookKey(d.look)) setLook(d.look);
+          if (d.alertsIntent === "telegram" || d.alertsIntent === "dashboard") {
+            setAlertsIntent(d.alertsIntent);
+          }
           if (Number.isInteger(d.cursor)) setCursor(Math.max(0, d.cursor as number));
         }
       }
@@ -222,6 +233,7 @@ export function OnboardingWizard() {
         modes,
         tableCount,
         locales,
+        alertsIntent,
         phone,
         city,
         customCity,
@@ -230,12 +242,24 @@ export function OnboardingWizard() {
     } catch {
       // Storage full/blocked — persistence is best-effort.
     }
-  }, [hydrated, phase, cursor, vertical, name, sections, look, modes, tableCount, locales, phone, city, customCity]);
+  }, [hydrated, phase, cursor, vertical, name, sections, look, modes, tableCount, locales, alertsIntent, phone, city, customCity]);
 
   const steps = buildSteps(sections, modes);
   const safeCursor = Math.min(Math.max(cursor, 0), steps.length - 1);
   const current = steps[safeCursor];
   const progressPct = Math.round(((safeCursor + 1) / steps.length) * 100);
+
+  // Funnel: emit one "reached step X" event the first time each screen is
+  // seen (per-kind dedupe — re-views from Back don't re-fire, and the N item
+  // screens collapse to one "items" event). This is the per-screen data the
+  // multi-screen design is meant to be tuned against.
+  const seenSteps = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    if (!hydrated || phase !== "form") return;
+    if (seenSteps.current.has(current.kind)) return;
+    seenSteps.current.add(current.kind);
+    trackWizard("step", { step: current.kind });
+  }, [hydrated, phase, current.kind]);
 
   const goNext = () => {
     setError(null);
@@ -247,6 +271,7 @@ export function OnboardingWizard() {
   };
 
   const pickVertical = async (key: ShopVertical) => {
+    trackWizard("vertical", { vertical: key });
     // Re-tapping the same vertical keeps the merchant's edits; only a fresh
     // or changed pick refetches suggestions.
     if (vertical === key && sections.length > 0) {
@@ -327,6 +352,14 @@ export function OnboardingWizard() {
       phone: phone.trim(),
       city: opts.includeCity ? city.trim() : "",
     };
+    const itemCount = payload.sections.reduce((n, s) => n + s.items.length, 0);
+    trackWizard("submit", {
+      via: opts.includeCity ? "create" : "skip",
+      look,
+      alerts: alertsIntent,
+      sections: payload.sections.length,
+      items: itemCount,
+    });
     // The theater plays while the RPC runs; both must finish before the
     // reveal so the staged labels get their beat even on a fast network.
     setPhase("building");
@@ -338,10 +371,12 @@ export function OnboardingWizard() {
     ]);
     setBusy(false);
     if ("error" in res) {
+      trackWizard("submit_error");
       setPhase("form");
       setError(res.error);
       return;
     }
+    trackWizard("created");
     try {
       sessionStorage.removeItem(DRAFT_KEY);
     } catch {
@@ -447,8 +482,25 @@ export function OnboardingWizard() {
             />
           </div>
         </div>
-        <Button asChild className="mt-6 w-full">
-          <Link href={`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/items`}>
+        {alertsIntent === "telegram" ? (
+          <Button asChild className="mt-6 w-full">
+            <Link
+              href={`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/settings`}
+              onClick={() => trackWizard("reveal_cta", { target: "alerts" })}
+            >
+              {wizardCopy.reveal.alertsCta}
+            </Link>
+          </Button>
+        ) : null}
+        <Button
+          asChild
+          variant={alertsIntent === "telegram" ? "ghost" : "default"}
+          className={cn("w-full", alertsIntent === "telegram" ? "mt-2" : "mt-6")}
+        >
+          <Link
+            href={`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/items`}
+            onClick={() => trackWizard("reveal_cta", { target: "dashboard" })}
+          >
             {wizardCopy.reveal.cta}
           </Link>
         </Button>
@@ -866,6 +918,52 @@ export function OnboardingWizard() {
             onChange={addLocale}
             excludeCodes={locales.map((l) => l.code)}
           />
+        </div>
+        {continueButton(goNext)}
+      </section>
+    );
+  }
+
+  // ── alerts — order-notification intent (one tap, telegram pre-selected) ──
+  if (current.kind === "alerts") {
+    const options: AlertsIntent[] = ["telegram", "dashboard"];
+    return (
+      <section key="alerts">
+        {header(wizardCopy.alerts.title, wizardCopy.alerts.subtitle)}
+        <div className="mt-6 flex flex-col gap-2">
+          {options.map((opt) => {
+            const meta = wizardCopy.alerts.options[opt];
+            const selected = alertsIntent === opt;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setAlertsIntent(opt)}
+                aria-pressed={selected}
+                className={cn(
+                  "flex min-h-12 items-center gap-3 rounded-lg border bg-card px-4 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  selected && "border-primary ring-1 ring-primary",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-full border",
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input",
+                  )}
+                >
+                  {selected ? <Check className="size-3.5" /> : null}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-sm font-medium">{meta.label}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {meta.hint}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
         {continueButton(goNext)}
       </section>
