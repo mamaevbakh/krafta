@@ -156,6 +156,11 @@ const UZS_CURRENCY_SETTINGS = {
   showDecimals: false,
 };
 
+/** New shops inherit their starting look (settings_layout) from this demo
+ *  catalog — the homepage "View Demo" shop — so every shop opens looking
+ *  like the reference storefront instead of the bare platform default. */
+const DEMO_LOOK_SOURCE_SLUG = "vintage-shop";
+
 export async function createShopFromWizard(
   payload: WizardPayload,
 ): Promise<CreateShopResult> {
@@ -270,6 +275,22 @@ export async function createShopFromWizard(
     }),
   };
 
+  // New shops start on the DEMO shop's look (vintage-shop), not the bare
+  // platform default. Read it fresh so retuning the demo carries forward to
+  // new shops; a published catalog is readable under the merchant's own RLS.
+  // We copy the LAYOUT only — settings_branding stays empty, so the
+  // dashboard's "Pick your look" checklist row remains a real task pointing
+  // at the Studio (not born-done). Falls back to the catalog default if the
+  // demo is ever missing/unpublished.
+  const { data: demoCatalog } = await supabase
+    .from("catalogs")
+    .select("settings_layout")
+    .eq("slug", DEMO_LOOK_SOURCE_SLUG)
+    .eq("status", "published")
+    .maybeSingle();
+  const demoLayout =
+    (demoCatalog?.settings_layout as Json | null | undefined) ?? null;
+
   // Everything after shop creation rides ONE transactional RPC: catalog
   // settings, venue modes + contacts, locales, menu and dine-in table QRs.
   // Atomic (a failure rolls back cleanly for a safe retry) and idempotent
@@ -278,10 +299,9 @@ export async function createShopFromWizard(
     p_catalog_id: shop.catalogId,
     p_vertical: input.vertical as ShopVertical,
     p_currency: UZS_CURRENCY_SETTINGS,
-    // No p_layout / p_branding: every shop starts on the catalog default
-    // style. settings_branding stays empty, so the dashboard's "Pick your
-    // look" checklist row is a real task that points the merchant at the
-    // Studio (it's no longer born-done).
+    // Seed the look from the demo shop (null → RPC leaves the catalog
+    // default). settings_branding is intentionally not sent.
+    ...(demoLayout ? { p_layout: demoLayout } : {}),
     p_modes: input.modes,
     p_address: {
       ...(input.city ? { city: input.city } : {}),
