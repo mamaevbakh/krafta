@@ -153,6 +153,24 @@
   }
 }
 
+/*
+ * iOS Safari zooms the viewport toward any focused form control whose
+ * font-size is under 16px — the "screen zooms in when I tap an input" bug.
+ * Floor every editable control at 16px on phones so focusing one never
+ * triggers that zoom; md+ (≥768px, desktop) is untouched and keeps the
+ * designed 14px. Unlayered on purpose: layered styles lose to unlayered ones
+ * in the cascade, so this wins over Tailwind's `text-sm` utility without
+ * needing !important. Pinch-zoom stays available (we don't touch the
+ * viewport meta), so accessibility is preserved.
+ */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @layer utilities {
   .no-scrollbar {
     scrollbar-width: none;
