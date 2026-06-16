@@ -14,6 +14,63 @@ export type Database = {
   }
   commerce: {
     Tables: {
+      customer_addresses: {
+        Row: {
+          apartment: string | null
+          building: string | null
+          created_at: string
+          district: string | null
+          freeform: string
+          geo_provider: string | null
+          id: string
+          is_default: boolean
+          label: string | null
+          latitude: number | null
+          longitude: number | null
+          metadata: Json
+          note: string | null
+          street: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          apartment?: string | null
+          building?: string | null
+          created_at?: string
+          district?: string | null
+          freeform: string
+          geo_provider?: string | null
+          id?: string
+          is_default?: boolean
+          label?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          metadata?: Json
+          note?: string | null
+          street?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          apartment?: string | null
+          building?: string | null
+          created_at?: string
+          district?: string | null
+          freeform?: string
+          geo_provider?: string | null
+          id?: string
+          is_default?: boolean
+          label?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          metadata?: Json
+          note?: string | null
+          street?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           created_at: string
