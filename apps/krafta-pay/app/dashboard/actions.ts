@@ -10,9 +10,15 @@ import { getUserSafely } from "@krafta/supabase/auth";
 
 export async function createHostedCheckoutAction(formData: FormData) {
   const orgId = String(formData.get("orgId") ?? "").trim();
-  const amountMinor = Number(formData.get("amountMinor") ?? 0);
+  // The form collects whole UZS (no decimals); intents are stored in tiyin.
+  const amountUzs = Number(formData.get("amount") ?? 0);
   const currency = String(formData.get("currency") ?? "UZS").trim();
   const description = String(formData.get("description") ?? "").trim();
+
+  if (!Number.isFinite(amountUzs) || amountUzs <= 0) {
+    redirect(`/dashboard?error=${encodeURIComponent("Enter an amount greater than zero")}`);
+  }
+  const amountMinor = Math.round(amountUzs * 100);
 
   const payBaseUrl = process.env.PAY_BASE_URL;
   if (!payBaseUrl) {
