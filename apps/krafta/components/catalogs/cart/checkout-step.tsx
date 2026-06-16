@@ -42,6 +42,8 @@ import {
   type CartFulfillmentMode,
 } from "./cart-provider";
 import { PricingBreakdown } from "./pricing-breakdown";
+import { computePricing } from "@/lib/cart/pricing";
+import { formatPriceCents } from "@/lib/catalogs/pricing";
 
 // Mode labels now resolved via the i18n catalog at render time (S1).
 // The const stays as a type-safe key map so we keep ordering/iteration.
@@ -256,6 +258,15 @@ export function CartCheckoutStep({
       },
     });
   };
+
+  // Bottom-line total, mirrored into the sticky footer below so the price is
+  // ALWAYS visible — the full PricingBreakdown lives at the end of the
+  // scrolling area and slides off-screen on long (delivery / schedule) forms.
+  const footerTotalCents = computePricing({
+    subtotalCents: summary.subtotalCents,
+    taxes,
+    tipCents,
+  }).totalCents;
 
   return (
     // flex-1 + min-h-0: drawer-content is a flex column with a 24px
@@ -560,6 +571,12 @@ export function CartCheckoutStep({
           drawers (tablet, webviews). */}
       <div className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <div className="mb-3 flex items-baseline justify-between">
+            <span className="text-sm text-muted-foreground">Total</span>
+            <span className="text-lg font-semibold tabular-nums">
+              {formatPriceCents(footerTotalCents, currencySettings)}
+            </span>
+          </div>
           <Button
             type="button"
             size="xl"
