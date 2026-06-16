@@ -59,7 +59,8 @@ async function buildDraftShop(page: Page, name: string) {
   await page.goto("/onboarding");
   await page.getByRole("button", { name: /Cafe/ }).click();
   await page.getByLabel("Shop name").fill(name);
-  await page.getByRole("button", { name: "Continue" }).click(); // → sections
+  await page.getByRole("button", { name: "Continue" }).click(); // → logo
+  await page.getByRole("button", { name: "Continue" }).click(); // → sections (logo skipped)
   await expect(
     page.getByRole("heading", { name: "Your menu sections" }),
   ).toBeVisible();

@@ -37,6 +37,17 @@ export const wizardCopy = {
     label: "Shop name",
     placeholder: "Чойхона №1",
   },
+  logo: {
+    title: "Add your logo",
+    subtitle:
+      "Optional — your logo sits at the top of your storefront. Skip it and we'll drop in a placeholder you can swap anytime.",
+    pick: "Upload a logo",
+    hint: "PNG, JPG, or WebP — a square image looks best.",
+    replace: "Replace",
+    remove: "Remove",
+    previewAria: "Selected logo preview",
+    tooLarge: "That image is over 5 MB — pick a smaller one.",
+  },
   sections: {
     title: "Your menu sections",
     subtitleVertical: "What we'd suggest for a {vertical} — drop or add your own.",
