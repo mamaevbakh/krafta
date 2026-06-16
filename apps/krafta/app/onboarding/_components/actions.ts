@@ -161,6 +161,16 @@ const UZS_CURRENCY_SETTINGS = {
  *  like the reference storefront instead of the bare platform default. */
 const DEMO_LOOK_SOURCE_SLUG = "vintage-shop";
 
+/** Stock abstract (dithered) photos cycled onto a new shop's items so the
+ *  card-big-photo storefront isn't a wall of empty slots. Keys live in the
+ *  public `public-assets` bucket (resolved by getItemImageUrl). Photos are
+ *  interchangeable — complete_wizard cycles them across items by position.
+ *  The two krafta-* logo variants are deliberately excluded. */
+const DEMO_ITEM_IMAGES = Array.from(
+  { length: 23 },
+  (_, i) => `demo/abstract/dither-${String(i + 1).padStart(2, "0")}.webp`,
+);
+
 export async function createShopFromWizard(
   payload: WizardPayload,
 ): Promise<CreateShopResult> {
@@ -302,6 +312,8 @@ export async function createShopFromWizard(
     // Seed the look from the demo shop (null → RPC leaves the catalog
     // default). settings_branding is intentionally not sent.
     ...(demoLayout ? { p_layout: demoLayout } : {}),
+    // Cycle stock photos onto the new items so the storefront has imagery.
+    p_item_images: DEMO_ITEM_IMAGES,
     p_modes: input.modes,
     p_address: {
       ...(input.city ? { city: input.city } : {}),
