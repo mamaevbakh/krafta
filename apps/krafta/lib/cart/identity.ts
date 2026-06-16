@@ -45,6 +45,23 @@ async function resolveAuthUserId(
 }
 
 /**
+ * The owner key for the customer address book: the current customer's auth uid
+ * (anonymous web session OR the verified Telegram Mini App identity), starting
+ * an anonymous session if none exists yet. Same identity rule as
+ * `ensureCartIdentity`, minus the per-org `commerce.customers` row — addresses
+ * belong to the PERSON and are shared across every shop they order from.
+ *
+ * Takes the caller's client so a single Supabase session is used throughout a
+ * write (a second `createClient()` after a just-issued anon sign-in would read
+ * stale request cookies and see no session).
+ */
+export async function ensureCustomerUserId(
+  supabase: SupabaseServerClient,
+): Promise<string> {
+  return resolveAuthUserId(supabase);
+}
+
+/**
  * Resolves the current user to a `commerce.customers` row for the given org.
  *
  * v1 customer cart flow (KRA-37 / KRA-41): if there's no Supabase session yet

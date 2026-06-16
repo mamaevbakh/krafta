@@ -27,6 +27,15 @@ import {
   markBillRequested,
   type RunningCheck,
 } from "./running-check";
+import {
+  listAddresses as listAddressesImpl,
+  createAddress as createAddressImpl,
+  updateAddress as updateAddressImpl,
+  deleteAddress as deleteAddressImpl,
+  setDefaultAddress as setDefaultAddressImpl,
+  type CustomerAddress,
+  type CustomerAddressInput,
+} from "./addresses";
 
 // Cart mutations DELIBERATELY skip revalidatePath of the catalog path:
 //
@@ -166,4 +175,37 @@ export async function requestBillAction(input: {
   });
 
   return { ok: true };
+}
+
+// ── Customer address book (saved delivery addresses) ─────────────────────────
+//
+// Like the cart actions, these skip revalidatePath: the address book is
+// client-fetched state (the checkout picker / profile manage their own list),
+// not part of any cached server tree. RLS scopes every read/write to the
+// caller's auth.uid(), so no orgId/identity hint is needed — addresses are
+// global per person, not per shop.
+
+export async function listAddressesAction(): Promise<CustomerAddress[]> {
+  return listAddressesImpl();
+}
+
+export async function createAddressAction(
+  input: CustomerAddressInput,
+): Promise<CustomerAddress> {
+  return createAddressImpl(input);
+}
+
+export async function updateAddressAction(
+  id: string,
+  input: CustomerAddressInput,
+): Promise<CustomerAddress> {
+  return updateAddressImpl(id, input);
+}
+
+export async function deleteAddressAction(id: string): Promise<void> {
+  return deleteAddressImpl(id);
+}
+
+export async function setDefaultAddressAction(id: string): Promise<void> {
+  return setDefaultAddressImpl(id);
 }
