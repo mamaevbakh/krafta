@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CreditCardIcon, CheckIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatMinorAmount } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -22,13 +23,6 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
-
-// UZS amounts are stored in minor units (tiyin; 1 UZS = 100 tiyin). Render as
-// whole sums with comma thousands separators, no decimals — per DESIGN.md.
-function formatUzs(amountMinor: number, currency: string) {
-  const sum = Math.round((amountMinor ?? 0) / 100);
-  return `${sum.toLocaleString("en-US")} ${currency}`;
-}
 
 function formatCardNumber(raw: string) {
   return raw
@@ -75,7 +69,7 @@ export function AtmosCardForm({
   initialMaskedPhone?: string | null;
 }) {
   const amountLabel = useMemo(
-    () => formatUzs(amountMinor, currency),
+    () => formatMinorAmount(amountMinor, currency),
     [amountMinor, currency],
   );
 
