@@ -236,7 +236,7 @@ export function PlansManagerClient({
         </label>
         <select
           id="plans-org"
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
           value={orgId}
           onChange={(e) => setOrgId(e.target.value)}
         >

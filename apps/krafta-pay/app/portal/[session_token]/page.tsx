@@ -312,7 +312,7 @@ export default async function CustomerPortalPage({
               ) : null}
               <button
                 type="submit"
-                className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-base md:text-sm font-medium hover:bg-muted"
               >
                 {paymentMethodsRes.data?.length ? "Update Uzum Card" : "Add Uzum Card"}
               </button>
@@ -439,7 +439,7 @@ export default async function CustomerPortalPage({
                           <select
                             name="planId"
                             defaultValue={pendingPlanChange?.planId ?? subscription.plan_id}
-                            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                            className="h-9 w-full rounded-md border bg-background px-3 text-base md:text-sm"
                           >
                             {availablePlans.map((p) => (
                               <option key={p.id} value={p.id}>
@@ -455,7 +455,7 @@ export default async function CustomerPortalPage({
                           <select
                             name="prorationBehavior"
                             defaultValue="defer_to_period_end"
-                            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                            className="h-9 w-full rounded-md border bg-background px-3 text-base md:text-sm"
                           >
                             <option value="defer_to_period_end">Apply at period end</option>
                             <option value="none">No proration (immediate)</option>

@@ -119,7 +119,7 @@ export function ApiKeysManagerClient({
         </label>
         <select
           id="keys-org"
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
           value={orgId}
           onChange={(e) => setOrgId(e.target.value)}
         >
@@ -154,7 +154,7 @@ export function ApiKeysManagerClient({
           </label>
           <select
             id="key-env"
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            className="h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
             value={environment}
             onChange={(e) => setEnvironment(e.target.value === "live" ? "live" : "test")}
           >

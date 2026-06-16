@@ -32,7 +32,7 @@ export function ProviderSettingsClient({
         </label>
         <select
           id="provider-org"
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
           value={orgId}
           onChange={(e) => setOrgId(e.target.value)}
         >
@@ -242,7 +242,7 @@ function AtmosProviderForm({ orgId }: { orgId: string }) {
           <FieldLabel htmlFor="atmos-env">Environment</FieldLabel>
           <select
             id="atmos-env"
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            className="h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
             value={environment}
             onChange={(e) => setEnvironment(e.target.value as "test" | "live")}
           >
@@ -456,7 +456,7 @@ function UzumProviderForm({ orgId }: { orgId: string }) {
           <FieldLabel htmlFor="uzum-env">Environment</FieldLabel>
           <select
             id="uzum-env"
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            className="h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
             value={environment}
             onChange={(e) => setEnvironment(e.target.value as "test" | "live")}
           >
@@ -474,7 +474,7 @@ function UzumProviderForm({ orgId }: { orgId: string }) {
           <FieldLabel htmlFor="uzum-tax-type">Tax identity type</FieldLabel>
           <select
             id="uzum-tax-type"
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            className="h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
             value={taxIdentityType}
             onChange={(e) => setTaxIdentityType(e.target.value as "TIN" | "PINFL")}
           >

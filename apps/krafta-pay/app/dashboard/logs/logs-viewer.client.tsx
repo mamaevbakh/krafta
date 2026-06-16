@@ -127,7 +127,7 @@ export function LogsViewerClient({
             </label>
             <select
               id="logs-org"
-              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
               value={orgId}
               onChange={(e) => {
                 setOrgId(e.target.value);
@@ -154,7 +154,7 @@ export function LogsViewerClient({
             </label>
             <select
               id="logs-type"
-              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
               value={type}
               onChange={(e) => setType(e.target.value)}
             >
@@ -172,7 +172,7 @@ export function LogsViewerClient({
             </label>
             <input
               id="logs-public-token"
-              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
               placeholder="Paste checkout public token"
               value={publicToken}
               onChange={(e) => setPublicToken(e.target.value)}
@@ -185,7 +185,7 @@ export function LogsViewerClient({
             </label>
             <input
               id="logs-provider"
-              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
               placeholder="uzum"
               value={providerId}
               onChange={(e) => setProviderId(e.target.value)}
