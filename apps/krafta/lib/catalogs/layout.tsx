@@ -186,7 +186,10 @@ export async function CatalogLayout({
             scrolls past (#tma-title-sentinel). No-op on web. */}
         <TelegramNavTitle name={catalog.name} logoUrl={logoUrl} />
         <main
-          className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 pb-8 text-foreground"
+          // pb clears the fixed bottom dock (search + cart) — otherwise the
+          // last item's price hides behind it. Safe-area term keeps the gap on
+          // notched phones where the dock sits higher.
+          className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] text-foreground"
           // In Telegram fullscreen the content runs edge-to-edge, so clear
           // the status bar + floating controls. var resolves to 0 on the web.
           style={{ paddingTop: "calc(2rem + var(--tg-safe-top, 0px))" }}

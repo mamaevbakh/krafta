@@ -24,6 +24,11 @@ export const VERTICALS: Record<
     /** Pre-checked modes when the template fetch fails; mirrors
      *  vertical_templates.modes so both paths start identically. */
     fallbackModes: VenueMode[];
+    /** Storefront seed (RU canonical) so a brand-new shop's header isn't a
+     *  bare name: a short tagline + two tags, shown until the merchant edits
+     *  them in the Studio. RU because it's the storefront default locale. */
+    seedDescription: string;
+    seedTags: [string, string];
   }
 > = {
   cafe: {
@@ -32,6 +37,9 @@ export const VERTICALS: Record<
     icon: Coffee,
     allowedModes: ["dine_in", "pickup", "delivery"],
     fallbackModes: ["pickup", "dine_in"],
+    seedDescription:
+      "Свежесваренный кофе, тёплая выпечка и место, куда хочется возвращаться.",
+    seedTags: ["Кофе", "Выпечка"],
   },
   restaurant: {
     label: "Restaurant",
@@ -39,6 +47,9 @@ export const VERTICALS: Record<
     icon: UtensilsCrossed,
     allowedModes: ["dine_in", "pickup", "delivery"],
     fallbackModes: ["dine_in", "pickup", "delivery"],
+    seedDescription:
+      "Щедрые порции, знакомые вкусы и блюда, приготовленные с душой.",
+    seedTags: ["Кухня", "Свежее"],
   },
   retail: {
     label: "Retail",
@@ -46,6 +57,9 @@ export const VERTICALS: Record<
     icon: ShoppingBag,
     allowedModes: ["pickup", "delivery"],
     fallbackModes: ["pickup"],
+    seedDescription:
+      "Вещи, которые мы выбрали сами и любим — с вниманием к каждой детали.",
+    seedTags: ["Новинки", "Качество"],
   },
 };
 

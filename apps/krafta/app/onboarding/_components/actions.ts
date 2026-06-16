@@ -28,7 +28,7 @@ import { suggestSlug } from "@/lib/onboarding/slug";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/types";
 
-import { isShopVertical, type ShopVertical } from "./verticals";
+import { isShopVertical, VERTICALS, type ShopVertical } from "./verticals";
 
 // ---------------------------------------------------------------------------
 // Suggestions (step ① → ③/④ prefill). vertical_templates is public-read
@@ -354,18 +354,24 @@ export async function createShopFromWizard(
     return { error: "We couldn't set up your shop. Try again." };
   }
 
-  // Give the new shop a placeholder logo (the dithered Krafta wordmark) so the
-  // storefront header isn't blank in the reveal. Best-effort and only when
-  // still unset — if the merchant picked a logo, the client overwrites this
-  // right after creation (POST /api/catalogs/logo). A failure here just leaves
-  // the header logoless; it never blocks the create.
-  const { error: logoError } = await supabase
+  // Dress the new shop's storefront header so the reveal isn't a bare name on
+  // white: a placeholder logo (the dithered Krafta wordmark), a per-vertical
+  // tagline, and two tags. Best-effort and gated on logo_path IS NULL (a proxy
+  // for "freshly created") so a resubmit never clobbers the merchant's edits;
+  // an uploaded logo overwrites logo_path right after via POST /api/catalogs/logo.
+  // A failure here just leaves the header plainer — it never blocks the create.
+  const seed = VERTICALS[input.vertical as ShopVertical];
+  const { error: seedError } = await supabase
     .from("catalogs")
-    .update({ logo_path: DEFAULT_LOGO_PATH })
+    .update({
+      logo_path: DEFAULT_LOGO_PATH,
+      description: seed.seedDescription,
+      tags: seed.seedTags,
+    })
     .eq("id", shop.catalogId)
     .is("logo_path", null);
-  if (logoError) {
-    console.error("[onboarding] default logo update failed", logoError);
+  if (seedError) {
+    console.error("[onboarding] storefront header seed failed", seedError);
   }
 
   // No redirect: the wizard shows the reveal (phone-frame preview) first
