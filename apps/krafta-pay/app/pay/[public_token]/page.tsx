@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { ProviderPicker } from "./provider-picker.client";
 import { CheckoutStatusWatcher } from "./checkout-status.client";
+import { formatMinorAmount } from "@/lib/format";
 
 function isTerminalStatus(status?: string | null) {
   const s = (status ?? "").toLowerCase();
@@ -55,35 +56,46 @@ export default async function PayPage({
       })) ?? [];
 
   return (
-    <div className="mx-auto max-w-md p-6">
-      <BrandWordmark text="Krafta•Pay" className="mb-6 w-full text-center text-3xl" />
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
+      <header>
+        <BrandWordmark text="Krafta•Pay" className="text-lg" />
+      </header>
 
-      <div className="mt-4 rounded-lg border p-4">
-        <div className="text-sm text-muted-foreground">Amount</div>
-        <div className="text-2xl font-semibold">
-          {intent?.amount_minor} {intent?.currency}
+      <main className="mt-12 flex-1">
+        {/* Amount — the focal point. Typography does the work, not a box. */}
+        <div className="text-sm text-muted-foreground">Amount due</div>
+        <div className="mt-1 font-mono text-[2.5rem] font-semibold leading-none tracking-tight tabular-nums">
+          {intent ? formatMinorAmount(intent.amount_minor, intent.currency) : "—"}
         </div>
         {intent?.description ? (
-          <div className="mt-2 text-sm text-muted-foreground">{intent.description}</div>
+          <div className="mt-2.5 text-sm text-muted-foreground">{intent.description}</div>
         ) : null}
-      </div>
 
-      <div className="mt-4 rounded-lg border bg-muted/20 p-4">
-        <div className="text-sm font-medium">How this payment works</div>
-        <div className="mt-2 space-y-1.5 text-sm text-muted-foreground">
-          <p>
-            You will first attach your card on Uzum&apos;s secure page.
-          </p>
-          <p>
-            Krafta Pay then charges your subscription automatically and brings you back here.
-          </p>
-          <p>
-            A <span className="font-medium text-foreground">0.00 UZS</span> step may appear during card attachment. This is a verification step, not your subscription charge.
-          </p>
-        </div>
-      </div>
+        <div className="my-8 h-px bg-border" />
 
-      <div className="mt-4">
+        {/* Payment action */}
+        <section>
+          <h2 className="text-sm font-medium">Payment method</h2>
+
+          {isTerminal ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              This checkout is no longer accepting payments.
+            </p>
+          ) : providers.length > 0 ? (
+            <ProviderPicker
+              publicToken={public_token}
+              providers={providers}
+              amountMinor={intent?.amount_minor ?? 0}
+              currency={intent?.currency ?? "UZS"}
+            />
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              No payment methods are configured for this merchant yet.
+            </p>
+          )}
+        </section>
+
+        {/* Live status — renders only once a payment is actually in flight. */}
         <CheckoutStatusWatcher
           publicToken={public_token}
           initial={{
@@ -110,35 +122,12 @@ export default async function PayPage({
             selectedAttempt: null,
           }}
         />
-      </div>
+      </main>
 
-      <div className="mt-6">
-        <div className="text-sm font-medium">Choose payment method</div>
-
-        {!isTerminal ? (
-          <ProviderPicker
-            publicToken={public_token}
-            providers={providers}
-            amountMinor={intent?.amount_minor ?? 0}
-            currency={intent?.currency ?? "UZS"}
-          />
-        ) : (
-          <div className="mt-3 text-sm text-muted-foreground">
-            This checkout session is no longer accepting new payment attempts.
-          </div>
-        )}
-
-        {providers.length === 0 ? (
-          <div className="mt-4 text-sm text-red-600">
-            No providers configured for this merchant.
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-6 flex gap-1 text-xs text-muted-foreground items-center justify-center">
+      <footer className="mt-12 flex items-center gap-1 text-xs text-muted-foreground">
         <span>Powered by</span>
         <BrandWordmark text="Krafta•Pay" className="text-xs" />
-      </div>
+      </footer>
     </div>
   );
 }
