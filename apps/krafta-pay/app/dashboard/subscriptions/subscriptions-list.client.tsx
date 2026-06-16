@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { MembershipOption } from "@/lib/org-memberships";
+import { formatMinorAmount } from "@/lib/format";
 
 type SubscriptionRow = {
   id: string;
@@ -144,8 +145,10 @@ export function SubscriptionsListClient({
                       {row.plans?.name ?? "Unknown plan"} · {row.status}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {row.plans?.amount_minor ?? 0} {row.plans?.currency ?? "UZS"} · code{" "}
-                      {row.plans?.code ?? "-"}
+                      <span className="font-mono tabular-nums">
+                        {formatMinorAmount(row.plans?.amount_minor ?? 0, row.plans?.currency ?? "UZS")}
+                      </span>{" "}
+                      · code {row.plans?.code ?? "-"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Customer: {row.customers?.email ?? row.customers?.phone ?? "n/a"}
@@ -177,7 +180,10 @@ export function SubscriptionsListClient({
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <p className="text-sm font-medium">
-                                Invoice {invoice.status} · {invoice.amount_due_minor} {invoice.currency}
+                                Invoice {invoice.status} ·{" "}
+                                <span className="font-mono tabular-nums">
+                                  {formatMinorAmount(invoice.amount_due_minor, invoice.currency)}
+                                </span>
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 Period: {fmtDateTime(invoice.billing_period_start)} → {fmtDateTime(invoice.billing_period_end)}

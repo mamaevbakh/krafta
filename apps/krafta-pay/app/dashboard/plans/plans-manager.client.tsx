@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { MembershipOption } from "@/lib/org-memberships";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatMinorAmount } from "@/lib/format";
 
 type Plan = {
   id: string;
@@ -343,7 +344,10 @@ export function PlansManagerClient({
                           {plan.name} ({plan.code})
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {plan.amount_minor} {plan.currency} / {plan.interval_count} month(s) · Trial {plan.trial_days} days
+                          <span className="font-mono tabular-nums">
+                            {formatMinorAmount(plan.amount_minor, plan.currency)}
+                          </span>{" "}
+                          / {plan.interval_count} month(s) · Trial {plan.trial_days} days
                         </p>
                         <p className="text-xs text-muted-foreground">
                           SPIC: {plan.spic || "not set"}
