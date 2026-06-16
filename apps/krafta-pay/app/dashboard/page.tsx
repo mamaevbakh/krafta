@@ -177,7 +177,9 @@ export default async function DashboardPage({
                     name="orgId"
                     required
                     defaultValue={firstOrgId}
-                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                    // text-base on mobile keeps the font >=16px so iOS doesn't
+                    // zoom the viewport on focus (matches the Input primitive).
+                    className="h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
                   >
                     {memberships.map((m) => (
                       <option key={m.orgId} value={m.orgId}>
@@ -196,11 +198,14 @@ export default async function DashboardPage({
                       id="amount"
                       name="amount"
                       type="number"
+                      inputMode="numeric"
                       min={1}
                       step={1}
                       required
                       defaultValue={200000}
-                      className="pr-12 font-mono tabular-nums"
+                      // Suppress the native number spinners so they don't collide
+                      // with the absolutely-positioned UZS affix.
+                      className="pr-12 font-mono tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
                       UZS
@@ -215,7 +220,6 @@ export default async function DashboardPage({
                   <Input
                     id="description"
                     name="description"
-                    defaultValue="Krafta subscription"
                     placeholder="What is this charge for?"
                   />
                 </div>

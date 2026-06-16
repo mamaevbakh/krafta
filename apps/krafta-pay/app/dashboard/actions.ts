@@ -12,13 +12,19 @@ export async function createHostedCheckoutAction(formData: FormData) {
   const orgId = String(formData.get("orgId") ?? "").trim();
   // The form collects whole UZS (no decimals); intents are stored in tiyin.
   const amountUzs = Number(formData.get("amount") ?? 0);
-  const currency = String(formData.get("currency") ?? "UZS").trim();
+  // The dashboard is UZS-only for v1 — no currency control on the form.
+  const currency = "UZS";
   const description = String(formData.get("description") ?? "").trim();
 
   if (!Number.isFinite(amountUzs) || amountUzs <= 0) {
     redirect(`/dashboard?error=${encodeURIComponent("Enter an amount greater than zero")}`);
   }
-  const amountMinor = Math.round(amountUzs * 100);
+  // step={1} is only a client hint; UZS has no sub-units, so reject fractional
+  // sums server-side rather than silently storing 137,000.50.
+  if (!Number.isInteger(amountUzs)) {
+    redirect(`/dashboard?error=${encodeURIComponent("Enter a whole UZS amount")}`);
+  }
+  const amountMinor = amountUzs * 100;
 
   const payBaseUrl = process.env.PAY_BASE_URL;
   if (!payBaseUrl) {
