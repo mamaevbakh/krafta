@@ -45,23 +45,13 @@ export const wizardCopy = {
     addPlaceholder: "Add a section (e.g. Десерты)",
   },
   items: {
+    title: "Your first items",
     subtitle: "Keep our prices or set yours — everything stays editable in your dashboard.",
     addPlaceholder: "Add an item",
     includeAria: "Include {name}",
     nameAria: "Item name",
     priceAria: "Price in sums",
     currencySuffix: "сум",
-  },
-  look: {
-    title: "Pick your look",
-    subtitle: "How your menu greets customers — change it anytime in the Studio.",
-    presets: {
-      classic: { label: "Classic", hint: "Balanced and familiar" },
-      showcase: { label: "Showcase", hint: "Big header, photo-forward" },
-      list: { label: "Menu list", hint: "Dense, like a printed menu" },
-      minimal: { label: "Minimal", hint: "Just names and prices" },
-    },
-    selectedAria: "Selected look",
   },
   modes: {
     title: "How do customers order?",

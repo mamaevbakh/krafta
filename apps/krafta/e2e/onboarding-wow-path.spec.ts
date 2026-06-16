@@ -34,24 +34,16 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   await expect(page.getByText("Кофе")).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ④⑤ items — one screen per checked section (wizard v3), suggested items
-  // pre-checked with editable prices.
-  await expect(page.getByRole("heading", { name: "Кофе" })).toBeVisible();
+  // ④ items — ONE screen, all checked sections stacked, suggested items
+  // pre-checked with editable prices (both sections visible at once).
+  await expect(
+    page.getByRole("heading", { name: "Your first items" }),
+  ).toBeVisible();
   await expect(page.locator('input[value="Капучино"]')).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  await expect(page.getByRole("heading", { name: "Выпечка" })).toBeVisible();
   await expect(page.locator('input[value="Круассан"]')).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // ⑥ look — tappable presets with live mini-previews; Classic pre-selected.
-  await expect(
-    page.getByRole("heading", { name: "Pick your look" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: /Showcase/ })).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  // ⑦ modes — cafe defaults (pickup + dine-in), vertical-aware option list.
+  // ⑤ modes — cafe defaults (pickup + dine-in), vertical-aware option list.
   await expect(
     page.getByRole("heading", { name: "How do customers order?" }),
   ).toBeVisible();

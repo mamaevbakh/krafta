@@ -6,6 +6,7 @@ import {
   getCatalogLocales,
   getCatalogStructure,
 } from "@/lib/catalogs/data";
+import { getOwnedDraftCatalogRender } from "@/lib/catalogs/draft-preview";
 import { CatalogLayout } from "@/lib/catalogs/layout";
 import { resolveStorefrontLocale } from "@/lib/catalogs/storefront-locale";
 import type {
@@ -59,8 +60,35 @@ async function PreviewCatalogContent({
   const activeCategorySlug = slug.length >= 2 ? categoryOrItemSlug : null;
   const activeItemSlug = slug.length >= 3 ? maybeItemSlug : null;
 
+  const layoutOverride = getPreviewLayoutOverride(resolvedSearchParams);
+  const currencyOverride = getPreviewCurrencyOverride(resolvedSearchParams);
+
   const catalog = await getCatalogBySlug(catalogSlug);
-  if (!catalog) notFound();
+
+  // Draft fallback (KRA-42): the cached anon path only sees PUBLISHED
+  // catalogs, so a merchant previewing their own unpublished shop — the
+  // onboarding reveal, the Studio live preview — would 404. Resolve it under
+  // the owner's session instead. Names are canonical in the default locale,
+  // so we render at the default locale (no ?lang switching for drafts).
+  if (!catalog) {
+    const draft = await getOwnedDraftCatalogRender(catalogSlug);
+    if (!draft) notFound();
+    const draftLocale = draft.locales.default ?? "";
+    return (
+      <CatalogLayout
+        catalog={draft.catalog}
+        categoriesWithItems={draft.categories}
+        activeCategorySlug={activeCategorySlug}
+        activeItemSlug={activeItemSlug}
+        baseHref={`/preview/${draft.catalog.slug}`}
+        layoutOverride={layoutOverride}
+        currencyOverride={currencyOverride}
+        activeLocale={draftLocale}
+        defaultLocale={draftLocale}
+        locales={draft.locales.options}
+      />
+    );
+  }
 
   // Same locale plumbing as the customer route — preview honors ?lang= so
   // the merchant can sanity-check a translation before pointing customers
@@ -77,12 +105,6 @@ async function PreviewCatalogContent({
   const categoriesWithItems = await getCatalogStructure(
     catalog.id,
     activeLocale || undefined,
-  );
-  const layoutOverride = getPreviewLayoutOverride(
-    resolvedSearchParams,
-  );
-  const currencyOverride = getPreviewCurrencyOverride(
-    resolvedSearchParams,
   );
 
   return (
