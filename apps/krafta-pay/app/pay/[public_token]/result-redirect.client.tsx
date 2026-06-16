@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BrandWordmark } from "@/components/brand/brand-wordmark";
+import { Spinner } from "@/components/ui/spinner";
+import { Button } from "@/components/ui/button";
 
 type StatusResponse = {
   checkoutSession: {
@@ -173,10 +176,10 @@ export function PayResultRedirect({
   const title =
     mode === "success"
       ? isSucceeded
-        ? "Subscription payment confirmed"
+        ? "Payment confirmed"
         : isFailed
-          ? "Card attached, subscription charge failed"
-        : "Finalizing your subscription"
+          ? "Payment couldn’t be completed"
+          : "Confirming your payment"
       : isFailed
         ? "Payment was not completed"
         : "Checking payment status";
@@ -184,60 +187,53 @@ export function PayResultRedirect({
   const helperText =
     mode === "success"
       ? isSucceeded
-        ? "Your card was attached and your subscription payment is confirmed. We will return you automatically."
+        ? "Your subscription is active. We’ll take you back automatically."
         : isFailed
-          ? "Your card was attached successfully, but Krafta Pay could not complete the subscription charge yet. You can retry here or return to checkout."
-          : "Your card was attached successfully. Krafta Pay is now confirming the subscription charge."
+          ? "We couldn’t complete the charge yet. You can retry, or go back to checkout."
+          : "We’re confirming your payment — this only takes a moment."
       : isFailed
-        ? "The payment was not completed. You can return and try again."
-        : "We are still checking the result with the payment provider.";
+        ? "The payment wasn’t completed. You can go back and try again."
+        : "We’re still checking the result with the payment provider.";
 
   return (
-    <div className="flex min-h-dvh w-full items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl border bg-background p-6 shadow-sm">
-        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          Krafta Pay
-        </div>
-        <h1 className="mt-3 text-2xl font-semibold">{title}</h1>
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
+      <header>
+        <BrandWordmark text="Krafta•Pay" className="text-lg" />
+      </header>
 
-        <div className="mt-4 rounded-xl border p-4">
-          <div className="text-sm text-muted-foreground">Current status</div>
-          <div className="mt-1 text-lg font-medium capitalize">
-            {intentStatus.replace(/_/g, " ")}
-          </div>
-        </div>
-
-        <p className="mt-4 text-sm text-muted-foreground">{helperText}</p>
+      <main className="mt-12 flex-1">
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{helperText}</p>
 
         {waitingForWebhook ? (
-          <div className="mt-3 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-            This can take a few seconds while we process provider callbacks and webhooks.
+          <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner className="size-4" />
+            <span>Confirming with the payment provider…</span>
           </div>
-        ) : null}
-
-        {countdown !== null ? (
-          <p className="mt-4 text-sm">
-            Continuing in <span className="font-semibold">{countdown}</span>s...
-          </p>
         ) : null}
 
         {error ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
+          <p className="mt-6 text-sm text-muted-foreground">
+            We hit a snag checking the status — retrying automatically.
+          </p>
         ) : null}
 
         {retryNote ? (
-          <div className="mt-4 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-            {retryNote}
-          </div>
+          <p className="mt-4 text-sm text-muted-foreground">{retryNote}</p>
         ) : null}
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        {countdown !== null ? (
+          <p className="mt-6 text-sm">
+            Continuing in{" "}
+            <span className="font-medium tabular-nums">{countdown}</span>s…
+          </p>
+        ) : null}
+
+        <div className="mt-8 flex flex-wrap items-center gap-2">
           {canManualRetry ? (
-            <button
+            <Button
               type="button"
-              className="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-10"
               disabled={retryPending}
               onClick={async () => {
                 setRetryPending(true);
@@ -258,10 +254,10 @@ export function PayResultRedirect({
                   const nextIntentStatus = json?.paymentIntentStatus ?? "processing";
                   setRetryNote(
                     nextIntentStatus === "succeeded"
-                      ? "Charge retry succeeded. Redirecting shortly..."
+                      ? "Charge retry succeeded. Redirecting shortly…"
                       : nextIntentStatus === "failed"
                         ? "Charge retry failed. You can try again in a moment."
-                        : "Charge retry started. We are checking the result now.",
+                        : "Charge retry started. We’re checking the result now.",
                   );
 
                   setStatus((prev) => {
@@ -283,24 +279,32 @@ export function PayResultRedirect({
                 }
               }}
             >
-              {retryPending ? "Retrying charge..." : "Retry charge"}
-            </button>
+              {retryPending ? "Retrying…" : "Retry payment"}
+            </Button>
           ) : null}
-          <button
+
+          <Button
             type="button"
-            className="rounded-md border px-3 py-2 text-sm hover:bg-muted"
+            variant={canManualRetry ? "outline" : "default"}
+            className="h-10"
             onClick={() => topNavigate(statusTarget)}
           >
             Continue now
-          </button>
+          </Button>
+
           <a
             href={`/pay/${encodeURIComponent(publicToken)}`}
-            className="rounded-md border px-3 py-2 text-sm hover:bg-muted"
+            className="inline-flex h-10 items-center px-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             Back to checkout
           </a>
         </div>
-      </div>
+      </main>
+
+      <footer className="mt-12 flex items-center gap-1 text-xs text-muted-foreground">
+        <span>Powered by</span>
+        <BrandWordmark text="Krafta•Pay" className="text-xs" />
+      </footer>
     </div>
   );
 }
