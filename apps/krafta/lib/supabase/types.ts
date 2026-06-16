@@ -4165,6 +4165,7 @@ export type Database = {
           p_branding?: Json
           p_catalog_id: string
           p_currency: Json
+          p_item_images?: string[]
           p_layout?: Json
           p_locales: Json
           p_menu: Json
