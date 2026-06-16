@@ -10,9 +10,9 @@ test("publish nudge removes untouched demo items", async ({ page }) => {
   await page.getByRole("button", { name: /Cafe/ }).click();
   await page.getByLabel("Shop name").fill("Demo Removal QA");
   // Fast path: one tap per screen, suggestions kept untouched (= demo items).
-  // Cafe walk: sections, items (one screen, all sections), modes, tables,
-  // languages, alerts, phone — then the city screen submits.
-  for (let i = 0; i < 8; i++) {
+  // Cafe walk: logo, sections, items (one screen, all sections), modes,
+  // tables, languages, alerts, phone — then the city screen submits.
+  for (let i = 0; i < 9; i++) {
     await page.getByRole("button", { name: "Continue" }).click();
   }
   await expect(

@@ -3,9 +3,9 @@
 // KRA-42 wizard v3 / ADR 0005 §2 (amended) — guided seeding, one decision
 // per screen.
 //
-//   ① type → ② name → ③ sections → ④…N items (one screen per checked
-//   section) → modes → tables (dine-in only) → languages → phone → city
-//   → single submit (complete_wizard RPC) → Studio.
+//   ① type → ② name → ③ logo (optional) → ④ sections → ⑤ items (one screen)
+//   → modes → tables (dine-in only) → languages → alerts → phone → city
+//   → single submit (complete_wizard RPC) → reveal → Studio.
 //
 // The step list is computed from draft state, so the screen count adapts to
 // the merchant's own menu (a 3-section cafe walks 3 item screens). Progress
@@ -25,6 +25,7 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
+  ImagePlus,
   Loader2,
   Minus,
   Plus,
@@ -78,6 +79,7 @@ type AlertsIntent = "telegram" | "dashboard";
 type Step =
   | { kind: "type" }
   | { kind: "name" }
+  | { kind: "logo" }
   | { kind: "sections" }
   | { kind: "items" }
   | { kind: "modes" }
@@ -92,6 +94,8 @@ function buildSteps(sections: SectionDraft[], modes: VenueMode[]): Step[] {
   return [
     { kind: "type" },
     { kind: "name" },
+    // Optional logo — sits with the shop's identity, right after its name.
+    { kind: "logo" },
     { kind: "sections" },
     // One items screen for the whole menu — all checked sections stacked.
     ...(hasItems ? [{ kind: "items" } as Step] : []),
@@ -152,6 +156,27 @@ export function OnboardingWizard() {
   const [cursor, setCursor] = React.useState(0);
   const [vertical, setVertical] = React.useState<ShopVertical | null>(null);
   const [name, setName] = React.useState("");
+  // Optional logo. Held client-side as a File until submit, then uploaded once
+  // the catalog exists (POST /api/catalogs/logo). Not part of the saved draft —
+  // File objects aren't serializable, so a reload returns to an empty picker.
+  const [logoFile, setLogoFile] = React.useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
+  const logoInputRef = React.useRef<HTMLInputElement>(null);
+  const logoUrlRef = React.useRef<string | null>(null);
+  const pickLogo = React.useCallback((file: File | null) => {
+    if (logoUrlRef.current) URL.revokeObjectURL(logoUrlRef.current);
+    const url = file ? URL.createObjectURL(file) : null;
+    logoUrlRef.current = url;
+    setLogoPreview(url);
+    setLogoFile(file);
+  }, []);
+  // Revoke the last object URL when the wizard unmounts.
+  React.useEffect(
+    () => () => {
+      if (logoUrlRef.current) URL.revokeObjectURL(logoUrlRef.current);
+    },
+    [],
+  );
   const [sections, setSections] = React.useState<SectionDraft[]>([]);
   const [modes, setModes] = React.useState<VenueMode[]>(["pickup"]);
   const [tableCount, setTableCount] = React.useState(8);
@@ -363,6 +388,22 @@ export function OnboardingWizard() {
       return;
     }
     trackWizard("created");
+    // Optional logo: now that the catalog exists, upload the held file before
+    // the reveal so the phone-frame preview shows it. Best-effort — on any
+    // failure the shop keeps the placeholder logo set at creation, and the
+    // merchant can re-upload from the Studio. The building theater stays up
+    // while this runs (phase is still "building").
+    if (logoFile) {
+      try {
+        const fd = new FormData();
+        fd.append("catalogId", res.catalogId);
+        fd.append("orgId", res.orgId);
+        fd.append("logo", logoFile);
+        await fetch("/api/catalogs/logo", { method: "POST", body: fd });
+      } catch {
+        // Keep the placeholder; not worth blocking the reveal.
+      }
+    }
     try {
       sessionStorage.removeItem(DRAFT_KEY);
     } catch {
@@ -544,6 +585,85 @@ export function OnboardingWizard() {
           />
           {continueButton(() => name.trim() && goNext())}
         </form>
+      </section>
+    );
+  }
+
+  // ── logo (optional) ───────────────────────────────────────────────────────
+  if (current.kind === "logo") {
+    return (
+      <section key="logo">
+        {header(wizardCopy.logo.title, wizardCopy.logo.subtitle)}
+        <input
+          ref={logoInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          className="sr-only"
+          onChange={(e) => {
+            const file = e.target.files?.[0] ?? null;
+            // Keep logos reasonable — a few hundred KB is plenty for a mark.
+            if (file && file.size > 5 * 1024 * 1024) {
+              setError(wizardCopy.logo.tooLarge);
+              e.target.value = "";
+              return;
+            }
+            setError(null);
+            pickLogo(file);
+            // Allow re-picking the same file after a Remove.
+            e.target.value = "";
+          }}
+        />
+        <div className="mt-6">
+          {logoPreview ? (
+            <div className="flex items-center gap-4 rounded-lg border bg-card p-3">
+              <div className="relative size-16 shrink-0 overflow-hidden rounded-md bg-muted">
+                {/* Local object-URL preview — a transient blob: URL that
+                    next/image can't optimize, so a plain <img> is correct. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={logoPreview}
+                  alt={wizardCopy.logo.previewAria}
+                  className="size-full object-cover"
+                />
+              </div>
+              <div className="flex flex-1 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => logoInputRef.current?.click()}
+                >
+                  {wizardCopy.logo.replace}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => pickLogo(null)}
+                >
+                  {wizardCopy.logo.remove}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              className="flex min-h-28 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-card px-4 py-6 text-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ImagePlus className="size-6" />
+              <span className="text-sm font-medium">{wizardCopy.logo.pick}</span>
+              <span className="text-xs">{wizardCopy.logo.hint}</span>
+            </button>
+          )}
+        </div>
+        {error ? (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+        {continueButton(goNext)}
       </section>
     );
   }

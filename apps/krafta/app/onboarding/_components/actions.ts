@@ -145,7 +145,15 @@ const wizardPayloadSchema = z.object({
 export type WizardPayload = z.input<typeof wizardPayloadSchema>;
 export type CreateShopResult =
   | { error: string }
-  | { ok: true; orgSlug: string; catalogSlug: string };
+  // orgId + catalogId let the client finish an optional logo upload
+  // (POST /api/catalogs/logo) right after the shop exists.
+  | {
+      ok: true;
+      orgSlug: string;
+      catalogSlug: string;
+      orgId: string;
+      catalogId: string;
+    };
 
 const UZS_CURRENCY_SETTINGS = {
   defaultCurrency: "UZS",
@@ -170,6 +178,14 @@ const DEMO_ITEM_IMAGES = Array.from(
   { length: 23 },
   (_, i) => `demo/abstract/dither-${String(i + 1).padStart(2, "0")}.webp`,
 );
+
+/** Placeholder logo for shops that skip the optional logo upload — the
+ *  dithered Krafta wordmark (public-assets/demo/abstract/dither-24.webp).
+ *  Stored as a fully-qualified storage path so getCatalogAssetUrl resolves it
+ *  against the public `public-assets` bucket (a bare path would otherwise
+ *  resolve against the `krafta` logo bucket). Swappable any time in the Studio. */
+const DEFAULT_LOGO_PATH =
+  "/storage/v1/object/public/public-assets/demo/abstract/dither-24.webp";
 
 export async function createShopFromWizard(
   payload: WizardPayload,
@@ -338,7 +354,27 @@ export async function createShopFromWizard(
     return { error: "We couldn't set up your shop. Try again." };
   }
 
+  // Give the new shop a placeholder logo (the dithered Krafta wordmark) so the
+  // storefront header isn't blank in the reveal. Best-effort and only when
+  // still unset — if the merchant picked a logo, the client overwrites this
+  // right after creation (POST /api/catalogs/logo). A failure here just leaves
+  // the header logoless; it never blocks the create.
+  const { error: logoError } = await supabase
+    .from("catalogs")
+    .update({ logo_path: DEFAULT_LOGO_PATH })
+    .eq("id", shop.catalogId)
+    .is("logo_path", null);
+  if (logoError) {
+    console.error("[onboarding] default logo update failed", logoError);
+  }
+
   // No redirect: the wizard shows the reveal (phone-frame preview) first
   // and navigates to the dashboard on the merchant's own tap.
-  return { ok: true, orgSlug: shop.orgSlug, catalogSlug: shop.catalogSlug };
+  return {
+    ok: true,
+    orgSlug: shop.orgSlug,
+    catalogSlug: shop.catalogSlug,
+    orgId: shop.orgId,
+    catalogId: shop.catalogId,
+  };
 }

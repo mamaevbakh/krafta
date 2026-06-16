@@ -27,6 +27,13 @@ test("create your shop → wizard → seeded Studio", async ({ page }) => {
   await page.getByLabel("Shop name").fill("Чойхона Тест");
   await page.getByRole("button", { name: "Continue" }).click();
 
+  // ②.5 logo — optional; Continue skips it (a placeholder logo is applied
+  // server-side at creation).
+  await expect(
+    page.getByRole("heading", { name: "Add your logo" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+
   // ③ sections — vertical suggestions arrive pre-checked (fast path: 1 tap).
   await expect(
     page.getByRole("heading", { name: "Your menu sections" }),
