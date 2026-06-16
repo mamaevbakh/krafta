@@ -2,6 +2,7 @@ import { createAdminSupabase } from "@/lib/supabase-admin";
 import { notFound } from "next/navigation";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { ProviderPicker } from "./provider-picker.client";
+import { AtmosCardForm } from "./atmos-card-form.client";
 import { CheckoutStatusWatcher } from "./checkout-status.client";
 import { formatMinorAmount } from "@/lib/format";
 
@@ -55,6 +56,13 @@ export default async function PayPage({
         name: a.providers.display_name as string,
       })) ?? [];
 
+  // Atmos collects the card inline, so show the card fields up front — no extra
+  // "choose payment method" click. Any redirect providers drop below as alts.
+  const atmosProvider = providers.find((p) => p.id === "atmos");
+  const otherProviders = providers.filter((p) => p.id !== "atmos");
+  const amountMinor = intent?.amount_minor ?? 0;
+  const currency = intent?.currency ?? "UZS";
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
       <header>
@@ -75,23 +83,42 @@ export default async function PayPage({
 
         {/* Payment action */}
         <section>
-          <h2 className="text-sm font-medium">Payment method</h2>
+          <h2 className="text-sm font-medium">Payment details</h2>
 
           {isTerminal ? (
             <p className="mt-3 text-sm text-muted-foreground">
               This checkout is no longer accepting payments.
             </p>
-          ) : providers.length > 0 ? (
-            <ProviderPicker
-              publicToken={public_token}
-              providers={providers}
-              amountMinor={intent?.amount_minor ?? 0}
-              currency={intent?.currency ?? "UZS"}
-            />
-          ) : (
+          ) : providers.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">
               No payment methods are configured for this merchant yet.
             </p>
+          ) : atmosProvider ? (
+            <div className="mt-4">
+              <AtmosCardForm
+                publicToken={public_token}
+                amountMinor={amountMinor}
+                currency={currency}
+              />
+              {otherProviders.length > 0 ? (
+                <div className="mt-8 border-t pt-6">
+                  <div className="text-xs text-muted-foreground">Or pay another way</div>
+                  <ProviderPicker
+                    publicToken={public_token}
+                    providers={otherProviders}
+                    amountMinor={amountMinor}
+                    currency={currency}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <ProviderPicker
+              publicToken={public_token}
+              providers={providers}
+              amountMinor={amountMinor}
+              currency={currency}
+            />
           )}
         </section>
 
