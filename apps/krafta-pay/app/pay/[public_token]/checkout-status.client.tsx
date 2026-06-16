@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { Spinner } from "@/components/ui/spinner";
 
 type StatusResponse = {
   checkoutSession: {
@@ -108,38 +109,31 @@ export function CheckoutStatusWatcher({
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  const isTerminal = isTerminalIntentStatus(data?.paymentIntent?.status ?? null);
+  const intentStatus = (data?.paymentIntent?.status ?? "").toLowerCase();
+
+  // Pre-action there is nothing to report. The realtime + polling effects above
+  // keep running regardless, so progress appears the moment a payment starts —
+  // no premature "Awaiting confirmation" card competing with the action.
+  if (!error && (intentStatus === "" || intentStatus === "open" || intentStatus === "requires_action")) {
+    return null;
+  }
 
   return (
-    <div className="rounded-lg border p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm text-muted-foreground">Status</div>
-          <div className="text-lg font-semibold">{statusLabel}</div>
-        </div>
-
-        {isTerminal ? (
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-            {data?.paymentIntent?.status?.toLowerCase() === "succeeded" ? "Confirmed" : "Done"}
-          </span>
-        ) : (
-          <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-            Live
-          </span>
-        )}
-      </div>
-
+    <div className="mt-8 border-t pt-6 text-sm">
       {error ? (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
+        <p className="text-muted-foreground">
+          Couldn&apos;t check the payment status just now — retrying automatically.
+        </p>
+      ) : intentStatus === "succeeded" ? (
+        <p className="font-medium">Payment confirmed — taking you back…</p>
+      ) : intentStatus === "failed" || intentStatus === "canceled" || intentStatus === "cancelled" ? (
+        <p className="font-medium text-destructive">Payment {statusLabel.toLowerCase()}.</p>
+      ) : (
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Spinner className="size-4" />
+          <span>{statusLabel}…</span>
         </div>
-      ) : null}
-
-      {!isTerminal ? (
-        <div className="mt-2 text-xs text-muted-foreground">
-          This page updates instantly when the payment is confirmed.
-        </div>
-      ) : null}
+      )}
     </div>
   );
 }
