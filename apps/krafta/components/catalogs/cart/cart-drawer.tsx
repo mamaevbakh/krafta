@@ -5,12 +5,12 @@ import { ImageIcon, ShoppingCart, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   type CurrencySettings,
   defaultCurrencySettings,
@@ -37,24 +37,26 @@ export function CartDrawer({
   const { isOpen, setOpen, step, setStep, close } = useCart();
 
   return (
-    // shouldScaleBackground lets vaul transform the [vaul-drawer-wrapper]
-    // element (set in app/[...slug]/layout.tsx) — the page tucks behind
-    // the drawer with a small inset + rounded corners, iOS-card-stack feel.
-    <Drawer open={isOpen} onOpenChange={setOpen} shouldScaleBackground>
+    // The cart carries a lot now — line items, the checkout form, the address
+    // book, the map — so it's a MODAL, not a bottom sheet (a sheet gets cramped
+    // for this). Full-screen on phones for maximum room; a centered card on
+    // desktop.
+    <Dialog open={isOpen} onOpenChange={setOpen}>
       {/* Telegram Back control: on checkout step go back to the list,
-          otherwise close the drawer (close() also resets the placed step). */}
+          otherwise close the modal (close() also resets the placed step). */}
       <TelegramBackButton
         active={isOpen}
         onBack={() => (step === "checkout" ? setStep("cart") : close())}
       />
-      <DrawerContent
+      <DialogContent
         className={cn(
-          "data-[vaul-drawer-direction=bottom]:max-h-[92dvh]",
-          "data-[vaul-drawer-direction=bottom]:h-[92dvh]",
-          "data-[vaul-drawer-direction=bottom]:mt-0",
-          // Center the drawer on desktop so it doesn't span the full
-          // viewport width. Mobile keeps the full-bleed bottom-sheet feel.
-          "sm:data-[vaul-drawer-direction=bottom]:max-w-md sm:data-[vaul-drawer-direction=bottom]:mx-auto",
+          // flex column + overflow-hidden so each step's own scroll region +
+          // sticky footer keep working inside a fixed-height modal.
+          "flex flex-col gap-0 overflow-hidden p-0",
+          // Mobile: full-screen, anchored top-left, no rounding.
+          "top-0 left-0 h-[100dvh] max-h-[100dvh] w-full max-w-full translate-x-0 translate-y-0 rounded-none border-0",
+          // Desktop: a centered card, capped height with internal scroll.
+          "sm:top-1/2 sm:left-1/2 sm:h-[88dvh] sm:max-h-[88dvh] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border",
         )}
       >
         {step === "cart" ? (
@@ -66,8 +68,8 @@ export function CartDrawer({
         {step === "placed" ? (
           <CartPlacedStep currencySettings={currencySettings} />
         ) : null}
-      </DrawerContent>
-    </Drawer>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -99,20 +101,20 @@ function CartListStep({
     // shrinking — without min-h-0, this column overflows the drawer.
     // See full note in checkout-step.tsx.
     <div className="flex min-h-0 flex-1 flex-col">
-      <DrawerHeader className="text-center">
-        <DrawerTitle className="text-lg">{t("cart.title")}</DrawerTitle>
+      <DialogHeader className="px-4 pb-3 pt-4 text-center sm:text-center">
+        <DialogTitle className="text-lg">{t("cart.title")}</DialogTitle>
         {/* sr-only: satisfies Radix's DialogContent describedby requirement
             (silences the "Missing Description" console warning) without
             adding visible subtitle chrome. Mirrors placed-step.tsx. */}
-        <DrawerDescription className="sr-only">
+        <DialogDescription className="sr-only">
           {t("cart.description")}
-        </DrawerDescription>
+        </DialogDescription>
         {dineInLock ? (
           <p className="mx-auto mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-foreground">
             {t("cart.mode_pill.dine_in", { table: dineInLock.tableLabel })}
           </p>
         ) : null}
-      </DrawerHeader>
+      </DialogHeader>
 
       {/* Plain overflow-y-auto div rather than Radix ScrollArea — Radix
           sets its inner wrapper to width:fit-content which lets a long

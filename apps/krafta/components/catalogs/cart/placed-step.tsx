@@ -13,9 +13,9 @@ import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  DrawerDescription,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
   type CurrencySettings,
@@ -49,10 +49,10 @@ export function CartPlacedStep({
   if (!placedOrder) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <DrawerTitle className="sr-only">{t("placed.title")}</DrawerTitle>
-        <DrawerDescription className="sr-only">
+        <DialogTitle className="sr-only">{t("placed.title")}</DialogTitle>
+        <DialogDescription className="sr-only">
           {t("placed.title")}
-        </DrawerDescription>
+        </DialogDescription>
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
           <SuccessMark />
           <div className="space-y-1">
@@ -86,8 +86,8 @@ export function CartPlacedStep({
     // flex-1 + min-h-0: see checkout-step.tsx note re: drawer handle
     // and flexbox min-height:auto.
     <div className="flex min-h-0 flex-1 flex-col" role="status" aria-live="polite">
-      <DrawerTitle className="sr-only">{t("placed.title")}</DrawerTitle>
-      <DrawerDescription className="sr-only">{tagline}</DrawerDescription>
+      <DialogTitle className="sr-only">{t("placed.title")}</DialogTitle>
+      <DialogDescription className="sr-only">{tagline}</DialogDescription>
 
       {/* Plain overflow-y-auto div rather than Radix ScrollArea: Radix
           sets its inner wrapper to width:fit-content, which lets an
