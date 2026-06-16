@@ -63,9 +63,7 @@ async function buildDraftShop(page: Page, name: string) {
   await expect(
     page.getByRole("heading", { name: "Your menu sections" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click(); // → items: Кофе
-  await page.getByRole("button", { name: "Continue" }).click(); // → items: Выпечка
-  await page.getByRole("button", { name: "Continue" }).click(); // → look
+  await page.getByRole("button", { name: "Continue" }).click(); // → items
   await page.getByRole("button", { name: "Continue" }).click(); // → modes
   await page.getByRole("button", { name: "Continue" }).click(); // → tables
   await page.getByRole("button", { name: "Continue" }).click(); // → languages

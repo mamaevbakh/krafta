@@ -23,13 +23,11 @@
 import { z } from "zod";
 
 import { createDraftShopForAnonUser } from "@/lib/auth/merchant-shop";
-import { normalizeLayoutSettings } from "@/lib/catalogs/settings/layout";
 import { getLocaleDefinition } from "@/lib/locales/registry";
 import { suggestSlug } from "@/lib/onboarding/slug";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/types";
 
-import { LOOK_PRESETS, isLookKey, type LookKey } from "./presets";
 import { isShopVertical, type ShopVertical } from "./verticals";
 
 // ---------------------------------------------------------------------------
@@ -130,9 +128,6 @@ const wizardSectionSchema = z.object({
 const wizardPayloadSchema = z.object({
   vertical: z.string().refine(isShopVertical, "Unknown shop type."),
   name: z.string().trim().min(1).max(80),
-  /** Look preset KEY only — the layout payload is re-resolved server-side
-   *  from LOOK_PRESETS, never trusted from the client. */
-  look: z.string().refine(isLookKey, "Unknown look."),
   sections: z.array(wizardSectionSchema).min(0).max(8),
   modes: z.array(z.enum(["dine_in", "pickup", "delivery"])).min(1).max(3),
   tableCount: z.number().int().min(0).max(50),
@@ -283,13 +278,10 @@ export async function createShopFromWizard(
     p_catalog_id: shop.catalogId,
     p_vertical: input.vertical as ShopVertical,
     p_currency: UZS_CURRENCY_SETTINGS,
-    // The Look preset, resolved server-side from the validated key: the
-    // full normalized layout plus a branding marker that satisfies the
-    // checklist's "Pick your look" fact (the merchant really did pick).
-    p_layout: normalizeLayoutSettings(
-      LOOK_PRESETS[input.look as LookKey].layout,
-    ) as unknown as Json,
-    p_branding: { preset: input.look },
+    // No p_layout / p_branding: every shop starts on the catalog default
+    // style. settings_branding stays empty, so the dashboard's "Pick your
+    // look" checklist row is a real task that points the merchant at the
+    // Studio (it's no longer born-done).
     p_modes: input.modes,
     p_address: {
       ...(input.city ? { city: input.city } : {}),

@@ -47,7 +47,6 @@ import {
 } from "./actions";
 import { trackWizard } from "./analytics";
 import { CITY_CHIPS, fmt, wizardCopy } from "./copy";
-import { LOOK_KEYS, isLookKey, type LookKey } from "./presets";
 import {
   VERTICALS,
   VERTICAL_KEYS,
@@ -55,10 +54,6 @@ import {
   type ShopVertical,
   type VenueMode,
 } from "./verticals";
-import {
-  WizardLookPreview,
-  type PreviewSection,
-} from "./wizard-look-preview";
 
 type ItemDraft = {
   key: string;
@@ -84,8 +79,7 @@ type Step =
   | { kind: "type" }
   | { kind: "name" }
   | { kind: "sections" }
-  | { kind: "items"; sectionKey: string }
-  | { kind: "look" }
+  | { kind: "items" }
   | { kind: "modes" }
   | { kind: "tables" }
   | { kind: "languages" }
@@ -94,14 +88,13 @@ type Step =
   | { kind: "city" };
 
 function buildSteps(sections: SectionDraft[], modes: VenueMode[]): Step[] {
+  const hasItems = sections.some((s) => s.checked);
   return [
     { kind: "type" },
     { kind: "name" },
     { kind: "sections" },
-    ...sections
-      .filter((s) => s.checked)
-      .map((s): Step => ({ kind: "items", sectionKey: s.key })),
-    { kind: "look" },
+    // One items screen for the whole menu — all checked sections stacked.
+    ...(hasItems ? [{ kind: "items" } as Step] : []),
     { kind: "modes" },
     ...(modes.includes("dine_in") ? [{ kind: "tables" } as Step] : []),
     { kind: "languages" },
@@ -136,8 +129,6 @@ type WizardDraft = {
   vertical: ShopVertical | null;
   name: string;
   sections: SectionDraft[];
-  /** Look preset key; absent in pre-PR2 drafts → defaults to "classic". */
-  look?: LookKey;
   modes: VenueMode[];
   tableCount: number;
   locales: { code: string; isDefault: boolean }[];
@@ -174,7 +165,6 @@ export function OnboardingWizard() {
   const [phone, setPhone] = React.useState("");
   const [city, setCity] = React.useState("");
   const [customCity, setCustomCity] = React.useState(false);
-  const [look, setLook] = React.useState<LookKey>("classic");
   const [alertsIntent, setAlertsIntent] = React.useState<AlertsIntent>("telegram");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -205,7 +195,6 @@ export function OnboardingWizard() {
           if (typeof d.phone === "string") setPhone(d.phone);
           if (typeof d.city === "string") setCity(d.city);
           if (typeof d.customCity === "boolean") setCustomCity(d.customCity);
-          if (typeof d.look === "string" && isLookKey(d.look)) setLook(d.look);
           if (d.alertsIntent === "telegram" || d.alertsIntent === "dashboard") {
             setAlertsIntent(d.alertsIntent);
           }
@@ -229,7 +218,6 @@ export function OnboardingWizard() {
         vertical,
         name,
         sections,
-        look,
         modes,
         tableCount,
         locales,
@@ -242,7 +230,7 @@ export function OnboardingWizard() {
     } catch {
       // Storage full/blocked — persistence is best-effort.
     }
-  }, [hydrated, phase, cursor, vertical, name, sections, look, modes, tableCount, locales, alertsIntent, phone, city, customCity]);
+  }, [hydrated, phase, cursor, vertical, name, sections, modes, tableCount, locales, alertsIntent, phone, city, customCity]);
 
   const steps = buildSteps(sections, modes);
   const safeCursor = Math.min(Math.max(cursor, 0), steps.length - 1);
@@ -345,7 +333,6 @@ export function OnboardingWizard() {
               ),
             })),
         })),
-      look,
       modes,
       tableCount: modes.includes("dine_in") ? tableCount : 0,
       locales,
@@ -355,7 +342,6 @@ export function OnboardingWizard() {
     const itemCount = payload.sections.reduce((n, s) => n + s.items.length, 0);
     trackWizard("submit", {
       via: opts.includeCity ? "create" : "skip",
-      look,
       alerts: alertsIntent,
       sections: payload.sections.length,
       items: itemCount,
@@ -433,15 +419,6 @@ export function OnboardingWizard() {
     </Button>
   );
 
-  const previewSections: PreviewSection[] = sections
-    .filter((s) => s.checked && s.name.trim())
-    .map((s) => ({
-      name: s.name,
-      items: s.items
-        .filter((i) => i.checked && i.name.trim())
-        .map((i) => ({ name: i.name, priceCents: parseSum(i.priceSum) * 100 })),
-    }));
-
   // ── building / reveal phases override the step machine ───────────────────
   if (phase === "building") {
     const stages = wizardCopy.building.stages.filter(
@@ -471,16 +448,16 @@ export function OnboardingWizard() {
         <p className="mt-1 text-sm text-muted-foreground">
           {wizardCopy.reveal.subtitle}
         </p>
-        <div className="mx-auto mt-6 w-full max-w-[300px] overflow-hidden rounded-[2rem] border-4 border-foreground/80 bg-background">
-          <div className="h-[540px] overflow-hidden">
-            <WizardLookPreview
-              look={look}
-              shopName={name.trim()}
-              sections={previewSections}
-              maxSections={3}
-              maxItemsPerSection={3}
-            />
-          </div>
+        {/* The REAL storefront, rendered by the preview route from the shop
+            we just created (owner-session draft fallback). Same-origin iframe
+            carries the merchant's cookies, so /preview resolves the unpublished
+            draft. This IS what customers will see — not a reconstruction. */}
+        <div className="mx-auto mt-6 w-full max-w-[300px] overflow-hidden rounded-[2rem] border-4 border-foreground bg-background">
+          <iframe
+            title="Your storefront preview"
+            src={`/preview/${shop.catalogSlug}`}
+            className="h-[540px] w-full border-0"
+          />
         </div>
         {alertsIntent === "telegram" ? (
           <Button asChild className="mt-6 w-full">
@@ -618,30 +595,21 @@ export function OnboardingWizard() {
     );
   }
 
-  // ── ④…N items — one screen per checked section ────────────────────────────
+  // ── items — one screen, all checked sections stacked ─────────────────────
   if (current.kind === "items") {
-    const section = sections.find((s) => s.key === current.sectionKey);
-    if (!section) {
-      // Stale draft pointer (section was unchecked elsewhere) — step past it.
-      return (
-        <section key="items-stale">
-          {header(wizardCopy.sections.title, wizardCopy.sections.subtitleBare)}
-          {continueButton(goNext)}
-        </section>
-      );
-    }
-    const patchItem = (iKey: string, patch: Partial<ItemDraft>) =>
+    const checkedSections = sections.filter((s) => s.checked && s.name.trim());
+    const patchItem = (sKey: string, iKey: string, patch: Partial<ItemDraft>) =>
       setSections((prev) =>
         prev.map((s) =>
-          s.key === section.key
+          s.key === sKey
             ? { ...s, items: s.items.map((i) => (i.key === iKey ? { ...i, ...patch } : i)) }
             : s,
         ),
       );
-    const addItem = (itemName: string, priceSum: string) =>
+    const addItem = (sKey: string, itemName: string, priceSum: string) =>
       setSections((prev) =>
         prev.map((s) =>
-          s.key === section.key
+          s.key === sKey
             ? {
                 ...s,
                 items: [
@@ -660,114 +628,65 @@ export function OnboardingWizard() {
         ),
       );
     return (
-      <section key={`items-${section.key}`}>
-        {header(section.name, wizardCopy.items.subtitle)}
-        <div className="mt-6 flex flex-col gap-2">
-          {section.items.map((i) => (
-            <div
-              key={i.key}
-              className={cn(
-                "flex min-h-12 items-center gap-2 rounded-lg border bg-card px-3 py-2",
-                !i.checked && "opacity-50",
-              )}
-            >
-              <Checkbox
-                checked={i.checked}
-                onCheckedChange={() => patchItem(i.key, { checked: !i.checked })}
-                aria-label={fmt(wizardCopy.items.includeAria, { name: i.name })}
-              />
-              <Input
-                value={i.name}
-                onChange={(e) => patchItem(i.key, { name: e.target.value })}
-                maxLength={80}
-                aria-label={wizardCopy.items.nameAria}
-                className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
-              />
-              <div className="flex shrink-0 items-center gap-1">
-                <Input
-                  value={formatSum(i.priceSum)}
-                  onChange={(e) =>
-                    patchItem(i.key, {
-                      priceSum: e.target.value.replace(/[^\d]/g, ""),
-                    })
-                  }
-                  inputMode="numeric"
-                  aria-label={wizardCopy.items.priceAria}
-                  className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
+      <section key="items">
+        {header(wizardCopy.items.title, wizardCopy.items.subtitle)}
+        <div className="mt-6 flex flex-col gap-6">
+          {checkedSections.map((section) => (
+            <div key={section.key}>
+              <h2 className="mb-2 text-sm font-medium text-muted-foreground">
+                {section.name}
+              </h2>
+              <div className="flex flex-col gap-2">
+                {section.items.map((i) => (
+                  <div
+                    key={i.key}
+                    className={cn(
+                      "flex min-h-12 items-center gap-2 rounded-lg border bg-card px-3 py-2",
+                      !i.checked && "opacity-50",
+                    )}
+                  >
+                    <Checkbox
+                      checked={i.checked}
+                      onCheckedChange={() =>
+                        patchItem(section.key, i.key, { checked: !i.checked })
+                      }
+                      aria-label={fmt(wizardCopy.items.includeAria, { name: i.name })}
+                    />
+                    <Input
+                      value={i.name}
+                      onChange={(e) =>
+                        patchItem(section.key, i.key, { name: e.target.value })
+                      }
+                      maxLength={80}
+                      aria-label={wizardCopy.items.nameAria}
+                      className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
+                    />
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Input
+                        value={formatSum(i.priceSum)}
+                        onChange={(e) =>
+                          patchItem(section.key, i.key, {
+                            priceSum: e.target.value.replace(/[^\d]/g, ""),
+                          })
+                        }
+                        inputMode="numeric"
+                        aria-label={wizardCopy.items.priceAria}
+                        className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {wizardCopy.items.currencySuffix}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                <AddRow
+                  placeholder={wizardCopy.items.addPlaceholder}
+                  withPrice
+                  onAddWithPrice={(n, p) => addItem(section.key, n, p)}
                 />
-                <span className="text-xs text-muted-foreground">
-                  {wizardCopy.items.currencySuffix}
-                </span>
               </div>
             </div>
           ))}
-          <AddRow
-            placeholder={wizardCopy.items.addPlaceholder}
-            withPrice
-            onAddWithPrice={addItem}
-          />
-        </div>
-        {continueButton(goNext)}
-      </section>
-    );
-  }
-
-  // ── look — tappable storefront presets, live mini-previews ───────────────
-  if (current.kind === "look") {
-    return (
-      <section key="look">
-        {header(wizardCopy.look.title, wizardCopy.look.subtitle)}
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          {LOOK_KEYS.map((key) => {
-            const preset = wizardCopy.look.presets[key];
-            const selected = look === key;
-            // The preview embeds real storefront chrome (its headers carry
-            // their own buttons), so the card can't BE a <button> — the tap
-            // target is an overlay button layered over the inert preview.
-            return (
-              <div
-                key={key}
-                className={cn(
-                  "relative flex flex-col overflow-hidden rounded-lg border bg-card",
-                  selected && "border-primary ring-1 ring-primary",
-                )}
-              >
-                <span className="relative block h-44 overflow-hidden border-b bg-background">
-                  <span
-                    className="absolute left-0 top-0 block origin-top-left"
-                    style={{ width: 380, transform: "scale(0.42)" }}
-                  >
-                    <WizardLookPreview
-                      look={key}
-                      shopName={name.trim() || wizardCopy.name.placeholder}
-                      sections={previewSections}
-                      maxSections={2}
-                      maxItemsPerSection={2}
-                    />
-                  </span>
-                  {selected ? (
-                    <span className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="size-4" />
-                    </span>
-                  ) : null}
-                </span>
-                <span className="px-3 py-2">
-                  <span className="block text-sm font-medium">{preset.label}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {preset.hint}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setLook(key)}
-                  aria-pressed={selected}
-                  className="absolute inset-0 rounded-lg transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="sr-only">{preset.label}</span>
-                </button>
-              </div>
-            );
-          })}
         </div>
         {continueButton(goNext)}
       </section>
