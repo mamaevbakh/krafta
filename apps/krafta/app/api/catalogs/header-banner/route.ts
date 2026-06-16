@@ -1,9 +1,54 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getUserSafely } from "@krafta/supabase/auth";
 import type { Database } from "@/lib/supabase/types";
 
 const BUCKET_NAME = "krafta";
+
+/**
+ * Verifies the caller's session owns the org before any service-role mutation.
+ * The service client bypasses RLS, so the only authorization gate is here: we
+ * confirm an owner/admin organization_members row for the authenticated user
+ * via the cookie-scoped client. The dashboard catalog builder runs as the
+ * signed-in merchant, so it satisfies this check. Returns a NextResponse to
+ * short-circuit on failure, or null when authorized. Mirrors the logo route.
+ */
+async function authorizeOrgOwner(orgId: string): Promise<NextResponse | null> {
+  const supabase = await createServerClient();
+  const { user, authError } = await getUserSafely(supabase);
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: "Authentication required." },
+      { status: 401 },
+    );
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("organization_members")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("user_id", user.id)
+    .in("role", ["owner", "admin"])
+    .maybeSingle();
+
+  if (membershipError) {
+    return NextResponse.json(
+      { error: membershipError.message },
+      { status: 500 },
+    );
+  }
+
+  if (!membership) {
+    return NextResponse.json(
+      { error: "You do not have access to this organization." },
+      { status: 403 },
+    );
+  }
+
+  return null;
+}
 
 function sanitizeFilename(value: string) {
   const trimmed = value.trim();
@@ -55,6 +100,9 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  const denied = await authorizeOrgOwner(orgId);
+  if (denied) return denied;
 
   const supabase = getServiceClient();
   if (!supabase) {
