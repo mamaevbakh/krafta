@@ -72,7 +72,9 @@ export default async function PayPage({
       <main className="mt-12 flex-1">
         {/* Amount — the focal point. Typography does the work, not a box. */}
         <div className="text-sm text-muted-foreground">Amount due</div>
-        <div className="mt-1 font-mono text-[2.5rem] font-semibold leading-none tracking-tight tabular-nums">
+        {/* Scales down on narrow screens so large UZS sums (millions) stay on
+            one line — no orphaned "UZS". */}
+        <div className="mt-1 font-mono text-[clamp(1.875rem,7vw,2.75rem)] font-semibold leading-none tracking-tight tabular-nums">
           {intent ? formatMinorAmount(intent.amount_minor, intent.currency) : "—"}
         </div>
         {intent?.description ? (
