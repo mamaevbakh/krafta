@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import {
+  selectProviderCreateAttempt,
   loadAtmosCredentials,
   atmosBindInit,
   writePaymentDebugLog,
@@ -41,15 +42,30 @@ export async function POST(
     if (session.status !== "open") {
       return NextResponse.json({ error: "checkout_session_not_open" }, { status: 409 });
     }
-    if (session.selected_provider_id !== "atmos" || !session.selected_attempt_id) {
-      return NextResponse.json({ error: "atmos_not_selected" }, { status: 409 });
+    // Ensure an Atmos attempt exists so the card form needs no prior
+    // "select provider" click — create + select it lazily on first submit.
+    let attemptId =
+      session.selected_provider_id === "atmos" ? session.selected_attempt_id : null;
+    if (!attemptId) {
+      const env = (process.env.PAY_ENV ?? "live") as "test" | "live";
+      const payBaseUrl = process.env.PAY_BASE_URL ?? "http://localhost:3003";
+      const selection = await selectProviderCreateAttempt(
+        supabase,
+        { publicToken: public_token, providerId: "atmos" },
+        env,
+        payBaseUrl,
+      );
+      attemptId = selection.attemptId;
+    }
+    if (!attemptId) {
+      return NextResponse.json({ error: "atmos_attempt_unavailable" }, { status: 500 });
     }
 
     const { data: attempt, error: attemptErr } = await supabase
       .schema("payments")
       .from("payment_attempts")
       .select("id, org_provider_account_id, raw_init_response")
-      .eq("id", session.selected_attempt_id)
+      .eq("id", attemptId)
       .maybeSingle();
     if (attemptErr) throw attemptErr;
     if (!attempt) {
