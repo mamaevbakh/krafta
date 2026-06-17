@@ -168,7 +168,7 @@ export function CartStepper({
           variant="outline"
           className="relative h-8 w-8 before:absolute before:-inset-1.5 before:content-['']"
           onClick={onDecrement}
-          disabled={disabled}
+          disabled={disabled || quantity <= 1}
           aria-label={decrementAriaLabel}
         >
           <Minus className="h-3.5 w-3.5" />
