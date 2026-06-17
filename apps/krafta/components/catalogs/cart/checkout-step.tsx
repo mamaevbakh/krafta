@@ -205,6 +205,16 @@ export function CartCheckoutStep({
     [mode, deliverySettings, deliveryAddress],
   );
 
+  // Below-minimum: the cart subtotal is under the merchant's delivery minimum.
+  // Like out-of-zone, this blocks placement with a clear inline reason.
+  const belowMinOrder = useMemo(
+    () =>
+      mode === "delivery" &&
+      deliverySettings.minOrderCents > 0 &&
+      summary.subtotalCents < deliverySettings.minOrderCents,
+    [mode, deliverySettings, summary.subtotalCents],
+  );
+
   const canSubmit = useMemo(() => {
     if (isPlacingOrder) return false;
     if (mode === "dine_in") return tableLabel.trim().length > 0;
@@ -226,12 +236,14 @@ export function CartCheckoutStep({
     // be chosen from the address book (saved or freshly added).
     return (
       !outOfZone &&
+      !belowMinOrder &&
       (deliveryAddress?.freeform.trim().length ?? 0) > 0 &&
       deliveryName.trim().length > 0 &&
       isValidUzPhone(deliveryPhone) &&
       (deliverySchedule === "asap" || isCompleteSchedule(deliveryAt))
     );
   }, [
+    belowMinOrder,
     deliveryAddress,
     deliveryAt,
     deliveryName,
@@ -261,6 +273,7 @@ export function CartCheckoutStep({
         return "checkout.missing.phone";
       return null;
     }
+    if (belowMinOrder) return "checkout.below_min_order";
     if (outOfZone) return "checkout.out_of_zone";
     if (!deliveryAddress?.freeform.trim()) return "checkout.missing.address";
     if (!deliveryName.trim()) return "checkout.missing.name";
@@ -269,6 +282,7 @@ export function CartCheckoutStep({
       return "checkout.missing.time";
     return null;
   }, [
+    belowMinOrder,
     canSubmit,
     deliveryAddress,
     deliveryAt,
@@ -650,7 +664,14 @@ export function CartCheckoutStep({
                 submitAttempted ? "text-destructive" : "text-muted-foreground",
               )}
             >
-              {t(firstMissingKey)}
+              {firstMissingKey === "checkout.below_min_order"
+                ? t(firstMissingKey, {
+                    amount: formatPriceCents(
+                      deliverySettings.minOrderCents,
+                      currencySettings,
+                    ),
+                  })
+                : t(firstMissingKey)}
             </p>
           ) : null}
           <div className="mb-3 flex items-baseline justify-between">
