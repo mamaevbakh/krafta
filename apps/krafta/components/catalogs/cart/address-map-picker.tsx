@@ -1,15 +1,14 @@
 "use client";
 
-// Yandex Maps JS API v3 (ymaps3) address picker. Drop a pin (tap the map or
-// drag the marker), or type for live autocomplete — each resolves to a
-// human-readable address + lat/lng. Structured parts (district/street/building)
-// are best-effort; `freeform` is always set and is what the order snapshots.
+// Yandex Maps JS API v3 (ymaps3) address picker — the "set location on map"
+// screen used by leading delivery apps (Yandex Go, Uber, Glovo, Bolt): a FIXED
+// pin welded to the viewport centre while the customer drags the MAP underneath.
+// The map centre is the source of truth; we reverse-geocode it when the map
+// settles (debounced) and report a live candidate up to the confirm sheet.
 //
-// v3 has NO built-in geocoder/suggest, so address resolution goes through our
-// server proxy (/api/yandex/geocode, /api/yandex/suggest) which holds the
-// Geocoder + Geosuggest keys server-side. The MAP itself loads with the public
-// JS-API key (NEXT_PUBLIC_YANDEX_MAPS_API_KEY). If the script fails, the host
-// form falls back to manual entry via onLoadError.
+// v3 has NO built-in geocoder/suggest, so resolution goes through our server
+// proxy (/api/yandex/geocode, /api/yandex/suggest) holding the keys server-side.
+// The MAP itself loads with the public JS key (NEXT_PUBLIC_YANDEX_MAPS_API_KEY).
 //
 // COORDINATES IN v3 ARE [longitude, latitude] (GeoJSON order).
 
@@ -96,49 +95,99 @@ function coordsFallback(c: [number, number]): PickedAddress {
 export function AddressMapPicker({
   initial,
   onChange,
+  onResolvingChange,
   onLoadError,
+  autoLocate,
+  searchPlaceholder,
   className,
 }: {
   initial?: { latitude: number | null; longitude: number | null } | null;
+  /** Fires with the reverse-geocoded candidate every time the map settles. */
   onChange: (address: PickedAddress) => void;
+  /** True while a pan is in flight / the geocode is resolving — drives the
+   *  confirm sheet's skeleton. */
+  onResolvingChange?: (resolving: boolean) => void;
   onLoadError?: (message: string) => void;
+  /** Trigger device geolocation once on mount (the "use my location" entry). */
+  autoLocate?: boolean;
+  searchPlaceholder?: string;
   className?: string;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const centerRef = useRef<[number, number]>(TASHKENT_CENTER);
+  // Set while a programmatic fly-to is animating so its action events don't
+  // double-fire the reverse-geocode (the caller resolves the address itself).
+  const ignoreActionRef = useRef(false);
+  const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [panning, setPanning] = useState(false);
   const [locating, setLocating] = useState(false);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [resolving, setResolving] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const moveMarker = useCallback((c: [number, number], pan = true) => {
-    markerRef.current?.update?.({ coordinates: c });
-    if (pan) {
-      mapRef.current?.update?.({ location: { center: c, zoom: 16, duration: 300 } });
-    }
+  const setResolvingBoth = useCallback(
+    (v: boolean) => {
+      setResolving(v);
+      onResolvingChange?.(v);
+    },
+    [onResolvingChange],
+  );
+
+  // Reverse-geocode the given (or current) centre, debounced so a flurry of
+  // pan events collapses to one request after the map stops.
+  const reverseGeocode = useCallback(
+    (c: [number, number]) => {
+      setResolvingBoth(true);
+      if (geocodeTimer.current) clearTimeout(geocodeTimer.current);
+      geocodeTimer.current = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/yandex/geocode?lng=${c[0]}&lat=${c[1]}`);
+          const json = (await res.json()) as { address: PickedAddress | null };
+          onChange(
+            json.address
+              ? { ...json.address, latitude: c[1], longitude: c[0] }
+              : coordsFallback(c),
+          );
+        } catch {
+          onChange(coordsFallback(c));
+        } finally {
+          setResolvingBoth(false);
+        }
+      }, 320);
+    },
+    [onChange, setResolvingBoth],
+  );
+
+  const readCenter = useCallback((): [number, number] => {
+    const c = mapRef.current?.center as [number, number] | undefined;
+    return Array.isArray(c) && c.length === 2 ? c : centerRef.current;
   }, []);
 
-  // Reverse-geocode a dropped/clicked point via the proxy. Keep the pin's
-  // exact coordinates (what the customer chose), use the geocoder for text.
-  const emitFromCoords = useCallback(
-    async (c: [number, number]) => {
-      try {
-        const res = await fetch(`/api/yandex/geocode?lng=${c[0]}&lat=${c[1]}`);
-        const json = (await res.json()) as { address: PickedAddress | null };
-        onChange(
-          json.address
-            ? { ...json.address, latitude: c[1], longitude: c[0] }
-            : coordsFallback(c),
-        );
-      } catch {
-        onChange(coordsFallback(c));
-      }
-    },
-    [onChange],
-  );
+  /** Animate the map to a new centre without the action listener re-geocoding
+   *  (the caller owns the resulting address). */
+  const flyTo = useCallback((c: [number, number], zoom = 17) => {
+    ignoreActionRef.current = true;
+    centerRef.current = c;
+    mapRef.current?.update?.({ location: { center: c, zoom, duration: 400 } });
+  }, []);
+
+  const runGeolocation = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const c: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+        flyTo(c, 17);
+        reverseGeocode(c);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
+  }, [flyTo, reverseGeocode]);
 
   // Mount the map once v3 is ready.
   useEffect(() => {
@@ -151,55 +200,51 @@ export function AddressMapPicker({
           YMap,
           YMapDefaultSchemeLayer,
           YMapDefaultFeaturesLayer,
-          YMapMarker,
           YMapListener,
         } = ymaps3;
         const start: [number, number] =
           initial?.latitude != null && initial?.longitude != null
             ? [initial.longitude, initial.latitude]
             : TASHKENT_CENTER;
+        centerRef.current = start;
 
         const isDark = () => document.documentElement.classList.contains("dark");
         const map = new YMap(hostRef.current, {
-          location: { center: start, zoom: 15 },
+          location: { center: start, zoom: 16 },
           theme: isDark() ? "dark" : "light",
         });
         map.addChild(new YMapDefaultSchemeLayer({}));
         map.addChild(new YMapDefaultFeaturesLayer({}));
 
-        const pin = document.createElement("div");
-        pin.className =
-          "size-5 -translate-x-1/2 -translate-y-full rounded-full border-2 border-background bg-foreground shadow-lg";
-        const marker = new YMapMarker(
-          {
-            coordinates: start,
-            draggable: true,
-            onDragEnd: (c: [number, number]) => void emitFromCoords(c),
-          },
-          pin,
-        );
-        map.addChild(marker);
-
+        // Fixed-centre-pin model: no marker. We watch the map's own action
+        // events and reverse-geocode the centre when it settles. onUpdate keeps
+        // a live centre ref so readCenter() works even if `.center` is absent.
         map.addChild(
           new YMapListener({
-            layer: "any",
-            onClick: (object: unknown, event: any) => {
-              if (object) return; // ignore taps on the marker itself
-              const c = event?.coordinates as [number, number] | undefined;
-              if (c) {
-                marker.update({ coordinates: c });
-                void emitFromCoords(c);
+            onUpdate: (e: any) => {
+              const c = e?.location?.center;
+              if (Array.isArray(c) && c.length === 2)
+                centerRef.current = c as [number, number];
+            },
+            onActionStart: () => {
+              if (ignoreActionRef.current) return;
+              setPanning(true);
+              setResolvingBoth(true);
+            },
+            onActionEnd: () => {
+              if (ignoreActionRef.current) {
+                ignoreActionRef.current = false;
+                return;
               }
+              setPanning(false);
+              reverseGeocode(readCenter());
             },
           }),
         );
 
         mapRef.current = map;
-        markerRef.current = marker;
 
-        // Keep the vector map in sync with the app's light/dark theme
-        // (next-themes toggles the `dark` class on <html>). Without this the
-        // map renders as a bright light rectangle inside the dark checkout.
+        // Keep the vector map in sync with the app light/dark theme.
         themeObserver = new MutationObserver(() => {
           mapRef.current?.update?.({ theme: isDark() ? "dark" : "light" });
         });
@@ -209,7 +254,8 @@ export function AddressMapPicker({
         });
 
         setStatus("ready");
-        void emitFromCoords(start);
+        if (autoLocate) runGeolocation();
+        else reverseGeocode(start);
       })
       .catch((err: unknown) => {
         if (disposed) return;
@@ -220,28 +266,28 @@ export function AddressMapPicker({
     return () => {
       disposed = true;
       themeObserver?.disconnect();
+      if (geocodeTimer.current) clearTimeout(geocodeTimer.current);
       try {
         mapRef.current?.destroy?.();
       } catch {
         // already torn down
       }
       mapRef.current = null;
-      markerRef.current = null;
     };
-    // initial is read once on mount on purpose.
+    // initial / autoLocate read once on mount on purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Debounced autocomplete.
   const onQueryChange = useCallback((value: string) => {
     setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (suggestDebounce.current) clearTimeout(suggestDebounce.current);
     const text = value.trim();
     if (text.length < 3) {
       setSuggestions([]);
       return;
     }
-    debounceRef.current = setTimeout(async () => {
+    suggestDebounce.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/yandex/suggest?text=${encodeURIComponent(text)}`);
         const json = (await res.json()) as { results: Suggestion[] };
@@ -252,107 +298,119 @@ export function AddressMapPicker({
     }, 250);
   }, []);
 
-  // Resolve a chosen suggestion (uri -> coords + address) via the proxy.
+  // Resolve a chosen suggestion (uri -> coords + address) then fly the map there
+  // so the customer can nudge to the exact entrance.
   const pickSuggestion = useCallback(
     async (s: Suggestion) => {
       setQuery(s.title);
       setSuggestions([]);
-      setResolving(true);
+      setResolvingBoth(true);
       try {
         const res = await fetch(`/api/yandex/geocode?uri=${encodeURIComponent(s.uri)}`);
         const json = (await res.json()) as { address: PickedAddress | null };
         if (json.address?.latitude != null && json.address?.longitude != null) {
-          moveMarker([json.address.longitude, json.address.latitude]);
+          flyTo([json.address.longitude, json.address.latitude]);
           onChange(json.address);
         }
       } catch {
-        // leave the pin where it is
+        // leave the map where it is
       } finally {
-        setResolving(false);
+        setResolvingBoth(false);
       }
     },
-    [moveMarker, onChange],
+    [flyTo, onChange, setResolvingBoth],
   );
-
-  const useMyLocation = useCallback(() => {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        const c: [number, number] = [pos.coords.longitude, pos.coords.latitude];
-        moveMarker(c);
-        void emitFromCoords(c);
-      },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 10_000 },
-    );
-  }, [moveMarker, emitFromCoords]);
 
   if (status === "error") return null;
 
   return (
-    <div className={cn("space-y-2", className)}>
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+    <div className={cn("relative h-full w-full overflow-hidden", className)}>
+      <div ref={hostRef} className="absolute inset-0" />
+
+      {/* Fixed centre pin (the geocode point). Lifts on pan; a ground dot marks
+          the exact spot. Mono, theme-aware, no decorative shadow. */}
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 transition-transform duration-150 ease-out",
+          panning ? "-translate-y-[calc(100%+8px)]" : "-translate-y-full",
+        )}
+      >
+        <MapPin className="size-9 fill-foreground text-background" strokeWidth={1.5} />
+      </div>
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/30 transition-all duration-150",
+          panning ? "size-1.5" : "size-2.5",
+        )}
+      />
+
+      {/* Search, pinned over the map. */}
+      <div className="absolute inset-x-3 top-3 z-30">
+        <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search address"
-            className="pl-9"
-            aria-label="Search address"
+            placeholder={searchPlaceholder ?? "Search address"}
+            className="bg-background pl-9 shadow-sm"
+            aria-label={searchPlaceholder ?? "Search address"}
             autoComplete="off"
           />
-          {resolving ? (
-            <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-          ) : null}
-          {suggestions.length > 0 ? (
-            <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
-              {suggestions.map((s) => (
-                <li key={s.uri}>
-                  <button
-                    type="button"
-                    onClick={() => void pickSuggestion(s)}
-                    className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
-                  >
-                    <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{s.title}</span>
-                      {s.subtitle ? (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {s.subtitle}
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={useMyLocation}
-          disabled={locating}
-          aria-label="Use my location"
-        >
-          {locating ? <Loader2 className="size-4 animate-spin" /> : <Crosshair className="size-4" />}
-        </Button>
-      </div>
-      <div className="relative h-56 w-full overflow-hidden rounded-md border bg-muted">
-        <div ref={hostRef} className="h-full w-full" />
-        {status === "loading" ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-muted">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          </div>
+        {suggestions.length > 0 ? (
+          <ul className="mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+            {suggestions.map((s) => (
+              <li key={s.uri}>
+                <button
+                  type="button"
+                  onClick={() => void pickSuggestion(s)}
+                  className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-accent"
+                >
+                  <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{s.title}</span>
+                    {s.subtitle ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {s.subtitle}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">
-        Search, or tap the map / drag the pin to set your exact spot.
-      </p>
+
+      {/* Locate FAB, bottom-right, 44px. */}
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        onClick={runGeolocation}
+        disabled={locating}
+        aria-label="Use my location"
+        className="absolute bottom-4 right-4 z-30 size-11 rounded-full bg-background shadow-sm"
+      >
+        {locating ? (
+          <Loader2 className="size-5 animate-spin" />
+        ) : (
+          <Crosshair className="size-5" />
+        )}
+      </Button>
+
+      {status === "loading" ? (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-muted">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : null}
+
+      {/* Hidden live region so screen readers hear the resolved address. */}
+      <span className="sr-only" aria-live="polite">
+        {resolving ? "Finding address" : ""}
+      </span>
     </div>
   );
 }

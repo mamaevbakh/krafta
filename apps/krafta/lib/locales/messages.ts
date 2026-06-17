@@ -108,6 +108,37 @@ export type StorefrontMessageKey =
   | "checkout.missing.phone"
   | "checkout.missing.time"
   | "checkout.missing.table"
+  // Delivery address book — dedicated map + list screens
+  | "address.title"
+  | "address.use_location"
+  | "address.add"
+  | "address.change"
+  | "address.new"
+  | "address.edit_title"
+  | "address.loading"
+  | "address.search"
+  | "address.confirm"
+  | "address.resolving"
+  | "address.map_hint"
+  | "address.edit_on_map"
+  | "address.save"
+  | "address.delete"
+  | "address.delete_confirm_title"
+  | "address.delete_confirm_body"
+  | "address.set_default"
+  | "address.default"
+  | "address.summary_empty"
+  | "address.helps_delivery"
+  | "address.field.entrance"
+  | "address.field.floor"
+  | "address.field.apartment"
+  | "address.field.intercom"
+  | "address.field.note"
+  | "address.field.note_ph"
+  | "address.field.label"
+  | "address.label.home"
+  | "address.label.work"
+  | "address.label.other"
   // Placed step
   | "placed.title"
   | "placed.subtitle.dine_in"
@@ -241,6 +272,36 @@ const EN: MessageTable = {
   "checkout.missing.phone": "Enter a valid phone number",
   "checkout.missing.time": "Pick a time",
   "checkout.missing.table": "Enter your table number",
+  "address.title": "Delivery address",
+  "address.use_location": "Use my location",
+  "address.add": "Add address",
+  "address.change": "Change",
+  "address.new": "New address",
+  "address.edit_title": "Edit address",
+  "address.loading": "Loading addresses…",
+  "address.search": "Search address",
+  "address.confirm": "Confirm",
+  "address.resolving": "Finding address…",
+  "address.map_hint": "Drag the map to pinpoint the entrance",
+  "address.edit_on_map": "Edit on map",
+  "address.save": "Save",
+  "address.delete": "Delete address",
+  "address.delete_confirm_title": "Delete this address?",
+  "address.delete_confirm_body": "This can’t be undone.",
+  "address.set_default": "Set as default",
+  "address.default": "Default",
+  "address.summary_empty": "Add a delivery address",
+  "address.helps_delivery": "Helps the courier find you",
+  "address.field.entrance": "Entrance",
+  "address.field.floor": "Floor",
+  "address.field.apartment": "Apartment",
+  "address.field.intercom": "Intercom",
+  "address.field.note": "Courier note",
+  "address.field.note_ph": "Call 10 min before · entrance from the yard",
+  "address.field.label": "Label",
+  "address.label.home": "Home",
+  "address.label.work": "Work",
+  "address.label.other": "Other",
 
   "placed.title": "Order placed",
   "placed.subtitle.dine_in":
@@ -359,6 +420,36 @@ const RU: MessageTable = {
   "checkout.missing.phone": "Введите корректный номер телефона",
   "checkout.missing.time": "Выберите время",
   "checkout.missing.table": "Укажите номер столика",
+  "address.title": "Адрес доставки",
+  "address.use_location": "Использовать геолокацию",
+  "address.add": "Добавить адрес",
+  "address.change": "Изменить",
+  "address.new": "Новый адрес",
+  "address.edit_title": "Изменить адрес",
+  "address.loading": "Загрузка адресов…",
+  "address.search": "Поиск адреса",
+  "address.confirm": "Подтвердить",
+  "address.resolving": "Определяем адрес…",
+  "address.map_hint": "Подвиньте карту, чтобы уточнить вход",
+  "address.edit_on_map": "Изменить на карте",
+  "address.save": "Сохранить",
+  "address.delete": "Удалить адрес",
+  "address.delete_confirm_title": "Удалить этот адрес?",
+  "address.delete_confirm_body": "Это действие нельзя отменить.",
+  "address.set_default": "Сделать основным",
+  "address.default": "По умолчанию",
+  "address.summary_empty": "Добавить адрес доставки",
+  "address.helps_delivery": "Поможет курьеру вас найти",
+  "address.field.entrance": "Подъезд",
+  "address.field.floor": "Этаж",
+  "address.field.apartment": "Квартира",
+  "address.field.intercom": "Домофон",
+  "address.field.note": "Комментарий курьеру",
+  "address.field.note_ph": "позвонить за 10 минут · вход со двора",
+  "address.field.label": "Метка",
+  "address.label.home": "Дом",
+  "address.label.work": "Работа",
+  "address.label.other": "Другое",
 
   "placed.title": "Заказ оформлен",
   "placed.subtitle.dine_in":
@@ -479,6 +570,36 @@ const UZ_LATN: MessageTable = {
   "checkout.missing.phone": "To‘g‘ri telefon raqamini kiriting",
   "checkout.missing.time": "Vaqtni tanlang",
   "checkout.missing.table": "Stol raqamini kiriting",
+  "address.title": "Yetkazib berish manzili",
+  "address.use_location": "Joylashuvdan foydalanish",
+  "address.add": "Manzil qo‘shish",
+  "address.change": "O‘zgartirish",
+  "address.new": "Yangi manzil",
+  "address.edit_title": "Manzilni tahrirlash",
+  "address.loading": "Manzillar yuklanmoqda…",
+  "address.search": "Manzilni qidirish",
+  "address.confirm": "Tasdiqlash",
+  "address.resolving": "Manzil aniqlanmoqda…",
+  "address.map_hint": "Kirishni aniqlash uchun xaritani suring",
+  "address.edit_on_map": "Xaritada o‘zgartirish",
+  "address.save": "Saqlash",
+  "address.delete": "Manzilni o‘chirish",
+  "address.delete_confirm_title": "Ushbu manzil o‘chirilsinmi?",
+  "address.delete_confirm_body": "Buni bekor qilib bo‘lmaydi.",
+  "address.set_default": "Asosiy qilish",
+  "address.default": "Asosiy",
+  "address.summary_empty": "Yetkazish manzilini qo‘shing",
+  "address.helps_delivery": "Kuryerga sizni topishda yordam beradi",
+  "address.field.entrance": "Kirish",
+  "address.field.floor": "Qavat",
+  "address.field.apartment": "Xonadon",
+  "address.field.intercom": "Domofon",
+  "address.field.note": "Kuryerga izoh",
+  "address.field.note_ph": "10 daqiqa oldin qo‘ng‘iroq qiling · hovlidan kirish",
+  "address.field.label": "Yorliq",
+  "address.label.home": "Uy",
+  "address.label.work": "Ish",
+  "address.label.other": "Boshqa",
 
   "placed.title": "Buyurtma qabul qilindi",
   "placed.subtitle.dine_in":
