@@ -109,6 +109,7 @@ export type StorefrontMessageKey =
   | "checkout.missing.time"
   | "checkout.missing.table"
   | "checkout.out_of_zone"
+  | "checkout.below_min_order"
   // Delivery address book — dedicated map + list screens
   | "address.title"
   | "address.use_location"
@@ -274,6 +275,7 @@ const EN: MessageTable = {
   "checkout.missing.time": "Pick a time",
   "checkout.missing.table": "Enter your table number",
   "checkout.out_of_zone": "Outside the delivery area",
+  "checkout.below_min_order": "Minimum order for delivery is {amount}",
   "address.title": "Delivery address",
   "address.use_location": "Use my location",
   "address.add": "Add address",
@@ -423,6 +425,7 @@ const RU: MessageTable = {
   "checkout.missing.time": "Выберите время",
   "checkout.missing.table": "Укажите номер столика",
   "checkout.out_of_zone": "Вне зоны доставки",
+  "checkout.below_min_order": "Минимальный заказ для доставки — {amount}",
   "address.title": "Адрес доставки",
   "address.use_location": "Использовать геолокацию",
   "address.add": "Добавить адрес",
@@ -574,6 +577,7 @@ const UZ_LATN: MessageTable = {
   "checkout.missing.time": "Vaqtni tanlang",
   "checkout.missing.table": "Stol raqamini kiriting",
   "checkout.out_of_zone": "Yetkazib berish hududidan tashqarida",
+  "checkout.below_min_order": "Yetkazib berish uchun minimal buyurtma — {amount}",
   "address.title": "Yetkazib berish manzili",
   "address.use_location": "Joylashuvdan foydalanish",
   "address.add": "Manzil qo‘shish",

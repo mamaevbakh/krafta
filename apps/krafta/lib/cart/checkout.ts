@@ -389,6 +389,16 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       throw new Error("out_of_zone");
     }
 
+    // Enforce the delivery minimum server-side (the client gates it, but a
+    // direct API call could bypass the UI).
+    if (
+      deliverySettings.minOrderCents > 0 &&
+      lines.reduce((sum, line) => sum + line.total_price_cents, 0) <
+        deliverySettings.minOrderCents
+    ) {
+      throw new Error("below_min_order");
+    }
+
     deliveryFeeCents = Math.max(0, Math.round(deliverySettings.feeCents));
 
     const { error } = await supabase
