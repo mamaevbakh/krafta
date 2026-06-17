@@ -172,6 +172,9 @@ export function CartCheckoutStep({
   // Persistent inline submit error (vs the ephemeral toast that's easy to miss
   // over a full-screen modal). Cleared on each new submit attempt.
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Flips true on a tap while the form is incomplete, so the "what's missing"
+  // hint escalates from a muted nudge to a destructive prompt.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const canSubmit = useMemo(() => {
     if (isPlacingOrder) return false;
@@ -212,8 +215,47 @@ export function CartCheckoutStep({
     tableLabel,
   ]);
 
+  // The single most relevant missing field, surfaced as an inline hint above the
+  // CTA so a customer is never staring at a button that "does nothing".
+  const firstMissingKey = useMemo<StorefrontMessageKey | null>(() => {
+    if (canSubmit || isPlacingOrder) return null;
+    const timeOk = (s: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
+    if (mode === "dine_in") {
+      return tableLabel.trim() ? null : "checkout.missing.table";
+    }
+    if (mode === "pickup") {
+      if (pickupSchedule === "scheduled" && !timeOk(pickupAt))
+        return "checkout.missing.time";
+      if (pickupPhone.trim() && !isValidUzPhone(pickupPhone))
+        return "checkout.missing.phone";
+      return null;
+    }
+    if (!deliveryAddress?.freeform.trim()) return "checkout.missing.address";
+    if (!deliveryName.trim()) return "checkout.missing.name";
+    if (!isValidUzPhone(deliveryPhone)) return "checkout.missing.phone";
+    if (deliverySchedule === "scheduled" && !timeOk(deliveryAt))
+      return "checkout.missing.time";
+    return null;
+  }, [
+    canSubmit,
+    deliveryAddress,
+    deliveryAt,
+    deliveryName,
+    deliveryPhone,
+    deliverySchedule,
+    isPlacingOrder,
+    mode,
+    pickupAt,
+    pickupPhone,
+    pickupSchedule,
+    tableLabel,
+  ]);
+
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      setSubmitAttempted(true);
+      return;
+    }
     setSubmitError(null);
 
     // The chosen address's freeform string is what a delivery order snapshots —
@@ -542,6 +584,15 @@ export function CartCheckoutStep({
         <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           {submitError ? (
             <p className="mb-2 text-xs text-destructive">{submitError}</p>
+          ) : firstMissingKey ? (
+            <p
+              className={cn(
+                "mb-2 text-xs",
+                submitAttempted ? "text-destructive" : "text-muted-foreground",
+              )}
+            >
+              {t(firstMissingKey)}
+            </p>
           ) : null}
           <div className="mb-3 flex items-baseline justify-between">
             <span className="text-sm text-muted-foreground">{t("cart.total")}</span>
@@ -553,7 +604,7 @@ export function CartCheckoutStep({
             type="button"
             size="xl"
             className="w-full active:scale-[0.98]"
-            disabled={!canSubmit}
+            disabled={isPlacingOrder}
             onClick={handleSubmit}
           >
             {isPlacingOrder ? (

@@ -112,6 +112,7 @@ function CartListStep({
     setStep,
     taxes,
     dineInLock,
+    close,
   } = useCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const t = (
@@ -168,6 +169,15 @@ function CartListStep({
                   {t("cart.empty.hint")}
                 </p>
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="xl"
+                className="mt-1 w-full max-w-xs active:scale-[0.98]"
+                onClick={close}
+              >
+                {t("cart.empty.cta")}
+              </Button>
             </div>
           ) : (
             <ul className="divide-y divide-border/60">

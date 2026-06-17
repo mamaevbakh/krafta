@@ -308,7 +308,7 @@ export function AddressMapPicker({
             <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
           ) : null}
           {suggestions.length > 0 ? (
-            <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border bg-popover p-1 shadow-md">
+            <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
               {suggestions.map((s) => (
                 <li key={s.uri}>
                   <button
@@ -342,7 +342,7 @@ export function AddressMapPicker({
           {locating ? <Loader2 className="size-4 animate-spin" /> : <Crosshair className="size-4" />}
         </Button>
       </div>
-      <div className="relative h-56 w-full overflow-hidden rounded-lg border bg-muted">
+      <div className="relative h-56 w-full overflow-hidden rounded-md border bg-muted">
         <div ref={hostRef} className="h-full w-full" />
         {status === "loading" ? (
           <div className="absolute inset-0 flex items-center justify-center bg-muted">

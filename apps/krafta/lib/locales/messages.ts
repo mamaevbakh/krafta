@@ -55,6 +55,7 @@ export type StorefrontMessageKey =
   | "cart.description"
   | "cart.empty"
   | "cart.empty.hint"
+  | "cart.empty.cta"
   | "cart.continue"
   | "cart.subtotal"
   | "cart.total"
@@ -101,6 +102,12 @@ export type StorefrontMessageKey =
   | "checkout.phone.placeholder"
   | "checkout.note.label"
   | "checkout.note.placeholder"
+  // Inline "what's missing" hint shown above the Place order CTA
+  | "checkout.missing.address"
+  | "checkout.missing.name"
+  | "checkout.missing.phone"
+  | "checkout.missing.time"
+  | "checkout.missing.table"
   // Placed step
   | "placed.title"
   | "placed.subtitle.dine_in"
@@ -185,6 +192,7 @@ const EN: MessageTable = {
   "cart.description": "Review the items in your cart and continue to checkout.",
   "cart.empty": "Your cart is empty.",
   "cart.empty.hint": "Add items from the menu to get started.",
+  "cart.empty.cta": "Browse the menu",
   "cart.continue": "Continue",
   "cart.subtotal": "Subtotal",
   "cart.total": "Total",
@@ -228,6 +236,11 @@ const EN: MessageTable = {
   "checkout.phone.placeholder": "XX XXX XX XX",
   "checkout.note.label": "Note",
   "checkout.note.placeholder": "Anything we should know? (optional)",
+  "checkout.missing.address": "Choose a delivery address",
+  "checkout.missing.name": "Enter the recipient’s name",
+  "checkout.missing.phone": "Enter a valid phone number",
+  "checkout.missing.time": "Pick a time",
+  "checkout.missing.table": "Enter your table number",
 
   "placed.title": "Order placed",
   "placed.subtitle.dine_in":
@@ -297,6 +310,7 @@ const RU: MessageTable = {
   "cart.description": "Просмотрите позиции в корзине и перейдите к оформлению.",
   "cart.empty": "Ваша корзина пуста.",
   "cart.empty.hint": "Добавьте позиции из меню, чтобы начать.",
+  "cart.empty.cta": "В меню",
   "cart.continue": "Далее",
   "cart.subtotal": "Подытог",
   "cart.total": "Итого",
@@ -340,6 +354,11 @@ const RU: MessageTable = {
   "checkout.phone.placeholder": "XX XXX XX XX",
   "checkout.note.label": "Комментарий",
   "checkout.note.placeholder": "Что нам стоит знать? (необязательно)",
+  "checkout.missing.address": "Выберите адрес доставки",
+  "checkout.missing.name": "Укажите имя получателя",
+  "checkout.missing.phone": "Введите корректный номер телефона",
+  "checkout.missing.time": "Выберите время",
+  "checkout.missing.table": "Укажите номер столика",
 
   "placed.title": "Заказ оформлен",
   "placed.subtitle.dine_in":
@@ -411,6 +430,7 @@ const UZ_LATN: MessageTable = {
   "cart.description": "Savatchangizdagi taomlarni ko‘rib chiqing va buyurtma berishga o‘ting.",
   "cart.empty": "Savatchangiz bo‘sh.",
   "cart.empty.hint": "Boshlash uchun menyudan taom qo‘shing.",
+  "cart.empty.cta": "Menyuga o‘tish",
   "cart.continue": "Davom etish",
   "cart.subtotal": "Oraliq jami",
   "cart.total": "Jami",
@@ -454,6 +474,11 @@ const UZ_LATN: MessageTable = {
   "checkout.phone.placeholder": "XX XXX XX XX",
   "checkout.note.label": "Izoh",
   "checkout.note.placeholder": "Biz bilishimiz kerakmi? (ixtiyoriy)",
+  "checkout.missing.address": "Yetkazib berish manzilini tanlang",
+  "checkout.missing.name": "Qabul qiluvchi ismini kiriting",
+  "checkout.missing.phone": "To‘g‘ri telefon raqamini kiriting",
+  "checkout.missing.time": "Vaqtni tanlang",
+  "checkout.missing.table": "Stol raqamini kiriting",
 
   "placed.title": "Buyurtma qabul qilindi",
   "placed.subtitle.dine_in":
