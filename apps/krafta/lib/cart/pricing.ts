@@ -33,7 +33,12 @@ export type PricingResult = {
   additiveFeesCents: number;
   // Sum of included fees. Informational; never added to the total.
   includedFeesCents: number;
-  // Subtotal + additiveFees + tip. Excludes includedFees (already in subtotal).
+  // Flat delivery fee added to delivery orders (customer pays). 0 for other
+  // modes / when no fee is configured. Distinct from taxes so receipts and
+  // refunds can isolate it.
+  deliveryFeeCents: number;
+  // Subtotal + additiveFees + deliveryFee + tip. Excludes includedFees
+  // (already in subtotal).
   totalCents: number;
 };
 
@@ -45,8 +50,10 @@ export function computePricing(input: {
   subtotalCents: number;
   taxes: PublicTax[];
   tipCents: number;
+  deliveryFeeCents?: number;
 }): PricingResult {
   const { subtotalCents, taxes, tipCents } = input;
+  const deliveryFeeCents = Math.max(0, Math.floor(input.deliveryFeeCents ?? 0));
   const feeLines: FeeLine[] = taxes.map((tax) => {
     const appliedMoneyCents =
       tax.inclusion_type === "included"
@@ -69,8 +76,15 @@ export function computePricing(input: {
   const includedFeesCents = feeLines
     .filter((line) => line.inclusionType === "included")
     .reduce((sum, line) => sum + line.appliedMoneyCents, 0);
-  const totalCents = subtotalCents + additiveFeesCents + tipCents;
-  return { feeLines, additiveFeesCents, includedFeesCents, totalCents };
+  const totalCents =
+    subtotalCents + additiveFeesCents + deliveryFeeCents + tipCents;
+  return {
+    feeLines,
+    additiveFeesCents,
+    includedFeesCents,
+    deliveryFeeCents,
+    totalCents,
+  };
 }
 
 // Distribute a single tax's appliedMoneyCents across the order's lines

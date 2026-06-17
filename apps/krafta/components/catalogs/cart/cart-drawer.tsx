@@ -100,7 +100,10 @@ export function CartDrawer({
             />
           ) : null}
           {step === "placed" ? (
-            <CartPlacedStep currencySettings={currencySettings} />
+            <CartPlacedStep
+              currencySettings={currencySettings}
+              deliverySettings={deliverySettings}
+            />
           ) : null}
         </div>
       </DialogContent>

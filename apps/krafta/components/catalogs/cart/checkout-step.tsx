@@ -316,6 +316,11 @@ export function CartCheckoutStep({
                 address: deliveryAddress
                   ? orderAddressString(deliveryAddress, t)
                   : "",
+                latitude: deliveryAddress?.latitude ?? null,
+                longitude: deliveryAddress?.longitude ?? null,
+                district: deliveryAddress?.district ?? null,
+                street: deliveryAddress?.street ?? null,
+                building: deliveryAddress?.building ?? null,
                 recipientName: deliveryName.trim(),
                 recipientPhone: deliveryPhone.trim(),
                 scheduledFor:
@@ -330,10 +335,17 @@ export function CartCheckoutStep({
   // Bottom-line total, mirrored into the sticky footer below so the price is
   // ALWAYS visible — the full PricingBreakdown lives at the end of the
   // scrolling area and slides off-screen on long (delivery / schedule) forms.
+  // The configured flat delivery fee (customer pays). Mirrors the server's
+  // charge in placeOrder so the displayed total matches what is billed.
+  const deliveryFeeCents =
+    mode === "delivery"
+      ? Math.max(0, Math.round(deliverySettings.feeCents))
+      : 0;
   const footerTotalCents = computePricing({
     subtotalCents: summary.subtotalCents,
     taxes,
     tipCents,
+    deliveryFeeCents,
   }).totalCents;
 
   if (addressView === "flow") {
@@ -615,6 +627,7 @@ export function CartCheckoutStep({
           subtotalCents={summary.subtotalCents}
           taxes={taxes}
           tipCents={tipCents}
+          deliveryFeeCents={deliveryFeeCents}
           currencySettings={currencySettings}
           showTotal={false}
         />

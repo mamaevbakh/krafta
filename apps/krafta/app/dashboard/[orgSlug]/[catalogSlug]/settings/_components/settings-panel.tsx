@@ -26,6 +26,10 @@ import { VenueForm } from "./venue-form";
 import { NotificationsForm, type TelegramInitial } from "./notifications-form";
 import { MiniAppForm, type MiniAppInitial } from "./mini-app-form";
 import { DeliveryForm } from "./delivery-form";
+import {
+  DeliveryCourierForm,
+  type DeliveryCourierInitial,
+} from "./delivery-courier-form";
 
 type VenueRow = {
   name: string;
@@ -53,6 +57,7 @@ type SettingsPanelProps = {
   delivery: DeliverySettings;
   currency: CurrencySettings;
   deliveryModeEnabled: boolean;
+  courier: DeliveryCourierInitial;
 };
 
 function normalizeTag(value: string) {
@@ -91,6 +96,7 @@ export function SettingsPanel({
   delivery,
   currency,
   deliveryModeEnabled,
+  courier,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
@@ -282,13 +288,16 @@ export function SettingsPanel({
                   </div>
                 )
               ) : activeTab === "delivery" ? (
-                <DeliveryForm
-                  catalogId={catalogId}
-                  catalogSlug={catalogSlug}
-                  initial={delivery}
-                  currencySettings={currency}
-                  deliveryModeEnabled={deliveryModeEnabled}
-                />
+                <div className="space-y-6">
+                  <DeliveryForm
+                    catalogId={catalogId}
+                    catalogSlug={catalogSlug}
+                    initial={delivery}
+                    currencySettings={currency}
+                    deliveryModeEnabled={deliveryModeEnabled}
+                  />
+                  <DeliveryCourierForm orgId={orgId} initial={courier} />
+                </div>
               ) : activeTab === "miniapp" ? (
                 <MiniAppForm venueId={venueId} initial={miniApp} />
               ) : activeTab === "notifications" ? (
