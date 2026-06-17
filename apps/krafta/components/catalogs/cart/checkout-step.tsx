@@ -518,6 +518,7 @@ export function CartCheckoutStep({
           taxes={taxes}
           tipCents={tipCents}
           currencySettings={currencySettings}
+          showTotal={false}
         />
       </div>
 
@@ -531,7 +532,7 @@ export function CartCheckoutStep({
         <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           <div className="mb-3 flex items-baseline justify-between">
             <span className="text-sm text-muted-foreground">Total</span>
-            <span className="text-lg font-semibold tabular-nums">
+            <span className="font-mono text-lg font-semibold tabular-nums">
               {formatPriceCents(footerTotalCents, currencySettings)}
             </span>
           </div>
