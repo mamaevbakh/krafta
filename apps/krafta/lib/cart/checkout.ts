@@ -7,6 +7,10 @@ import {
   computePricing,
   distributeProRata,
 } from "./pricing";
+import {
+  isWithinDeliveryZone,
+  normalizeDeliverySettings,
+} from "@/lib/catalogs/settings/delivery";
 
 export type DineInFields = {
   tableLabel: string;
@@ -21,7 +25,12 @@ export type PickupFields = {
 };
 
 export type DeliveryFields = {
-  address: string;                  // free-text for v1; structured later
+  address: string;                  // freeform " · "-joined; shown on receipts
+  latitude: number | null;          // picker coords — zone gate + courier dispatch
+  longitude: number | null;
+  district: string | null;
+  street: string | null;
+  building: string | null;
   recipientName: string;
   recipientPhone: string;
   scheduledFor: string | null;      // ISO timestamp; null = ASAP
@@ -290,6 +299,10 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // becomes a durable identity handle (the cross-surface phone bridge keys off
   // it). Captured per-mode below; written once after the fulfillment branch.
   let customerPhone: string | null = null;
+  // Delivery fee charged to the customer (set in the delivery branch from the
+  // catalog's delivery config; 0 for other modes). Server-trusted — the client
+  // never supplies it.
+  let deliveryFeeCents = 0;
 
   if (input.mode === "dine_in") {
     if (!tableSessionId || !guestSessionId) {
@@ -335,8 +348,18 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (error) throw new Error(error.message);
   } else {
     // delivery
-    const { address, recipientName, recipientPhone, scheduledFor, note } =
-      input.fields;
+    const {
+      address,
+      latitude,
+      longitude,
+      district,
+      street,
+      building,
+      recipientName,
+      recipientPhone,
+      scheduledFor,
+      note,
+    } = input.fields;
     if (!address.trim()) throw new Error("Delivery address is required.");
     if (!recipientName.trim()) throw new Error("Recipient name is required.");
     if (!recipientPhone.trim()) throw new Error("Recipient phone is required.");
@@ -345,6 +368,29 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (!normalizedDeliveryPhone) throw new Error("phone_invalid");
     customerPhone = normalizedDeliveryPhone;
 
+    // Re-read the catalog's delivery config server-side: re-enforce the zone
+    // (the client gate is bypassable) and charge the configured fee. The fee
+    // is NEVER taken from the client.
+    const { data: catalogRow } = await supabase
+      .from("catalogs")
+      .select("settings_delivery")
+      .eq("id", venue.catalog_id)
+      .maybeSingle();
+    const deliverySettings = normalizeDeliverySettings(
+      (catalogRow?.settings_delivery ?? {}) as Record<string, unknown>,
+    );
+
+    if (
+      deliverySettings.enabled &&
+      latitude != null &&
+      longitude != null &&
+      !isWithinDeliveryZone(deliverySettings, latitude, longitude)
+    ) {
+      throw new Error("out_of_zone");
+    }
+
+    deliveryFeeCents = Math.max(0, Math.round(deliverySettings.feeCents));
+
     const { error } = await supabase
       .schema("commerce")
       .from("fulfillment_delivery_details")
@@ -352,7 +398,18 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         fulfillment_id: fulfillment.id,
         recipient_name: recipientName.trim(),
         recipient_phone: normalizedDeliveryPhone,
-        address: { freeform: address.trim() },
+        // Snapshot the picker's coordinates + structured parts alongside the
+        // freeform string — needed for courier dispatch and a durable record.
+        address: {
+          freeform: address.trim(),
+          ...(latitude != null && longitude != null
+            ? { latitude, longitude }
+            : {}),
+          ...(district ? { district } : {}),
+          ...(street ? { street } : {}),
+          ...(building ? { building } : {}),
+        },
+        delivery_fee_cents: deliveryFeeCents,
         scheduled_for: scheduledFor,
         delivery_provider: "merchant",
         note: note?.trim() || null,
@@ -411,13 +468,15 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     subtotalCents,
     taxes,
     tipCents,
+    deliveryFeeCents,
   });
 
   // Tip cap pre-check (KRA-77). The DB has a CHECK constraint enforcing
   // tip_cents * 2 <= amount_cents on order_payments — we surface the
   // failure as a clean error code the client maps to the localized
   // errors.tip_too_high copy, instead of letting a raw 23514 bubble.
-  const amountForTipCheck = subtotalCents + pricing.additiveFeesCents;
+  const amountForTipCheck =
+    subtotalCents + pricing.additiveFeesCents + pricing.deliveryFeeCents;
   if (tipCents * 2 > amountForTipCheck) {
     throw new Error("tip_too_high");
   }
@@ -501,7 +560,8 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // rather than venue.currency. The two are usually equal but diverge
   // if the merchant edits venue.currency between draft creation and
   // place-order; the order's snapshot is the source of truth (KRA-80).
-  const amountCents = subtotalCents + pricing.additiveFeesCents;
+  const amountCents =
+    subtotalCents + pricing.additiveFeesCents + pricing.deliveryFeeCents;
   const { error: paymentError } = await supabase
     .schema("commerce")
     .from("order_payments")

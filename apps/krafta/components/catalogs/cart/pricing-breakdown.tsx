@@ -9,6 +9,8 @@ type Props = {
   subtotalCents: number;
   taxes: PublicTax[];
   tipCents?: number;
+  /** Flat delivery fee (customer pays); shown as an additive row. 0 = hidden. */
+  deliveryFeeCents?: number;
   currencySettings: CurrencySettings;
   /**
    * When `compact`, omits the leading "Subtotal" row — useful at the very
@@ -35,11 +37,17 @@ export function PricingBreakdown({
   subtotalCents,
   taxes,
   tipCents = 0,
+  deliveryFeeCents = 0,
   currencySettings,
   compact = false,
   showTotal = true,
 }: Props) {
-  const pricing = computePricing({ subtotalCents, taxes, tipCents });
+  const pricing = computePricing({
+    subtotalCents,
+    taxes,
+    tipCents,
+    deliveryFeeCents,
+  });
 
   return (
     <div className="space-y-1.5 text-sm">
@@ -63,6 +71,13 @@ export function PricingBreakdown({
           muted
         />
       ))}
+      {deliveryFeeCents > 0 ? (
+        <Row
+          label="Delivery"
+          valueCents={deliveryFeeCents}
+          currencySettings={currencySettings}
+        />
+      ) : null}
       {tipCents > 0 ? (
         <Row
           label="Tip"

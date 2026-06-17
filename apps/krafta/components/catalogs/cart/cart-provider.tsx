@@ -210,6 +210,11 @@ type CartContextValue = {
           mode: "delivery";
           fields: {
             address: string;
+            latitude: number | null;
+            longitude: number | null;
+            district: string | null;
+            street: string | null;
+            building: string | null;
             recipientName: string;
             recipientPhone: string;
             scheduledFor: string | null;

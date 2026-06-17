@@ -75,6 +75,23 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
   );
   const deliveryModeEnabled = (venue?.modes_enabled ?? []).includes("delivery");
 
+  // Org-level courier connection state. credentials_encrypted is reduced to a
+  // boolean here (server-side) and never forwarded to the client.
+  const { data: courierRow } = await supabase
+    .schema("commerce")
+    .from("org_delivery_settings")
+    .select("account_label, is_active, credentials_encrypted")
+    .eq("org_id", catalog.org_id)
+    .maybeSingle();
+  const courierConnected = Boolean(courierRow?.credentials_encrypted);
+  const courier = {
+    connected: courierConnected,
+    accountLabel: courierRow?.account_label ?? null,
+    isActive: courierRow?.is_active ?? true,
+    usingEnvFallback:
+      !courierConnected && Boolean(process.env.YANDEX_DELIVERY_TOKEN),
+  };
+
   return (
     <SettingsPanel
       catalogId={catalog.id}
@@ -89,6 +106,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       delivery={delivery}
       currency={currency}
       deliveryModeEnabled={deliveryModeEnabled}
+      courier={courier}
       telegram={
         telegram
           ? {

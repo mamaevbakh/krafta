@@ -139,6 +139,7 @@ export type Database = {
           canceled_at: string | null
           courier_assigned_at: string | null
           delivered_at: string | null
+          delivery_fee_cents: number
           delivery_provider: Database["commerce"]["Enums"]["delivery_provider"]
           external_courier_ref: string | null
           fulfillment_id: string
@@ -157,6 +158,7 @@ export type Database = {
           canceled_at?: string | null
           courier_assigned_at?: string | null
           delivered_at?: string | null
+          delivery_fee_cents?: number
           delivery_provider?: Database["commerce"]["Enums"]["delivery_provider"]
           external_courier_ref?: string | null
           fulfillment_id: string
@@ -175,6 +177,7 @@ export type Database = {
           canceled_at?: string | null
           courier_assigned_at?: string | null
           delivered_at?: string | null
+          delivery_fee_cents?: number
           delivery_provider?: Database["commerce"]["Enums"]["delivery_provider"]
           external_courier_ref?: string | null
           fulfillment_id?: string
@@ -1035,6 +1038,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      org_delivery_settings: {
+        Row: {
+          account_label: string | null
+          created_at: string
+          credentials_encrypted: Json | null
+          is_active: boolean
+          org_id: string
+          provider: Database["commerce"]["Enums"]["delivery_provider"]
+          updated_at: string
+        }
+        Insert: {
+          account_label?: string | null
+          created_at?: string
+          credentials_encrypted?: Json | null
+          is_active?: boolean
+          org_id: string
+          provider?: Database["commerce"]["Enums"]["delivery_provider"]
+          updated_at?: string
+        }
+        Update: {
+          account_label?: string | null
+          created_at?: string
+          credentials_encrypted?: Json | null
+          is_active?: boolean
+          org_id?: string
+          provider?: Database["commerce"]["Enums"]["delivery_provider"]
+          updated_at?: string
+        }
+        Relationships: []
       }
       processed_actions: {
         Row: {

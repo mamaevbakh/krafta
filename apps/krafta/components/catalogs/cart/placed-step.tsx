@@ -21,6 +21,10 @@ import {
   type CurrencySettings,
   defaultCurrencySettings,
 } from "@/lib/catalogs/settings/currency";
+import {
+  type DeliverySettings,
+  defaultDeliverySettings,
+} from "@/lib/catalogs/settings/delivery";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import {
@@ -33,10 +37,12 @@ import { useCart, type PlacedOrderSnapshot } from "./cart-provider";
 
 type CartPlacedStepProps = {
   currencySettings?: CurrencySettings;
+  deliverySettings?: DeliverySettings;
 };
 
 export function CartPlacedStep({
   currencySettings = defaultCurrencySettings,
+  deliverySettings = defaultDeliverySettings,
 }: CartPlacedStepProps) {
   const { close, placedOrder, placedOrderId, setStep } = useCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
@@ -77,7 +83,13 @@ export function CartPlacedStep({
 
   const { tagline, hint } = describePlacedOrder(placedOrder, t);
   const tipCents = placedOrder.tipCents ?? 0;
-  const totalCents = placedOrder.subtotalCents + tipCents;
+  // Delivery orders carry the merchant's flat fee (customer pays) — mirror the
+  // server's charge so the receipt total matches what was billed.
+  const deliveryFeeCents =
+    placedOrder.mode === "delivery"
+      ? Math.max(0, Math.round(deliverySettings.feeCents))
+      : 0;
+  const totalCents = placedOrder.subtotalCents + deliveryFeeCents + tipCents;
 
   return (
     // aria-live="polite" + role="status" so a screen reader announces
@@ -121,6 +133,7 @@ export function CartPlacedStep({
               snapshot={placedOrder}
               currencySettings={currencySettings}
               subtotalCents={placedOrder.subtotalCents}
+              deliveryFeeCents={deliveryFeeCents}
               tipCents={tipCents}
               totalCents={totalCents}
               t={t}
@@ -351,6 +364,7 @@ function SummaryBlock({
   snapshot,
   currencySettings,
   subtotalCents,
+  deliveryFeeCents,
   tipCents,
   totalCents,
   t,
@@ -358,6 +372,7 @@ function SummaryBlock({
   snapshot: PlacedOrderSnapshot;
   currencySettings: CurrencySettings;
   subtotalCents: number;
+  deliveryFeeCents: number;
   tipCents: number;
   totalCents: number;
   t: Translator;
@@ -394,6 +409,16 @@ function SummaryBlock({
             {formatPriceCents(subtotalCents, currencySettings)}
           </span>
         </div>
+        {deliveryFeeCents > 0 ? (
+          <div className="flex items-baseline justify-between">
+            <span className="text-muted-foreground">
+              {t("checkout.mode.delivery")}
+            </span>
+            <span className="font-mono tabular-nums text-foreground">
+              {formatPriceCents(deliveryFeeCents, currencySettings)}
+            </span>
+          </div>
+        ) : null}
         {showTip ? (
           <div className="flex items-baseline justify-between">
             <span className="text-muted-foreground">{t("cart.tip")}</span>
