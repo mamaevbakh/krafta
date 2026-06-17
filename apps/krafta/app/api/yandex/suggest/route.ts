@@ -5,8 +5,11 @@ import { NextResponse } from "next/server";
 // address text + a `uri` (no coordinates) — the client resolves the chosen
 // uri to coordinates via /api/yandex/geocode?uri=. Biased to Tashkent.
 //
-// Always 200 with { results: [] } on failure so the search box degrades
-// quietly (the map pin + manual form still work).
+// The key is server-side, so we send our own whitelisted domain as Referer
+// (YANDEX_REFERER, default dev.krafta.org) rather than the caller's origin —
+// one Krafta key then works across localhost, dev, krafta.uz, and custom
+// domains. Always 200 with { results: [] } on failure so the search box
+// degrades quietly (the map pin + manual form still work).
 
 export async function GET(request: Request) {
   const text = new URL(request.url).searchParams.get("text")?.trim();
@@ -26,9 +29,7 @@ export async function GET(request: Request) {
     spn: "0.7,0.7",
   });
 
-  const referer =
-    request.headers.get("origin") ??
-    `https://${request.headers.get("host") ?? "dev.krafta.org"}`;
+  const referer = process.env.YANDEX_REFERER ?? "https://dev.krafta.org";
 
   try {
     const res = await fetch(`https://suggest-maps.yandex.ru/v1/suggest?${params.toString()}`, {
