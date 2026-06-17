@@ -19,6 +19,9 @@ export type CustomerAddress = {
   street: string | null;
   building: string | null;
   apartment: string | null;
+  entrance: string | null;
+  floor: string | null;
+  intercom: string | null;
   note: string | null;
   freeform: string;
   latitude: number | null;
@@ -33,6 +36,9 @@ export type CustomerAddressInput = {
   street?: string | null;
   building?: string | null;
   apartment?: string | null;
+  entrance?: string | null;
+  floor?: string | null;
+  intercom?: string | null;
   note?: string | null;
   freeform: string;
   latitude?: number | null;
@@ -42,7 +48,7 @@ export type CustomerAddressInput = {
 };
 
 const SELECT_COLS =
-  "id,label,district,street,building,apartment,note,freeform,latitude,longitude,geo_provider,is_default";
+  "id,label,district,street,building,apartment,entrance,floor,intercom,note,freeform,latitude,longitude,geo_provider,is_default";
 
 type AddressRow = {
   id: string;
@@ -51,6 +57,9 @@ type AddressRow = {
   street: string | null;
   building: string | null;
   apartment: string | null;
+  entrance: string | null;
+  floor: string | null;
+  intercom: string | null;
   note: string | null;
   freeform: string;
   latitude: number | null;
@@ -67,6 +76,9 @@ function toAddress(row: AddressRow): CustomerAddress {
     street: row.street,
     building: row.building,
     apartment: row.apartment,
+    entrance: row.entrance,
+    floor: row.floor,
+    intercom: row.intercom,
     note: row.note,
     freeform: row.freeform,
     latitude: row.latitude,
@@ -125,6 +137,9 @@ export async function createAddress(
       street: input.street ?? null,
       building: input.building ?? null,
       apartment: input.apartment ?? null,
+      entrance: input.entrance ?? null,
+      floor: input.floor ?? null,
+      intercom: input.intercom ?? null,
       note: input.note ?? null,
       freeform: input.freeform,
       latitude: input.latitude ?? null,
@@ -155,6 +170,9 @@ export async function updateAddress(
       street: input.street ?? null,
       building: input.building ?? null,
       apartment: input.apartment ?? null,
+      entrance: input.entrance ?? null,
+      floor: input.floor ?? null,
+      intercom: input.intercom ?? null,
       note: input.note ?? null,
       freeform: input.freeform,
       latitude: input.latitude ?? null,

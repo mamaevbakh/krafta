@@ -20,9 +20,12 @@ export type Database = {
           building: string | null
           created_at: string
           district: string | null
+          entrance: string | null
+          floor: string | null
           freeform: string
           geo_provider: string | null
           id: string
+          intercom: string | null
           is_default: boolean
           label: string | null
           latitude: number | null
@@ -38,9 +41,12 @@ export type Database = {
           building?: string | null
           created_at?: string
           district?: string | null
+          entrance?: string | null
+          floor?: string | null
           freeform: string
           geo_provider?: string | null
           id?: string
+          intercom?: string | null
           is_default?: boolean
           label?: string | null
           latitude?: number | null
@@ -56,9 +62,12 @@ export type Database = {
           building?: string | null
           created_at?: string
           district?: string | null
+          entrance?: string | null
+          floor?: string | null
           freeform?: string
           geo_provider?: string | null
           id?: string
+          intercom?: string | null
           is_default?: boolean
           label?: string | null
           latitude?: number | null
