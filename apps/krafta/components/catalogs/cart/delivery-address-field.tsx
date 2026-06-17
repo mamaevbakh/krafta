@@ -256,7 +256,7 @@ function AddAddressForm({
   }, [apartment, building, coords, district, label, mapFreeform, onSaved, street]);
 
   return (
-    <div className="space-y-3 rounded-lg border bg-card p-3">
+    <div className="space-y-3 rounded-lg border bg-card p-4">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-medium">
           <MapPin className="size-4" /> New address
@@ -284,8 +284,8 @@ function AddAddressForm({
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="col-span-2 flex flex-col gap-1">
+      <div className="grid grid-cols-3 gap-2">
+        <div className="col-span-3 flex flex-col gap-1">
           <Label htmlFor="addr-district">District</Label>
           <Input
             id="addr-district"
@@ -294,7 +294,7 @@ function AddAddressForm({
             autoComplete="address-level2"
           />
         </div>
-        <div className="col-span-2 flex flex-col gap-1">
+        <div className="col-span-3 flex flex-col gap-1">
           <Label htmlFor="addr-street">Street</Label>
           <Input
             id="addr-street"
@@ -303,15 +303,15 @@ function AddAddressForm({
             autoComplete="street-address"
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="col-span-1 flex flex-col gap-1">
           <Label htmlFor="addr-building">Building</Label>
           <Input id="addr-building" value={building} onChange={(e) => setBuilding(e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="col-span-2 flex flex-col gap-1">
           <Label htmlFor="addr-apartment">Apt / office</Label>
           <Input id="addr-apartment" value={apartment} onChange={(e) => setApartment(e.target.value)} />
         </div>
-        <div className="col-span-2 flex flex-col gap-1">
+        <div className="col-span-3 flex flex-col gap-1">
           <Label htmlFor="addr-label">Label (optional)</Label>
           <Input
             id="addr-label"
