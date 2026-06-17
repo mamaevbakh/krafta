@@ -283,3 +283,22 @@
 .tg-app [data-tg-hide] {
   display: none !important;
 }
+
+/* Accessibility — honor the OS "reduce motion" preference (DESIGN.md §Motion).
+   tw-animate-css utilities respect this automatically, but our hand-rolled
+   keyframes (cart-qty-pulse, krafta-row-flash, collapsible-*) do not, so
+   neutralize all motion globally and kill the qty pulse explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-cart-qty-pulse {
+    animation: none !important;
+  }
+}
