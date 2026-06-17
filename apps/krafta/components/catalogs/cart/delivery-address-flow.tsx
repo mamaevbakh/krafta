@@ -642,7 +642,10 @@ function AddressEditScreen({
   // ── Details pane ──
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <ScreenHeader title={t("address.edit_title")} onBack={onBack} />
+      <ScreenHeader
+        title={target.mode === "edit" ? t("address.edit_title") : t("address.new")}
+        onBack={onBack}
+      />
       <div className="mx-auto w-full max-w-md flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
         {/* Confirmed location strip + edit-on-map */}
         <div className="flex items-start gap-2 rounded-lg border border-border bg-card px-3 py-2.5">
