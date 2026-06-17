@@ -31,3 +31,15 @@ export function normalizeUzPhone(input: string): string | null {
 export function isValidUzPhone(input: string): boolean {
   return normalizeUzPhone(input) !== null;
 }
+
+/**
+ * Group up to 9 local digits as "90 123 45 67" for display in the
+ * +998-prefixed phone field. Keeps digits only; caps at 9 so the field
+ * can't overflow the national part.
+ */
+export function formatUzNational(input: string): string {
+  const d = input.replace(/\D/g, "").slice(0, 9);
+  return [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)]
+    .filter(Boolean)
+    .join(" ");
+}

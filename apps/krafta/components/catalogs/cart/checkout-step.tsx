@@ -23,7 +23,7 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
-import { isValidUzPhone } from "@/lib/cart/phone";
+import { formatUzNational, isValidUzPhone } from "@/lib/cart/phone";
 
 import { ScheduledTimePicker } from "./scheduled-time-picker";
 import {
@@ -169,6 +169,9 @@ export function CartCheckoutStep({
   );
   const [deliveryAt, setDeliveryAt] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  // Persistent inline submit error (vs the ephemeral toast that's easy to miss
+  // over a full-screen modal). Cleared on each new submit attempt.
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => {
     if (isPlacingOrder) return false;
@@ -211,39 +214,40 @@ export function CartCheckoutStep({
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    setSubmitError(null);
 
-    if (mode === "dine_in") {
-      await placeOrder({
-        mode: "dine_in",
-        fields: { tableLabel: tableLabel.trim() },
-      });
-      return;
-    }
-    if (mode === "pickup") {
-      await placeOrder({
-        mode: "pickup",
-        fields: {
-          scheduleType: pickupSchedule,
-          pickupAt: pickupSchedule === "scheduled" ? pickupAt : null,
-          recipientName: pickupName.trim() || null,
-          recipientPhone: pickupPhone.trim() || null,
-          note: pickupNote.trim() || null,
-        },
-      });
-      return;
-    }
-    // The chosen address's freeform string is what the order snapshots — it's
-    // already " · "-joined, so it stays scannable on receipts / the dashboard.
-    await placeOrder({
-      mode: "delivery",
-      fields: {
-        address: deliveryAddress?.freeform.trim() ?? "",
-        recipientName: deliveryName.trim(),
-        recipientPhone: deliveryPhone.trim(),
-        scheduledFor: deliverySchedule === "scheduled" ? deliveryAt : null,
-        note: deliveryNote.trim() || null,
-      },
-    });
+    // The chosen address's freeform string is what a delivery order snapshots —
+    // it's already " · "-joined, so it stays scannable on receipts / dashboard.
+    const result =
+      mode === "dine_in"
+        ? await placeOrder({
+            mode: "dine_in",
+            fields: { tableLabel: tableLabel.trim() },
+          })
+        : mode === "pickup"
+          ? await placeOrder({
+              mode: "pickup",
+              fields: {
+                scheduleType: pickupSchedule,
+                pickupAt: pickupSchedule === "scheduled" ? pickupAt : null,
+                recipientName: pickupName.trim() || null,
+                recipientPhone: pickupPhone.trim() || null,
+                note: pickupNote.trim() || null,
+              },
+            })
+          : await placeOrder({
+              mode: "delivery",
+              fields: {
+                address: deliveryAddress?.freeform.trim() ?? "",
+                recipientName: deliveryName.trim(),
+                recipientPhone: deliveryPhone.trim(),
+                scheduledFor:
+                  deliverySchedule === "scheduled" ? deliveryAt : null,
+                note: deliveryNote.trim() || null,
+              },
+            });
+
+    if (!result.ok) setSubmitError(result.error);
   };
 
   // Bottom-line total, mirrored into the sticky footer below so the price is
@@ -397,8 +401,11 @@ export function CartCheckoutStep({
                     id="pickup-phone"
                     inputMode="tel"
                     autoComplete="tel-national"
-                    value={pickupPhone}
-                    onChange={(event) => setPickupPhone(event.target.value)}
+                    className="font-mono tabular-nums"
+                    value={formatUzNational(pickupPhone)}
+                    onChange={(event) =>
+                      setPickupPhone(event.target.value.replace(/\D/g, "").slice(0, 9))
+                    }
                     placeholder={t("checkout.phone.placeholder")}
                   />
                 </InputGroup>
@@ -455,8 +462,11 @@ export function CartCheckoutStep({
                     id="delivery-phone"
                     inputMode="tel"
                     autoComplete="tel-national"
-                    value={deliveryPhone}
-                    onChange={(event) => setDeliveryPhone(event.target.value)}
+                    className="font-mono tabular-nums"
+                    value={formatUzNational(deliveryPhone)}
+                    onChange={(event) =>
+                      setDeliveryPhone(event.target.value.replace(/\D/g, "").slice(0, 9))
+                    }
                     placeholder={t("checkout.phone.placeholder")}
                   />
                 </InputGroup>
@@ -530,6 +540,9 @@ export function CartCheckoutStep({
           drawers (tablet, webviews). */}
       <div className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          {submitError ? (
+            <p className="mb-2 text-xs text-destructive">{submitError}</p>
+          ) : null}
           <div className="mb-3 flex items-baseline justify-between">
             <span className="text-sm text-muted-foreground">{t("cart.total")}</span>
             <span className="font-mono text-lg font-semibold tabular-nums">
@@ -661,6 +674,11 @@ function TipControl({
           {t("checkout.tip.custom")}
         </button>
       </div>
+      {tipCents > 0 ? (
+        <p className="font-mono text-xs tabular-nums text-muted-foreground">
+          +{formatPriceCents(tipCents, currencySettings)}
+        </p>
+      ) : null}
       {mode === "custom" ? (
         <Input
           type="number"
@@ -690,7 +708,7 @@ function ScheduleToggle({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-xl border px-3 py-2 text-sm transition",
+        "rounded-full border px-3 py-2 text-sm transition",
         selected
           ? "border-foreground bg-foreground text-background"
           : "border-border bg-background text-foreground hover:border-foreground/30",
