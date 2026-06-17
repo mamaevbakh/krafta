@@ -1,15 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import {
-  BookText,
-  CreditCard,
-  KeyRound,
-  Layers,
-  Receipt,
-  Repeat,
-  ScrollText,
-} from "lucide-react";
+import { CreditCard, KeyRound, Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { getCurrentUserMemberships } from "@/lib/org-memberships";
@@ -25,64 +17,33 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-// Home grid mirrors the nav, curated Atmos-first. Each card deep-links into the
-// section, scoped to the user's first org where the page expects an orgId.
-const NAV_ITEMS = [
+// Onboarding steps for the overview — the few things a merchant does to start
+// taking payments. Nav lives in the sidebar now, so this is setup, not wayfinding.
+const SETUP_STEPS = [
   {
     href: "/dashboard/providers",
-    title: "Providers",
-    description: "Connect Atmos to accept cards inline — plus other acquirers.",
+    title: "Connect a provider",
+    description: "Add Atmos to accept cards inline.",
     Icon: CreditCard,
-    orgScoped: true,
   },
   {
     href: "/dashboard/plans",
-    title: "Plans",
-    description: "Create and manage subscription plans.",
+    title: "Create a plan",
+    description: "Define subscription pricing.",
     Icon: Layers,
-    orgScoped: true,
-  },
-  {
-    href: "/dashboard/subscriptions",
-    title: "Subscriptions",
-    description: "Track active, past-due, and canceled subscriptions.",
-    Icon: Repeat,
-    orgScoped: true,
   },
   {
     href: "/dashboard/api-keys",
-    title: "API keys",
-    description: "Issue and revoke keys for the Checkout API.",
+    title: "Get API keys",
+    description: "Call the Checkout API from your app.",
     Icon: KeyRound,
-    orgScoped: true,
-  },
-  {
-    href: "/dashboard/tax-codes",
-    title: "Tax codes",
-    description: "SPIC + package code registries for fiscalization.",
-    Icon: Receipt,
-    orgScoped: true,
-  },
-  {
-    href: "/dashboard/logs",
-    title: "Logs",
-    description: "Inspect provider calls, callbacks, and webhooks — no SQL.",
-    Icon: ScrollText,
-    orgScoped: true,
-  },
-  {
-    href: "/dashboard/docs",
-    title: "Docs",
-    description: "Platform reference, flows, and the logs event dictionary.",
-    Icon: BookText,
-    orgScoped: false,
   },
 ] as const;
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; payUrl?: string; publicToken?: string }>;
+  searchParams: Promise<{ error?: string; payUrl?: string; publicToken?: string; orgId?: string }>;
 }) {
   const sp = await searchParams;
   const supabase = await createClient();
@@ -94,23 +55,27 @@ export default async function DashboardPage({
   }
 
   const memberships = await getCurrentUserMemberships();
-  const firstOrgId = memberships[0]?.orgId ?? "";
+  const activeOrgId = sp.orgId || memberships[0]?.orgId || "";
+  const activeOrg = memberships.find((m) => m.orgId === activeOrgId) ?? memberships[0] ?? null;
 
   return (
     <div className="space-y-10">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Signed in as {user.email}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {activeOrg
+            ? `Create a payment link or finish setting up ${activeOrg.orgName}.`
+            : "Create a payment link to start collecting payments."}
+        </p>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {NAV_ITEMS.map((item) => {
-          const href =
-            item.orgScoped && firstOrgId ? `${item.href}?orgId=${firstOrgId}` : item.href;
-          const Icon = item.Icon;
+      <section className="grid gap-3 sm:grid-cols-3">
+        {SETUP_STEPS.map((step) => {
+          const href = activeOrgId ? `${step.href}?orgId=${activeOrgId}` : step.href;
+          const Icon = step.Icon;
           return (
             <Link
-              key={item.href}
+              key={step.href}
               href={href}
               className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -119,11 +84,11 @@ export default async function DashboardPage({
                 className="h-full transition-colors group-hover:bg-muted/40 group-focus-visible:bg-muted/40"
               >
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-sm">
                     <Icon className="size-4 text-muted-foreground" aria-hidden />
-                    {item.title}
+                    {step.title}
                   </CardTitle>
-                  <CardDescription>{item.description}</CardDescription>
+                  <CardDescription>{step.description}</CardDescription>
                 </CardHeader>
               </Card>
             </Link>
@@ -176,7 +141,7 @@ export default async function DashboardPage({
                     id="orgId"
                     name="orgId"
                     required
-                    defaultValue={firstOrgId}
+                    defaultValue={activeOrgId}
                     // text-base on mobile keeps the font >=16px so iOS doesn't
                     // zoom the viewport on focus (matches the Input primitive).
                     className="h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
