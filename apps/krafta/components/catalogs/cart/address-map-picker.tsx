@@ -92,6 +92,41 @@ function coordsFallback(c: [number, number]): PickedAddress {
   };
 }
 
+function isDark(): boolean {
+  return (
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("dark")
+  );
+}
+
+// A polygon ring approximating a circle of `radiusM` around [lng, lat]. The
+// equirectangular metres→degrees conversion is exact enough at city scale for a
+// delivery-zone overlay (we're drawing a hint, not measuring).
+function ringAround(
+  center: [number, number],
+  radiusM: number,
+  points = 64,
+): [number, number][] {
+  const [lng, lat] = center;
+  const dLat = radiusM / 111_320;
+  const dLng = radiusM / (111_320 * Math.cos((lat * Math.PI) / 180) || 1);
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= points; i++) {
+    const a = (i / points) * 2 * Math.PI;
+    ring.push([lng + dLng * Math.cos(a), lat + dLat * Math.sin(a)]);
+  }
+  return ring;
+}
+
+// Mono zone styling that tracks the app theme, matching the foreground pin.
+function circleStyle(dark: boolean) {
+  const base = dark ? "235,235,240" : "24,24,27";
+  return {
+    stroke: [{ color: `rgba(${base},0.7)`, width: 2 }],
+    fill: `rgba(${base},0.08)`,
+  };
+}
+
 export function AddressMapPicker({
   initial,
   onChange,
@@ -99,6 +134,7 @@ export function AddressMapPicker({
   onLoadError,
   autoLocate,
   searchPlaceholder,
+  radiusM,
   className,
 }: {
   initial?: { latitude: number | null; longitude: number | null } | null;
@@ -111,6 +147,10 @@ export function AddressMapPicker({
   /** Trigger device geolocation once on mount (the "use my location" entry). */
   autoLocate?: boolean;
   searchPlaceholder?: string;
+  /** When set (>0), draws a translucent delivery-zone circle of this radius
+   *  (metres) centred on the map centre. The dashboard origin picker passes it;
+   *  the customer address picker omits it (no circle). */
+  radiusM?: number | null;
   className?: string;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -120,6 +160,11 @@ export function AddressMapPicker({
   // double-fire the reverse-geocode (the caller resolves the address itself).
   const ignoreActionRef = useRef(false);
   const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Optional delivery-zone circle (dashboard origin picker). The map centre is
+  // the zone origin; the ring is redrawn as the map pans / the radius changes.
+  const ymapsRef = useRef<any>(null);
+  const circleRef = useRef<any>(null);
+  const radiusRef = useRef<number | null>(radiusM ?? null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [panning, setPanning] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -189,6 +234,47 @@ export function AddressMapPicker({
     );
   }, [flyTo, reverseGeocode]);
 
+  // Keep the latest radius in a ref so the (stable) map listeners can redraw
+  // the zone ring without re-subscribing.
+  useEffect(() => {
+    radiusRef.current = radiusM ?? null;
+  }, [radiusM]);
+
+  // Create/update the translucent delivery-zone circle centred on `center`.
+  // No-op (and tears the ring down) unless a positive radius was provided.
+  const drawCircle = useCallback((center: [number, number]) => {
+    const ymaps3 = ymapsRef.current;
+    const r = radiusRef.current;
+    if (!ymaps3 || !mapRef.current) return;
+    if (!r || r <= 0) {
+      if (circleRef.current) {
+        try {
+          mapRef.current.removeChild(circleRef.current);
+        } catch {
+          // already detached
+        }
+        circleRef.current = null;
+      }
+      return;
+    }
+    const geometry = {
+      type: "Polygon" as const,
+      coordinates: [ringAround(center, r)],
+    };
+    const style = circleStyle(isDark());
+    if (circleRef.current) {
+      circleRef.current.update({ geometry, style });
+    } else {
+      circleRef.current = new ymaps3.YMapFeature({ geometry, style });
+      mapRef.current.addChild(circleRef.current);
+    }
+  }, []);
+
+  // Redraw when the radius changes (e.g. the merchant drags the slider).
+  useEffect(() => {
+    if (status === "ready") drawCircle(readCenter());
+  }, [radiusM, status, drawCircle, readCenter]);
+
   // Mount the map once v3 is ready.
   useEffect(() => {
     let disposed = false;
@@ -196,6 +282,7 @@ export function AddressMapPicker({
     loadYmaps3()
       .then((ymaps3) => {
         if (disposed || !hostRef.current) return;
+        ymapsRef.current = ymaps3;
         const {
           YMap,
           YMapDefaultSchemeLayer,
@@ -208,7 +295,6 @@ export function AddressMapPicker({
             : TASHKENT_CENTER;
         centerRef.current = start;
 
-        const isDark = () => document.documentElement.classList.contains("dark");
         const map = new YMap(hostRef.current, {
           location: { center: start, zoom: 16 },
           theme: isDark() ? "dark" : "light",
@@ -223,8 +309,10 @@ export function AddressMapPicker({
           new YMapListener({
             onUpdate: (e: any) => {
               const c = e?.location?.center;
-              if (Array.isArray(c) && c.length === 2)
+              if (Array.isArray(c) && c.length === 2) {
                 centerRef.current = c as [number, number];
+                drawCircle(c as [number, number]);
+              }
             },
             onActionStart: () => {
               if (ignoreActionRef.current) return;
@@ -247,6 +335,9 @@ export function AddressMapPicker({
         // Keep the vector map in sync with the app light/dark theme.
         themeObserver = new MutationObserver(() => {
           mapRef.current?.update?.({ theme: isDark() ? "dark" : "light" });
+          if (circleRef.current) {
+            circleRef.current.update({ style: circleStyle(isDark()) });
+          }
         });
         themeObserver.observe(document.documentElement, {
           attributes: true,

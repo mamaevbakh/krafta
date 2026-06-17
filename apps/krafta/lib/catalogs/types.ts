@@ -51,6 +51,7 @@ export type PublicCatalog = Pick<
   | "settings_layout"
   | "settings_currency"
   | "settings_behavior"
+  | "settings_delivery"
 >;
 
 // Translation rows attached to each translatable entity on the storefront.

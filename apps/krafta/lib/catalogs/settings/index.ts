@@ -14,16 +14,23 @@ import {
   defaultBehaviorSettings,
   normalizeBehaviorSettings,
 } from "./behavior";
+import {
+  type DeliverySettings,
+  defaultDeliverySettings,
+  normalizeDeliverySettings,
+} from "./delivery";
 
 export type CatalogSettingsSource = Pick<
   Tables<"catalogs">,
   "settings_layout" | "settings_currency" | "settings_behavior"
->;
+> &
+  Partial<Pick<Tables<"catalogs">, "settings_delivery">>;
 
 export type CatalogSettings = {
   layout: CatalogLayoutSettings;
   currency: CurrencySettings;
   behavior: CatalogBehaviorSettings;
+  delivery: DeliverySettings;
   // later: branding, i18n
 };
 
@@ -45,6 +52,11 @@ export function normalizeCatalogSettings(
     catalog.settings_behavior !== null
       ? (catalog.settings_behavior as Record<string, unknown>)
       : {};
+  const rawDelivery =
+    typeof catalog.settings_delivery === "object" &&
+    catalog.settings_delivery !== null
+      ? (catalog.settings_delivery as Record<string, unknown>)
+      : {};
 
   return {
     layout: normalizeLayoutSettings({
@@ -58,6 +70,10 @@ export function normalizeCatalogSettings(
     behavior: normalizeBehaviorSettings({
       ...defaultBehaviorSettings,
       ...rawBehavior,
+    }),
+    delivery: normalizeDeliverySettings({
+      ...defaultDeliverySettings,
+      ...rawDelivery,
     }),
   };
 }

@@ -2738,6 +2738,7 @@ export type Database = {
           settings_behavior: Json
           settings_branding: Json
           settings_currency: Json
+          settings_delivery: Json
           settings_i18n: Json
           settings_layout: Json
           slug: string
@@ -2757,6 +2758,7 @@ export type Database = {
           settings_behavior?: Json
           settings_branding?: Json
           settings_currency?: Json
+          settings_delivery?: Json
           settings_i18n?: Json
           settings_layout?: Json
           slug: string
@@ -2776,6 +2778,7 @@ export type Database = {
           settings_behavior?: Json
           settings_branding?: Json
           settings_currency?: Json
+          settings_delivery?: Json
           settings_i18n?: Json
           settings_layout?: Json
           slug?: string

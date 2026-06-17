@@ -94,7 +94,8 @@ export async function CatalogLayout({
 }: Props) {
   const hrefBase = baseHref ?? `/${catalog.slug}`;
 
-  const { layout, currency, behavior } = normalizeCatalogSettings(catalog);
+  const { layout, currency, behavior, delivery } =
+    normalizeCatalogSettings(catalog);
   const resolvedLayout = layoutOverride
     ? normalizeLayoutSettings({
         ...layout,
@@ -399,7 +400,10 @@ export async function CatalogLayout({
       initialSummary={initialSummary}
     >
       {tree}
-      <CartDrawer currencySettings={resolvedCurrency} />
+      <CartDrawer
+        currencySettings={resolvedCurrency}
+        deliverySettings={delivery}
+      />
       {/* Dine-in running check (ADR 0004 / KRA-116): persistent table-tab bar
           + Table Check sheet. No-ops outside an active dine-in session. */}
       <TableCheck
