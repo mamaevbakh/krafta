@@ -16,6 +16,12 @@ type Props = {
    * the line stack above. Defaults to `false`.
    */
   compact?: boolean;
+  /**
+   * When false, omits the bold "Total" row — for surfaces that render the
+   * total elsewhere (e.g. the checkout step's sticky footer) and only need
+   * the line-item breakdown here. Defaults to `true`.
+   */
+  showTotal?: boolean;
 };
 
 // Renders the subtotal -> fees -> tip -> total stack.
@@ -31,6 +37,7 @@ export function PricingBreakdown({
   tipCents = 0,
   currencySettings,
   compact = false,
+  showTotal = true,
 }: Props) {
   const pricing = computePricing({ subtotalCents, taxes, tipCents });
 
@@ -64,12 +71,14 @@ export function PricingBreakdown({
           muted
         />
       ) : null}
-      <div className="flex items-baseline justify-between pt-1">
-        <span className="text-sm text-muted-foreground">Total</span>
-        <span className="font-mono text-base font-semibold tabular-nums text-foreground">
-          {formatPriceCents(pricing.totalCents, currencySettings)}
-        </span>
-      </div>
+      {showTotal ? (
+        <div className="flex items-baseline justify-between pt-1">
+          <span className="text-sm text-muted-foreground">Total</span>
+          <span className="font-mono text-base font-semibold tabular-nums text-foreground">
+            {formatPriceCents(pricing.totalCents, currencySettings)}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
