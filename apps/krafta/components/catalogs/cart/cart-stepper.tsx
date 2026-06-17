@@ -166,7 +166,7 @@ export function CartStepper({
           type="button"
           size="icon"
           variant="outline"
-          className="h-8 w-8"
+          className="relative h-8 w-8 before:absolute before:-inset-1.5 before:content-['']"
           onClick={onDecrement}
           disabled={disabled}
           aria-label={decrementAriaLabel}
@@ -175,13 +175,13 @@ export function CartStepper({
         </Button>
         <AnimatedQty
           value={quantity}
-          className="min-w-7 text-center text-sm"
+          className="min-w-[2ch] text-center font-mono text-sm tabular-nums"
         />
         <Button
           type="button"
           size="icon"
           variant="outline"
-          className="h-8 w-8"
+          className="relative h-8 w-8 before:absolute before:-inset-1.5 before:content-['']"
           onClick={onIncrement}
           disabled={disabled}
           aria-label={incrementAriaLabel}

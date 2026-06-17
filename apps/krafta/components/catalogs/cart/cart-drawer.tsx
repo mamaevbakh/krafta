@@ -56,7 +56,7 @@ export function CartDrawer({
           // Mobile: full-screen, anchored top-left, no rounding.
           "top-0 left-0 h-[100dvh] max-h-[100dvh] w-full max-w-full translate-x-0 translate-y-0 rounded-none border-0",
           // Desktop: a centered card, capped height with internal scroll.
-          "sm:top-1/2 sm:left-1/2 sm:h-[88dvh] sm:max-h-[88dvh] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border",
+          "sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[88dvh] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border",
         )}
       >
         {step === "cart" ? (
@@ -101,7 +101,7 @@ function CartListStep({
     // shrinking — without min-h-0, this column overflows the drawer.
     // See full note in checkout-step.tsx.
     <div className="flex min-h-0 flex-1 flex-col">
-      <DialogHeader className="px-4 pb-3 pt-4 text-center sm:text-center">
+      <DialogHeader className="px-4 pb-3 pt-4 text-left">
         <DialogTitle className="text-lg">{t("cart.title")}</DialogTitle>
         {/* sr-only: satisfies Radix's DialogContent describedby requirement
             (silences the "Missing Description" console warning) without
@@ -110,7 +110,7 @@ function CartListStep({
           {t("cart.description")}
         </DialogDescription>
         {dineInLock ? (
-          <p className="mx-auto mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-foreground">
+          <p className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-foreground">
             {t("cart.mode_pill.dine_in", { table: dineInLock.tableLabel })}
           </p>
         ) : null}
@@ -120,7 +120,7 @@ function CartListStep({
           sets its inner wrapper to width:fit-content which lets a long
           item name escape the viewport and break truncate. mx-auto
           max-w-md centers the column on wider drawers. */}
-      <div className="mx-auto w-full max-w-md flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="mx-auto w-full max-w-md flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <div className="px-4">
           {isHydrating ? (
             <p className="py-12 text-center text-sm text-muted-foreground">
@@ -178,7 +178,7 @@ function CartListStep({
             <Button
               type="button"
               size="xl"
-              className="mt-3 w-full"
+              className="mt-3 w-full active:scale-[0.98]"
               onClick={() => setStep("checkout")}
             >
               {t("cart.continue")}
@@ -322,7 +322,7 @@ function CartLine({
             type="button"
             size="icon"
             variant="ghost"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+            className="relative h-8 w-8 text-muted-foreground before:absolute before:-inset-1.5 before:content-[''] hover:text-destructive"
             onClick={onRemove}
             aria-label={removeLabel}
           >
@@ -335,7 +335,7 @@ function CartLine({
           price immediately — the mobile-first cart-list pattern Square
           and DoorDash both use. font-mono tabular-nums keeps long UZS
           prices from jittering on quantity bumps. */}
-      <p className="shrink-0 font-mono text-sm font-semibold text-foreground tabular-nums">
+      <p className="min-w-[7ch] shrink-0 text-right font-mono text-sm font-semibold text-foreground tabular-nums">
         {formatPriceCents(line.total_price_cents, currencySettings)}
       </p>
     </li>
