@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Package, Truck, Utensils } from "lucide-react";
+import { ArrowLeft, Loader2, Package, Truck, Utensils } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -531,7 +531,7 @@ export function CartCheckoutStep({
       <div className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           <div className="mb-3 flex items-baseline justify-between">
-            <span className="text-sm text-muted-foreground">Total</span>
+            <span className="text-sm text-muted-foreground">{t("cart.total")}</span>
             <span className="font-mono text-lg font-semibold tabular-nums">
               {formatPriceCents(footerTotalCents, currencySettings)}
             </span>
@@ -539,11 +539,18 @@ export function CartCheckoutStep({
           <Button
             type="button"
             size="xl"
-            className="w-full"
+            className="w-full active:scale-[0.98]"
             disabled={!canSubmit}
             onClick={handleSubmit}
           >
-            {isPlacingOrder ? t("checkout.placing") : t("checkout.place_order")}
+            {isPlacingOrder ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                {t("checkout.placing")}
+              </>
+            ) : (
+              t("checkout.place_order")
+            )}
           </Button>
         </div>
       </div>
@@ -651,7 +658,7 @@ function TipControl({
           )}
           aria-pressed={mode === "custom"}
         >
-          Custom
+          {t("checkout.tip.custom")}
         </button>
       </div>
       {mode === "custom" ? (
