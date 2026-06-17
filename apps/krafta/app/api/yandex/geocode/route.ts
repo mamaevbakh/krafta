@@ -5,10 +5,12 @@ import { NextResponse } from "next/server";
 //   ?lng=&lat=   reverse geocode the dropped pin -> address
 //   ?uri=        resolve a Geosuggest pick (it returns a uri, not coords)
 //
-// Yandex's HTTP key restriction matches by Referer OR IP; we forward the
-// caller's origin as Referer so a domain-locked key still passes (and it's
-// ignored for an unrestricted key). Always 200 with { address: null } on
-// failure so the picker degrades to coords/manual rather than breaking.
+// Yandex's HTTP key restriction matches by Referer. The key is server-side
+// (never exposed to the browser), so we send our own whitelisted domain
+// (YANDEX_REFERER, default dev.krafta.org) regardless of which merchant
+// domain the request actually came from — this keeps one Krafta key working
+// across localhost, dev, krafta.uz, and future custom domains. Always 200
+// with { address: null } on failure so the picker degrades to coords/manual.
 
 type GeoComponent = { kind?: string; name?: string };
 
@@ -33,9 +35,7 @@ export async function GET(request: Request) {
   else if (lng && lat) params.set("geocode", `${lng},${lat}`); // reverse: lon,lat (default sco=longlat)
   else return NextResponse.json({ address: null, error: "need uri or lng+lat" }, { status: 400 });
 
-  const referer =
-    request.headers.get("origin") ??
-    `https://${request.headers.get("host") ?? "dev.krafta.org"}`;
+  const referer = process.env.YANDEX_REFERER ?? "https://dev.krafta.org";
 
   try {
     const res = await fetch(`https://geocode-maps.yandex.ru/v1/?${params.toString()}`, {
