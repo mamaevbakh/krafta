@@ -108,6 +108,7 @@ export type StorefrontMessageKey =
   | "checkout.missing.phone"
   | "checkout.missing.time"
   | "checkout.missing.table"
+  | "checkout.out_of_zone"
   // Delivery address book — dedicated map + list screens
   | "address.title"
   | "address.use_location"
@@ -272,6 +273,7 @@ const EN: MessageTable = {
   "checkout.missing.phone": "Enter a valid phone number",
   "checkout.missing.time": "Pick a time",
   "checkout.missing.table": "Enter your table number",
+  "checkout.out_of_zone": "Outside the delivery area",
   "address.title": "Delivery address",
   "address.use_location": "Use my location",
   "address.add": "Add address",
@@ -420,6 +422,7 @@ const RU: MessageTable = {
   "checkout.missing.phone": "Введите корректный номер телефона",
   "checkout.missing.time": "Выберите время",
   "checkout.missing.table": "Укажите номер столика",
+  "checkout.out_of_zone": "Вне зоны доставки",
   "address.title": "Адрес доставки",
   "address.use_location": "Использовать геолокацию",
   "address.add": "Добавить адрес",
@@ -570,6 +573,7 @@ const UZ_LATN: MessageTable = {
   "checkout.missing.phone": "To‘g‘ri telefon raqamini kiriting",
   "checkout.missing.time": "Vaqtni tanlang",
   "checkout.missing.table": "Stol raqamini kiriting",
+  "checkout.out_of_zone": "Yetkazib berish hududidan tashqarida",
   "address.title": "Yetkazib berish manzili",
   "address.use_location": "Joylashuvdan foydalanish",
   "address.add": "Manzil qo‘shish",

@@ -30,6 +30,11 @@ import {
   type CurrencySettings,
   defaultCurrencySettings,
 } from "@/lib/catalogs/settings/currency";
+import {
+  type DeliverySettings,
+  defaultDeliverySettings,
+  isWithinDeliveryZone,
+} from "@/lib/catalogs/settings/delivery";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import {
   getStorefrontMessage,
@@ -74,10 +79,12 @@ const PICKER_MODE_ORDER: CartFulfillmentMode[] = ["pickup", "delivery"];
 
 type CartCheckoutStepProps = {
   currencySettings?: CurrencySettings;
+  deliverySettings?: DeliverySettings;
 };
 
 export function CartCheckoutStep({
   currencySettings = defaultCurrencySettings,
+  deliverySettings = defaultDeliverySettings,
 }: CartCheckoutStepProps = {}) {
   const {
     modes,
@@ -181,6 +188,23 @@ export function CartCheckoutStep({
   // hint escalates from a muted nudge to a destructive prompt.
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  // Out-of-zone: the delivery pin falls outside the cafe's delivery radius.
+  // Blocks placement (with an inline «Вне зоны доставки») rather than letting
+  // the customer place an order the merchant can't fulfil.
+  const outOfZone = useMemo(
+    () =>
+      mode === "delivery" &&
+      deliverySettings.enabled &&
+      deliveryAddress?.latitude != null &&
+      deliveryAddress?.longitude != null &&
+      !isWithinDeliveryZone(
+        deliverySettings,
+        deliveryAddress.latitude,
+        deliveryAddress.longitude,
+      ),
+    [mode, deliverySettings, deliveryAddress],
+  );
+
   const canSubmit = useMemo(() => {
     if (isPlacingOrder) return false;
     if (mode === "dine_in") return tableLabel.trim().length > 0;
@@ -201,6 +225,7 @@ export function CartCheckoutStep({
     // delivery — phone is required (courier callback); a delivery address must
     // be chosen from the address book (saved or freshly added).
     return (
+      !outOfZone &&
       (deliveryAddress?.freeform.trim().length ?? 0) > 0 &&
       deliveryName.trim().length > 0 &&
       isValidUzPhone(deliveryPhone) &&
@@ -214,6 +239,7 @@ export function CartCheckoutStep({
     deliverySchedule,
     isPlacingOrder,
     mode,
+    outOfZone,
     pickupAt,
     pickupPhone,
     pickupSchedule,
@@ -235,6 +261,7 @@ export function CartCheckoutStep({
         return "checkout.missing.phone";
       return null;
     }
+    if (outOfZone) return "checkout.out_of_zone";
     if (!deliveryAddress?.freeform.trim()) return "checkout.missing.address";
     if (!deliveryName.trim()) return "checkout.missing.name";
     if (!isValidUzPhone(deliveryPhone)) return "checkout.missing.phone";
@@ -245,6 +272,7 @@ export function CartCheckoutStep({
     canSubmit,
     deliveryAddress,
     deliveryAt,
+    outOfZone,
     deliveryName,
     deliveryPhone,
     deliverySchedule,

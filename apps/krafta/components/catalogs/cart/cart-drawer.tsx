@@ -16,6 +16,10 @@ import {
   type CurrencySettings,
   defaultCurrencySettings,
 } from "@/lib/catalogs/settings/currency";
+import {
+  type DeliverySettings,
+  defaultDeliverySettings,
+} from "@/lib/catalogs/settings/delivery";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
@@ -30,6 +34,7 @@ import { PricingBreakdown } from "./pricing-breakdown";
 
 type CartDrawerProps = {
   currencySettings?: CurrencySettings;
+  deliverySettings?: DeliverySettings;
 };
 
 // Step order drives the directional cross-slide: advancing (cart → checkout →
@@ -38,6 +43,7 @@ const STEP_ORDER: Record<CartStep, number> = { cart: 0, checkout: 1, placed: 2 }
 
 export function CartDrawer({
   currencySettings = defaultCurrencySettings,
+  deliverySettings = defaultDeliverySettings,
 }: CartDrawerProps) {
   const { isOpen, setOpen, step, setStep, close } = useCart();
   // Slide direction, derived from the previous step held in state (lint-safe —
@@ -88,7 +94,10 @@ export function CartDrawer({
             <CartListStep currencySettings={currencySettings} />
           ) : null}
           {step === "checkout" ? (
-            <CartCheckoutStep currencySettings={currencySettings} />
+            <CartCheckoutStep
+              currencySettings={currencySettings}
+              deliverySettings={deliverySettings}
+            />
           ) : null}
           {step === "placed" ? (
             <CartPlacedStep currencySettings={currencySettings} />

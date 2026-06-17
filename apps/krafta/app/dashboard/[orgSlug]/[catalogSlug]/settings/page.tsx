@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { renderQrSvg } from "@/lib/qr/render";
+import { normalizeDeliverySettings } from "@/lib/catalogs/settings/delivery";
+import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
 import { SettingsPanel } from "./_components/settings-panel";
 
 type PageProps = {
@@ -12,7 +14,9 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
 
   const { data: catalog } = await supabase
     .from("catalogs")
-    .select("id, org_id, name, description, tags, logo_path")
+    .select(
+      "id, org_id, name, description, tags, logo_path, settings_currency, settings_delivery",
+    )
     .eq("slug", catalogSlug)
     .maybeSingle();
 
@@ -63,6 +67,14 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
     ? await renderQrSvg(tmaDeepLink, { size: 320 })
     : null;
 
+  const delivery = normalizeDeliverySettings(
+    (catalog.settings_delivery ?? {}) as Record<string, unknown>,
+  );
+  const currency = normalizeCurrencySettings(
+    (catalog.settings_currency ?? {}) as Record<string, unknown>,
+  );
+  const deliveryModeEnabled = (venue?.modes_enabled ?? []).includes("delivery");
+
   return (
     <SettingsPanel
       catalogId={catalog.id}
@@ -74,6 +86,9 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       logoPath={catalog.logo_path ?? ""}
       venue={venue}
       venueId={venue?.id ?? null}
+      delivery={delivery}
+      currency={currency}
+      deliveryModeEnabled={deliveryModeEnabled}
       telegram={
         telegram
           ? {

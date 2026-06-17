@@ -19,10 +19,13 @@ import {
 } from "@/components/ui/field";
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
 import { cn } from "@/lib/utils";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import type { DeliverySettings } from "@/lib/catalogs/settings/delivery";
 import { updateCatalogSettings } from "./actions";
 import { VenueForm } from "./venue-form";
 import { NotificationsForm, type TelegramInitial } from "./notifications-form";
 import { MiniAppForm, type MiniAppInitial } from "./mini-app-form";
+import { DeliveryForm } from "./delivery-form";
 
 type VenueRow = {
   name: string;
@@ -47,6 +50,9 @@ type SettingsPanelProps = {
   venueId: string | null;
   telegram: TelegramInitial | null;
   miniApp: MiniAppInitial;
+  delivery: DeliverySettings;
+  currency: CurrencySettings;
+  deliveryModeEnabled: boolean;
 };
 
 function normalizeTag(value: string) {
@@ -82,6 +88,9 @@ export function SettingsPanel({
   venueId,
   telegram,
   miniApp,
+  delivery,
+  currency,
+  deliveryModeEnabled,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
@@ -234,6 +243,7 @@ export function SettingsPanel({
             <div className="space-y-1">
               {[
                 { id: "venue", label: "Venue" },
+                { id: "delivery", label: "Delivery" },
                 { id: "catalog", label: "Catalog" },
                 { id: "miniapp", label: "Mini App" },
                 { id: "notifications", label: "Notifications" },
@@ -271,6 +281,14 @@ export function SettingsPanel({
                     Venue row not found for this catalog. Contact support.
                   </div>
                 )
+              ) : activeTab === "delivery" ? (
+                <DeliveryForm
+                  catalogId={catalogId}
+                  catalogSlug={catalogSlug}
+                  initial={delivery}
+                  currencySettings={currency}
+                  deliveryModeEnabled={deliveryModeEnabled}
+                />
               ) : activeTab === "miniapp" ? (
                 <MiniAppForm venueId={venueId} initial={miniApp} />
               ) : activeTab === "notifications" ? (

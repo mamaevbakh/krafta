@@ -2,6 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
+import {
+  type DeliverySettings,
+  normalizeDeliverySettings,
+} from "@/lib/catalogs/settings/delivery";
+import type { Json } from "@/lib/supabase/types";
 
 export async function updateCatalogSettings(params: {
   catalogId: string;
@@ -143,4 +148,54 @@ export async function updateVenueSettings(params: {
   });
 
   return { ok: true as const };
+}
+
+export async function updateDeliverySettings(params: {
+  catalogId: string;
+  catalogSlug: string;
+  enabled: boolean;
+  originLat: number | null;
+  originLng: number | null;
+  radiusM: number;
+  feeCents: number;
+  minOrderCents: number;
+}) {
+  // Normalize on the server too — the same guard the storefront trusts. A stale
+  // `enabled: true` with no origin collapses to `false` here, so the zone can
+  // never silently reject every address.
+  const settings: DeliverySettings = normalizeDeliverySettings({
+    enabled: params.enabled,
+    originLat: params.originLat,
+    originLng: params.originLng,
+    radiusM: params.radiusM,
+    feeCents: params.feeCents,
+    minOrderCents: params.minOrderCents,
+  });
+
+  if (
+    params.enabled &&
+    (settings.originLat == null || settings.originLng == null)
+  ) {
+    return {
+      ok: false as const,
+      error: "Set your cafe location on the map before enabling delivery.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("catalogs")
+    .update({ settings_delivery: settings as unknown as Json })
+    .eq("id", params.catalogId);
+
+  if (error) {
+    return { ok: false as const, error: error.message };
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true as const, settings };
 }
