@@ -143,6 +143,7 @@ export function AddressMapPicker({
   // Mount the map once v3 is ready.
   useEffect(() => {
     let disposed = false;
+    let themeObserver: MutationObserver | null = null;
     loadYmaps3()
       .then((ymaps3) => {
         if (disposed || !hostRef.current) return;
@@ -158,8 +159,10 @@ export function AddressMapPicker({
             ? [initial.longitude, initial.latitude]
             : TASHKENT_CENTER;
 
+        const isDark = () => document.documentElement.classList.contains("dark");
         const map = new YMap(hostRef.current, {
           location: { center: start, zoom: 15 },
+          theme: isDark() ? "dark" : "light",
         });
         map.addChild(new YMapDefaultSchemeLayer({}));
         map.addChild(new YMapDefaultFeaturesLayer({}));
@@ -193,6 +196,18 @@ export function AddressMapPicker({
 
         mapRef.current = map;
         markerRef.current = marker;
+
+        // Keep the vector map in sync with the app's light/dark theme
+        // (next-themes toggles the `dark` class on <html>). Without this the
+        // map renders as a bright light rectangle inside the dark checkout.
+        themeObserver = new MutationObserver(() => {
+          mapRef.current?.update?.({ theme: isDark() ? "dark" : "light" });
+        });
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["class"],
+        });
+
         setStatus("ready");
         void emitFromCoords(start);
       })
@@ -204,6 +219,7 @@ export function AddressMapPicker({
 
     return () => {
       disposed = true;
+      themeObserver?.disconnect();
       try {
         mapRef.current?.destroy?.();
       } catch {
