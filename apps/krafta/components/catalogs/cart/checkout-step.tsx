@@ -45,9 +45,11 @@ import { PricingBreakdown } from "./pricing-breakdown";
 import { computePricing } from "@/lib/cart/pricing";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import {
-  DeliveryAddressField,
+  DeliveryAddressFlow,
+  DeliveryAddressSummary,
+  orderAddressString,
   type SelectedDeliveryAddress,
-} from "./delivery-address-field";
+} from "./delivery-address-flow";
 
 // Mode labels now resolved via the i18n catalog at render time (S1).
 // The const stays as a type-safe key map so we keep ordering/iteration.
@@ -162,6 +164,9 @@ export function CartCheckoutStep({
   // reads cleanly on a kitchen receipt).
   const [deliveryAddress, setDeliveryAddress] =
     useState<SelectedDeliveryAddress | null>(null);
+  // The address screens take over the whole drawer body (full-bleed map), but
+  // checkout stays mounted — so the customer's name/phone/note survive the trip.
+  const [addressView, setAddressView] = useState<"form" | "flow">("form");
   const [deliveryName, setDeliveryName] = useState("");
   const [deliveryPhone, setDeliveryPhone] = useState("");
   const [deliverySchedule, setDeliverySchedule] = useState<"asap" | "scheduled">(
@@ -280,7 +285,9 @@ export function CartCheckoutStep({
           : await placeOrder({
               mode: "delivery",
               fields: {
-                address: deliveryAddress?.freeform.trim() ?? "",
+                address: deliveryAddress
+                  ? orderAddressString(deliveryAddress, t)
+                  : "",
                 recipientName: deliveryName.trim(),
                 recipientPhone: deliveryPhone.trim(),
                 scheduledFor:
@@ -300,6 +307,16 @@ export function CartCheckoutStep({
     taxes,
     tipCents,
   }).totalCents;
+
+  if (addressView === "flow") {
+    return (
+      <DeliveryAddressFlow
+        value={deliveryAddress}
+        onChange={setDeliveryAddress}
+        onClose={() => setAddressView("form")}
+      />
+    );
+  }
 
   return (
     // flex-1 + min-h-0: drawer-content is a flex column with a 24px
@@ -476,9 +493,10 @@ export function CartCheckoutStep({
                   trio — fewer taps, reusable, and routable (coords saved). */}
               <Field>
                 <FieldLabel>{t("checkout.mode.delivery")}</FieldLabel>
-                <DeliveryAddressField
+                <DeliveryAddressSummary
                   value={deliveryAddress}
                   onChange={setDeliveryAddress}
+                  onOpen={() => setAddressView("flow")}
                 />
               </Field>
               <Field>
