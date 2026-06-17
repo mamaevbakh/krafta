@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { ImageIcon, ShoppingCart, Trash2 } from "lucide-react";
 
@@ -22,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { TelegramBackButton } from "@/components/telegram/telegram-back-button";
 
 import { CartStepper } from "./cart-stepper";
-import { useCart } from "./cart-provider";
+import { useCart, type CartStep } from "./cart-provider";
 import { CartCheckoutStep } from "./checkout-step";
 import { CartPlacedStep } from "./placed-step";
 import { PricingBreakdown } from "./pricing-breakdown";
@@ -31,10 +32,23 @@ type CartDrawerProps = {
   currencySettings?: CurrencySettings;
 };
 
+// Step order drives the directional cross-slide: advancing (cart → checkout →
+// placed) slides in from the right, going back slides in from the left.
+const STEP_ORDER: Record<CartStep, number> = { cart: 0, checkout: 1, placed: 2 };
+
 export function CartDrawer({
   currencySettings = defaultCurrencySettings,
 }: CartDrawerProps) {
   const { isOpen, setOpen, step, setStep, close } = useCart();
+  // Slide direction, derived from the previous step held in state (lint-safe —
+  // no ref read during render). The keyed wrapper below re-mounts on every step
+  // change, so the slide replays; direction just picks left vs right. Kept out
+  // of the (delicate) cart provider on purpose — the drawer is its only consumer.
+  const [prevStep, setPrevStep] = useState<CartStep>(step);
+  const forward = STEP_ORDER[step] >= STEP_ORDER[prevStep];
+  useEffect(() => {
+    setPrevStep(step);
+  }, [step]);
 
   return (
     // The cart carries a lot now — line items, the checkout form, the address
@@ -57,17 +71,29 @@ export function CartDrawer({
           "top-0 left-0 h-[100dvh] max-h-[100dvh] w-full max-w-full translate-x-0 translate-y-0 rounded-none border-0",
           // Desktop: a centered card, capped height with internal scroll.
           "sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[88dvh] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border",
+          // Mobile: slide up from the bottom edge (docked full-screen sheet, not
+          // a centered card); desktop keeps the dialog's centered zoom.
+          "data-[state=open]:slide-in-from-bottom-4 data-[state=closed]:slide-out-to-bottom-4 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:slide-out-to-bottom-0",
         )}
       >
-        {step === "cart" ? (
-          <CartListStep currencySettings={currencySettings} />
-        ) : null}
-        {step === "checkout" ? (
-          <CartCheckoutStep currencySettings={currencySettings} />
-        ) : null}
-        {step === "placed" ? (
-          <CartPlacedStep currencySettings={currencySettings} />
-        ) : null}
+        <div
+          key={step}
+          className={cn(
+            "flex min-h-0 flex-1 flex-col",
+            "animate-in fade-in-0 duration-200 ease-out",
+            forward ? "slide-in-from-right-4" : "slide-in-from-left-4",
+          )}
+        >
+          {step === "cart" ? (
+            <CartListStep currencySettings={currencySettings} />
+          ) : null}
+          {step === "checkout" ? (
+            <CartCheckoutStep currencySettings={currencySettings} />
+          ) : null}
+          {step === "placed" ? (
+            <CartPlacedStep currencySettings={currencySettings} />
+          ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   );
