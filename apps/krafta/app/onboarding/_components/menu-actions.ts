@@ -60,10 +60,23 @@ export async function extractMenuAction(
   formData: FormData,
 ): Promise<ExtractMenuResult> {
   const supabase = await createClient();
+  // The wizard creates its anonymous Supabase session at submit
+  // (createDraftShopForAnonUser), but the menu upload runs BEFORE that — so
+  // start an anon session here if there isn't one yet (same approach as the
+  // cart's ensureCartIdentity). Keeps this from being an open vision endpoint
+  // without forcing the visitor to finish the wizard first.
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Please reload and try again." };
+  if (!user) {
+    const { error: signInError } = await supabase.auth.signInAnonymously();
+    if (signInError) {
+      return {
+        ok: false,
+        error: "Couldn't start a session — please reload and try again.",
+      };
+    }
+  }
 
   const files: MenuFileInput[] = [];
   for (const entry of formData.getAll("files")) {
