@@ -116,11 +116,12 @@ export async function extractMenu(
       },
     ],
     output: Output.object({ schema: extractedMenuSchema }),
-    // A full menu of items is a few thousand tokens; give it headroom.
-    maxOutputTokens: 8000,
-    // 60s ceiling — vision over several images is slower than text; still well
-    // under Vercel's default server-action limit.
-    abortSignal: opts?.signal ?? AbortSignal.timeout(60_000),
+    // A big menu across many photos can be long; give the structured output
+    // generous headroom so a large item list isn't truncated.
+    maxOutputTokens: 16000,
+    // 120s ceiling — vision over up to 20 images is slow; still under Vercel's
+    // 300s function limit.
+    abortSignal: opts?.signal ?? AbortSignal.timeout(120_000),
   });
 
   return output;

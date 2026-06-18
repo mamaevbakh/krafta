@@ -175,6 +175,41 @@ function formatSum(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
+// Downscale a photo to a max dimension + re-encode as JPEG before upload. Keeps
+// a 20-photo batch small enough for the server-action body cap and quick to
+// upload over mobile, with no loss of menu legibility. PDFs, undecodable formats
+// (e.g. HEIC on non-Safari browsers — the server converts those), and files that
+// don't shrink pass through unchanged.
+async function compressImageFile(file: File): Promise<File> {
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return file;
+  if (typeof createImageBitmap !== "function") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxDim = 2000;
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.82),
+    );
+    if (!blob || blob.size >= file.size) return file;
+    const base = file.name.replace(/\.[^.]+$/, "") || "photo";
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 // ── draft persistence ─────────────────────────────────────────────────────────
 //
 // sessionStorage, not localStorage: scoped to the tab (a shared device at the
@@ -417,7 +452,7 @@ export function OnboardingWizard() {
     setMenuFiles((prev) => {
       const next = [...prev];
       for (const file of incoming) {
-        if (next.length >= 8) {
+        if (next.length >= 20) {
           setError(wizardCopy.menuUpload.tooMany);
           break;
         }
@@ -439,19 +474,23 @@ export function OnboardingWizard() {
       setError(wizardCopy.menuUpload.empty);
       return;
     }
-    // Guard the combined size against the server-action body cap (24 MB in
-    // next.config) so a too-big batch gives a clear message instead of the
-    // generic network-failure catch below.
-    const totalBytes = menuFiles.reduce((n, f) => n + f.size, 0);
-    if (totalBytes > 23 * 1024 * 1024) {
-      setError(wizardCopy.menuUpload.tooLargeTotal);
-      return;
-    }
     setExtracting(true);
     setError(null);
     trackWizard("menu_extract", { files: menuFiles.length });
+    // Downscale images client-side before upload: 20 raw phone photos would blow
+    // the server-action body cap, and full resolution isn't needed to read a
+    // menu. PDFs / undecodable files pass through. Then guard the compressed
+    // total against the 32 MB cap (next.config) with a clear message instead of
+    // the generic network-failure catch below.
+    const compressed = await Promise.all(menuFiles.map(compressImageFile));
+    const totalBytes = compressed.reduce((n, f) => n + f.size, 0);
+    if (totalBytes > 30 * 1024 * 1024) {
+      setExtracting(false);
+      setError(wizardCopy.menuUpload.tooLargeTotal);
+      return;
+    }
     const fd = new FormData();
-    for (const file of menuFiles) fd.append("files", file);
+    for (const file of compressed) fd.append("files", file);
     let res: ExtractMenuResult;
     try {
       res = await extractMenuAction(fd);

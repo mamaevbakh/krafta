@@ -16,7 +16,7 @@ import {
 import type { ExtractedMenu } from "@/lib/menu-extraction/schema";
 import { createClient } from "@/lib/supabase/server";
 
-const MAX_FILES = 8;
+const MAX_FILES = 20;
 const MAX_BYTES = 12 * 1024 * 1024; // 12 MB per file
 const ALLOWED_TYPES = new Set([
   "image/png",

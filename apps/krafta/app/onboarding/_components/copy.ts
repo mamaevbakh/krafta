@@ -68,7 +68,7 @@ export const wizardCopy = {
     subtitle:
       "Add clear photos, screenshots or a PDF. Multiple pages are fine — we'll read them as one menu.",
     pick: "Add files",
-    hint: "PNG, JPG, WebP or PDF — up to 8 files.",
+    hint: "PNG, JPG, WebP or PDF — up to 20 files.",
     addMore: "Add more files",
     fileCount: "{n} file ready",
     fileCountPlural: "{n} files ready",
@@ -77,7 +77,7 @@ export const wizardCopy = {
     extracting: "Reading your menu…",
     extractingHint: "Pulling out your sections, items and prices.",
     manualFallback: "I'll add items manually instead",
-    tooMany: "Up to 8 files — remove one to add another.",
+    tooMany: "Up to 20 files — remove one to add another.",
     tooLarge: "That file is over 12 MB — pick a smaller one.",
     tooLargeTotal:
       "These photos are too large together — remove one or use smaller photos.",

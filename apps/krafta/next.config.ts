@@ -34,10 +34,11 @@ const nextConfig: NextConfig = {
     // Menu-photo uploads (onboarding "Snap your menu") POST images to a server
     // action. The default 1MB body cap rejects a real phone photo before the
     // action even runs — surfacing as the generic "check your connection."
-    // Raise it to fit a few multi-MB photos; the per-file cap stays 12MB
-    // (menu-actions.ts MAX_BYTES) and the client guards the total.
+    // Raised to fit up to 20 menu photos; the client downscales each photo to
+    // ~2000px JPEG first, so a full 20-photo batch lands around ~10–15MB. The
+    // client also guards the total before upload.
     serverActions: {
-      bodySizeLimit: "24mb",
+      bodySizeLimit: "32mb",
     },
   },
   // OIDC discovery for the Telegram Mini App third-party-auth issuer. Supabase
