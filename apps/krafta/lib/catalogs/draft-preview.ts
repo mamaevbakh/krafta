@@ -9,28 +9,33 @@ import "server-only";
 // owner-read RLS surfaces the draft. It is deliberately SEPARATE from the
 // cached anon path — zero blast radius on the live customer storefront.
 //
-// Scope is the wizard-created shape: categories → items → variations. Item
-// names are already canonical in the chosen default locale (complete_wizard /
-// create_wizard_menu set them that way), so rendering at the default locale
-// needs no translation joins — pickLocalizedField returns the canonical name.
-// Modifiers aren't part of a fresh wizard shop, so modifier_lists ship empty;
-// a fuller draft (Studio preview) is a follow-up.
+// Scope is the wizard-created shape: categories → items → variations +
+// modifiers, plus the venue. Item names are already canonical in the chosen
+// default locale (complete_wizard / create_wizard_menu set them that way), so
+// rendering at the default locale needs no translation joins. The venue is
+// returned so the onboarding-reveal preview can render the FULL customer
+// experience (cart + size/add-on pickers) — the preview page forces it active
+// because a fresh shop's venue is paused until it goes live.
 
 import { createClient } from "@/lib/supabase/server";
 import type {
   PublicCatalog,
   PublicCategoryWithItems,
   PublicItem,
+  PublicModifier,
+  PublicModifierList,
 } from "./types";
 import type {
   PublicCatalogLocaleOption,
   PublicCatalogLocales,
+  PublicVenue,
 } from "./data";
 
 export type DraftCatalogRender = {
   catalog: PublicCatalog;
   categories: PublicCategoryWithItems[];
   locales: PublicCatalogLocales;
+  venue: PublicVenue | null;
 };
 
 /**
@@ -57,7 +62,16 @@ export async function getOwnedDraftCatalogRender(
     .maybeSingle();
   if (!catalog) return null;
 
-  const [catsRes, itemsRes, varsRes, localesRes] = await Promise.all([
+  const [
+    catsRes,
+    itemsRes,
+    varsRes,
+    localesRes,
+    venueRes,
+    modListsRes,
+    modsRes,
+    itemModListsRes,
+  ] = await Promise.all([
     supabase
       .from("catalog_categories")
       .select("id, slug, name, position")
@@ -84,6 +98,34 @@ export async function getOwnedDraftCatalogRender(
       .eq("catalog_id", catalog.id)
       .eq("is_enabled", true)
       .order("sort_order", { ascending: true }),
+    supabase
+      .from("venues")
+      .select(
+        "id, catalog_id, org_id, modes_enabled, currency, timezone, language_code, status",
+      )
+      .eq("catalog_id", catalog.id)
+      .maybeSingle(),
+    supabase
+      .from("modifier_lists")
+      .select(
+        "id, name, modifier_type, min_selected, max_selected, text_required, max_length, version",
+      )
+      .eq("catalog_id", catalog.id)
+      .eq("is_active", true),
+    supabase
+      .from("modifiers")
+      .select("id, modifier_list_id, name, price_cents, ordinal, on_by_default, version")
+      .eq("catalog_id", catalog.id)
+      .eq("is_active", true)
+      .order("ordinal", { ascending: true }),
+    supabase
+      .from("item_modifier_lists")
+      .select(
+        "item_id, modifier_list_id, ordinal, min_selected_override, max_selected_override, hidden_from_customer_override",
+      )
+      .eq("catalog_id", catalog.id)
+      .eq("is_active", true)
+      .order("ordinal", { ascending: true }),
   ]);
 
   const variationsByItem = new Map<
@@ -94,6 +136,48 @@ export async function getOwnedDraftCatalogRender(
     const arr = variationsByItem.get(v.item_id) ?? [];
     arr.push(v);
     variationsByItem.set(v.item_id, arr);
+  }
+
+  // Modifiers (options) grouped by their list, then each item's linked lists
+  // assembled into PublicModifierList — mirrors getCatalogStructure so the
+  // storefront's add-on picker renders identically in preview. Per-item
+  // overrides on the link win over the list defaults.
+  const modifiersByList = new Map<string, PublicModifier[]>();
+  for (const m of modsRes.data ?? []) {
+    const arr = modifiersByList.get(m.modifier_list_id) ?? [];
+    arr.push({
+      id: m.id,
+      name: m.name,
+      price_cents: m.price_cents,
+      ordinal: m.ordinal,
+      on_by_default: m.on_by_default,
+      version: m.version,
+      translations: [],
+    });
+    modifiersByList.set(m.modifier_list_id, arr);
+  }
+  const listById = new Map((modListsRes.data ?? []).map((l) => [l.id, l]));
+  const modListsByItem = new Map<string, PublicModifierList[]>();
+  for (const link of itemModListsRes.data ?? []) {
+    const list = listById.get(link.modifier_list_id);
+    if (!list) continue;
+    const pub: PublicModifierList = {
+      id: list.id,
+      name: list.name,
+      modifier_type: list.modifier_type === "text" ? "text" : "list",
+      min_selected: link.min_selected_override ?? list.min_selected,
+      max_selected: link.max_selected_override ?? list.max_selected,
+      text_required: list.text_required,
+      max_length: list.max_length,
+      hidden_from_customer: link.hidden_from_customer_override ?? false,
+      ordinal: link.ordinal,
+      version: list.version,
+      modifiers: modifiersByList.get(list.id) ?? [],
+      translations: [],
+    };
+    const arr = modListsByItem.get(link.item_id) ?? [];
+    arr.push(pub);
+    modListsByItem.set(link.item_id, arr);
   }
 
   const itemsByCategory = new Map<string, PublicItem[]>();
@@ -120,7 +204,7 @@ export async function getOwnedDraftCatalogRender(
         is_sold_out: v.is_sold_out,
         translations: [],
       })),
-      modifier_lists: [],
+      modifier_lists: modListsByItem.get(it.id) ?? [],
       translations: [],
     };
     const arr = itemsByCategory.get(it.category_id) ?? [];
@@ -153,6 +237,7 @@ export async function getOwnedDraftCatalogRender(
   return {
     catalog: catalog as PublicCatalog,
     categories,
+    venue: (venueRes.data as PublicVenue | null) ?? null,
     locales: {
       default: defaultLocale,
       enabled: localeRows.map((l) => l.locale),
