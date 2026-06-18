@@ -120,6 +120,36 @@ const wizardItemSchema = z.object({
    *  500 chars client-side; the 1000 cap here is a safety net so a verbose
    *  extraction can never block shop creation. */
   description: z.string().max(1000).nullable().optional(),
+  /** Sizes from AI extraction; prices in MAJOR units (sums). Lenient (no min on
+   *  names — the client filters empties) so AI output can't block creation. */
+  variations: z
+    .array(
+      z.object({
+        name: z.string().max(64),
+        price: z.number().nonnegative().max(10_000_000).nullable(),
+      }),
+    )
+    .max(20)
+    .optional(),
+  /** Add-on / choice groups from AI extraction; option prices in MAJOR units. */
+  modifiers: z
+    .array(
+      z.object({
+        name: z.string().max(64),
+        required: z.boolean(),
+        multiple: z.boolean(),
+        options: z
+          .array(
+            z.object({
+              name: z.string().max(64),
+              price: z.number().nonnegative().max(10_000_000).nullable(),
+            }),
+          )
+          .max(30),
+      }),
+    )
+    .max(10)
+    .optional(),
   /** slug of the suggestion this came from; null = merchant-typed */
   suggestionSlug: z.string().max(80).nullable(),
   /** true when name AND price still match the suggestion (keeps template
@@ -312,6 +342,33 @@ export async function createShopFromWizard(
           const itemLoc = untouched
             ? localize(suggested!.translations, suggested!.name, suggested!.description)
             : null;
+          // AI-extracted sizes -> item_variations (prices major units -> cents);
+          // falls back to a single "Стандарт" variation at the item price.
+          const customVariations = (item.variations ?? [])
+            .filter((v) => v.name.trim())
+            .map((v, vi) => ({
+              name: v.name.trim(),
+              price_cents: Math.max(0, Math.round((v.price ?? 0) * 100)),
+              ordinal: vi,
+              is_default: vi === 0,
+            }));
+          // AI-extracted add-on / choice groups -> modifier_lists + modifiers.
+          // required -> min_selected 1; single-choice -> max_selected 1.
+          const customModifierGroups = (item.modifiers ?? [])
+            .filter((m) => m.name.trim() && m.options.some((o) => o.name.trim()))
+            .map((m, mi) => ({
+              name: m.name.trim(),
+              min_selected: m.required ? 1 : 0,
+              max_selected: m.multiple ? null : 1,
+              ordinal: mi,
+              options: m.options
+                .filter((o) => o.name.trim())
+                .map((o, oi) => ({
+                  name: o.name.trim(),
+                  price_cents: Math.max(0, Math.round((o.price ?? 0) * 100)),
+                  ordinal: oi,
+                })),
+            }));
           return {
             name: itemLoc ? itemLoc.canonical.name : item.name,
             slug: uniqueSlug(item.suggestionSlug ?? item.name, `item-${sIdx + 1}-${iIdx + 1}`),
@@ -324,7 +381,10 @@ export async function createShopFromWizard(
             seeded: untouched,
             variations: untouched
               ? suggested!.variations
-              : [{ name: "Стандарт", price_cents: item.priceCents, ordinal: 0, is_default: true }],
+              : customVariations.length > 0
+                ? customVariations
+                : [{ name: "Стандарт", price_cents: item.priceCents, ordinal: 0, is_default: true }],
+            modifierGroups: untouched ? [] : customModifierGroups,
             translations: itemLoc ? itemLoc.translations : {},
           };
         }),

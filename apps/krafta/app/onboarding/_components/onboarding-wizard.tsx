@@ -70,6 +70,15 @@ type ItemDraft = {
   /** Description from AI menu extraction (menu's original language). Absent for
    *  manually-added / suggestion items. Carried through to the created catalog. */
   description?: string | null;
+  /** Sizes from AI extraction (S/M/L, 0.3л/0.5л), each priced. Carried + persisted. */
+  variations?: { name: string; price: number | null }[];
+  /** Add-on / choice groups from AI extraction. Carried + persisted as modifier lists. */
+  modifiers?: {
+    name: string;
+    required: boolean;
+    multiple: boolean;
+    options: { name: string; price: number | null }[];
+  }[];
   checked: boolean;
   suggestionSlug: string | null;
   suggested: { name: string; priceCents: number } | null;
@@ -156,8 +165,31 @@ function sectionsFromExtraction(menu: ExtractedMenu): SectionDraft[] {
         .map((i) => ({
           key: `ai-i-${aiKeySeq++}`,
           name: i.name.trim(),
-          priceSum: i.price != null && i.price > 0 ? String(Math.round(i.price)) : "",
+          priceSum:
+            i.price != null && i.price > 0
+              ? String(Math.round(i.price))
+              : i.variations?.[0]?.price != null && i.variations[0].price > 0
+                ? String(Math.round(i.variations[0].price))
+                : "",
           description: i.description?.trim().slice(0, 500) || null,
+          variations: (i.variations ?? [])
+            .filter((v) => v.name?.trim())
+            .slice(0, 20)
+            .map((v) => ({ name: v.name.trim().slice(0, 64), price: v.price ?? null })),
+          modifiers: (i.modifiers ?? [])
+            .filter(
+              (m) => m.name?.trim() && (m.options ?? []).some((o) => o.name?.trim()),
+            )
+            .slice(0, 10)
+            .map((m) => ({
+              name: m.name.trim().slice(0, 64),
+              required: !!m.required,
+              multiple: !!m.multiple,
+              options: (m.options ?? [])
+                .filter((o) => o.name?.trim())
+                .slice(0, 30)
+                .map((o) => ({ name: o.name.trim().slice(0, 64), price: o.price ?? null })),
+            })),
           checked: true,
           suggestionSlug: null,
           suggested: null,
@@ -535,6 +567,8 @@ export function OnboardingWizard() {
               name: i.name.trim(),
               priceCents: parseSum(i.priceSum) * 100,
               description: i.description?.trim() || null,
+              variations: i.variations ?? [],
+              modifiers: i.modifiers ?? [],
               suggestionSlug: i.suggestionSlug,
               untouched: Boolean(
                 i.suggested &&
@@ -1143,6 +1177,24 @@ export function OnboardingWizard() {
                     {i.description ? (
                       <p className="px-3 pb-2 pl-9 text-xs leading-snug text-muted-foreground">
                         {i.description}
+                      </p>
+                    ) : null}
+                    {i.variations?.length || i.modifiers?.length ? (
+                      <p className="px-3 pb-2 pl-9 text-[11px] leading-snug text-muted-foreground/80">
+                        {[
+                          i.variations?.length
+                            ? `${wizardCopy.items.sizesLabel}: ${i.variations
+                                .map((v) => v.name)
+                                .join(", ")}`
+                            : null,
+                          i.modifiers?.length
+                            ? `${wizardCopy.items.addOnsLabel}: ${i.modifiers
+                                .map((m) => m.name)
+                                .join(", ")}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </p>
                     ) : null}
                   </div>

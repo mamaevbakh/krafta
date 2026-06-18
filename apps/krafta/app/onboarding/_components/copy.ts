@@ -98,6 +98,8 @@ export const wizardCopy = {
     nameAria: "Item name",
     priceAria: "Price in sums",
     currencySuffix: "сум",
+    sizesLabel: "Sizes",
+    addOnsLabel: "Add-ons",
   },
   modes: {
     title: "How do customers order?",
