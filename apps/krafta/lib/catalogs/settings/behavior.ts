@@ -3,7 +3,10 @@ export type CatalogBehaviorSettings = {
 };
 
 export const defaultBehaviorSettings: CatalogBehaviorSettings = {
-  enableCart: false,
+  // Ordering is ON by default — a catalog with order modes (every venue has at
+  // least one) is orderable out of the box. Merchants can still switch a catalog
+  // to browse-only via the Studio's Cart toggle (which stores enableCart:false).
+  enableCart: true,
 };
 
 export function normalizeBehaviorSettings(
