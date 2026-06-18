@@ -31,6 +31,14 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@resvg/resvg-js", "heic-convert"],
   experimental: {
     optimizePackageImports: ["lucide-react"],
+    // Menu-photo uploads (onboarding "Snap your menu") POST images to a server
+    // action. The default 1MB body cap rejects a real phone photo before the
+    // action even runs — surfacing as the generic "check your connection."
+    // Raise it to fit a few multi-MB photos; the per-file cap stays 12MB
+    // (menu-actions.ts MAX_BYTES) and the client guards the total.
+    serverActions: {
+      bodySizeLimit: "24mb",
+    },
   },
   // OIDC discovery for the Telegram Mini App third-party-auth issuer. Supabase
   // fetches `<issuer>/.well-known/openid-configuration`; App Router won't route

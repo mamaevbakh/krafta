@@ -79,6 +79,8 @@ export const wizardCopy = {
     manualFallback: "I'll add items manually instead",
     tooMany: "Up to 8 files — remove one to add another.",
     tooLarge: "That file is over 12 MB — pick a smaller one.",
+    tooLargeTotal:
+      "These photos are too large together — remove one or use smaller photos.",
     empty: "Add at least one photo or PDF first.",
   },
   sections: {

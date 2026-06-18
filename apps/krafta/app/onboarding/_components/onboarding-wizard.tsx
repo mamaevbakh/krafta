@@ -435,6 +435,14 @@ export function OnboardingWizard() {
       setError(wizardCopy.menuUpload.empty);
       return;
     }
+    // Guard the combined size against the server-action body cap (24 MB in
+    // next.config) so a too-big batch gives a clear message instead of the
+    // generic network-failure catch below.
+    const totalBytes = menuFiles.reduce((n, f) => n + f.size, 0);
+    if (totalBytes > 23 * 1024 * 1024) {
+      setError(wizardCopy.menuUpload.tooLargeTotal);
+      return;
+    }
     setExtracting(true);
     setError(null);
     trackWizard("menu_extract", { files: menuFiles.length });
