@@ -48,6 +48,39 @@ export const wizardCopy = {
     previewAria: "Selected logo preview",
     tooLarge: "That image is over 5 MB — pick a smaller one.",
   },
+  menuMethod: {
+    title: "How do you want to build your menu?",
+    subtitle:
+      "Start from your existing menu, or build it by hand. Everything stays editable either way.",
+    options: {
+      upload: {
+        label: "Upload files",
+        hint: "Photo, screenshot or PDF — we'll turn it into your catalog in seconds.",
+      },
+      manual: {
+        label: "Manual Catalog",
+        hint: "Pick from a starter menu and add items yourself.",
+      },
+    },
+  },
+  menuUpload: {
+    title: "Upload your menu",
+    subtitle:
+      "Add clear photos, screenshots or a PDF. Multiple pages are fine — we'll read them as one menu.",
+    pick: "Add files",
+    hint: "PNG, JPG, WebP or PDF — up to 8 files.",
+    addMore: "Add more files",
+    fileCount: "{n} file ready",
+    fileCountPlural: "{n} files ready",
+    removeAria: "Remove {name}",
+    extract: "Build my menu",
+    extracting: "Reading your menu…",
+    extractingHint: "Pulling out your sections, items and prices.",
+    manualFallback: "I'll add items manually instead",
+    tooMany: "Up to 8 files — remove one to add another.",
+    tooLarge: "That file is over 12 MB — pick a smaller one.",
+    empty: "Add at least one photo or PDF first.",
+  },
   sections: {
     title: "Your menu sections",
     subtitleVertical: "What we'd suggest for a {vertical} — drop or add your own.",

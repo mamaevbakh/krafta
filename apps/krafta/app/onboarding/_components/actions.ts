@@ -110,7 +110,11 @@ export async function getVerticalSuggestions(
 // ---------------------------------------------------------------------------
 
 const wizardItemSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Each item needs a name.")
+    .max(80, "An item name is too long — keep it under 80 characters."),
   priceCents: z.number().int().min(0).max(1_000_000_000),
   /** slug of the suggestion this came from; null = merchant-typed */
   suggestionSlug: z.string().max(80).nullable(),
@@ -120,26 +124,45 @@ const wizardItemSchema = z.object({
 });
 
 const wizardSectionSchema = z.object({
-  name: z.string().trim().min(1).max(64),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Each category needs a name.")
+    .max(64, "A category name is too long — keep it under 64 characters."),
   suggestionSlug: z.string().max(64).nullable(),
-  items: z.array(wizardItemSchema).max(30),
+  // Generous per-category cap so a real uploaded menu fits (the AI extraction
+  // is also clamped client-side to this). 100 ≈ no practical limit for a café.
+  items: z
+    .array(wizardItemSchema)
+    .max(100, "That category has too many items — keep it to 100 or fewer."),
 });
 
 const wizardPayloadSchema = z.object({
-  vertical: z.string().refine(isShopVertical, "Unknown shop type."),
-  name: z.string().trim().min(1).max(80),
-  sections: z.array(wizardSectionSchema).min(0).max(8),
-  modes: z.array(z.enum(["dine_in", "pickup", "delivery"])).min(1).max(3),
-  tableCount: z.number().int().min(0).max(50),
+  vertical: z.string().refine(isShopVertical, "That shop type isn't recognized."),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give your shop a name.")
+    .max(80, "Your shop name is too long — keep it under 80 characters."),
+  // Generous category cap (was 8) so all of an uploaded menu's categories fit.
+  sections: z
+    .array(wizardSectionSchema)
+    .min(0)
+    .max(50, "That's a lot of categories — keep it to 50 or fewer."),
+  modes: z
+    .array(z.enum(["dine_in", "pickup", "delivery"]))
+    .min(1, "Pick at least one way for customers to order.")
+    .max(3),
+  tableCount: z.number().int().min(0).max(50, "You can set up to 50 tables."),
   locales: z
     .array(z.object({ code: z.string().min(2).max(16), isDefault: z.boolean() }))
-    .min(1)
-    .max(6)
+    .min(1, "Pick at least one language.")
+    .max(6, "You can add up to 6 languages.")
     .refine((ls) => ls.filter((l) => l.isDefault).length === 1, "Pick one default language.")
-    .refine((ls) => new Set(ls.map((l) => l.code)).size === ls.length, "Duplicate language.")
-    .refine((ls) => ls.every((l) => getLocaleDefinition(l.code)), "Unknown language."),
-  phone: z.string().trim().max(32),
-  city: z.string().trim().max(64),
+    .refine((ls) => new Set(ls.map((l) => l.code)).size === ls.length, "You added the same language twice.")
+    .refine((ls) => ls.every((l) => getLocaleDefinition(l.code)), "One of the chosen languages isn't supported yet."),
+  phone: z.string().trim().max(32, "That phone number looks too long."),
+  city: z.string().trim().max(64, "That city name is too long."),
 });
 
 export type WizardPayload = z.input<typeof wizardPayloadSchema>;
@@ -196,8 +219,8 @@ export async function createShopFromWizard(
   }
   const input = parsed.data;
   const totalItems = input.sections.reduce((n, s) => n + s.items.length, 0);
-  if (totalItems > 60) {
-    return { error: "That's a lot of items for a start — keep it under 60." };
+  if (totalItems > 1000) {
+    return { error: "That's a huge menu — keep it under 1000 items for now." };
   }
 
   // Suggestions are re-read SERVER-side: untouched items take their

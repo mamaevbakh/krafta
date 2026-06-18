@@ -25,10 +25,14 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
+  FileText,
   ImagePlus,
   Loader2,
   Minus,
+  PencilLine,
   Plus,
+  Sparkles,
+  Upload,
   X,
 } from "lucide-react";
 
@@ -46,6 +50,8 @@ import {
   getVerticalSuggestions,
   type WizardPayload,
 } from "./actions";
+import { extractMenuAction, type ExtractMenuResult } from "./menu-actions";
+import type { ExtractedMenu } from "@/lib/menu-extraction/schema";
 import { trackWizard } from "./analytics";
 import { CITY_CHIPS, fmt, wizardCopy } from "./copy";
 import {
@@ -76,10 +82,18 @@ type SectionDraft = {
 
 type AlertsIntent = "telegram" | "dashboard";
 
+// How the merchant fills their menu. "manual" keeps the curated-template flow;
+// "upload" inserts an AI extraction screen that reads photos/PDF into the same
+// sections/items state. Two options today — the chooser is built to grow (e.g.
+// import from another platform) without touching the step machine.
+type MenuMethod = "manual" | "upload";
+
 type Step =
   | { kind: "type" }
   | { kind: "name" }
   | { kind: "logo" }
+  | { kind: "menu_method" }
+  | { kind: "menu_upload" }
   | { kind: "sections" }
   | { kind: "items" }
   | { kind: "modes" }
@@ -89,13 +103,22 @@ type Step =
   | { kind: "phone" }
   | { kind: "city" };
 
-function buildSteps(sections: SectionDraft[], modes: VenueMode[]): Step[] {
+function buildSteps(
+  sections: SectionDraft[],
+  modes: VenueMode[],
+  menuMethod: MenuMethod | null,
+): Step[] {
   const hasItems = sections.some((s) => s.checked);
   return [
     { kind: "type" },
     { kind: "name" },
     // Optional logo — sits with the shop's identity, right after its name.
     { kind: "logo" },
+    // One decision: build the menu by hand, or upload an existing one.
+    { kind: "menu_method" },
+    // The upload + AI-read screen only exists on the "upload" path; both paths
+    // converge on the sections/items review below.
+    ...(menuMethod === "upload" ? [{ kind: "menu_upload" } as Step] : []),
     { kind: "sections" },
     // One items screen for the whole menu — all checked sections stacked.
     ...(hasItems ? [{ kind: "items" } as Step] : []),
@@ -106,6 +129,36 @@ function buildSteps(sections: SectionDraft[], modes: VenueMode[]): Step[] {
     { kind: "phone" },
     { kind: "city" },
   ];
+}
+
+// Map an AI-extracted menu onto the wizard's editable draft shape. Prices come
+// back in major units (sums) — exactly what ItemDraft.priceSum holds — so they
+// flow straight into the review screen and the existing submit path. A module
+// counter keeps React keys stable and distinct from template/custom keys.
+let aiKeySeq = 0;
+function sectionsFromExtraction(menu: ExtractedMenu): SectionDraft[] {
+  return menu.sections
+    .filter((s) => s.name.trim() && s.items.length > 0)
+    // Clamp to the wizard's submit caps so a big uploaded menu can never
+    // overflow the schema (50 categories / 100 items per category).
+    .slice(0, 50)
+    .map((s) => ({
+      key: `ai-s-${aiKeySeq++}`,
+      name: s.name.trim(),
+      checked: true,
+      suggestionSlug: null,
+      items: s.items
+        .filter((i) => i.name.trim())
+        .slice(0, 100)
+        .map((i) => ({
+          key: `ai-i-${aiKeySeq++}`,
+          name: i.name.trim(),
+          priceSum: i.price != null && i.price > 0 ? String(Math.round(i.price)) : "",
+          checked: true,
+          suggestionSlug: null,
+          suggested: null,
+        })),
+    }));
 }
 
 function parseSum(value: string): number {
@@ -138,6 +191,8 @@ type WizardDraft = {
   locales: { code: string; isDefault: boolean }[];
   /** Order-alerts preference; absent in pre-PR3 drafts → "telegram". */
   alertsIntent?: AlertsIntent;
+  /** Menu-build choice; absent in pre-upload drafts → null (re-asks). */
+  menuMethod?: MenuMethod | null;
   phone: string;
   city: string;
   customCity: boolean;
@@ -178,6 +233,13 @@ export function OnboardingWizard() {
     [],
   );
   const [sections, setSections] = React.useState<SectionDraft[]>([]);
+  // Menu-build choice + the "upload" path's state. Files are held client-side
+  // until extraction (not in the saved draft — File objects aren't
+  // serializable), mirroring the logo screen.
+  const [menuMethod, setMenuMethod] = React.useState<MenuMethod | null>(null);
+  const [menuFiles, setMenuFiles] = React.useState<File[]>([]);
+  const [extracting, setExtracting] = React.useState(false);
+  const menuInputRef = React.useRef<HTMLInputElement>(null);
   const [modes, setModes] = React.useState<VenueMode[]>(["pickup"]);
   const [tableCount, setTableCount] = React.useState(8);
   const [locales, setLocales] = React.useState<
@@ -223,6 +285,9 @@ export function OnboardingWizard() {
           if (d.alertsIntent === "telegram" || d.alertsIntent === "dashboard") {
             setAlertsIntent(d.alertsIntent);
           }
+          if (d.menuMethod === "manual" || d.menuMethod === "upload") {
+            setMenuMethod(d.menuMethod);
+          }
           if (Number.isInteger(d.cursor)) setCursor(Math.max(0, d.cursor as number));
         }
       }
@@ -247,6 +312,7 @@ export function OnboardingWizard() {
         tableCount,
         locales,
         alertsIntent,
+        menuMethod,
         phone,
         city,
         customCity,
@@ -255,9 +321,9 @@ export function OnboardingWizard() {
     } catch {
       // Storage full/blocked — persistence is best-effort.
     }
-  }, [hydrated, phase, cursor, vertical, name, sections, modes, tableCount, locales, alertsIntent, phone, city, customCity]);
+  }, [hydrated, phase, cursor, vertical, name, sections, modes, tableCount, locales, alertsIntent, menuMethod, phone, city, customCity]);
 
-  const steps = buildSteps(sections, modes);
+  const steps = buildSteps(sections, modes, menuMethod);
   const safeCursor = Math.min(Math.max(cursor, 0), steps.length - 1);
   const current = steps[safeCursor];
   const progressPct = Math.round(((safeCursor + 1) / steps.length) * 100);
@@ -330,6 +396,73 @@ export function OnboardingWizard() {
     }
     setVertical(key);
     setCursor(1);
+  };
+
+  // ── menu-method handlers ────────────────────────────────────────────────
+  const chooseMenuMethod = (method: MenuMethod) => {
+    trackWizard("menu_method", { method });
+    setMenuMethod(method);
+    // goNext lands on menu_upload (upload) or sections (manual): the next
+    // index resolves correctly once the step list recomputes — see buildSteps.
+    goNext();
+  };
+
+  const addMenuFiles = (incoming: FileList | null) => {
+    if (!incoming || incoming.length === 0) return;
+    setError(null);
+    setMenuFiles((prev) => {
+      const next = [...prev];
+      for (const file of Array.from(incoming)) {
+        if (next.length >= 8) {
+          setError(wizardCopy.menuUpload.tooMany);
+          break;
+        }
+        if (file.size > 12 * 1024 * 1024) {
+          setError(wizardCopy.menuUpload.tooLarge);
+          continue;
+        }
+        next.push(file);
+      }
+      return next;
+    });
+  };
+
+  const removeMenuFile = (index: number) =>
+    setMenuFiles((prev) => prev.filter((_, i) => i !== index));
+
+  const runExtraction = async () => {
+    if (menuFiles.length === 0) {
+      setError(wizardCopy.menuUpload.empty);
+      return;
+    }
+    setExtracting(true);
+    setError(null);
+    trackWizard("menu_extract", { files: menuFiles.length });
+    const fd = new FormData();
+    for (const file of menuFiles) fd.append("files", file);
+    let res: ExtractMenuResult;
+    try {
+      res = await extractMenuAction(fd);
+    } catch {
+      res = {
+        ok: false,
+        error: "Couldn't read the menu. Check your connection and try again.",
+      };
+    }
+    setExtracting(false);
+    if (!res.ok) {
+      trackWizard("menu_extract_error");
+      setError(res.error);
+      return;
+    }
+    const extracted = sectionsFromExtraction(res.menu);
+    setSections(extracted);
+    trackWizard("menu_extracted", {
+      sections: extracted.length,
+      items: extracted.reduce((n, s) => n + s.items.length, 0),
+    });
+    // Forward to the sections/items review, pre-filled from the photo.
+    goNext();
   };
 
   const submit = async (opts: { includeCity: boolean }) => {
@@ -668,6 +801,148 @@ export function OnboardingWizard() {
           </p>
         ) : null}
         {continueButton(goNext)}
+      </section>
+    );
+  }
+
+  // ── menu method — build by hand or upload an existing menu ───────────────
+  if (current.kind === "menu_method") {
+    const options: MenuMethod[] = ["upload", "manual"];
+    return (
+      <section key="menu_method">
+        {header(wizardCopy.menuMethod.title, wizardCopy.menuMethod.subtitle)}
+        <div className="mt-6 flex flex-col gap-2">
+          {options.map((opt) => {
+            const meta = wizardCopy.menuMethod.options[opt];
+            const Icon = opt === "upload" ? Sparkles : PencilLine;
+            return (
+              <button
+                key={opt}
+                type="button"
+                disabled={busy}
+                onClick={() => chooseMenuMethod(opt)}
+                className="flex min-h-14 w-full items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+              >
+                <Icon className="size-5 shrink-0 text-muted-foreground" />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-sm font-medium">{meta.label}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {meta.hint}
+                  </span>
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  // ── menu upload — files → AI extraction → sections/items ──────────────────
+  if (current.kind === "menu_upload") {
+    if (extracting) {
+      return (
+        <section key="menu_upload" role="status" aria-live="polite">
+          {header(wizardCopy.menuUpload.title, wizardCopy.menuUpload.subtitle)}
+          <div className="mt-12 flex flex-col items-center justify-center gap-3 text-center">
+            <Loader2 className="size-8 animate-spin text-primary" />
+            <p className="text-sm font-medium">
+              {wizardCopy.menuUpload.extracting}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {wizardCopy.menuUpload.extractingHint}
+            </p>
+          </div>
+        </section>
+      );
+    }
+    const fileCount = menuFiles.length;
+    return (
+      <section key="menu_upload">
+        {header(wizardCopy.menuUpload.title, wizardCopy.menuUpload.subtitle)}
+        <input
+          ref={menuInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf"
+          multiple
+          className="sr-only"
+          onChange={(e) => {
+            addMenuFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <div className="mt-6 flex flex-col gap-2">
+          {menuFiles.map((file, i) => (
+            <div
+              key={`${file.name}-${i}`}
+              className="flex min-h-12 items-center gap-3 rounded-lg border bg-card px-3 py-2"
+            >
+              <FileText className="size-5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-muted-foreground"
+                onClick={() => removeMenuFile(i)}
+                aria-label={fmt(wizardCopy.menuUpload.removeAria, {
+                  name: file.name,
+                })}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          ))}
+          {fileCount === 0 ? (
+            <button
+              type="button"
+              onClick={() => menuInputRef.current?.click()}
+              className="flex min-h-28 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-card px-4 py-6 text-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Upload className="size-6" />
+              <span className="text-sm font-medium">{wizardCopy.menuUpload.pick}</span>
+              <span className="text-xs">{wizardCopy.menuUpload.hint}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => menuInputRef.current?.click()}
+              className="flex min-h-12 w-full items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Plus className="size-4 shrink-0" />
+              {wizardCopy.menuUpload.addMore}
+            </button>
+          )}
+        </div>
+        {error ? (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          className="mt-6 w-full"
+          onClick={() => void runExtraction()}
+          disabled={busy || fileCount === 0}
+        >
+          <Sparkles className="size-4" />
+          {wizardCopy.menuUpload.extract}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="mt-2 w-full text-muted-foreground"
+          disabled={busy}
+          onClick={() => {
+            // Removing this step shifts the cursor onto sections — no goNext.
+            setMenuFiles([]);
+            setError(null);
+            setMenuMethod("manual");
+          }}
+        >
+          {wizardCopy.menuUpload.manualFallback}
+        </Button>
       </section>
     );
   }
