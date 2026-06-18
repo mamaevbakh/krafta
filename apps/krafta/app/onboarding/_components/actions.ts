@@ -109,46 +109,48 @@ export async function getVerticalSuggestions(
 // Submit
 // ---------------------------------------------------------------------------
 
+// AI-extracted menu content is CLAMPED, never rejected — a merchant's real
+// photographed menu must never fail at "Create my shop". Truncation mirrors
+// create_wizard_menu's own SQL (left(name,80) / left(,64)); the merchant tidies
+// any over-long name in the dashboard afterwards. Empty-named items/sections are
+// dropped when the menu is built below. Only MERCHANT-TYPED fields (shop name,
+// phone, city) keep hard errors, since the merchant can fix those on the spot.
+const aiText = (max: number) =>
+  z.string().transform((s) => s.trim().slice(0, max));
+const aiPriceMajor = z
+  .number()
+  .nullable()
+  .transform((p) => (p == null ? null : Math.min(Math.max(p, 0), 10_000_000)));
+
 const wizardItemSchema = z.object({
-  name: z
+  name: aiText(80),
+  priceCents: z
+    .number()
+    .transform((n) => Math.min(Math.max(Math.round(n), 0), 1_000_000_000)),
+  /** Description from AI menu extraction; truncated, never rejected. */
+  description: z
     .string()
-    .trim()
-    .min(1, "Each item needs a name.")
-    .max(80, "An item name is too long — keep it under 80 characters."),
-  priceCents: z.number().int().min(0).max(1_000_000_000),
-  /** Description from AI menu extraction; null/absent otherwise. Clamped to
-   *  500 chars client-side; the 1000 cap here is a safety net so a verbose
-   *  extraction can never block shop creation. */
-  description: z.string().max(1000).nullable().optional(),
-  /** Sizes from AI extraction; prices in MAJOR units (sums). Lenient (no min on
-   *  names — the client filters empties) so AI output can't block creation. */
+    .nullish()
+    .transform((s) => (s ? s.slice(0, 1000) : null)),
+  /** Sizes from AI extraction; prices in MAJOR units (sums). Names truncated,
+   *  array clamped — AI output can never block creation. */
   variations: z
-    .array(
-      z.object({
-        name: z.string().max(64),
-        price: z.number().nonnegative().max(10_000_000).nullable(),
-      }),
-    )
-    .max(20)
+    .array(z.object({ name: aiText(64), price: aiPriceMajor }))
+    .transform((a) => a.slice(0, 20))
     .optional(),
   /** Add-on / choice groups from AI extraction; option prices in MAJOR units. */
   modifiers: z
     .array(
       z.object({
-        name: z.string().max(64),
+        name: aiText(64),
         required: z.boolean(),
         multiple: z.boolean(),
         options: z
-          .array(
-            z.object({
-              name: z.string().max(64),
-              price: z.number().nonnegative().max(10_000_000).nullable(),
-            }),
-          )
-          .max(30),
+          .array(z.object({ name: aiText(64), price: aiPriceMajor }))
+          .transform((a) => a.slice(0, 30)),
       }),
     )
-    .max(10)
+    .transform((a) => a.slice(0, 10))
     .optional(),
   /** slug of the suggestion this came from; null = merchant-typed */
   suggestionSlug: z.string().max(80).nullable(),
@@ -158,17 +160,11 @@ const wizardItemSchema = z.object({
 });
 
 const wizardSectionSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Each category needs a name.")
-    .max(64, "A category name is too long — keep it under 64 characters."),
+  name: aiText(64),
   suggestionSlug: z.string().max(64).nullable(),
-  // Generous per-category cap so a real uploaded menu fits (the AI extraction
-  // is also clamped client-side to this). 100 ≈ no practical limit for a café.
-  items: z
-    .array(wizardItemSchema)
-    .max(100, "That category has too many items — keep it to 100 or fewer."),
+  // Clamped to 100 items/category — generous (≈ no practical limit for a café)
+  // and never a hard error on a big uploaded menu.
+  items: z.array(wizardItemSchema).transform((a) => a.slice(0, 100)),
 });
 
 const wizardPayloadSchema = z.object({
@@ -178,11 +174,8 @@ const wizardPayloadSchema = z.object({
     .trim()
     .min(1, "Give your shop a name.")
     .max(80, "Your shop name is too long — keep it under 80 characters."),
-  // Generous category cap (was 8) so all of an uploaded menu's categories fit.
-  sections: z
-    .array(wizardSectionSchema)
-    .min(0)
-    .max(50, "That's a lot of categories — keep it to 50 or fewer."),
+  // Clamped to 50 categories so a big uploaded menu never hard-errors here.
+  sections: z.array(wizardSectionSchema).transform((a) => a.slice(0, 50)),
   modes: z
     .array(z.enum(["dine_in", "pickup", "delivery"]))
     .min(1, "Pick at least one way for customers to order.")
@@ -314,7 +307,12 @@ export async function createShopFromWizard(
     return s;
   };
   const menu = {
-    categories: input.sections.map((section, sIdx) => {
+    // Drop any section/item left without a name (clamped fields can land empty
+    // — e.g. an extraction returned a price with no label). They'd be invisible
+    // junk in the catalog; skipping keeps the menu clean without blocking.
+    categories: input.sections
+      .filter((section) => section.name)
+      .map((section, sIdx) => {
       const suggestedSection = section.suggestionSlug
         ? (suggestionIndex.get(`section:${section.suggestionSlug}`) as SuggestedSection | undefined)
         : undefined;
@@ -329,7 +327,9 @@ export async function createShopFromWizard(
         slug: uniqueSlug(section.suggestionSlug ?? section.name, `section-${sIdx + 1}`),
         position: sIdx,
         translations: sectionLoc ? sectionLoc.translations : {},
-        items: section.items.map((item, iIdx) => {
+        items: section.items
+          .filter((item) => item.name)
+          .map((item, iIdx) => {
           const suggested = item.suggestionSlug
             ? (suggestionIndex.get(`item:${item.suggestionSlug}`) as SuggestedItem | undefined)
             : undefined;
