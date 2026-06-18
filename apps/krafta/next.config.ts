@@ -25,7 +25,10 @@ const nextConfig: NextConfig = {
   //   https://nextjs.org/docs/app/api-reference/config/next-config-js/serverExternalPackages
   // Only the QR zip route (app/api/qr-codes/zip/[venueId]/route.ts)
   // imports it, so the impact is isolated to that single Route Handler.
-  serverExternalPackages: ["@resvg/resvg-js"],
+  // heic-convert added for the same reason: it pulls a WASM libheif build
+  // (iPhone HEIC → JPEG for menu-photo extraction) that can't be placed in an
+  // ESM chunk. Keep it external so it loads via runtime require().
+  serverExternalPackages: ["@resvg/resvg-js", "heic-convert"],
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
