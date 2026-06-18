@@ -21,7 +21,11 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, Output, type LanguageModel } from "ai";
 import convert from "heic-convert";
 
-import { extractedMenuSchema, type ExtractedMenu } from "./schema";
+import {
+  extractedMenuSchema,
+  type ExtractedMenu,
+  type ExtractedMenuSection,
+} from "./schema";
 
 const MODEL_ID = process.env.MENU_EXTRACTION_MODEL ?? "gpt-5-nano-2025-08-07";
 
@@ -81,6 +85,60 @@ async function normalizeForModel(f: MenuFileInput): Promise<MenuFileInput> {
  * model failure — callers (the onboarding action, the future assistant tool)
  * decide how to surface it.
  */
+// Extract ONE file in its own model call. Reusing the same system prompt, but
+// the model only ever sees a single page so it can't skip it.
+function toFilePart(f: MenuFileInput) {
+  return f.mediaType === "application/pdf"
+    ? {
+        type: "file" as const,
+        mediaType: f.mediaType,
+        data: f.bytes,
+        filename: f.filename,
+      }
+    : { type: "image" as const, image: f.bytes };
+}
+
+async function extractOneFile(
+  model: LanguageModel,
+  file: MenuFileInput,
+  signal?: AbortSignal,
+): Promise<ExtractedMenu> {
+  const { output } = await generateText({
+    model,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text" as const,
+            text: "Read this menu page and return every section and item printed on it.",
+          },
+          toFilePart(file),
+        ],
+      },
+    ],
+    output: Output.object({ schema: extractedMenuSchema }),
+    // One page's menu is small; this cap is just a safety ceiling.
+    maxOutputTokens: 8000,
+    abortSignal: signal ?? AbortSignal.timeout(120_000),
+  });
+  return output;
+}
+
+/**
+ * Extract a structured menu from uploaded files. Throws on configuration or
+ * model failure — callers (the onboarding action, the future assistant tool)
+ * decide how to surface it.
+ *
+ * One model call PER FILE, run in parallel, then merged. A single call holding
+ * many images nondeterministically ignores the later pages — observed ~40% of
+ * 6-photo runs collapsing to just the first 4 pages, with finishReason "stop"
+ * and output well under the token cap (so attention degradation, not
+ * truncation). Per-file extraction guarantees every page is read. Token cost is
+ * roughly unchanged: the images dominate and are each sent once either way;
+ * only the small system prompt repeats.
+ */
 export async function extractMenu(
   files: MenuFileInput[],
   opts?: { signal?: AbortSignal },
@@ -91,40 +149,38 @@ export async function extractMenu(
   }
 
   const normalized = await Promise.all(files.map(normalizeForModel));
-  const fileParts = normalized.map((f) =>
-    f.mediaType === "application/pdf"
-      ? {
-          type: "file" as const,
-          mediaType: f.mediaType,
-          data: f.bytes,
-          filename: f.filename,
-        }
-      : { type: "image" as const, image: f.bytes },
+  const perPage = await Promise.all(
+    normalized.map((f) => extractOneFile(model, f, opts?.signal)),
   );
 
-  const { output } = await generateText({
-    model,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text" as const,
-            text: "Read this menu and return its sections and items.",
-          },
-          ...fileParts,
-        ],
-      },
-    ],
-    output: Output.object({ schema: extractedMenuSchema }),
-    // A big menu across many photos can be long; give the structured output
-    // generous headroom so a large item list isn't truncated.
-    maxOutputTokens: 16000,
-    // 120s ceiling — vision over up to 20 images is slow; still under Vercel's
-    // 300s function limit.
-    abortSignal: opts?.signal ?? AbortSignal.timeout(120_000),
-  });
+  // Merge pages into one menu. A section split across two photos (same heading
+  // repeated) collapses to a single entry. Items are deduped by name within a
+  // section, because consecutive photos often overlap at the boundary and show
+  // the same item twice — the single-call path deduped for free; we must here.
+  const order: string[] = [];
+  const byName = new Map<string, ExtractedMenuSection>();
+  const seenItems = new Map<string, Set<string>>();
+  let currency: string | null = null;
+  for (const page of perPage) {
+    if (!currency && page.currency) currency = page.currency;
+    for (const section of page.sections) {
+      const key = section.name.trim().toLowerCase();
+      let existing = byName.get(key);
+      if (!existing) {
+        existing = { name: section.name, items: [] };
+        byName.set(key, existing);
+        seenItems.set(key, new Set());
+        order.push(key);
+      }
+      const seen = seenItems.get(key)!;
+      for (const item of section.items) {
+        const itemKey = item.name.trim().toLowerCase();
+        if (itemKey && seen.has(itemKey)) continue;
+        if (itemKey) seen.add(itemKey);
+        existing.items.push(item);
+      }
+    }
+  }
 
-  return output;
+  return { currency, sections: order.map((k) => byName.get(k)!) };
 }
