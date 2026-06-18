@@ -407,12 +407,12 @@ export function OnboardingWizard() {
     goNext();
   };
 
-  const addMenuFiles = (incoming: FileList | null) => {
-    if (!incoming || incoming.length === 0) return;
+  const addMenuFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return;
     setError(null);
     setMenuFiles((prev) => {
       const next = [...prev];
-      for (const file of Array.from(incoming)) {
+      for (const file of incoming) {
         if (next.length >= 8) {
           setError(wizardCopy.menuUpload.tooMany);
           break;
@@ -864,12 +864,20 @@ export function OnboardingWizard() {
         <input
           ref={menuInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf"
+          // image/* is the most reliable on iOS (offers Photo Library + Camera
+          // and auto-transcodes HEIC → JPEG); PDFs come via Files.
+          accept="image/*,application/pdf"
           multiple
           className="sr-only"
           onChange={(e) => {
-            addMenuFiles(e.target.files);
+            // Snapshot to a stable array BEFORE resetting the input. iOS Safari
+            // empties the live FileList when value is cleared, which would leave
+            // nothing for React's deferred setMenuFiles to read (no chip added,
+            // hence "the photo won't upload"). Desktop Chrome happens to survive
+            // it; iOS doesn't.
+            const picked = e.target.files ? Array.from(e.target.files) : [];
             e.target.value = "";
+            addMenuFiles(picked);
           }}
         />
         <div className="mt-6 flex flex-col gap-2">
