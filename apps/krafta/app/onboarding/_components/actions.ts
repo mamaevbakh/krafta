@@ -116,6 +116,10 @@ const wizardItemSchema = z.object({
     .min(1, "Each item needs a name.")
     .max(80, "An item name is too long — keep it under 80 characters."),
   priceCents: z.number().int().min(0).max(1_000_000_000),
+  /** Description from AI menu extraction; null/absent otherwise. Clamped to
+   *  500 chars client-side; the 1000 cap here is a safety net so a verbose
+   *  extraction can never block shop creation. */
+  description: z.string().max(1000).nullable().optional(),
   /** slug of the suggestion this came from; null = merchant-typed */
   suggestionSlug: z.string().max(80).nullable(),
   /** true when name AND price still match the suggestion (keeps template
@@ -312,7 +316,11 @@ export async function createShopFromWizard(
             name: itemLoc ? itemLoc.canonical.name : item.name,
             slug: uniqueSlug(item.suggestionSlug ?? item.name, `item-${sIdx + 1}-${iIdx + 1}`),
             position: iIdx,
-            description: itemLoc ? itemLoc.canonical.description : null,
+            // Template items take the localized template description; custom /
+            // AI-extracted items carry the description the merchant uploaded.
+            description: itemLoc
+              ? itemLoc.canonical.description
+              : item.description?.trim() || null,
             seeded: untouched,
             variations: untouched
               ? suggested!.variations

@@ -67,6 +67,9 @@ type ItemDraft = {
   name: string;
   /** Display value in sums (price_cents / 100), kept as string while editing. */
   priceSum: string;
+  /** Description from AI menu extraction (menu's original language). Absent for
+   *  manually-added / suggestion items. Carried through to the created catalog. */
+  description?: string | null;
   checked: boolean;
   suggestionSlug: string | null;
   suggested: { name: string; priceCents: number } | null;
@@ -154,6 +157,7 @@ function sectionsFromExtraction(menu: ExtractedMenu): SectionDraft[] {
           key: `ai-i-${aiKeySeq++}`,
           name: i.name.trim(),
           priceSum: i.price != null && i.price > 0 ? String(Math.round(i.price)) : "",
+          description: i.description?.trim().slice(0, 500) || null,
           checked: true,
           suggestionSlug: null,
           suggested: null,
@@ -491,6 +495,7 @@ export function OnboardingWizard() {
             .map((i) => ({
               name: i.name.trim(),
               priceCents: parseSum(i.priceSum) * 100,
+              description: i.description?.trim() || null,
               suggestionSlug: i.suggestionSlug,
               untouched: Boolean(
                 i.suggested &&
@@ -1056,42 +1061,51 @@ export function OnboardingWizard() {
                   <div
                     key={i.key}
                     className={cn(
-                      "flex min-h-12 items-center gap-2 rounded-lg border bg-card px-3 py-2",
+                      "rounded-lg border bg-card",
                       !i.checked && "opacity-50",
                     )}
                   >
-                    <Checkbox
-                      checked={i.checked}
-                      onCheckedChange={() =>
-                        patchItem(section.key, i.key, { checked: !i.checked })
-                      }
-                      aria-label={fmt(wizardCopy.items.includeAria, { name: i.name })}
-                    />
-                    <Input
-                      value={i.name}
-                      onChange={(e) =>
-                        patchItem(section.key, i.key, { name: e.target.value })
-                      }
-                      maxLength={80}
-                      aria-label={wizardCopy.items.nameAria}
-                      className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
-                    />
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Input
-                        value={formatSum(i.priceSum)}
-                        onChange={(e) =>
-                          patchItem(section.key, i.key, {
-                            priceSum: e.target.value.replace(/[^\d]/g, ""),
-                          })
+                    <div className="flex min-h-12 items-center gap-2 px-3 py-2">
+                      <Checkbox
+                        checked={i.checked}
+                        onCheckedChange={() =>
+                          patchItem(section.key, i.key, { checked: !i.checked })
                         }
-                        inputMode="numeric"
-                        aria-label={wizardCopy.items.priceAria}
-                        className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
+                        aria-label={fmt(wizardCopy.items.includeAria, {
+                          name: i.name,
+                        })}
                       />
-                      <span className="text-xs text-muted-foreground">
-                        {wizardCopy.items.currencySuffix}
-                      </span>
+                      <Input
+                        value={i.name}
+                        onChange={(e) =>
+                          patchItem(section.key, i.key, { name: e.target.value })
+                        }
+                        maxLength={80}
+                        aria-label={wizardCopy.items.nameAria}
+                        className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
+                      />
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Input
+                          value={formatSum(i.priceSum)}
+                          onChange={(e) =>
+                            patchItem(section.key, i.key, {
+                              priceSum: e.target.value.replace(/[^\d]/g, ""),
+                            })
+                          }
+                          inputMode="numeric"
+                          aria-label={wizardCopy.items.priceAria}
+                          className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {wizardCopy.items.currencySuffix}
+                        </span>
+                      </div>
                     </div>
+                    {i.description ? (
+                      <p className="px-3 pb-2 pl-9 text-xs leading-snug text-muted-foreground">
+                        {i.description}
+                      </p>
+                    ) : null}
                   </div>
                 ))}
                 <AddRow
