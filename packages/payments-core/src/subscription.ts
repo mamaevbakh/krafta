@@ -1080,11 +1080,12 @@ export async function finalizeInitialPayment(
     .maybeSingle();
   if (invoiceErr) throw invoiceErr;
 
-  const invoiceId = invoiceIdFromMetadata ?? invoice?.id;
-  const subscriptionId = subscriptionIdFromMetadata ?? invoice?.subscription_id;
-  if (!invoiceId || !subscriptionId) {
-    throw new Error("subscription_or_invoice_missing_for_payment_intent");
-  }
+  const invoiceId = invoiceIdFromMetadata ?? invoice?.id ?? null;
+  const subscriptionId = subscriptionIdFromMetadata ?? invoice?.subscription_id ?? null;
+  // A subscription charge carries both an invoice and a subscription; a one-off
+  // payment-link / hosted-checkout charge carries neither. A successful charge
+  // must finalize the intent in BOTH cases — we must never leave the intent
+  // 'processing' (and surface an error) after the money has actually moved.
 
   // Idempotency: if this intent was already finalized (e.g. a synchronous inline
   // apply succeeded and a late provider webhook arrives for the same charge), do
@@ -1141,6 +1142,20 @@ export async function finalizeInitialPayment(
     .eq("id", intent.id);
   if (intentUpdateErr) throw intentUpdateErr;
 
+  const { error: checkoutUpdateErr } = await supabase
+    .schema("payments")
+    .from("checkout_sessions")
+    .update({ status: "completed" })
+    .eq("payment_intent_id", intent.id);
+  if (checkoutUpdateErr) throw checkoutUpdateErr;
+
+  // One-off / payment-link charge: there is no subscription or invoice to
+  // settle. The intent + checkout are finalized and the charge is recorded — we
+  // are done (and crucially we did NOT throw after the money moved).
+  if (!invoiceId || !subscriptionId) {
+    return { subscriptionId: null, invoiceId: null, paymentIntentId: intent.id };
+  }
+
   const { error: invoiceUpdateErr } = await supabase
     .schema("payments")
     .from("invoices")
@@ -1152,13 +1167,6 @@ export async function finalizeInitialPayment(
     })
     .eq("id", invoiceId);
   if (invoiceUpdateErr) throw invoiceUpdateErr;
-
-  const { error: checkoutUpdateErr } = await supabase
-    .schema("payments")
-    .from("checkout_sessions")
-    .update({ status: "completed" })
-    .eq("payment_intent_id", intent.id);
-  if (checkoutUpdateErr) throw checkoutUpdateErr;
 
   const { data: subscription, error: subscriptionErr } = await supabase
     .schema("payments")

@@ -86,4 +86,34 @@ describe("finalizeInitialPayment idempotency (double-finalize guard)", () => {
     expect(mutations).toContain("update:subscriptions");
     expect(mutations).toContain("insert:subscription_events");
   });
+
+  it("finalizes a one-off charge (no subscription/invoice) instead of throwing", async () => {
+    // A bare payment-link / hosted-checkout intent has no invoice or subscription.
+    // A successful charge must still mark the intent succeeded + checkout complete
+    // — and must NOT throw (which previously left the intent 'processing' and showed
+    // an error to a customer who had already been charged).
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        payment_intents: { id: "pi3", status: "processing", metadata: {} },
+        // no invoices row, no subscriptions row
+        payment_attempts: { id: "att3", org_provider_account_id: "opa3" },
+      },
+      mutations,
+    );
+
+    const result = await finalizeInitialPayment(supa, {
+      paymentIntentId: "pi3",
+      providerId: "atmos",
+      providerPaymentId: "254179",
+      attemptId: "att3",
+    });
+
+    expect(result).toEqual({ subscriptionId: null, invoiceId: null, paymentIntentId: "pi3" });
+    expect(mutations).toContain("update:payment_intents"); // intent → succeeded
+    expect(mutations).toContain("update:checkout_sessions"); // checkout → completed
+    expect(mutations).not.toContain("update:invoices");
+    expect(mutations).not.toContain("update:subscriptions");
+    expect(mutations).not.toContain("insert:subscription_events");
+  });
 });
