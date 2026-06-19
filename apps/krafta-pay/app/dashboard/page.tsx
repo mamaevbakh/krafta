@@ -5,7 +5,10 @@ import { CreditCard, KeyRound, Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { getCurrentUserMemberships } from "@/lib/org-memberships";
+import { getOrgProviderStatus } from "@/lib/provider-status";
+import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createHostedCheckoutAction } from "@/app/dashboard/actions";
+import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-first";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +60,11 @@ export default async function DashboardPage({
   const memberships = await getCurrentUserMemberships();
   const activeOrgId = sp.orgId || memberships[0]?.orgId || "";
   const activeOrg = memberships.find((m) => m.orgId === activeOrgId) ?? memberships[0] ?? null;
+
+  const environment = process.env.PAY_ENV ?? "live";
+  const providerStatus = activeOrgId
+    ? await getOrgProviderStatus(createAdminSupabase(), activeOrgId, environment)
+    : { hasActive: false, providers: [], environment };
 
   return (
     <div className="space-y-10">
@@ -129,6 +137,12 @@ export default async function DashboardPage({
           <div className="mt-4 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
             No organization memberships found for this user.
           </div>
+        ) : !providerStatus.hasActive ? (
+          <ConnectProviderFirst
+            orgId={activeOrgId}
+            environment={environment}
+            what="create a payment link"
+          />
         ) : (
           <Card size="sm" className="mt-4 max-w-md">
             <CardContent>

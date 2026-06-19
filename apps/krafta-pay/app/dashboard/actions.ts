@@ -4,9 +4,25 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
-import { createCheckoutSession } from "@krafta/payments-core";
+import { createCheckoutSession, createSubscriptionCheckout } from "@krafta/payments-core";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 import { getUserSafely } from "@krafta/supabase/auth";
+
+async function requireMembership(orgId: string) {
+  const supabase = await createClient();
+  const { user, authError } = await getUserSafely(supabase);
+  if (authError || !user) {
+    const origin = getRequestOrigin(await headers());
+    redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
+  }
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return { user, membership };
+}
 
 export async function createHostedCheckoutAction(formData: FormData) {
   const orgId = String(formData.get("orgId") ?? "").trim();
@@ -99,5 +115,47 @@ export async function createHostedCheckoutAction(formData: FormData) {
     `/dashboard?publicToken=${encodeURIComponent(result.publicToken)}&payUrl=${encodeURIComponent(
       result.payUrl,
     )}`,
+  );
+}
+
+export async function createSubscriptionCheckoutAction(formData: FormData) {
+  const orgId = String(formData.get("orgId") ?? "").trim();
+  const planId = String(formData.get("planId") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+
+  const base = `/dashboard/subscriptions${orgId ? `?orgId=${encodeURIComponent(orgId)}` : ""}`;
+  const failWith = (msg: string) =>
+    `${base}${base.includes("?") ? "&" : "?"}subError=${encodeURIComponent(msg)}`;
+
+  if (!planId) redirect(failWith("Select a plan"));
+
+  const payBaseUrl = process.env.PAY_BASE_URL;
+  if (!payBaseUrl) redirect(failWith("PAY_BASE_URL is not set"));
+
+  const { membership } = await requireMembership(orgId);
+  if (!membership) redirect(failWith("You do not have access to this org"));
+
+  const admin = createAdminSupabase();
+  let result: Awaited<ReturnType<typeof createSubscriptionCheckout>>;
+  try {
+    result = await createSubscriptionCheckout(admin, {
+      merchantOrgId: orgId,
+      // Dashboard-created subscriptions identify the customer by email; the
+      // customer record is owned by the merchant org (no external customer org).
+      customerOrgId: orgId,
+      planId,
+      customer: email ? { email } : undefined,
+      payBaseUrl,
+      successUrl: "https://pay.krafta.uz/pay/success",
+      cancelUrl: "https://pay.krafta.uz/pay/cancel",
+    });
+  } catch (error) {
+    redirect(failWith(error instanceof Error ? error.message : "subscription_create_failed"));
+  }
+
+  redirect(
+    `${base}${base.includes("?") ? "&" : "?"}subPayUrl=${encodeURIComponent(
+      result.payUrl,
+    )}&subToken=${encodeURIComponent(result.publicToken)}`,
   );
 }
