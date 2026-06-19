@@ -113,8 +113,11 @@ export function CheckoutStatusWatcher({
 
   // Pre-action there is nothing to report. The realtime + polling effects above
   // keep running regardless, so progress appears the moment a payment starts —
-  // no premature "Awaiting confirmation" card competing with the action.
-  if (!error && (intentStatus === "" || intentStatus === "open" || intentStatus === "requires_action")) {
+  // no premature spinner / raw "requires payment method…" competing with the
+  // card form. `requires_payment_method` is the INITIAL status of a fresh link
+  // (and persists through card + OTP entry until apply flips it to processing).
+  const preActionStatuses = ["", "open", "requires_action", "requires_payment_method"];
+  if (!error && preActionStatuses.includes(intentStatus)) {
     return null;
   }
 
