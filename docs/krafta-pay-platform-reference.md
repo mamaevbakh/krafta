@@ -109,6 +109,34 @@ The Uzum screen may show **0.00 UZS** during binding. This is expected for card 
 - Merchant-configurable dunning policy and final action
 - Expanded renewal run reporting in dashboard UI
 
+## Stuck-payment reconciliation (Atmos)
+
+Atmos inline charges settle **synchronously**: the apply route charges at Atmos and then writes the outcome locally. If a local write (or network blip) fails **after** the charge settled, the `payment_intent` is left `status = 'processing'` even though the money moved — the customer sees a spinner/error for a charge that actually succeeded.
+
+A deferred reconciler recovers that state out-of-band.
+
+### Implemented
+
+- Reconciler core lives in `@krafta/payments-core` (`reconcileProcessingAtmosIntents`, `reconcileAtmosPaymentIntent`).
+- It finds Atmos `payment_intents` stuck in `processing` older than **~2 minutes** (the settle window before stepping in), resolves the attempt's Atmos transaction id (`payment_attempts.provider_payment_id`, falling back to `raw_init_response.providerRefs.transactionId`), and calls Atmos `/merchant/pay/get` (`atmosGet`).
+  - `succeeded` → replays the **same finalize path** as the apply route (`finalizeInitialPayment`), which settles both subscription invoices and one-off / payment-link intents and is idempotent if already finalized.
+  - `failed` → `markPaymentFailed` (subscription dunning) or `markStandaloneCheckoutFailed` (one-off), depending on the intent kind.
+  - No resolvable transaction id → **skipped and logged for manual review**; it never auto-fails an intent it cannot prove, so a real charge is never hidden.
+- On a resolved intent it broadcasts the same realtime checkout update the apply route uses, so a waiting hosted page redirects promptly.
+
+### Cron endpoint and cadence
+
+- `GET|POST /api/internal/atmos/reconcile/cron` — Vercel Cron, **every 5 minutes** (`*/5 * * * *`, in `apps/krafta-pay/vercel.json`). Tighter than the hourly renewals cron because money has already moved and a customer is waiting on the result page.
+- Auth: `Authorization: Bearer <secret>`, resolved from `KRAFTA_PAY_ATMOS_RECONCILE_CRON_SECRET` → `KRAFTA_PAY_RENEWALS_CRON_SECRET` → `KRAFTA_PAY_CRON_SECRET` → `CRON_SECRET`.
+- Manual recovery of a single intent (skips the age filter):
+  - `GET /api/internal/atmos/reconcile/cron?public_token=<token>`
+  - `GET /api/internal/atmos/reconcile/cron?intent_id=<uuid>`
+  - Optional sweep tuning: `?older_than_ms=<ms>&limit=<n>`.
+
+### Current gaps (expected)
+
+- Renewal-path stalls where the charge created an Atmos transaction but the post-charge attempt write blipped (transaction id never persisted) are unrecoverable from our records and surface as `skipped_no_transaction_id` for manual review.
+
 ## Hosted customer portal (Stripe-like pattern, current)
 
 Krafta Pay now supports a hosted customer portal model similar to Stripe Customer Portal:
@@ -786,12 +814,18 @@ Current `data` fields:
 
 ## `type=cron`
 
-Renewal scheduler execution logs.
+Renewal scheduler and reconciler execution logs.
 
 Current events (implemented):
 
 - `renewals_cron.run`
 - `renewals_cron.error`
+- `atmos_reconcile_cron.run` — one entry per reconcile sweep, with `result.{scanned,succeeded,failed,stillProcessing,skipped,errors}`
+- `atmos_reconcile_cron.error` — route-level failure (bad auth, unexpected throw)
+- `atmos_reconcile.reconciled_succeeded` — a stuck intent confirmed succeeded at Atmos and finalized (carries `transactionId`)
+- `atmos_reconcile.reconciled_failed` — a stuck intent confirmed failed at Atmos and marked failed
+- `atmos_reconcile.skipped_no_transaction_id` — no resolvable Atmos transaction id; left for manual review (never auto-failed)
+- `atmos_reconcile.lookup_error` — Atmos `/merchant/pay/get` threw for that intent
 
 Additional useful future events:
 

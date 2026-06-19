@@ -4,6 +4,10 @@
     {
       "path": "/api/internal/renewals/cron",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/internal/atmos/reconcile/cron",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
