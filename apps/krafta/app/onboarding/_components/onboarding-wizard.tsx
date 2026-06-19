@@ -23,6 +23,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   ChevronRight,
   FileText,
@@ -42,7 +43,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LocalePicker } from "@/components/locales/locale-picker";
+import { CurrencyPicker } from "@/components/locales/currency-picker";
 import { getLocaleDefinition } from "@/lib/locales/registry";
+import { getCurrencyDefaults } from "@/lib/locale/currency-defaults";
+import { formatPriceCents } from "@/lib/catalogs/pricing";
+import {
+  normalizeCurrencySettings,
+  type CurrencySettings,
+  type CurrencyLabelPosition,
+  type ThousandSeparator,
+} from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
 import {
@@ -103,6 +113,7 @@ type MenuMethod = "manual" | "upload";
 type Step =
   | { kind: "type" }
   | { kind: "name" }
+  | { kind: "currency" }
   | { kind: "logo" }
   | { kind: "menu_method" }
   | { kind: "menu_upload" }
@@ -119,11 +130,15 @@ function buildSteps(
   sections: SectionDraft[],
   modes: VenueMode[],
   menuMethod: MenuMethod | null,
+  browseOnly: boolean,
 ): Step[] {
   const hasItems = sections.some((s) => s.checked);
   return [
     { kind: "type" },
     { kind: "name" },
+    // Currency is foundational — pick it early so the menu's prices render in
+    // the merchant's own currency as they build it.
+    { kind: "currency" },
     // Optional logo — sits with the shop's identity, right after its name.
     { kind: "logo" },
     // One decision: build the menu by hand, or upload an existing one.
@@ -135,9 +150,12 @@ function buildSteps(
     // One items screen for the whole menu — all checked sections stacked.
     ...(hasItems ? [{ kind: "items" } as Step] : []),
     { kind: "modes" },
+    // No tables without dine-in (a browse-only catalog clears modes, so this
+    // is skipped too).
     ...(modes.includes("dine_in") ? [{ kind: "tables" } as Step] : []),
     { kind: "languages" },
-    { kind: "alerts" },
+    // A browse-only catalog takes no orders — skip the order-alerts step.
+    ...(browseOnly ? [] : [{ kind: "alerts" } as Step]),
     { kind: "phone" },
     { kind: "city" },
   ];
@@ -258,6 +276,10 @@ type WizardDraft = {
   name: string;
   sections: SectionDraft[];
   modes: VenueMode[];
+  /** Browse-only ("just a catalog") — no order modes, cart disabled. */
+  browseOnly?: boolean;
+  /** Per-shop currency + formatting; absent in pre-currency drafts → UZS. */
+  currency?: CurrencySettings;
   tableCount: number;
   locales: { code: string; isDefault: boolean }[];
   /** Order-alerts preference; absent in pre-PR3 drafts → "telegram". */
@@ -312,7 +334,15 @@ export function OnboardingWizard() {
   const [extracting, setExtracting] = React.useState(false);
   const menuInputRef = React.useRef<HTMLInputElement>(null);
   const [modes, setModes] = React.useState<VenueMode[]>(["pickup"]);
+  // Browse-only ("just a catalog") — mutually exclusive with the order modes.
+  const [browseOnly, setBrowseOnly] = React.useState(false);
   const [tableCount, setTableCount] = React.useState(8);
+  // Per-shop currency + formatting. Defaults to UZS (Krafta's home market);
+  // the currency step lets a merchant switch to any currency for another
+  // country and fine-tune the format.
+  const [currency, setCurrency] = React.useState<CurrencySettings>(() =>
+    getCurrencyDefaults("UZS"),
+  );
   const [locales, setLocales] = React.useState<
     { code: string; isDefault: boolean }[]
   >([
@@ -348,6 +378,10 @@ export function OnboardingWizard() {
           if (typeof d.name === "string") setName(d.name);
           if (Array.isArray(d.sections)) setSections(d.sections);
           if (Array.isArray(d.modes)) setModes(d.modes);
+          if (typeof d.browseOnly === "boolean") setBrowseOnly(d.browseOnly);
+          if (d.currency && typeof d.currency === "object") {
+            setCurrency(normalizeCurrencySettings(d.currency));
+          }
           if (typeof d.tableCount === "number") setTableCount(d.tableCount);
           if (Array.isArray(d.locales) && d.locales.length > 0) setLocales(d.locales);
           if (typeof d.phone === "string") setPhone(d.phone);
@@ -380,6 +414,8 @@ export function OnboardingWizard() {
         name,
         sections,
         modes,
+        browseOnly,
+        currency,
         tableCount,
         locales,
         alertsIntent,
@@ -392,9 +428,9 @@ export function OnboardingWizard() {
     } catch {
       // Storage full/blocked — persistence is best-effort.
     }
-  }, [hydrated, phase, cursor, vertical, name, sections, modes, tableCount, locales, alertsIntent, menuMethod, phone, city, customCity]);
+  }, [hydrated, phase, cursor, vertical, name, sections, modes, browseOnly, currency, tableCount, locales, alertsIntent, menuMethod, phone, city, customCity]);
 
-  const steps = buildSteps(sections, modes, menuMethod);
+  const steps = buildSteps(sections, modes, menuMethod, browseOnly);
   const safeCursor = Math.min(Math.max(cursor, 0), steps.length - 1);
   const current = steps[safeCursor];
   const progressPct = Math.round(((safeCursor + 1) / steps.length) * 100);
@@ -577,8 +613,13 @@ export function OnboardingWizard() {
               ),
             })),
         })),
-      modes,
-      tableCount: modes.includes("dine_in") ? tableCount : 0,
+      // Browse-only catalogs take no orders, but the venue still needs a valid
+      // mode — seed pickup so flipping the cart on later (Studio) just works.
+      // The browseOnly flag is what disables the cart server-side.
+      modes: browseOnly ? ["pickup"] : modes,
+      browseOnly,
+      currency,
+      tableCount: !browseOnly && modes.includes("dine_in") ? tableCount : 0,
       locales,
       phone: phone.trim(),
       city: opts.includeCity ? city.trim() : "",
@@ -1170,7 +1211,7 @@ export function OnboardingWizard() {
                           className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
                         />
                         <span className="text-xs text-muted-foreground">
-                          {wizardCopy.items.currencySuffix}
+                          {currency.label}
                         </span>
                       </div>
                     </div>
@@ -1202,6 +1243,7 @@ export function OnboardingWizard() {
                 <AddRow
                   placeholder={wizardCopy.items.addPlaceholder}
                   withPrice
+                  currencySuffix={currency.label}
                   onAddWithPrice={(n, p) => addItem(section.key, n, p)}
                 />
               </div>
@@ -1213,13 +1255,90 @@ export function OnboardingWizard() {
     );
   }
 
+  // ── currency ──────────────────────────────────────────────────────────────
+  if (current.kind === "currency") {
+    const setField = (patch: Partial<CurrencySettings>) =>
+      setCurrency((prev) => ({ ...prev, ...patch }));
+    return (
+      <section key="currency">
+        {header(wizardCopy.currency.title, wizardCopy.currency.subtitle)}
+        <div className="mt-6 flex flex-col gap-3">
+          <CurrencyPicker
+            value={currency.defaultCurrency}
+            onChange={(code) => setCurrency(getCurrencyDefaults(code))}
+          />
+          <div className="rounded-lg border bg-card px-4 py-4 text-center">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              {wizardCopy.currency.sampleLabel}
+            </div>
+            <div className="mt-2 font-mono text-2xl font-semibold tracking-tight">
+              {formatPriceCents(123456700, currency)}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="mb-1.5 text-xs text-muted-foreground">
+                {wizardCopy.currency.symbol}
+              </div>
+              <Input
+                value={currency.label}
+                onChange={(e) => setField({ label: e.target.value.slice(0, 12) })}
+                aria-label={wizardCopy.currency.symbol}
+                className="h-9"
+              />
+            </div>
+            <CurrencyToggle
+              label={wizardCopy.currency.position}
+              value={currency.labelPosition}
+              options={[
+                { v: "prefix", l: wizardCopy.currency.before },
+                { v: "suffix", l: wizardCopy.currency.after },
+              ]}
+              onChange={(v) => setField({ labelPosition: v as CurrencyLabelPosition })}
+            />
+            <CurrencyToggle
+              label={wizardCopy.currency.decimals}
+              value={currency.showDecimals ? "on" : "off"}
+              options={[
+                { v: "on", l: wizardCopy.currency.on },
+                { v: "off", l: wizardCopy.currency.off },
+              ]}
+              onChange={(v) => setField({ showDecimals: v === "on" })}
+            />
+            <CurrencyToggle
+              label={wizardCopy.currency.thousands}
+              value={currency.thousandSeparator}
+              options={[
+                { v: " ", l: wizardCopy.currency.space },
+                { v: ",", l: "," },
+                { v: ".", l: "." },
+              ]}
+              onChange={(v) => setField({ thousandSeparator: v as ThousandSeparator })}
+            />
+          </div>
+        </div>
+        {continueButton(goNext)}
+      </section>
+    );
+  }
+
   // ── modes ─────────────────────────────────────────────────────────────────
   if (current.kind === "modes") {
-    const toggleMode = (m: VenueMode) =>
+    // Picking an order mode exits browse-only; choosing browse-only clears the
+    // order modes. The two are mutually exclusive: a shop either takes orders
+    // (≥1 mode) or is a browse-only catalog (cart disabled).
+    const toggleMode = (m: VenueMode) => {
+      setBrowseOnly(false);
       setModes((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
+    };
+    const chooseBrowseOnly = () => {
+      setBrowseOnly(true);
+      setModes([]);
+    };
     const availableModes = vertical
       ? VERTICALS[vertical].allowedModes
       : (Object.keys(wizardCopy.modes.labels) as VenueMode[]);
+    const canContinue = browseOnly || modes.length > 0;
     return (
       <section key="modes">
         {header(wizardCopy.modes.title, wizardCopy.modes.subtitle)}
@@ -1227,9 +1346,15 @@ export function OnboardingWizard() {
           {availableModes.map((m) => (
             <label
               key={m}
-              className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-2.5 transition-colors hover:bg-accent"
+              className={cn(
+                "flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-2.5 transition-colors hover:bg-accent",
+                browseOnly && "opacity-50",
+              )}
             >
-              <Checkbox checked={modes.includes(m)} onCheckedChange={() => toggleMode(m)} />
+              <Checkbox
+                checked={!browseOnly && modes.includes(m)}
+                onCheckedChange={() => toggleMode(m)}
+              />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="text-sm font-medium">{wizardCopy.modes.labels[m].label}</span>
                 <span className="truncate text-xs text-muted-foreground">
@@ -1239,8 +1364,44 @@ export function OnboardingWizard() {
             </label>
           ))}
         </div>
-        {continueButton(goNext, wizardCopy.common.continue, modes.length === 0)}
-        {modes.length === 0 ? (
+
+        <div className="my-4 flex items-center gap-3">
+          <span className="h-px flex-1 bg-border" />
+          <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            {wizardCopy.modes.or}
+          </span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <button
+          type="button"
+          onClick={chooseBrowseOnly}
+          className={cn(
+            "flex min-h-12 w-full items-center gap-3 rounded-lg border bg-card px-4 py-2.5 text-left transition-colors hover:bg-accent",
+            browseOnly && "border-foreground/40 bg-accent",
+          )}
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <BookOpen className="size-4" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-sm font-medium">{wizardCopy.modes.browseOnly.label}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {wizardCopy.modes.browseOnly.hint}
+            </span>
+          </span>
+          <span
+            className={cn(
+              "flex size-[18px] shrink-0 items-center justify-center rounded-full border",
+              browseOnly ? "border-primary" : "border-muted-foreground/40",
+            )}
+          >
+            {browseOnly ? <span className="size-2.5 rounded-full bg-primary" /> : null}
+          </span>
+        </button>
+
+        {continueButton(goNext, wizardCopy.common.continue, !canContinue)}
+        {!canContinue ? (
           <p className="mt-2 text-center text-xs text-destructive">
             {wizardCopy.modes.atLeastOne}
           </p>
@@ -1598,14 +1759,53 @@ function BuildingScreen({ stages }: { stages: readonly string[] }) {
 
 // ── shared add-row ───────────────────────────────────────────────────────────
 
+// Compact segmented control for the currency styler (position / decimals /
+// thousands). Onboarding's lighter-weight twin of the Studio's SegmentedField.
+function CurrencyToggle({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { v: string; l: string }[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 text-xs text-muted-foreground">{label}</div>
+      <div className="flex overflow-hidden rounded-md border">
+        {options.map((o) => (
+          <button
+            key={o.v}
+            type="button"
+            onClick={() => onChange(o.v)}
+            className={cn(
+              "flex-1 py-2 text-xs transition-colors",
+              value === o.v
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-accent",
+            )}
+          >
+            {o.l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AddRow({
   placeholder,
   withPrice = false,
+  currencySuffix = wizardCopy.items.currencySuffix,
   onAdd,
   onAddWithPrice,
 }: {
   placeholder: string;
   withPrice?: boolean;
+  currencySuffix?: string;
   onAdd?: (name: string) => void;
   onAddWithPrice?: (name: string, priceSum: string) => void;
 }) {
@@ -1671,9 +1871,7 @@ function AddRow({
             aria-label={wizardCopy.items.priceAria}
             className="h-8 w-24 text-right font-mono tabular-nums"
           />
-          <span className="text-xs text-muted-foreground">
-            {wizardCopy.items.currencySuffix}
-          </span>
+          <span className="text-xs text-muted-foreground">{currencySuffix}</span>
         </div>
       ) : null}
       <Button

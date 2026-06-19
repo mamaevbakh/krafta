@@ -190,6 +190,27 @@ const wizardPayloadSchema = z.object({
     .refine((ls) => ls.every((l) => getLocaleDefinition(l.code)), "One of the chosen languages isn't supported yet."),
   phone: z.string().trim().max(32, "That phone number looks too long."),
   city: z.string().trim().max(64, "That city name is too long."),
+  // Browse-only ("just a catalog") — created with the cart disabled.
+  browseOnly: z.boolean().optional(),
+  // Per-shop currency + formatting. Falls back to UZS if malformed so a bad
+  // value never blocks shop creation (same clamp-not-reject philosophy).
+  currency: z
+    .object({
+      defaultCurrency: z.string().min(1).max(8),
+      label: z.string().max(12),
+      thousandSeparator: z.enum([",", ".", " "]),
+      decimalSeparator: z.enum([".", ","]),
+      showDecimals: z.boolean(),
+      labelPosition: z.enum(["prefix", "suffix"]),
+    })
+    .catch({
+      defaultCurrency: "UZS",
+      label: "сум",
+      thousandSeparator: " ",
+      decimalSeparator: ",",
+      showDecimals: false,
+      labelPosition: "suffix",
+    }),
 });
 
 export type WizardPayload = z.input<typeof wizardPayloadSchema>;
@@ -204,15 +225,6 @@ export type CreateShopResult =
       orgId: string;
       catalogId: string;
     };
-
-const UZS_CURRENCY_SETTINGS = {
-  defaultCurrency: "UZS",
-  label: "сум",
-  labelPosition: "suffix",
-  thousandSeparator: " ",
-  decimalSeparator: ",",
-  showDecimals: false,
-};
 
 /** New shops inherit their starting look (settings_layout) from this demo
  *  catalog — the homepage "View Demo" shop — so every shop opens looking
@@ -415,7 +427,7 @@ export async function createShopFromWizard(
   const { error: completeError } = await supabase.rpc("complete_wizard", {
     p_catalog_id: shop.catalogId,
     p_vertical: input.vertical as ShopVertical,
-    p_currency: UZS_CURRENCY_SETTINGS,
+    p_currency: input.currency,
     // Seed the look from the demo shop (null → RPC leaves the catalog
     // default). settings_branding is intentionally not sent.
     ...(demoLayout ? { p_layout: demoLayout } : {}),
@@ -463,6 +475,30 @@ export async function createShopFromWizard(
     .is("logo_path", null);
   if (seedError) {
     console.error("[onboarding] storefront header seed failed", seedError);
+  }
+
+  // complete_wizard writes the catalog's settings_currency but not the venue's
+  // transactional currency — sync it so a non-UZS shop's order totals +
+  // payments match its storefront prices.
+  const { error: venueCurErr } = await supabase
+    .from("venues")
+    .update({ currency: input.currency.defaultCurrency })
+    .eq("catalog_id", shop.catalogId);
+  if (venueCurErr) {
+    console.error("[onboarding] venue currency sync failed", venueCurErr);
+  }
+
+  // Browse-only ("just a catalog"): turn the cart OFF. The wizard seeded a
+  // pickup mode so the venue is valid and going live later is one Studio toggle
+  // away, but the storefront stays browse-only (no cart) until then.
+  if (input.browseOnly) {
+    const { error: browseErr } = await supabase
+      .from("catalogs")
+      .update({ settings_behavior: { enableCart: false } })
+      .eq("id", shop.catalogId);
+    if (browseErr) {
+      console.error("[onboarding] browse-only flag failed", browseErr);
+    }
   }
 
   // No redirect: the wizard shows the reveal (phone-frame preview) first
