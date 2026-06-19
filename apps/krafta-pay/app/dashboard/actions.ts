@@ -140,9 +140,10 @@ export async function createSubscriptionCheckoutAction(formData: FormData) {
   try {
     result = await createSubscriptionCheckout(admin, {
       merchantOrgId: orgId,
-      // Dashboard-created subscriptions identify the customer by email; the
-      // customer record is owned by the merchant org (no external customer org).
-      customerOrgId: orgId,
+      // Dashboard-created subscriptions identify the customer by email — there's
+      // no external customer org, so this is null (email customers aren't deduped
+      // by org; the unique index treats NULL customer_org_id as distinct).
+      customerOrgId: null,
       planId,
       customer: email ? { email } : undefined,
       payBaseUrl,

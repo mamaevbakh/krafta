@@ -412,7 +412,11 @@ function buildDemoUzumCart(params: {
 
 export type CreateSubscriptionCheckoutInput = {
   merchantOrgId: string;
-  customerOrgId: string;
+  // The subscriber's org, for cross-org billing (e.g. Krafta billing a merchant
+  // org). null for generic email-identified customers (dashboard-created), which
+  // are NOT deduped by org — the (org_id, customer_org_id) unique index treats
+  // NULLs as distinct, so a merchant can have many email customers.
+  customerOrgId: string | null;
   planId: string;
   payBaseUrl: string;
   successUrl?: string | null;
@@ -527,7 +531,7 @@ export async function createSubscriptionCheckout(
   }
 
   let customerId: string | null = null;
-  if (input.customer?.customerUserRef) {
+  if (input.customerOrgId && input.customer?.customerUserRef) {
     const { data: existing, error: existingErr } = await supabase
       .schema("payments")
       .from("customers")
@@ -560,17 +564,21 @@ export async function createSubscriptionCheckout(
   }
   if (!customerId) throw new Error("customer_create_or_lookup_failed");
 
-  const resumedCheckout = await tryResumeExistingSubscriptionCheckout(supabase, {
-    merchantOrgId: input.merchantOrgId,
-    customerOrgId: input.customerOrgId,
-    customerId,
-    planId: plan.id,
-    payBaseUrl: input.payBaseUrl,
-    successUrl: input.successUrl ?? null,
-    cancelUrl: input.cancelUrl ?? null,
-    returnUrl: input.returnUrl ?? null,
-    metadata,
-  });
+  // Resume only applies to cross-org customers (matched by customer_org_id);
+  // email-identified customers (null org) always start a fresh checkout.
+  const resumedCheckout = input.customerOrgId
+    ? await tryResumeExistingSubscriptionCheckout(supabase, {
+        merchantOrgId: input.merchantOrgId,
+        customerOrgId: input.customerOrgId,
+        customerId,
+        planId: plan.id,
+        payBaseUrl: input.payBaseUrl,
+        successUrl: input.successUrl ?? null,
+        cancelUrl: input.cancelUrl ?? null,
+        returnUrl: input.returnUrl ?? null,
+        metadata,
+      })
+    : null;
   if (resumedCheckout) {
     return resumedCheckout;
   }
