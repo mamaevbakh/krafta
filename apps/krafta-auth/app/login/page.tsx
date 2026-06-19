@@ -6,6 +6,7 @@ import { BrandWordmark } from "@/components/brand-wordmark";
 import { LoginForm } from "@/components/login-form";
 import { normalizeNextPath, getRequestOrigin } from "@/lib/auth/redirect";
 import { createClient } from "@/lib/supabase/server";
+import { telegramOidcConfigured } from "@/lib/telegram/oidc-login";
 
 export default async function LoginPage({
   searchParams,
@@ -30,7 +31,7 @@ export default async function LoginPage({
         <Link href="/" className="flex items-center gap-2 self-center font-medium">
           <BrandWordmark className="text-3xl" />
         </Link>
-        <LoginForm next={next} />
+        <LoginForm next={next} telegramEnabled={telegramOidcConfigured()} />
       </div>
     </div>
   );
