@@ -1343,16 +1343,21 @@ export function OnboardingWizard() {
       <section key="modes">
         {header(wizardCopy.modes.title, wizardCopy.modes.subtitle)}
         <div className="mt-6 flex flex-col gap-2">
-          {availableModes.map((m) => (
+          {availableModes.map((m) => {
+            const checked = !browseOnly && modes.includes(m);
+            return (
             <label
               key={m}
               className={cn(
                 "flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-2.5 transition-colors hover:bg-accent",
-                browseOnly && "opacity-50",
+                // Checked order modes get a subtle highlight so the active
+                // choice reads at a glance. NOT dimmed when browse-only is on —
+                // they stay live so tapping one switches back to taking orders.
+                checked && "border-foreground/40 bg-accent",
               )}
             >
               <Checkbox
-                checked={!browseOnly && modes.includes(m)}
+                checked={checked}
                 onCheckedChange={() => toggleMode(m)}
               />
               <span className="flex min-w-0 flex-1 flex-col">
@@ -1362,7 +1367,8 @@ export function OnboardingWizard() {
                 </span>
               </span>
             </label>
-          ))}
+            );
+          })}
         </div>
 
         <div className="my-4 flex items-center gap-3">
