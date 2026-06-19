@@ -108,7 +108,7 @@ export default async function DashboardItemsPage({ params }: PageProps) {
         supabase
           .from("items")
           .select(
-            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, item_variations(id, item_id, catalog_id, name, price_cents, ordinal, is_default, is_sold_out, is_active)",
+            "id, catalog_id, category_id, product_type, name, slug, position, description, image_path, image_alt, metadata, is_active, created_at, updated_at, seeded_at, item_variations(id, item_id, catalog_id, name, price_cents, ordinal, is_default, is_sold_out, is_active)",
           )
           .eq("catalog_id", catalog.id)
           .eq("item_variations.is_active", true)
@@ -128,6 +128,7 @@ export default async function DashboardItemsPage({ params }: PageProps) {
 
     const itemsRaw = (itemsResponse.data ?? []) as Array<
       Omit<Item, "price_cents" | "variations"> & {
+        seeded_at: string | null;
         item_variations: Array<{
           id: string;
           item_id: string;
@@ -232,19 +233,23 @@ export default async function DashboardItemsPage({ params }: PageProps) {
     );
   }
 
+  // The activation checklist renders in the catalog LAYOUT (it follows the
+  // merchant across every dashboard page) — no page-level wiring here.
   return (
-    <LibraryRoot
-      catalogId={catalog.id}
-      catalogSlug={catalogSlug}
-      orgId={catalog.org_id}
-      categories={categories}
-      items={items}
-      locales={locales}
-      translations={translations}
-      media={media}
-      modifierLists={modifierLists}
-      itemModifierLists={itemModifierLists}
-      currencySettings={currencySettings}
-    />
+    <>
+      <LibraryRoot
+        catalogId={catalog.id}
+        catalogSlug={catalogSlug}
+        orgId={catalog.org_id}
+        categories={categories}
+        items={items}
+        locales={locales}
+        translations={translations}
+        media={media}
+        modifierLists={modifierLists}
+        itemModifierLists={itemModifierLists}
+        currencySettings={currencySettings}
+      />
+    </>
   );
 }

@@ -9,6 +9,8 @@ type Props = {
   subtotalCents: number;
   taxes: PublicTax[];
   tipCents?: number;
+  /** Flat delivery fee (customer pays); shown as an additive row. 0 = hidden. */
+  deliveryFeeCents?: number;
   currencySettings: CurrencySettings;
   /**
    * When `compact`, omits the leading "Subtotal" row — useful at the very
@@ -16,6 +18,12 @@ type Props = {
    * the line stack above. Defaults to `false`.
    */
   compact?: boolean;
+  /**
+   * When false, omits the bold "Total" row — for surfaces that render the
+   * total elsewhere (e.g. the checkout step's sticky footer) and only need
+   * the line-item breakdown here. Defaults to `true`.
+   */
+  showTotal?: boolean;
 };
 
 // Renders the subtotal -> fees -> tip -> total stack.
@@ -29,10 +37,17 @@ export function PricingBreakdown({
   subtotalCents,
   taxes,
   tipCents = 0,
+  deliveryFeeCents = 0,
   currencySettings,
   compact = false,
+  showTotal = true,
 }: Props) {
-  const pricing = computePricing({ subtotalCents, taxes, tipCents });
+  const pricing = computePricing({
+    subtotalCents,
+    taxes,
+    tipCents,
+    deliveryFeeCents,
+  });
 
   return (
     <div className="space-y-1.5 text-sm">
@@ -56,6 +71,13 @@ export function PricingBreakdown({
           muted
         />
       ))}
+      {deliveryFeeCents > 0 ? (
+        <Row
+          label="Delivery"
+          valueCents={deliveryFeeCents}
+          currencySettings={currencySettings}
+        />
+      ) : null}
       {tipCents > 0 ? (
         <Row
           label="Tip"
@@ -64,12 +86,14 @@ export function PricingBreakdown({
           muted
         />
       ) : null}
-      <div className="flex items-baseline justify-between pt-1">
-        <span className="text-sm text-muted-foreground">Total</span>
-        <span className="font-mono text-base font-semibold tabular-nums text-foreground">
-          {formatPriceCents(pricing.totalCents, currencySettings)}
-        </span>
-      </div>
+      {showTotal ? (
+        <div className="flex items-baseline justify-between pt-1">
+          <span className="text-sm text-muted-foreground">Total</span>
+          <span className="font-mono text-lg font-semibold tabular-nums text-foreground">
+            {formatPriceCents(pricing.totalCents, currencySettings)}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

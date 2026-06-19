@@ -7,6 +7,10 @@ import {
   computePricing,
   distributeProRata,
 } from "./pricing";
+import {
+  isWithinDeliveryZone,
+  normalizeDeliverySettings,
+} from "@/lib/catalogs/settings/delivery";
 
 export type DineInFields = {
   tableLabel: string;
@@ -21,7 +25,12 @@ export type PickupFields = {
 };
 
 export type DeliveryFields = {
-  address: string;                  // free-text for v1; structured later
+  address: string;                  // freeform " · "-joined; shown on receipts
+  latitude: number | null;          // picker coords — zone gate + courier dispatch
+  longitude: number | null;
+  district: string | null;
+  street: string | null;
+  building: string | null;
   recipientName: string;
   recipientPhone: string;
   scheduledFor: string | null;      // ISO timestamp; null = ASAP
@@ -96,14 +105,16 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // tax / payment writes, ordered by created_at so the "remainder goes to
   // last line" pro-rata pattern is deterministic.
   //
-  // We also pull catalog_variation_id + base_price_cents so the
-  // price-drift check below can compare the line's snapshot to the
-  // live catalog variation price without re-fetching.
+  // We also pull catalog_variation_id + base_price_cents and the line's
+  // modifier rows so the price-drift check below can isolate the
+  // variation-only portion of base_price_cents (which is stored as
+  // variation + Σ(modifier_delta × modifier_qty)) before comparing
+  // it against the live catalog variation price.
   const { data: lines, error: linesError } = await supabase
     .schema("commerce")
     .from("order_line_items")
     .select(
-      "id, total_price_cents, base_price_cents, catalog_variation_id, name",
+      "id, total_price_cents, base_price_cents, catalog_variation_id, name, modifiers:order_line_item_modifiers(base_price_cents_delta, quantity)",
     )
     .eq("order_id", order.id)
     .order("created_at", { ascending: true });
@@ -139,10 +150,21 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     for (const line of lines) {
       if (!line.catalog_variation_id) continue;
       const live = priceById.get(line.catalog_variation_id);
+      // base_price_cents on the line is stored as
+      //   variation.price_cents + Σ(modifier_delta × modifier_qty)
+      // (see lib/cart/upsert-cart-lines.ts → perUnitCents). To compare
+      // against the live variation price we have to peel the modifier
+      // sum off — otherwise every line with a priced modifier would
+      // false-fire drift on every place-order.
+      const modifierSum = (line.modifiers ?? []).reduce(
+        (sum, m) => sum + m.base_price_cents_delta * Number(m.quantity),
+        0,
+      );
+      const storedVariationCents = line.base_price_cents - modifierSum;
       // Missing live row (variation deleted) is also drift — the cart
       // can't be placed at a snapshot price for an item that no longer
       // exists in the catalog.
-      if (live === undefined || live !== line.base_price_cents) {
+      if (live === undefined || live !== storedVariationCents) {
         driftedNames.push(line.name);
       }
     }
@@ -273,6 +295,15 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     .single();
   if (fulfillmentError) throw new Error(fulfillmentError.message);
 
+  // KRA-44 foundation: promote the checkout phone onto the customer row so it
+  // becomes a durable identity handle (the cross-surface phone bridge keys off
+  // it). Captured per-mode below; written once after the fulfillment branch.
+  let customerPhone: string | null = null;
+  // Delivery fee charged to the customer (set in the delivery branch from the
+  // catalog's delivery config; 0 for other modes). Server-trusted — the client
+  // never supplies it.
+  let deliveryFeeCents = 0;
+
   if (input.mode === "dine_in") {
     if (!tableSessionId || !guestSessionId) {
       throw new Error("Dine-in fulfillment requires table + guest sessions.");
@@ -301,6 +332,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       normalizedPickupPhone = normalizeUzPhone(recipientPhone);
       if (!normalizedPickupPhone) throw new Error("phone_invalid");
     }
+    customerPhone = normalizedPickupPhone;
     const { error } = await supabase
       .schema("commerce")
       .from("fulfillment_pickup_details")
@@ -316,14 +348,58 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (error) throw new Error(error.message);
   } else {
     // delivery
-    const { address, recipientName, recipientPhone, scheduledFor, note } =
-      input.fields;
+    const {
+      address,
+      latitude,
+      longitude,
+      district,
+      street,
+      building,
+      recipientName,
+      recipientPhone,
+      scheduledFor,
+      note,
+    } = input.fields;
     if (!address.trim()) throw new Error("Delivery address is required.");
     if (!recipientName.trim()) throw new Error("Recipient name is required.");
     if (!recipientPhone.trim()) throw new Error("Recipient phone is required.");
     // Phone is required for delivery — courier needs to call.
     const normalizedDeliveryPhone = normalizeUzPhone(recipientPhone);
     if (!normalizedDeliveryPhone) throw new Error("phone_invalid");
+    customerPhone = normalizedDeliveryPhone;
+
+    // Re-read the catalog's delivery config server-side: re-enforce the zone
+    // (the client gate is bypassable) and charge the configured fee. The fee
+    // is NEVER taken from the client.
+    const { data: catalogRow } = await supabase
+      .from("catalogs")
+      .select("settings_delivery")
+      .eq("id", venue.catalog_id)
+      .maybeSingle();
+    const deliverySettings = normalizeDeliverySettings(
+      (catalogRow?.settings_delivery ?? {}) as Record<string, unknown>,
+    );
+
+    if (
+      deliverySettings.enabled &&
+      latitude != null &&
+      longitude != null &&
+      !isWithinDeliveryZone(deliverySettings, latitude, longitude)
+    ) {
+      throw new Error("out_of_zone");
+    }
+
+    // Enforce the delivery minimum server-side (the client gates it, but a
+    // direct API call could bypass the UI).
+    if (
+      deliverySettings.minOrderCents > 0 &&
+      lines.reduce((sum, line) => sum + line.total_price_cents, 0) <
+        deliverySettings.minOrderCents
+    ) {
+      throw new Error("below_min_order");
+    }
+
+    deliveryFeeCents = Math.max(0, Math.round(deliverySettings.feeCents));
 
     const { error } = await supabase
       .schema("commerce")
@@ -332,13 +408,38 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         fulfillment_id: fulfillment.id,
         recipient_name: recipientName.trim(),
         recipient_phone: normalizedDeliveryPhone,
-        address: { freeform: address.trim() },
+        // Snapshot the picker's coordinates + structured parts alongside the
+        // freeform string — needed for courier dispatch and a durable record.
+        address: {
+          freeform: address.trim(),
+          ...(latitude != null && longitude != null
+            ? { latitude, longitude }
+            : {}),
+          ...(district ? { district } : {}),
+          ...(street ? { street } : {}),
+          ...(building ? { building } : {}),
+        },
+        delivery_fee_cents: deliveryFeeCents,
         scheduled_for: scheduledFor,
         delivery_provider: "merchant",
         note: note?.trim() || null,
         placed_at: new Date().toISOString(),
       });
     if (error) throw new Error(error.message);
+  }
+
+  // Promote the checkout phone onto the customer (KRA-44 foundation). Only
+  // fills an empty phone — never clobbers a number the customer already has,
+  // so the order-for-a-friend case can't overwrite their own. Best-effort:
+  // the order is already placed, so a failed promotion must not fail checkout.
+  // The full (org, phone) dedup/merge lands with the identity-links epic.
+  if (customerPhone) {
+    await supabase
+      .schema("commerce")
+      .from("customers")
+      .update({ phone: customerPhone })
+      .eq("id", customerId)
+      .is("phone", null);
   }
 
   // ---- Taxes / service fees + payments (KRA-63) ---------------------------
@@ -377,13 +478,15 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     subtotalCents,
     taxes,
     tipCents,
+    deliveryFeeCents,
   });
 
   // Tip cap pre-check (KRA-77). The DB has a CHECK constraint enforcing
   // tip_cents * 2 <= amount_cents on order_payments — we surface the
   // failure as a clean error code the client maps to the localized
   // errors.tip_too_high copy, instead of letting a raw 23514 bubble.
-  const amountForTipCheck = subtotalCents + pricing.additiveFeesCents;
+  const amountForTipCheck =
+    subtotalCents + pricing.additiveFeesCents + pricing.deliveryFeeCents;
   if (tipCents * 2 > amountForTipCheck) {
     throw new Error("tip_too_high");
   }
@@ -467,7 +570,8 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // rather than venue.currency. The two are usually equal but diverge
   // if the merchant edits venue.currency between draft creation and
   // place-order; the order's snapshot is the source of truth (KRA-80).
-  const amountCents = subtotalCents + pricing.additiveFeesCents;
+  const amountCents =
+    subtotalCents + pricing.additiveFeesCents + pricing.deliveryFeeCents;
   const { error: paymentError } = await supabase
     .schema("commerce")
     .from("order_payments")

@@ -1,8 +1,14 @@
-// app/[...slug]/loading.tsx
+// app/[...slug]/catalog-skeleton.tsx
+//
+// Storefront loading skeleton. Rendered as the explicit <Suspense> fallback
+// in page.tsx — NOT as a route-level loading.tsx. A loading.tsx here would
+// wrap the whole page in the route Suspense boundary, flushing the shell
+// (and committing HTTP 200) before the page can resolve the catalog, which
+// turned unknown slugs into soft-404s. See page.tsx.
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function CatalogLoading() {
+export function CatalogSkeleton() {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 text-foreground">
       {/* Header skeleton */}

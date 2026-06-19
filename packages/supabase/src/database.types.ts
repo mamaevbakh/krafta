@@ -2248,6 +2248,7 @@ export type Database = {
           catalog_id: string
           created_at: string
           current_source_hash: string | null
+          description: string | null
           id: string
           is_active: boolean
           name: string
@@ -2258,6 +2259,7 @@ export type Database = {
           catalog_id: string
           created_at?: string
           current_source_hash?: string | null
+          description?: string | null
           id?: string
           is_active?: boolean
           name: string
@@ -2268,6 +2270,7 @@ export type Database = {
           catalog_id?: string
           created_at?: string
           current_source_hash?: string | null
+          description?: string | null
           id?: string
           is_active?: boolean
           name?: string
@@ -3355,6 +3358,7 @@ export type Database = {
           metadata: Json
           org_id: string
           shortcode: string
+          table_id: string | null
           table_label: string | null
           updated_at: string
           venue_id: string
@@ -3368,6 +3372,7 @@ export type Database = {
           metadata?: Json
           org_id: string
           shortcode?: string
+          table_id?: string | null
           table_label?: string | null
           updated_at?: string
           venue_id: string
@@ -3381,6 +3386,7 @@ export type Database = {
           metadata?: Json
           org_id?: string
           shortcode?: string
+          table_id?: string | null
           table_label?: string | null
           updated_at?: string
           venue_id?: string
@@ -3401,7 +3407,109 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "qr_codes_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "tables"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "qr_codes_venue_id_fkey"
+            columns: ["venue_id"]
+            isOneToOne: false
+            referencedRelation: "venues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qr_scans: {
+        // KRA-26 follow-up — hand-added until the next `pnpm gen:types`.
+        // See supabase/migrations/20260525150000_kra26_qr_scans.sql.
+        Row: {
+          id: string
+          qr_code_id: string
+          org_id: string
+          scanned_at: string
+          ip_hash: string | null
+          ua_hash: string | null
+          referrer: string | null
+        }
+        Insert: {
+          id?: string
+          qr_code_id: string
+          org_id?: string
+          scanned_at?: string
+          ip_hash?: string | null
+          ua_hash?: string | null
+          referrer?: string | null
+        }
+        Update: {
+          id?: string
+          qr_code_id?: string
+          org_id?: string
+          scanned_at?: string
+          ip_hash?: string | null
+          ua_hash?: string | null
+          referrer?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qr_scans_qr_code_id_fkey"
+            columns: ["qr_code_id"]
+            isOneToOne: false
+            referencedRelation: "qr_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qr_scans_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tables: {
+        Row: {
+          id: string
+          org_id: string
+          venue_id: string
+          label: string
+          position: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          org_id?: string
+          venue_id: string
+          label: string
+          position?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          venue_id?: string
+          label?: string
+          position?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tables_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tables_venue_id_fkey"
             columns: ["venue_id"]
             isOneToOne: false
             referencedRelation: "venues"

@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 import {
   createTranslation,
-  enqueueTranslationJob,
+  translateEntityNow,
   updateEntitySourceText,
   updateTranslation,
 } from "@/lib/translation/actions";
@@ -212,16 +212,16 @@ export function EntityTranslationEditDialog({
 
   async function handleTranslateLocale(locale: CatalogLocale) {
     setTranslatingLocales((prev) => new Set(prev).add(locale.locale));
-    const result = await enqueueTranslationJob({
+    // translateEntityNow runs the AI inline (~5-8s) and returns the new
+    // fields synchronously. We patch the local form state with the
+    // result so the merchant sees the new translation in the inputs
+    // without a page reload. The bulk "Translate everything missing"
+    // CTA still goes through the queue + worker — different use case.
+    const result = await translateEntityNow({
       catalogId,
       targetLocale: locale.locale,
       entityKind,
-      entityIds: [entity.id],
-      // Force=true here — when the merchant explicitly clicks "Translate
-      // with AI" inside the edit dialog they want a fresh AI rewrite,
-      // even if there's a human edit on the row. The bulk button is the
-      // surface that protects merchant edits.
-      force: true,
+      entityId: entity.id,
     });
     setTranslatingLocales((prev) => {
       const next = new Set(prev);
@@ -232,7 +232,35 @@ export function EntityTranslationEditDialog({
       toast.error(result.error);
       return;
     }
-    toast.success(`Queued translation into ${locale.display_name}.`);
+
+    // Patch local form state with the new fields. Marks dirty=false
+    // because we just wrote to the DB; the merchant's next edit will
+    // re-dirty it.
+    setForms((prev) => {
+      const nextServerRow: EntityTranslationLite = {
+        id: result.translation.id,
+        locale: result.translation.locale,
+        name: result.translation.fields.name ?? "",
+        description:
+          (result.translation.fields.description as string | null) ?? null,
+        is_ai_translated: result.translation.is_ai_translated,
+        source_hash: result.translation.source_hash,
+      };
+      return {
+        ...prev,
+        [locale.locale]: {
+          serverRow: nextServerRow,
+          fields: {
+            name: result.translation.fields.name ?? "",
+            description: fields.includes("description")
+              ? (result.translation.fields.description as string | null) ?? ""
+              : null,
+          },
+          dirty: false,
+        },
+      };
+    });
+    toast.success(`Translated into ${locale.display_name}.`);
     onMutation();
   }
 

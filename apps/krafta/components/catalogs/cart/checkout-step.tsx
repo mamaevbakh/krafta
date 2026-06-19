@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Package, Truck, Utensils } from "lucide-react";
+import { ArrowLeft, Loader2, Package, Truck, Utensils } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  DrawerDescription,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Field,
   FieldGroup,
@@ -23,13 +23,18 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
-import { isValidUzPhone } from "@/lib/cart/phone";
+import { formatUzNational, isValidUzPhone } from "@/lib/cart/phone";
 
 import { ScheduledTimePicker } from "./scheduled-time-picker";
 import {
   type CurrencySettings,
   defaultCurrencySettings,
 } from "@/lib/catalogs/settings/currency";
+import {
+  type DeliverySettings,
+  defaultDeliverySettings,
+  isWithinDeliveryZone,
+} from "@/lib/catalogs/settings/delivery";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import {
   getStorefrontMessage,
@@ -42,6 +47,14 @@ import {
   type CartFulfillmentMode,
 } from "./cart-provider";
 import { PricingBreakdown } from "./pricing-breakdown";
+import { computePricing } from "@/lib/cart/pricing";
+import { formatPriceCents } from "@/lib/catalogs/pricing";
+import {
+  DeliveryAddressFlow,
+  DeliveryAddressSummary,
+  orderAddressString,
+  type SelectedDeliveryAddress,
+} from "./delivery-address-flow";
 
 // Mode labels now resolved via the i18n catalog at render time (S1).
 // The const stays as a type-safe key map so we keep ordering/iteration.
@@ -66,10 +79,12 @@ const PICKER_MODE_ORDER: CartFulfillmentMode[] = ["pickup", "delivery"];
 
 type CartCheckoutStepProps = {
   currencySettings?: CurrencySettings;
+  deliverySettings?: DeliverySettings;
 };
 
 export function CartCheckoutStep({
   currencySettings = defaultCurrencySettings,
+  deliverySettings = defaultDeliverySettings,
 }: CartCheckoutStepProps = {}) {
   const {
     modes,
@@ -150,14 +165,15 @@ export function CartCheckoutStep({
   const [pickupName, setPickupName] = useState("");
   const [pickupPhone, setPickupPhone] = useState("");
   const [pickupNote, setPickupNote] = useState("");
-  // Structured delivery address (S7c). The three slots compose into the
-  // single `address` string the server still expects, joined by " · " so
-  // it reads cleanly on a kitchen receipt without the merchant having to
-  // parse a JSONB blob. District is required because it materially
-  // affects courier routing in Tashkent.
-  const [deliveryDistrict, setDeliveryDistrict] = useState("");
-  const [deliveryStreet, setDeliveryStreet] = useState("");
-  const [deliveryBuilding, setDeliveryBuilding] = useState("");
+  // Delivery address comes from the customer's address book (saved address or
+  // a new one added via the Yandex map / manual form). The selected address's
+  // `freeform` is the string the order snapshots (still " · "-joined so it
+  // reads cleanly on a kitchen receipt).
+  const [deliveryAddress, setDeliveryAddress] =
+    useState<SelectedDeliveryAddress | null>(null);
+  // The address screens take over the whole drawer body (full-bleed map), but
+  // checkout stays mounted — so the customer's name/phone/note survive the trip.
+  const [addressView, setAddressView] = useState<"form" | "flow">("form");
   const [deliveryName, setDeliveryName] = useState("");
   const [deliveryPhone, setDeliveryPhone] = useState("");
   const [deliverySchedule, setDeliverySchedule] = useState<"asap" | "scheduled">(
@@ -165,6 +181,39 @@ export function CartCheckoutStep({
   );
   const [deliveryAt, setDeliveryAt] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  // Persistent inline submit error (vs the ephemeral toast that's easy to miss
+  // over a full-screen modal). Cleared on each new submit attempt.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // Flips true on a tap while the form is incomplete, so the "what's missing"
+  // hint escalates from a muted nudge to a destructive prompt.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  // Out-of-zone: the delivery pin falls outside the cafe's delivery radius.
+  // Blocks placement (with an inline «Вне зоны доставки») rather than letting
+  // the customer place an order the merchant can't fulfil.
+  const outOfZone = useMemo(
+    () =>
+      mode === "delivery" &&
+      deliverySettings.enabled &&
+      deliveryAddress?.latitude != null &&
+      deliveryAddress?.longitude != null &&
+      !isWithinDeliveryZone(
+        deliverySettings,
+        deliveryAddress.latitude,
+        deliveryAddress.longitude,
+      ),
+    [mode, deliverySettings, deliveryAddress],
+  );
+
+  // Below-minimum: the cart subtotal is under the merchant's delivery minimum.
+  // Like out-of-zone, this blocks placement with a clear inline reason.
+  const belowMinOrder = useMemo(
+    () =>
+      mode === "delivery" &&
+      deliverySettings.minOrderCents > 0 &&
+      summary.subtotalCents < deliverySettings.minOrderCents,
+    [mode, deliverySettings, summary.subtotalCents],
+  );
 
   const canSubmit = useMemo(() => {
     if (isPlacingOrder) return false;
@@ -183,25 +232,64 @@ export function CartCheckoutStep({
         pickupSchedule === "asap" || isCompleteSchedule(pickupAt);
       return scheduleOk && phoneOk;
     }
-    // delivery — phone is required (courier callback). Address is now
-    // three structured fields; all three required (district materially
-    // affects routing in Tashkent).
+    // delivery — phone is required (courier callback); a delivery address must
+    // be chosen from the address book (saved or freshly added).
     return (
-      deliveryDistrict.trim().length > 0 &&
-      deliveryStreet.trim().length > 0 &&
-      deliveryBuilding.trim().length > 0 &&
+      !outOfZone &&
+      !belowMinOrder &&
+      (deliveryAddress?.freeform.trim().length ?? 0) > 0 &&
       deliveryName.trim().length > 0 &&
       isValidUzPhone(deliveryPhone) &&
       (deliverySchedule === "asap" || isCompleteSchedule(deliveryAt))
     );
   }, [
+    belowMinOrder,
+    deliveryAddress,
     deliveryAt,
-    deliveryBuilding,
-    deliveryDistrict,
     deliveryName,
     deliveryPhone,
     deliverySchedule,
-    deliveryStreet,
+    isPlacingOrder,
+    mode,
+    outOfZone,
+    pickupAt,
+    pickupPhone,
+    pickupSchedule,
+    tableLabel,
+  ]);
+
+  // The single most relevant missing field, surfaced as an inline hint above the
+  // CTA so a customer is never staring at a button that "does nothing".
+  const firstMissingKey = useMemo<StorefrontMessageKey | null>(() => {
+    if (canSubmit || isPlacingOrder) return null;
+    const timeOk = (s: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
+    if (mode === "dine_in") {
+      return tableLabel.trim() ? null : "checkout.missing.table";
+    }
+    if (mode === "pickup") {
+      if (pickupSchedule === "scheduled" && !timeOk(pickupAt))
+        return "checkout.missing.time";
+      if (pickupPhone.trim() && !isValidUzPhone(pickupPhone))
+        return "checkout.missing.phone";
+      return null;
+    }
+    if (belowMinOrder) return "checkout.below_min_order";
+    if (outOfZone) return "checkout.out_of_zone";
+    if (!deliveryAddress?.freeform.trim()) return "checkout.missing.address";
+    if (!deliveryName.trim()) return "checkout.missing.name";
+    if (!isValidUzPhone(deliveryPhone)) return "checkout.missing.phone";
+    if (deliverySchedule === "scheduled" && !timeOk(deliveryAt))
+      return "checkout.missing.time";
+    return null;
+  }, [
+    belowMinOrder,
+    canSubmit,
+    deliveryAddress,
+    deliveryAt,
+    outOfZone,
+    deliveryName,
+    deliveryPhone,
+    deliverySchedule,
     isPlacingOrder,
     mode,
     pickupAt,
@@ -211,61 +299,94 @@ export function CartCheckoutStep({
   ]);
 
   const handleSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      setSubmitAttempted(true);
+      return;
+    }
+    setSubmitError(null);
 
-    if (mode === "dine_in") {
-      await placeOrder({
-        mode: "dine_in",
-        fields: { tableLabel: tableLabel.trim() },
-      });
-      return;
-    }
-    if (mode === "pickup") {
-      await placeOrder({
-        mode: "pickup",
-        fields: {
-          scheduleType: pickupSchedule,
-          pickupAt: pickupSchedule === "scheduled" ? pickupAt : null,
-          recipientName: pickupName.trim() || null,
-          recipientPhone: pickupPhone.trim() || null,
-          note: pickupNote.trim() || null,
-        },
-      });
-      return;
-    }
-    // Compose the structured fields into one human-readable address
-    // string for the server. " · " keeps the line scannable on receipts
-    // and the merchant dashboard, and the original sub-parts stay
-    // recoverable by splitting on the same delimiter if we later expose
-    // them in the dashboard. Server validation just checks non-empty.
-    const composedAddress = [
-      deliveryDistrict.trim(),
-      deliveryStreet.trim(),
-      deliveryBuilding.trim(),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    await placeOrder({
-      mode: "delivery",
-      fields: {
-        address: composedAddress,
-        recipientName: deliveryName.trim(),
-        recipientPhone: deliveryPhone.trim(),
-        scheduledFor: deliverySchedule === "scheduled" ? deliveryAt : null,
-        note: deliveryNote.trim() || null,
-      },
-    });
+    // The chosen address's freeform string is what a delivery order snapshots —
+    // it's already " · "-joined, so it stays scannable on receipts / dashboard.
+    const result =
+      mode === "dine_in"
+        ? await placeOrder({
+            mode: "dine_in",
+            fields: { tableLabel: tableLabel.trim() },
+          })
+        : mode === "pickup"
+          ? await placeOrder({
+              mode: "pickup",
+              fields: {
+                scheduleType: pickupSchedule,
+                pickupAt: pickupSchedule === "scheduled" ? pickupAt : null,
+                recipientName: pickupName.trim() || null,
+                recipientPhone: pickupPhone.trim() || null,
+                note: pickupNote.trim() || null,
+              },
+            })
+          : await placeOrder({
+              mode: "delivery",
+              fields: {
+                address: deliveryAddress
+                  ? orderAddressString(deliveryAddress, t)
+                  : "",
+                latitude: deliveryAddress?.latitude ?? null,
+                longitude: deliveryAddress?.longitude ?? null,
+                district: deliveryAddress?.district ?? null,
+                street: deliveryAddress?.street ?? null,
+                building: deliveryAddress?.building ?? null,
+                recipientName: deliveryName.trim(),
+                recipientPhone: deliveryPhone.trim(),
+                scheduledFor:
+                  deliverySchedule === "scheduled" ? deliveryAt : null,
+                note: deliveryNote.trim() || null,
+              },
+            });
+
+    if (!result.ok) setSubmitError(result.error);
   };
 
+  // Bottom-line total, mirrored into the sticky footer below so the price is
+  // ALWAYS visible — the full PricingBreakdown lives at the end of the
+  // scrolling area and slides off-screen on long (delivery / schedule) forms.
+  // The configured flat delivery fee (customer pays). Mirrors the server's
+  // charge in placeOrder so the displayed total matches what is billed.
+  const deliveryFeeCents =
+    mode === "delivery"
+      ? Math.max(0, Math.round(deliverySettings.feeCents))
+      : 0;
+  const footerTotalCents = computePricing({
+    subtotalCents: summary.subtotalCents,
+    taxes,
+    tipCents,
+    deliveryFeeCents,
+  }).totalCents;
+
+  if (addressView === "flow") {
+    return (
+      <DeliveryAddressFlow
+        value={deliveryAddress}
+        onChange={setDeliveryAddress}
+        onClose={() => setAddressView("form")}
+      />
+    );
+  }
+
   return (
-    <div className="flex h-full flex-col">
+    // flex-1 + min-h-0: drawer-content is a flex column with a 24px
+    // handle as its first child. The default `min-height: auto` on flex
+    // items prevents flex-1 from shrinking below the natural content
+    // height, so the column overflows by the handle's 24px. min-h-0
+    // lets flex-1 cap at the drawer's available height. Without this
+    // fix, the Place order button was clipped ~8px off-screen on mobile.
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* sr-only title satisfies Radix Dialog a11y; the visible UI carries
           its own headings (Back button + per-mode field labels). */}
-      <DrawerTitle className="sr-only">{t("checkout.title")}</DrawerTitle>
-      <DrawerDescription className="sr-only">
+      <DialogTitle className="sr-only">{t("checkout.title")}</DialogTitle>
+      <DialogDescription className="sr-only">
         {t("checkout.title")}
-      </DrawerDescription>
-      <div className="flex items-center gap-2 px-4 pb-2 pt-1">
+      </DialogDescription>
+      <div className="mx-auto flex w-full max-w-md items-center gap-2 px-4 pb-2 pt-1">
         <Button
           type="button"
           size="sm"
@@ -277,7 +398,7 @@ export function CartCheckoutStep({
         </Button>
       </div>
 
-      <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-4">
+      <div className="mx-auto w-full max-w-md flex-1 space-y-6 overflow-y-auto px-4 pb-4">
         {/* When the customer arrived via a table QR, hide the
             pickup/delivery picker entirely — their intent is locked. The
             mode pill in the cart-list header still shows "Dine-in · Table
@@ -393,8 +514,11 @@ export function CartCheckoutStep({
                     id="pickup-phone"
                     inputMode="tel"
                     autoComplete="tel-national"
-                    value={pickupPhone}
-                    onChange={(event) => setPickupPhone(event.target.value)}
+                    className="font-mono tabular-nums"
+                    value={formatUzNational(pickupPhone)}
+                    onChange={(event) =>
+                      setPickupPhone(event.target.value.replace(/\D/g, "").slice(0, 9))
+                    }
                     placeholder={t("checkout.phone.placeholder")}
                   />
                 </InputGroup>
@@ -418,43 +542,15 @@ export function CartCheckoutStep({
         {mode === "delivery" ? (
           <FieldSet>
             <FieldGroup>
-              {/* Structured address (S7c). Three single-line inputs that
-                  compose into one string for the kitchen receipt:
-                  "District · Street · Building, apt N". District first
-                  because Tashkent couriers route by district first. */}
+              {/* Address book: pick a saved address or add one via the Yandex
+                  map / manual form. Replaces the old district/street/building
+                  trio — fewer taps, reusable, and routable (coords saved). */}
               <Field>
-                <FieldLabel htmlFor="delivery-district">
-                  {t("checkout.address.district.label")}
-                </FieldLabel>
-                <Input
-                  id="delivery-district"
-                  value={deliveryDistrict}
-                  onChange={(event) => setDeliveryDistrict(event.target.value)}
-                  placeholder={t("checkout.address.district.placeholder")}
-                  autoComplete="address-level2"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="delivery-street">
-                  {t("checkout.address.street.label")}
-                </FieldLabel>
-                <Input
-                  id="delivery-street"
-                  value={deliveryStreet}
-                  onChange={(event) => setDeliveryStreet(event.target.value)}
-                  placeholder={t("checkout.address.street.placeholder")}
-                  autoComplete="street-address"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="delivery-building">
-                  {t("checkout.address.building.label")}
-                </FieldLabel>
-                <Input
-                  id="delivery-building"
-                  value={deliveryBuilding}
-                  onChange={(event) => setDeliveryBuilding(event.target.value)}
-                  placeholder={t("checkout.address.building.placeholder")}
+                <FieldLabel>{t("checkout.mode.delivery")}</FieldLabel>
+                <DeliveryAddressSummary
+                  value={deliveryAddress}
+                  onChange={setDeliveryAddress}
+                  onOpen={() => setAddressView("flow")}
                 />
               </Field>
               <Field>
@@ -480,8 +576,11 @@ export function CartCheckoutStep({
                     id="delivery-phone"
                     inputMode="tel"
                     autoComplete="tel-national"
-                    value={deliveryPhone}
-                    onChange={(event) => setDeliveryPhone(event.target.value)}
+                    className="font-mono tabular-nums"
+                    value={formatUzNational(deliveryPhone)}
+                    onChange={(event) =>
+                      setDeliveryPhone(event.target.value.replace(/\D/g, "").slice(0, 9))
+                    }
                     placeholder={t("checkout.phone.placeholder")}
                   />
                 </InputGroup>
@@ -542,20 +641,62 @@ export function CartCheckoutStep({
           subtotalCents={summary.subtotalCents}
           taxes={taxes}
           tipCents={tipCents}
+          deliveryFeeCents={deliveryFeeCents}
           currencySettings={currencySettings}
+          showTotal={false}
         />
       </div>
 
-      <div className="border-t border-border/60 px-4 pb-6 pt-4">
-        <Button
-          type="button"
-          size="lg"
-          className="w-full"
-          disabled={!canSubmit}
-          onClick={handleSubmit}
-        >
-          {isPlacingOrder ? t("checkout.placing") : t("checkout.place_order")}
-        </Button>
+      {/* Sticky footer with safe-area padding so the CTA never hugs the
+          home-indicator on iOS PWAs. bg-background/80 + backdrop-blur
+          gives the same "fixed bottom row" lift the cart list step uses,
+          so the two steps feel continuous. Inner max-w-md mirrors the
+          scroll content so the CTA reads at the same width on wider
+          drawers (tablet, webviews). */}
+      <div className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          {submitError ? (
+            <p className="mb-2 text-xs text-destructive">{submitError}</p>
+          ) : firstMissingKey ? (
+            <p
+              className={cn(
+                "mb-2 text-xs",
+                submitAttempted ? "text-destructive" : "text-muted-foreground",
+              )}
+            >
+              {firstMissingKey === "checkout.below_min_order"
+                ? t(firstMissingKey, {
+                    amount: formatPriceCents(
+                      deliverySettings.minOrderCents,
+                      currencySettings,
+                    ),
+                  })
+                : t(firstMissingKey)}
+            </p>
+          ) : null}
+          <div className="mb-3 flex items-baseline justify-between">
+            <span className="text-sm text-muted-foreground">{t("cart.total")}</span>
+            <span className="font-mono text-lg font-semibold tabular-nums">
+              {formatPriceCents(footerTotalCents, currencySettings)}
+            </span>
+          </div>
+          <Button
+            type="button"
+            size="xl"
+            className="w-full active:scale-[0.98]"
+            disabled={isPlacingOrder}
+            onClick={handleSubmit}
+          >
+            {isPlacingOrder ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                {t("checkout.placing")}
+              </>
+            ) : (
+              t("checkout.place_order")
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -661,9 +802,14 @@ function TipControl({
           )}
           aria-pressed={mode === "custom"}
         >
-          Custom
+          {t("checkout.tip.custom")}
         </button>
       </div>
+      {tipCents > 0 ? (
+        <p className="font-mono text-xs tabular-nums text-muted-foreground">
+          +{formatPriceCents(tipCents, currencySettings)}
+        </p>
+      ) : null}
       {mode === "custom" ? (
         <Input
           type="number"
@@ -693,7 +839,7 @@ function ScheduleToggle({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-xl border px-3 py-2 text-sm transition",
+        "rounded-full border px-3 py-2 text-sm transition",
         selected
           ? "border-foreground bg-foreground text-background"
           : "border-border bg-background text-foreground hover:border-foreground/30",

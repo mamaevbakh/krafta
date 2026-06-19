@@ -191,8 +191,6 @@ export function CategoryNavTabsDashboard({
   activeLocale,
   defaultLocale,
 }: CategoryNavProps) {
-  if (!categories.length) return null;
-
   const normalizedBase = useMemo(
     () => baseHref.replace(/\/+$/, "") || "/",
     [baseHref],
@@ -216,6 +214,11 @@ export function CategoryNavTabsDashboard({
   const [currentSlug, setCurrentSlug] = useState<string | null>(
     initialActiveSlug,
   );
+  // Remembers the last prop-derived initial slug so we can detect when it
+  // changes and reset the selection during render (see below).
+  const [prevInitialActiveSlug, setPrevInitialActiveSlug] = useState<
+    string | null | undefined
+  >(undefined);
   const lastActiveRef = useRef<string | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
   const { lockRef, lock } = useScrollLock(UNLOCK_FALLBACK_MS);
@@ -259,10 +262,18 @@ export function CategoryNavTabsDashboard({
     [buildPath, lock, scrollToCategory, setActive],
   );
 
+  // Reset the active selection when the prop-derived initial slug changes
+  // (e.g. client-side nav to a different catalog/category). Adjusting state
+  // during render is React's recommended alternative to a setState effect:
+  // https://react.dev/learn/you-might-not-need-an-effect
+  if (prevInitialActiveSlug !== initialActiveSlug) {
+    setPrevInitialActiveSlug(initialActiveSlug);
+    setCurrentSlug(initialActiveSlug);
+  }
+
+  // Keep the scroll-dedupe ref aligned with the initial slug. Ref writes
+  // belong in an effect rather than in render.
   useEffect(() => {
-    setCurrentSlug((prev) =>
-      prev === initialActiveSlug ? prev : initialActiveSlug,
-    );
     lastActiveRef.current = initialActiveSlug;
   }, [initialActiveSlug]);
 
@@ -277,19 +288,26 @@ export function CategoryNavTabsDashboard({
   useCenterActiveTab(navRef, currentSlug);
   useScrollActiveCategory(slugs, setActive, lockRef);
 
+  if (!categories.length) return null;
+
   const activeSlug = currentSlug ?? "all";
 
   return (
     <>
       <div
-        id="catalog-category-nav-sentinel "
+        id="catalog-category-nav-sentinel"
         aria-hidden="true"
         className="h-px"
       />
 
       <div
         className={cn(
-          "sticky top-0 z-30 -mx-4 bg-background/90 dark:bg-secondary-background/90 backdrop-blur ",
+          // top offset clears the Telegram status bar + floating controls in
+          // the Mini App (--tg-safe-top); resolves to 0 on the public web.
+          // Solid surface — tabs stay crisp over product photos; the bottom
+          // border does the separation when stuck (DESIGN.md: borders, not
+          // effects). --tg-safe-top resolves to 0 on the web.
+          "sticky top-[var(--tg-safe-top,0px)] z-30 -mx-4 bg-background dark:bg-secondary-background",
           isStuck ? "border-b border-border" : "border-b border-transparent",
         )}
       >

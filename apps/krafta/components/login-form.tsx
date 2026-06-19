@@ -26,17 +26,23 @@ import {
 } from "@/components/ui/input-otp";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { signInWithEmail, verifyOtpCode, signInWithGoogle } from "@/lib/auth/actions";
+import { signInWithTelegramIdToken } from "@/lib/auth/telegram-actions";
+import { TelegramOidcLoginButton } from "@/components/telegram-oidc-login";
 import { toast } from "sonner";
 
 type Step = "email" | "otp";
 
 type LoginFormProps = React.ComponentProps<"div"> & {
   next?: string;
+  /** Enables the Telegram leg (KRA-46) when the server has it configured.
+   *  The numeric bot Client ID from BotFather's Web Login (new OIDC flow). */
+  telegramClientId?: string | null;
 };
 
 export function LoginForm({
   className,
   next = "/dashboard",
+  telegramClientId = null,
   ...props
 }: LoginFormProps) {
   const [step, setStep] = useState<Step>("email");
@@ -93,6 +99,17 @@ export function LoginForm({
     });
   };
 
+  const handleTelegramAuth = (idToken: string) => {
+    startTransition(async () => {
+      const result = await signInWithTelegramIdToken(idToken, next);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      window.location.href = result.next;
+    });
+  };
+
   const handleBack = () => {
     setStep("email");
     setOtpCode("");
@@ -132,6 +149,15 @@ export function LoginForm({
                     Continue with Google
                   </Button>
                 </Field>
+                {telegramClientId && (
+                  <Field>
+                    <TelegramOidcLoginButton
+                      clientId={telegramClientId}
+                      onAuth={handleTelegramAuth}
+                      disabled={isPending}
+                    />
+                  </Field>
+                )}
                 <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
                   Or continue with email
                 </FieldSeparator>

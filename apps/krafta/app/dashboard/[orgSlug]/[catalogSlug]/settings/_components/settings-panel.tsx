@@ -19,8 +19,17 @@ import {
 } from "@/components/ui/field";
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
 import { cn } from "@/lib/utils";
+import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import type { DeliverySettings } from "@/lib/catalogs/settings/delivery";
 import { updateCatalogSettings } from "./actions";
 import { VenueForm } from "./venue-form";
+import { NotificationsForm, type TelegramInitial } from "./notifications-form";
+import { MiniAppForm, type MiniAppInitial } from "./mini-app-form";
+import { DeliveryForm } from "./delivery-form";
+import {
+  DeliveryCourierForm,
+  type DeliveryCourierInitial,
+} from "./delivery-courier-form";
 
 type VenueRow = {
   name: string;
@@ -42,6 +51,13 @@ type SettingsPanelProps = {
   tags: string[];
   logoPath: string;
   venue: VenueRow | null;
+  venueId: string | null;
+  telegram: TelegramInitial | null;
+  miniApp: MiniAppInitial;
+  delivery: DeliverySettings;
+  currency: CurrencySettings;
+  deliveryModeEnabled: boolean;
+  courier: DeliveryCourierInitial;
 };
 
 function normalizeTag(value: string) {
@@ -74,6 +90,13 @@ export function SettingsPanel({
   tags,
   logoPath,
   venue,
+  venueId,
+  telegram,
+  miniApp,
+  delivery,
+  currency,
+  deliveryModeEnabled,
+  courier,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
@@ -226,7 +249,10 @@ export function SettingsPanel({
             <div className="space-y-1">
               {[
                 { id: "venue", label: "Venue" },
+                { id: "delivery", label: "Delivery" },
                 { id: "catalog", label: "Catalog" },
+                { id: "miniapp", label: "Mini App" },
+                { id: "notifications", label: "Notifications" },
                 { id: "account", label: "Account" },
                 { id: "organization", label: "Organization" },
               ].map((tab) => (
@@ -261,7 +287,26 @@ export function SettingsPanel({
                     Venue row not found for this catalog. Contact support.
                   </div>
                 )
-              ) : activeTab !== "catalog" ? (
+              ) : activeTab === "delivery" ? (
+                <div className="space-y-6">
+                  <DeliveryForm
+                    catalogId={catalogId}
+                    catalogSlug={catalogSlug}
+                    initial={delivery}
+                    currencySettings={currency}
+                    deliveryModeEnabled={deliveryModeEnabled}
+                  />
+                  <DeliveryCourierForm orgId={orgId} initial={courier} />
+                </div>
+              ) : activeTab === "miniapp" ? (
+                <MiniAppForm venueId={venueId} initial={miniApp} />
+              ) : activeTab === "notifications" ? (
+                <NotificationsForm
+                  venueId={venueId}
+                  orgId={orgId}
+                  initial={telegram}
+                />
+              ) : activeTab === "account" || activeTab === "organization" ? (
                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                   {activeTab === "account"
                     ? "Account settings are coming soon."

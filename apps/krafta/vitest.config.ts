@@ -25,6 +25,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // `import "server-only"` throws outside a react-server condition;
+      // stub it so server-module pure functions (e.g. the Telegram payload
+      // validators) stay testable.
+      "server-only": path.resolve(__dirname, "test/stubs/server-only.ts"),
     },
   },
   test: {

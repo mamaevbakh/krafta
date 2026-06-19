@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { AlertTriangle, Check, Minus, Plus } from "lucide-react";
 
 import type {
   PublicModifier,
@@ -44,17 +44,46 @@ export type ModifierPickerChange = {
    *  modifier. Drives the "scroll to first invalid required list"
    *  affordance on add-to-cart. */
   firstInvalidListId: string | null;
+  /**
+   * Ordered list ids of every REQUIRED modifier list that's still
+   * un-satisfied. In document order (matches the visual layout), so
+   * the head is always the "next thing the customer should fix." The
+   * guided required-selection flow walks this array as the customer
+   * makes selections.
+   */
+  invalidRequiredListIds: string[];
+  /** Count of required selections the customer hasn't completed yet.
+   *  Drives the item-detail Add button copy ("Make 2 required selections
+   *  • Add ₿50"). 0 when everything required is satisfied. */
+  invalidRequiredCount: number;
 };
 
 type Props = {
   modifierLists: PublicModifierList[];
   onChange: (change: ModifierPickerChange) => void;
   formatPrice: (cents: number) => string;
-  /** When set to the id of a modifier list, that list briefly highlights
-   *  (destructive ring) to draw attention. Used to nudge the customer
-   *  toward a required field they skipped. The picker doesn't manage
-   *  the timer — the parent clears `flashListId` after ~800ms. */
-  flashListId?: string | null;
+  /**
+   * Guided required-selection flow (Careem-style).
+   *
+   * When `inGuidedMode` is true, each required list renders a colored
+   * pill:
+   *   • Satisfied → green "✓ Required"
+   *   • The current pointer (matches `guidedPointerListId`) → orange
+   *     "⚠ Required" + an orange border around the fieldset
+   *   • Other un-satisfied required → neutral gray "Required"
+   *
+   * When `inGuidedMode` is false (default — the customer hasn't tapped
+   * the "Make N required selections" button), every required list
+   * shows a neutral gray pill regardless of satisfaction, so the
+   * customer can scroll and choose calmly without colors competing
+   * for attention. The pill states only flip on once the customer
+   * opts into the guided flow.
+   *
+   * Optional lists never show a pill — only an "Optional" hint in the
+   * right-side gutter.
+   */
+  inGuidedMode?: boolean;
+  guidedPointerListId?: string | null;
 };
 
 /** Stable id pattern for the modifier-list fieldset, exported so callers
@@ -82,7 +111,8 @@ export function ModifierPicker({
   modifierLists,
   onChange,
   formatPrice,
-  flashListId = null,
+  inGuidedMode = false,
+  guidedPointerListId = null,
 }: Props) {
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const visibleLists = useMemo(
@@ -164,6 +194,8 @@ export function ModifierPicker({
     const flat: PickedModifier[] = [];
     let valid = true;
     let firstInvalidListId: string | null = null;
+    let invalidRequiredCount = 0;
+    const invalidRequiredListIds: string[] = [];
 
     for (const list of visibleLists) {
       if (list.modifier_type === "text") {
@@ -179,6 +211,8 @@ export function ModifierPicker({
         // emission stays safe even if the constraint is bypassed).
         if (required && !hasValue) {
           valid = false;
+          invalidRequiredCount += 1;
+          invalidRequiredListIds.push(list.id);
           if (!firstInvalidListId) firstInvalidListId = list.id;
         }
         if (exceedsMax) {
@@ -203,16 +237,21 @@ export function ModifierPicker({
         continue;
       }
 
-      // List-mode branch
+      // List-mode branch. Validity checks the TOTAL quantity across
+      // every selection in this list, matching the customer-facing
+      // "Up to N" hint and the server-side validator in orders.ts.
       const picked = selectionsByList.get(list.id) ?? new Map<string, number>();
-      const distinctCount = picked.size;
-      if (distinctCount < list.min_selected) {
+      let totalInList = 0;
+      for (const q of picked.values()) totalInList += q;
+      if (totalInList < list.min_selected) {
         valid = false;
+        invalidRequiredCount += 1;
+        invalidRequiredListIds.push(list.id);
         if (!firstInvalidListId) firstInvalidListId = list.id;
       }
       if (
         list.max_selected !== null &&
-        distinctCount > list.max_selected
+        totalInList > list.max_selected
       ) {
         valid = false;
       }
@@ -229,7 +268,13 @@ export function ModifierPicker({
         });
       }
     }
-    onChange({ selections: flat, isValid: valid, firstInvalidListId });
+    onChange({
+      selections: flat,
+      isValid: valid,
+      firstInvalidListId,
+      invalidRequiredListIds,
+      invalidRequiredCount,
+    });
   }, [
     selectionsByList,
     textValueByList,
@@ -241,6 +286,26 @@ export function ModifierPicker({
 
   if (visibleLists.length === 0) return null;
 
+  // Derive per-list satisfied-ness for pill rendering. A required
+  // list is "satisfied" when its constraints are met right now (not
+  // included in invalidRequiredListIds-equivalent computation that's
+  // done inside the effect above). We re-compute it here cheaply
+  // because the picker already iterates these lists.
+  function isRequiredListSatisfied(list: PublicModifierList): boolean {
+    if (list.modifier_type === "text") {
+      if (!list.text_required) return true;
+      const raw = textValueByList.get(list.id) ?? "";
+      const trimmed = raw.trim();
+      const exceedsMax =
+        list.max_length !== null && raw.length > list.max_length;
+      return trimmed.length > 0 && !exceedsMax;
+    }
+    const picked = selectionsByList.get(list.id) ?? new Map<string, number>();
+    let total = 0;
+    for (const q of picked.values()) total += q;
+    return total >= list.min_selected;
+  }
+
   return (
     <div className="space-y-5">
       {visibleLists.map((list) => {
@@ -248,28 +313,47 @@ export function ModifierPicker({
           list.modifier_type === "text"
             ? list.text_required
             : list.min_selected >= 1;
-        const isFlashed = flashListId === list.id;
+        const isPointer = inGuidedMode && guidedPointerListId === list.id;
+        const isSatisfied = inGuidedMode && required && isRequiredListSatisfied(list);
+        const pillState: RequiredPillState | null = !required
+          ? null
+          : isPointer
+            ? "attention"
+            : isSatisfied
+              ? "satisfied"
+              : "neutral";
         return (
-          <fieldset
+          <div
             key={list.id}
             id={modifierListFieldsetId(list.id)}
+            role="group"
+            aria-labelledby={`${modifierListFieldsetId(list.id)}-title`}
             className={cn(
-              "space-y-2 rounded-md transition-shadow",
-              isFlashed &&
-                "ring-2 ring-destructive ring-offset-2 ring-offset-background -mx-1 px-1 py-1",
+              // Every modifier list is a card — consistent chrome
+              // regardless of state (DESIGN.md: cards earn their
+              // existence, each list is a logical unit of content +
+              // interaction). State only flips the border color so
+              // the card geometry never shifts when guidance activates.
+              "space-y-3 rounded-lg border bg-card p-4 transition-colors",
+              isPointer
+                ? "border-warning bg-warning-muted/30"
+                : "border-border",
             )}
           >
-            <legend className="flex w-full items-baseline justify-between">
-              <span className="text-sm font-medium text-foreground">
-                {localizedListNameById.get(list.id) ?? list.name}
-                {required ? (
-                  <span className="ml-1 text-destructive">*</span>
-                ) : null}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {selectionHint(list)}
-              </span>
-            </legend>
+            <header className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span
+                  id={`${modifierListFieldsetId(list.id)}-title`}
+                  className="text-sm font-medium text-foreground"
+                >
+                  {localizedListNameById.get(list.id) ?? list.name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {selectionHint(list)}
+                </span>
+              </div>
+              {pillState ? <RequiredPill state={pillState} /> : null}
+            </header>
 
             {list.modifier_type === "text" ? (
               <TextModifierInput
@@ -301,7 +385,7 @@ export function ModifierPicker({
                 formatPrice={formatPrice}
               />
             )}
-          </fieldset>
+          </div>
         );
       })}
     </div>
@@ -327,17 +411,27 @@ function initialDefaults(
   return out;
 }
 
+/**
+ * Customer-facing hint that goes under the section title. Communicates
+ * the cap / constraint in natural language. When the list is required,
+ * the Required pill carries the "min ≥ 1" requirement — the hint just
+ * conveys the cap so we don't double up ("Required · 1–10" reads like
+ * two requirements; "Up to 10" + Required pill reads like one).
+ */
 function selectionHint(list: PublicModifierList): string {
   if (list.modifier_type === "text") {
+    // For required text, the pill says "Required"; the hint just
+    // carries the length cap when present.
     if (list.text_required) {
       return list.max_length !== null
-        ? `Required · up to ${list.max_length} chars`
-        : "Required";
+        ? `Up to ${list.max_length} chars`
+        : "";
     }
     return list.max_length !== null
       ? `Optional · up to ${list.max_length} chars`
       : "Optional";
   }
+  // List-mode
   if (list.min_selected === 1 && list.max_selected === 1) return "Choose 1";
   if (list.max_selected === null && list.min_selected === 0) return "Optional";
   if (list.min_selected === 0 && list.max_selected !== null) {
@@ -347,7 +441,14 @@ function selectionHint(list: PublicModifierList): string {
     return `Choose ${list.min_selected}`;
   }
   if (list.max_selected === null) return `At least ${list.min_selected}`;
-  return `${list.min_selected}–${list.max_selected}`;
+  // Required with a cap (min=1, max=N): the pill carries Required;
+  // the hint just shows the cap. "Up to 10" reads naturally next to
+  // a "Required" pill where "1–10" reads as a confusing range.
+  if (list.min_selected === 1) {
+    return `Up to ${list.max_selected}`;
+  }
+  // Multi-required with a separate cap — rarer edge case.
+  return `Choose ${list.min_selected} to ${list.max_selected}`;
 }
 
 // ============================================================================
@@ -440,6 +541,21 @@ function ListModifierRows({
   // toggles (no point in "Small × 3"; pick Small or Large, not both).
   const showQuantity = !isSingleSelect;
 
+  // `max_selected` caps the TOTAL quantity across every selection in
+  // this list — matches the customer-facing "Up to N" hint. A pizza
+  // place that says "Up to 10 toppings" means 10 toppings total, not
+  // 10 distinct toppings each up to 99 (Square's older semantic). The
+  // server-side validator (resolveModifierSelections in orders.ts)
+  // applies the same total-qty cap, so client and server agree.
+  const totalInList = Array.from(selections.values()).reduce(
+    (sum, q) => sum + q,
+    0,
+  );
+  const remainingCap =
+    list.max_selected === null
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, list.max_selected - totalInList);
+
   const toggle = (modId: string) => {
     const next = new Map(selections);
     if (next.has(modId)) {
@@ -451,8 +567,10 @@ function ListModifierRows({
         next.clear();
         next.set(modId, 1);
       } else {
-        const cap = list.max_selected ?? Infinity;
-        if (next.size >= cap) return;
+        // Block adding a new modifier if doing so would exceed the
+        // list's total cap. e.g. "Up to 10" with 10 already picked
+        // refuses an 11th distinct selection.
+        if (remainingCap < 1) return;
         next.set(modId, 1);
       }
     }
@@ -467,6 +585,13 @@ function ListModifierRows({
       // − one too many times would silently lose their pick.)
       return;
     }
+    // Cap against BOTH the per-modifier hard ceiling AND the
+    // list-wide remaining capacity. e.g. "Up to 10" with 7 distinct
+    // and this row at qty=3: total=10, remainingCap=0. Bumping this
+    // row to 4 would push total to 11 — block it.
+    const current = selections.get(modId) ?? 0;
+    const delta = quantity - current;
+    if (delta > 0 && delta > remainingCap) return;
     const capped = Math.min(quantity, MAX_PER_MODIFIER_QUANTITY);
     next.set(modId, capped);
     onSelectionsChange(next);
@@ -480,6 +605,7 @@ function ListModifierRows({
           modifier={mod}
           selected={selections.has(mod.id)}
           quantity={selections.get(mod.id) ?? 0}
+          listCapReached={remainingCap <= 0}
           isSingleSelect={isSingleSelect}
           showQuantity={showQuantity}
           formatPrice={formatPrice}
@@ -500,6 +626,7 @@ function ModifierRow({
   modifier,
   selected,
   quantity,
+  listCapReached,
   isSingleSelect,
   showQuantity,
   formatPrice,
@@ -510,6 +637,10 @@ function ModifierRow({
   modifier: PublicModifier;
   selected: boolean;
   quantity: number;
+  /** True when the list's total-qty cap is reached. Used to disable
+   *  this row's + stepper (when selected) so the customer can't
+   *  inflate this row past the list-wide ceiling. */
+  listCapReached: boolean;
   isSingleSelect: boolean;
   showQuantity: boolean;
   formatPrice: (cents: number) => string;
@@ -541,12 +672,9 @@ function ModifierRow({
         <span className="truncate text-foreground">{displayName}</span>
       </span>
       <span className="flex shrink-0 items-center gap-3">
-        {showQuantity && selected ? (
-          <QuantityStepper
-            quantity={quantity}
-            onChange={onQuantityChange}
-          />
-        ) : null}
+        {/* Price reads before the stepper — the customer's eye flows
+         *  name → price → action. Putting the stepper at the rightmost
+         *  edge also makes it the thumb-zone affordance on mobile. */}
         {unit > 0 ? (
           <span className="font-mono text-xs text-muted-foreground tabular-nums">
             +{formatPrice(showQuantity && selected ? total : unit)}
@@ -556,6 +684,13 @@ function ModifierRow({
               </span>
             ) : null}
           </span>
+        ) : null}
+        {showQuantity && selected ? (
+          <QuantityStepper
+            quantity={quantity}
+            canIncrement={!listCapReached}
+            onChange={onQuantityChange}
+          />
         ) : null}
       </span>
     </Label>
@@ -568,13 +703,21 @@ function ModifierRow({
 
 function QuantityStepper({
   quantity,
+  canIncrement: canIncrementProp = true,
   onChange,
 }: {
   quantity: number;
+  /** Caller-supplied gate. The stepper still hard-caps at
+   *  MAX_PER_MODIFIER_QUANTITY internally — `canIncrement` from the
+   *  caller is the EXTRA constraint (typically the list-wide
+   *  total-qty cap). Defaults to true so non-cap-aware callers keep
+   *  working. */
+  canIncrement?: boolean;
   onChange: (next: number) => void;
 }) {
   const canDecrement = quantity > 1;
-  const canIncrement = quantity < MAX_PER_MODIFIER_QUANTITY;
+  const canIncrement =
+    canIncrementProp && quantity < MAX_PER_MODIFIER_QUANTITY;
   return (
     // stopPropagation so clicks on the stepper don't trigger the
     // surrounding <Label>'s checkbox/radio toggle (that would deselect
@@ -609,5 +752,65 @@ function QuantityStepper({
         <Plus className="size-3" aria-hidden="true" />
       </Button>
     </div>
+  );
+}
+
+// ============================================================================
+// RequiredPill — three-state status badge used by the guided flow
+// ============================================================================
+
+export type RequiredPillState = "neutral" | "satisfied" | "attention";
+
+/**
+ * The "Required" status pill rendered to the right of each required
+ * modifier list's name. Has three states, all reusing the same chip
+ * shape and dimensions so width never shifts between transitions:
+ *
+ *   neutral    — gray pill, no icon. Default when the customer hasn't
+ *                opted into the guided flow yet (button hasn't been
+ *                tapped) OR when the list is required but un-satisfied
+ *                and not the current pointer.
+ *   satisfied  — green pill with ✓ icon. Only rendered when the
+ *                guided flow is active AND this list's constraints
+ *                are satisfied. Acts as the "this one's done"
+ *                marker.
+ *   attention  — orange pill with ⚠ icon. Only ever set for ONE list
+ *                at a time — the current pointer in the guided flow.
+ *                Pairs with an orange fieldset border to draw the
+ *                customer's eye unambiguously.
+ *
+ * Color tokens come from packages/theme/src/styles.css. Light + dark
+ * variants are handled by the CSS layer.
+ */
+function RequiredPill({ state }: { state: RequiredPillState }) {
+  if (state === "satisfied") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md bg-success-muted px-2 py-0.5 text-[11px] font-medium text-success"
+        aria-label="Required (satisfied)"
+      >
+        <Check className="size-3" aria-hidden />
+        Required
+      </span>
+    );
+  }
+  if (state === "attention") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md border border-warning bg-warning-muted px-2 py-0.5 text-[11px] font-medium text-warning"
+        aria-label="Required (pending)"
+      >
+        <AlertTriangle className="size-3" aria-hidden />
+        Required
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+      aria-label="Required"
+    >
+      Required
+    </span>
   );
 }

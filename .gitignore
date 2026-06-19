@@ -48,3 +48,8 @@ next-env.d.ts
 .next-docs/
 .claude/
 .gstack/
+
+# Playwright
+apps/krafta/test-results/
+apps/krafta/playwright-report/
+apps/krafta/demo-assets/

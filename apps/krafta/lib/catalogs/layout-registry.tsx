@@ -83,6 +83,12 @@ export type ItemCardProps = LocaleProps & {
    *  to fetch the image early (preload tag, no lazy-load). Set on the
    *  first handful of items by the layout to improve LCP. */
   priority?: boolean;
+  /** Cart actions slot — typically a `<CartActions />` rendering an
+   *  Add pill or a stepper. Card variants decide WHERE to render it
+   *  (Careem-pattern: floating over the photo bottom-right for
+   *  photo-dominant cards; inline next to the price for row cards).
+   *  Null when the catalog has cart disabled. */
+  actions?: React.ReactNode;
 };
 
 export type ItemDetailProps = LocaleProps & {
@@ -151,8 +157,9 @@ export const sectionVariants = Object.keys(
 export const itemCardVariants = Object.keys(
   itemCardRegistry,
 ) as CatalogLayoutSettings["itemCardVariant"][];
+// S6: only fullscreen remains. Type stays as a union so adding a future
+// variant is just an entry in this array + a new component.
 export const itemDetailVariants = [
-  "item-sheet",
   "item-fullscreen",
 ] as CatalogLayoutSettings["itemDetailVariant"][];
 

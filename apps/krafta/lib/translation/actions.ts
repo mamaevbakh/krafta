@@ -39,12 +39,16 @@
  */
 
 import { z } from "zod";
+import { generateText, Output } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
+import { SYSTEM_PROMPT } from "@/lib/translation/prompt";
 import { checkQuota, ensureQuotaRow } from "@/lib/translation/quota";
 import {
   ENTITY_KINDS,
   FIELDS_BY_ENTITY,
+  outputSchemaFor,
   type EntityKind,
 } from "@/lib/translation/schemas";
 
@@ -503,6 +507,241 @@ export async function enqueueTranslationJob(
     quotaRemaining: quotaCheck.quotaRemaining - eligibleIds.length,
     dailyQuota: quotaCheck.dailyQuota,
     skippedHumanEdited,
+  };
+}
+
+// =============================================================================
+// translateEntityNow — synchronous single-row re-translate
+// =============================================================================
+//
+// The queue + edge worker exist for BULK translation ("Translate everything
+// missing"). For a single row clicked from inside the edit dialog/drawer
+// the merchant is staring at the form waiting for feedback — going through
+// the queue (cron tick + worker round-trip + page reload) makes the
+// interaction feel broken.
+//
+// This action runs the AI call inline in a Node server action (~5-8s),
+// upserts the translation row bypassing the human-edit guard (Re-translate
+// is an explicit override), and returns the new fields so the dialog can
+// patch its form state immediately. Mirrors the worker's logic byte-for-
+// byte to keep output consistent.
+
+const translateNowSchema = z.object({
+  catalogId: uuidSchema,
+  targetLocale: localeSchema,
+  entityKind: entityKindSchema,
+  entityId: uuidSchema,
+});
+
+export type TranslateNowResult =
+  | {
+      ok: true;
+      translation: {
+        id: string;
+        locale: string;
+        fields: Record<string, string | null>;
+        source_hash: string | null;
+        is_ai_translated: boolean;
+      };
+    }
+  | { ok: false; error: string };
+
+export async function translateEntityNow(
+  input: z.input<typeof translateNowSchema>,
+): Promise<TranslateNowResult> {
+  const parsed = translateNowSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "invalid input",
+    };
+  }
+  const { catalogId, targetLocale, entityKind, entityId } = parsed.data;
+  const supabase = await createClient();
+
+  // 1. Soft quota check (same as enqueue path).
+  await ensureQuotaRow(supabase, catalogId);
+  const quotaCheck = await checkQuota(supabase, {
+    catalogId,
+    requested: 1,
+  });
+  if (!quotaCheck.ok) return { ok: false, error: quotaCheck.error };
+
+  // 2. Resolve catalog default locale → source language.
+  const { data: localeRow, error: localeErr } = await supabase
+    .from("catalog_locales")
+    .select("locale")
+    .eq("catalog_id", catalogId)
+    .eq("is_default", true)
+    .maybeSingle();
+  if (localeErr) return { ok: false, error: localeErr.message };
+  if (!localeRow) return { ok: false, error: "DEFAULT_LOCALE_NOT_SET" };
+  const sourceLocale = localeRow.locale;
+
+  if (sourceLocale === targetLocale) {
+    return { ok: false, error: "SOURCE_EQUALS_TARGET" };
+  }
+
+  // 3. Pull source fields + current_source_hash from the parent row.
+  const parentTable = parentTableFor(entityKind);
+  const fieldsNeeded = FIELDS_BY_ENTITY[entityKind];
+  const selectCols = [...fieldsNeeded, "current_source_hash"].join(", ");
+
+  // Supabase JS narrows .from(<dynamic-string>) per-table; broaden to any
+  // here so the dispatch table can stay generic across 6 entity kinds.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fromParent = supabase.from(parentTable as never) as any;
+  const { data: parentRow, error: parentErr } = await fromParent
+    .select(selectCols)
+    .eq("id", entityId)
+    .maybeSingle();
+  if (parentErr) return { ok: false, error: parentErr.message };
+  if (!parentRow) return { ok: false, error: "SOURCE_NOT_FOUND" };
+
+  const sourceHash = (parentRow as { current_source_hash: string | null })
+    .current_source_hash;
+  const sourceFields: Record<string, string | null> = {};
+  for (const key of fieldsNeeded) {
+    const value = (parentRow as Record<string, unknown>)[key];
+    sourceFields[key] = typeof value === "string" ? value : null;
+  }
+
+  // 4. AI call. Same prompt + model + schema as the edge worker; only the
+  // runtime differs (Node here, Deno there).
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return { ok: false, error: "OPENAI_API_KEY missing" };
+  const openai = createOpenAI({ apiKey });
+
+  let translated: Record<string, string | null>;
+  let tokensUsed = 0;
+  try {
+    const result = await generateText({
+      model: openai("gpt-5-nano-2025-08-07"),
+      system: SYSTEM_PROMPT,
+      prompt: JSON.stringify({
+        entity_kind: entityKind,
+        source_locale: sourceLocale,
+        target_locale: targetLocale,
+        fields: sourceFields,
+      }),
+      output: Output.object({ schema: outputSchemaFor(entityKind) }),
+      temperature: 0.2,
+      maxOutputTokens: 2000,
+      providerOptions: {
+        openai: { reasoningEffort: "minimal" },
+      },
+      // 30s ceiling — generous for nano on these tiny payloads, well
+      // under Vercel's default 300s server action limit.
+      abortSignal: AbortSignal.timeout(30_000),
+    });
+    translated = result.output.fields as Record<string, string | null>;
+    tokensUsed = result.usage?.totalTokens ?? 0;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `AI_FAILED: ${msg}` };
+  }
+
+  // 5. Upsert translation row. Force-bypass the human-edit guard — the
+  // merchant explicitly clicked Re-translate, that IS the override signal.
+  const table = translationTableFor(entityKind);
+  const fkCol = translationFkColumnFor(entityKind);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fromTrans = supabase.from(table as never) as any;
+  // Always include `description` in the projection so the response shape
+  // is stable across entity kinds (name-only kinds get description=null).
+  const projectionCols = Array.from(
+    new Set([...fieldsNeeded, "description"]),
+  ).join(", ");
+  const selectReturning = `id, locale, source_hash, is_ai_translated, ${projectionCols}`;
+
+  const rowFields: Record<string, unknown> = {};
+  for (const key of fieldsNeeded) {
+    rowFields[key] = translated[key];
+  }
+
+  // Find an existing row to decide INSERT vs UPDATE. Doing this in code
+  // (rather than .upsert) keeps the response row predictable — upsert's
+  // returning behavior on conflict isn't worth the indirection here.
+  const { data: existing } = await fromTrans
+    .select("id")
+    .eq(fkCol, entityId)
+    .eq("locale", targetLocale)
+    .maybeSingle();
+
+  let savedRow: {
+    id: string;
+    locale: string;
+    source_hash: string | null;
+    is_ai_translated: boolean;
+    [key: string]: unknown;
+  };
+  if (existing) {
+    const { data, error } = await fromTrans
+      .update({
+        ...rowFields,
+        source_hash: sourceHash,
+        is_ai_translated: true,
+        last_edited_by: null,
+      })
+      .eq("id", (existing as { id: string }).id)
+      .select(selectReturning)
+      .single();
+    if (error) return { ok: false, error: error.message };
+    savedRow = data;
+  } else {
+    const { data, error } = await fromTrans
+      .insert({
+        [fkCol]: entityId,
+        locale: targetLocale,
+        ...rowFields,
+        source_hash: sourceHash,
+        is_ai_translated: true,
+        last_edited_by: null,
+      })
+      .select(selectReturning)
+      .single();
+    if (error) return { ok: false, error: error.message };
+    savedRow = data;
+  }
+
+  // 6. Quota usage. Same rough cost estimate the worker uses
+  // ($0.20/M tokens blended). Errors here are non-fatal — the merchant
+  // already has their translation; we'd rather under-bill than fail.
+  // increment_translation_quota isn't in the auto-generated RPC type
+  // union (the worker calls it from Deno where supabase-js is untyped),
+  // so cast the supabase client to any for this one call.
+  try {
+    const usdEstimated = (tokensUsed / 1_000_000) * 0.2;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).rpc("increment_translation_quota", {
+      p_catalog_id: catalogId,
+      p_tokens_used: tokensUsed,
+      p_usd_estimated: usdEstimated,
+    });
+  } catch {
+    // ignore
+  }
+
+  // 7. Bust the storefront cache so the new translation is visible
+  // immediately on the customer-facing catalog.
+  await updateCatalogByIdAndSlug({ catalogId });
+
+  // Flatten the saved row back to the { fields } shape the caller expects.
+  const returnFields: Record<string, string | null> = {};
+  for (const key of fieldsNeeded) {
+    const v = (savedRow as Record<string, unknown>)[key];
+    returnFields[key] = typeof v === "string" ? v : null;
+  }
+
+  return {
+    ok: true,
+    translation: {
+      id: savedRow.id,
+      locale: savedRow.locale,
+      source_hash: savedRow.source_hash,
+      is_ai_translated: savedRow.is_ai_translated,
+      fields: returnFields,
+    },
   };
 }
 

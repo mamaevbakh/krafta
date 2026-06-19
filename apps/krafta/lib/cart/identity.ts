@@ -1,11 +1,65 @@
 import "server-only";
 
+import { decodeJwt } from "jose";
+
 import { createClient } from "@/lib/supabase/server";
 
 export type CartIdentity = {
   userId: string;
   customerId: string;
 };
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * The current auth uid, working for BOTH Supabase-issued sessions (anonymous
+ * web shoppers) and third-party-auth sessions (the Telegram Mini App).
+ *
+ * We read it from the locally-stored session — `getSession()` is a pure cookie
+ * read, no network — rather than `getUser()`. `getUser()` round-trips to
+ * GoTrue, which only validates Supabase-issued tokens and would reject the
+ * Mini App's third-party JWT (minted by Krafta, trusted by Supabase via JWKS).
+ * Trusting the local session for the *uid* is safe: the real security boundary
+ * is RLS at PostgREST, which re-verifies the token on every read/write, so a
+ * forged session can neither read nor write another shopper's rows. When there
+ * is no session at all, we start an anonymous one (the v1 guest-cart identity).
+ */
+async function resolveAuthUserId(
+  supabase: SupabaseServerClient,
+): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    const sub = decodeJwt(session.access_token).sub;
+    if (typeof sub === "string" && sub.length > 0) return sub;
+  }
+
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error || !data.user) {
+    throw new Error(
+      error?.message ?? "Failed to start an anonymous Supabase session.",
+    );
+  }
+  return data.user.id;
+}
+
+/**
+ * The owner key for the customer address book: the current customer's auth uid
+ * (anonymous web session OR the verified Telegram Mini App identity), starting
+ * an anonymous session if none exists yet. Same identity rule as
+ * `ensureCartIdentity`, minus the per-org `commerce.customers` row — addresses
+ * belong to the PERSON and are shared across every shop they order from.
+ *
+ * Takes the caller's client so a single Supabase session is used throughout a
+ * write (a second `createClient()` after a just-issued anon sign-in would read
+ * stale request cookies and see no session).
+ */
+export async function ensureCustomerUserId(
+  supabase: SupabaseServerClient,
+): Promise<string> {
+  return resolveAuthUserId(supabase);
+}
 
 /**
  * Resolves the current user to a `commerce.customers` row for the given org.
@@ -25,19 +79,7 @@ export type CartIdentity = {
 export async function ensureCartIdentity(orgId: string): Promise<CartIdentity> {
   const supabase = await createClient();
 
-  let { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error || !data.user) {
-      throw new Error(
-        error?.message ?? "Failed to start an anonymous Supabase session.",
-      );
-    }
-    user = data.user;
-  }
-
-  const userId = user.id;
+  const userId = await resolveAuthUserId(supabase);
 
   const { data: existing, error: selectError } = await supabase
     .schema("commerce")

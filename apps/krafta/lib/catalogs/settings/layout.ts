@@ -27,9 +27,14 @@ export type ItemCardVariant =
   // operator preference for list-density (KRA-36 / S9).
   | "card-row-compact";
 
-export type ItemDetailVariant =
-  | "item-sheet"
-  | "item-fullscreen";
+// "item-sheet" was retired in S6 (2026-05-25). The sheet rendered as a
+// partial overlay on desktop (small box pinned to top of viewport with
+// catalog grid still scrolling underneath) — confusing affordance for
+// customers, and the modifier picker from KRA-96 needed the dedicated
+// space the fullscreen variant provides. Type stays as a union (single
+// member) so it's easy to add a new variant later without changing the
+// CatalogLayoutSettings shape.
+export type ItemDetailVariant = "item-fullscreen";
 
 export type ItemCardSettings = {
   columns: number; // 1, 2, 3 (future: "auto")
@@ -131,14 +136,11 @@ function normalizeCategoryNavVariant(
   return "nav-tabs";
 }
 
-function normalizeItemDetailVariant(
-  rawVariant: unknown,
-): ItemDetailVariant {
-  // F-10: explicit opt-in for the legacy bottom-sheet variant. Anything
-  // else (including undefined / unknown values from older catalogs that
-  // never set this field) resolves to fullscreen — the default detail
-  // experience after the storefront audit.
-  if (rawVariant === "item-sheet") return "item-sheet";
+function normalizeItemDetailVariant(): ItemDetailVariant {
+  // S6 (2026-05-25): the sheet variant is gone. Any historical value
+  // ("item-sheet" or any other unknown) resolves to fullscreen — the
+  // only variant we ship now. Re-add a `rawVariant` arg if a second
+  // variant ever lands.
   return "item-fullscreen";
 }
 
@@ -290,7 +292,7 @@ export function normalizeLayoutSettings(
     itemCardVariant:
       raw.itemCardVariant ?? defaultLayoutSettings.itemCardVariant,
     categoryNavVariant: normalizeCategoryNavVariant(raw.categoryNavVariant),
-    itemDetailVariant: normalizeItemDetailVariant(raw.itemDetailVariant),
+    itemDetailVariant: normalizeItemDetailVariant(),
     itemCard: normalizedItemCard,
     header: normalizeHeaderSettings(raw.header),
   };

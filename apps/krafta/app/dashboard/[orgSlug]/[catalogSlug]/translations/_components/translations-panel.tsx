@@ -532,14 +532,14 @@ export function TranslationsPanel({
                 <div className="overflow-x-auto">
                   <TabsList
                     className={cn(
-                      "inline-flex h-auto gap-1 border border-border p-1 py-0",
+                      "inline-flex h-auto gap-1 border border-border p-1 py-1",
                       "bg-background/85 shadow-sm backdrop-blur-md",
                     )}
                   >
                     <TabsTrigger
                       value="overview"
                       className={cn(
-                        " px-3",
+                        "px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >
@@ -548,7 +548,7 @@ export function TranslationsPanel({
                     <TabsTrigger
                       value="items"
                       className={cn(
-                        "rounded-full px-3",
+                        " px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >
@@ -557,7 +557,7 @@ export function TranslationsPanel({
                     <TabsTrigger
                       value="categories"
                       className={cn(
-                        "rounded-full px-3",
+                        " px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >
@@ -566,7 +566,7 @@ export function TranslationsPanel({
                     <TabsTrigger
                       value="variations"
                       className={cn(
-                        "rounded-full px-3",
+                        " px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >
@@ -575,7 +575,7 @@ export function TranslationsPanel({
                     <TabsTrigger
                       value="modifier_lists"
                       className={cn(
-                        "rounded-full px-3",
+                        " px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >
@@ -584,7 +584,7 @@ export function TranslationsPanel({
                     <TabsTrigger
                       value="modifiers"
                       className={cn(
-                        "rounded-full px-3",
+                        " px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >
@@ -600,7 +600,7 @@ export function TranslationsPanel({
                     <TabsTrigger
                       value="catalog"
                       className={cn(
-                        "rounded-full px-3",
+                        "px-3",
                         "data-[state=active]:bg-foreground data-[state=active]:text-background",
                       )}
                     >

@@ -3,6 +3,8 @@ import type { JSX } from "react";
 
 import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
 import { LocaleSwitcher } from "./locale-switcher";
+import { ModeToggle } from "./mode-toggle";
+import { TelegramShareButton } from "@/components/telegram/telegram-share-button";
 
 type CatalogHeaderCenterProps = {
   catalogName: string;
@@ -28,8 +30,10 @@ export function CatalogHeaderCenter({
           top-right corner instead of inline with the title. Customers
           scan the centered identity first; the switcher stays
           discoverable but visually subordinate. */}
-      <div className="absolute right-0 top-0">
+      <div className="absolute right-0 top-0 flex items-center gap-2">
+        <ModeToggle />
         <LocaleSwitcher options={locales} activeLocale={activeLocale} />
+        <TelegramShareButton />
       </div>
 
       {logoUrl && (

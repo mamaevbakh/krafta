@@ -13,6 +13,7 @@ export function BigPhotoCard({
   activeLocale,
   defaultLocale,
   priority,
+  actions,
 }: ItemCardProps) {
   const ratio = imageAspectRatio ?? 4 / 5; // fallback if missing
   const { name, description, imageAlt } = useLocalizedItemFields(item, {
@@ -36,6 +37,13 @@ export function BigPhotoCard({
             className="h-full w-full object-cover dark:brightness-[0.9]"
             priority={priority}
           />
+          {/* Cart actions sit absolutely over the bottom-right of the
+              photo (Careem big-photo pattern). The AspectRatio container
+              is `position: relative` already, so absolute-positioned
+              children anchor against the photo bounds — not the whole
+              card — keeping the pill on the image and off the price.
+              Renders null when the catalog has cart disabled. */}
+          {actions}
         </AspectRatio>
       )}
 

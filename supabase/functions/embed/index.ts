@@ -86,7 +86,19 @@ serve(async (req) => {
           .maybeSingle();
 
         if (readErr) throw readErr;
-        if (!doc) throw new Error("Document not found");
+        if (!doc) {
+          // Orphaned job: the document was deleted after this job was queued.
+          // The catalog_search_documents sync re-creates rows via DELETE+INSERT
+          // with fresh uuids, so every item/translation edit orphans the prior
+          // embedding job. Ack/archive it instead of erroring — otherwise it
+          // recirculates forever (vt expires -> re-read -> "not found" -> repeat)
+          // and the unending poison wall at the head of the queue starves the
+          // genuinely-pending jobs at the tail (head-of-line starvation).
+          if (typeof job.jobId === "number") {
+            await supabase.rpc("ack_embedding_job", { p_job_id: job.jobId });
+          }
+          continue;
+        }
 
         const input = buildEmbeddingText(doc);
         if (!input.trim()) {

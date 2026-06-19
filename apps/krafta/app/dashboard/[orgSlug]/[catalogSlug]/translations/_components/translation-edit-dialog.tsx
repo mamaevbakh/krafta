@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 import {
   createTranslation,
-  enqueueTranslationJob,
+  translateEntityNow,
   updateTranslation,
   updateItemSourceText,
 } from "@/lib/translation/actions";
@@ -250,38 +250,62 @@ export function TranslationEditDialog({
 
   const handleAiTranslate = async (locale: CatalogLocale) => {
     setAiPending((prev) => new Set(prev).add(locale.locale));
-    const result = await enqueueTranslationJob({
+    // Inline AI call via translateEntityNow (~5-8s). Returns the new
+    // fields synchronously so we can patch the form state without a
+    // page reload / cron-tick wait. The bulk "Translate everything
+    // missing" CTA still uses the queue + worker — different shape.
+    const result = await translateEntityNow({
       catalogId,
       targetLocale: locale.locale,
       entityKind: "item",
-      entityIds: [item.id],
-      // Single-item dialog click = explicit "AI translate this row." Force
-      // through human-edit protection — the merchant explicitly asked.
-      force: true,
+      entityId: item.id,
+    });
+
+    setAiPending((prev) => {
+      const next = new Set(prev);
+      next.delete(locale.locale);
+      return next;
     });
 
     if (!result.ok) {
-      setAiPending((prev) => {
-        const next = new Set(prev);
-        next.delete(locale.locale);
-        return next;
-      });
       toast.error(result.error);
       return;
     }
 
-    toast.success(`Translating to ${locale.display_name}…`);
+    // Patch the local form state with the freshly-written translation.
+    // We rebuild the ItemTranslation row from the action's payload so the
+    // dialog's "serverRow" reflects the same shape items-tab feeds in.
+    setForms((prev) => {
+      const newServerRow: ItemTranslation = {
+        id: result.translation.id,
+        locale: result.translation.locale,
+        name: (result.translation.fields.name as string | null) ?? "",
+        description:
+          (result.translation.fields.description as string | null) ?? null,
+        image_alt:
+          (result.translation.fields.image_alt as string | null) ?? null,
+        is_ai_translated: result.translation.is_ai_translated,
+        last_edited_by: null,
+        source_hash: result.translation.source_hash,
+        // updated_at isn't returned by the action; use 'now' as a
+        // best-effort. The next onMutation() refresh will replace it
+        // with the canonical server timestamp.
+        updated_at: new Date().toISOString(),
+      };
+      return {
+        ...prev,
+        [locale.locale]: {
+          name: newServerRow.name,
+          description: newServerRow.description ?? "",
+          image_alt: newServerRow.image_alt ?? "",
+          dirty: false,
+          serverRow: newServerRow,
+        },
+      };
+    });
 
-    // Worker runs on a 60s cron OR responds to direct invocation; either
-    // way the round-trip is ~5-10s. Refresh after 8s to pull the result.
-    setTimeout(() => {
-      onMutation();
-      setAiPending((prev) => {
-        const next = new Set(prev);
-        next.delete(locale.locale);
-        return next;
-      });
-    }, 8000);
+    toast.success(`Translated to ${locale.display_name}.`);
+    onMutation();
   };
 
   const handleSave = async (

@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { addCatalogLocale } from "@/lib/translation/actions";
 import { getLocaleDefinition } from "@/lib/locales/registry";
 
-import { LocalePicker } from "./locale-picker";
+import { LocalePicker } from "@/components/locales/locale-picker";
 
 /**
  * Dialog to add a new locale to a catalog.

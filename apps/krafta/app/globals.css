@@ -27,6 +27,12 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -64,6 +70,18 @@
   --accent: oklch(0.967 0.001 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
+  /* Status tokens (light) — used by the guided required-selection
+   * flow on item-detail. --success: emerald-700-ish for text/icon
+   * (the "✓ Required" pill). --success-muted: emerald-50-ish for
+   * the pill background. --warning: amber-700-ish + --warning-muted:
+   * amber-50-ish for the "⚠ Required" attention pill + the orange
+   * section border on the current pointer. */
+  --success: oklch(0.51 0.13 165);
+  --success-foreground: oklch(0.985 0 0);
+  --success-muted: oklch(0.96 0.04 156);
+  --warning: oklch(0.56 0.17 49);
+  --warning-foreground: oklch(0.985 0 0);
+  --warning-muted: oklch(0.97 0.05 95);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
@@ -99,6 +117,15 @@
   --accent: oklch(0.274 0.006 286.033);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  /* Status tokens (dark) — brighter hues for legibility against the
+   * dark background. Muted variants use low-alpha tints so the pill
+   * sits gently inside dark cards. */
+  --success: oklch(0.7 0.17 162);
+  --success-foreground: oklch(0.141 0.005 285.823);
+  --success-muted: oklch(0.5 0.13 165 / 18%);
+  --warning: oklch(0.77 0.19 70);
+  --warning-foreground: oklch(0.141 0.005 285.823);
+  --warning-muted: oklch(0.6 0.17 60 / 18%);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);
@@ -123,6 +150,24 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/*
+ * iOS Safari zooms the viewport toward any focused form control whose
+ * font-size is under 16px — the "screen zooms in when I tap an input" bug.
+ * Floor every editable control at 16px on phones so focusing one never
+ * triggers that zoom; md+ (≥768px, desktop) is untouched and keeps the
+ * designed 14px. Unlayered on purpose: layered styles lose to unlayered ones
+ * in the cascade, so this wins over Tailwind's `text-sm` utility without
+ * needing !important. Pinch-zoom stays available (we don't touch the
+ * viewport meta), so accessibility is preserved.
+ */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
   }
 }
 
@@ -208,7 +253,52 @@
   }
 }
 
+/* Cart quantity pulse — Linear-style "the number just updated" affordance.
+ * Brief scale pop + color flash on every value change. Subtle enough to
+ * not feel jittery, present enough that the customer notices when their
+ * tap registered (or when the server's reconcile bumped the value). */
+@keyframes cart-qty-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.18);
+    color: var(--primary);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 @theme {
   --animate-collapsible-down: collapsible-down 200ms ease-out;
   --animate-collapsible-up: collapsible-up 200ms ease-out;
+  --animate-cart-qty-pulse: cart-qty-pulse 280ms ease-out;
+}
+/* ── Telegram Mini App ──────────────────────────────────────────────────
+   `.tg-app` is set on <html> by TelegramFrame when running inside Telegram.
+   Inside the app, hide chrome that Telegram already provides natively (its
+   own back/close/share controls) so we don't double up or collide with the
+   floating controls. No effect on the public web. */
+.tg-app [data-tg-hide] {
+  display: none !important;
+}
+
+/* Accessibility — honor the OS "reduce motion" preference (DESIGN.md §Motion).
+   tw-animate-css utilities respect this automatically, but our hand-rolled
+   keyframes (cart-qty-pulse, krafta-row-flash, collapsible-*) do not, so
+   neutralize all motion globally and kill the qty pulse explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-cart-qty-pulse {
+    animation: none !important;
+  }
 }

@@ -117,7 +117,6 @@ const NAV_DESCRIPTIONS: Record<string, string> = {
 };
 
 const ITEM_DETAIL_LABELS: Record<string, string> = {
-  "item-sheet": "Sheet",
   "item-fullscreen": "Fullscreen",
 };
 
@@ -1529,7 +1528,7 @@ function CartInspector({
     <StudioCard>
       <InspectorIntro
         title="Cart"
-        description="Turn ordering on for this catalog."
+        description="Ordering is on by default. Switch off for a browse-only menu."
       />
 
       <button
@@ -1560,9 +1559,9 @@ function CartInspector({
       </button>
 
       <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-        Checkout flow (modes, scheduling, payment) lands in upcoming
-        commits — toggling this on now exposes cart UX so you can poke it
-        on the public catalog.
+        On by default. Customers add items and check out using the order modes
+        you enable under Settings → Venue. Turn this off only for a browse-only
+        menu (no cart, no Add-to-cart).
       </div>
     </StudioCard>
   );

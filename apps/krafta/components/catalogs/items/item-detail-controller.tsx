@@ -16,24 +16,38 @@ import dynamic from "next/dynamic";
 import type { PublicCategoryWithItems, PublicItem } from "@/lib/catalogs/types";
 import type { ItemDetailVariant } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
-import {
-  Drawer,
-  DrawerContent,
-} from "@/components/ui/drawer";
-import { cn } from "@/lib/utils";
-import { ItemDetailSheet } from "@/components/catalogs/items/item-detail-sheet-view";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { ItemDetailSkeleton } from "@/components/catalogs/items/item-detail-skeleton";
+import { TelegramBackButton } from "@/components/telegram/telegram-back-button";
 
-const ItemDetailFullscreen = dynamic(() =>
-  import("@/components/catalogs/items/item-detail-fullscreen-view").then(
-    (module) => module.ItemDetailFullscreen,
-  ),
+// S6 (2026-05-25): the legacy bottom-sheet variant is gone — fullscreen
+// is the only render mode. The variant prop on the provider stays for
+// backward compatibility with callers that still pass it (RSC catalog
+// layout, preview page) but is otherwise unused.
+//
+// `loading: ItemDetailSkeleton` overrides the default Suspense fallback.
+// Without it, the dynamic chunk fetch suspends to the nearest Suspense
+// boundary — the page-level loading.tsx — which flashes the whole
+// CATALOG skeleton over the catalog for ~350ms the FIRST time any item
+// detail opens. The dedicated skeleton renders INSIDE the dialog
+// overlay with the detail's exact shape (image band + title/price +
+// modifier rows + sticky CTA), so the open feels instant and there's
+// zero layout shift when the real component lands. Subsequent opens
+// are one-frame instant once the chunk is cached.
+const ItemDetailFullscreen = dynamic(
+  () =>
+    import("@/components/catalogs/items/item-detail-fullscreen-view").then(
+      (module) => module.ItemDetailFullscreen,
+    ),
+  { loading: ItemDetailSkeleton },
 );
 
 // ---- context --------------------------------------------------------------
 
 type ItemSheetContextValue = {
+  /** Whether the item-detail overlay is currently open. */
+  isOpen: boolean;
   openItem: (itemSlug: string, categorySlug?: string | null) => void;
   closeItem: () => void;
 };
@@ -60,16 +74,12 @@ export function ItemSheetProvider({
   baseHref,
   children,
   itemAspectRatio,
-  itemDetailVariant = "item-sheet",
+  // itemDetailVariant prop is still accepted by the type for backward
+  // compat with older callers, but intentionally not destructured —
+  // only "item-fullscreen" renders now.
   currencySettings,
 }: ItemSheetProviderProps) {
   const { activeLocale, defaultLocale } = useStorefrontLocale();
-  const isFullscreenDetail = itemDetailVariant === "item-fullscreen";
-  const ItemDetailComponent =
-    isFullscreenDetail ? ItemDetailFullscreen : ItemDetailSheet;
-  const itemDetailDrawerClassName = isFullscreenDetail
-    ? "h-[100dvh] p-0"
-    : undefined;
   const normalizedBase = useMemo(
     () => baseHref.replace(/\/+$/, "") || "/",
     [baseHref],
@@ -175,21 +185,21 @@ export function ItemSheetProvider({
     return () => window.removeEventListener("popstate", handlePopState);
   }, [baseSegments, categoryBySlug, itemLookup, itemToCategorySlug]);
 
+  // Fullscreen detail locks document scroll while open. Previously this
+  // ran conditionally on the (now-gone) sheet vs fullscreen split.
   useEffect(() => {
-    if (!isFullscreenDetail || !open) return;
+    if (!open) return;
     const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow =
-      document.documentElement.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
 
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
 
     return () => {
       document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow =
-        previousHtmlOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
     };
-  }, [isFullscreenDetail, open]);
+  }, [open]);
 
   const currentItem = currentItemSlug ? itemLookup[currentItemSlug] : null;
   const currentCategory = currentCategorySlug
@@ -226,7 +236,13 @@ export function ItemSheetProvider({
     setCurrentCategorySlug(derivedCategorySlug ?? null);
     setOpen(true);
 
-    window.history.pushState(null, "", pathWithPreview);
+    // `{ __NA: true }` tells Next 16's patched pushState to skip the
+    // ACTION_RESTORE dispatch (see next/dist/client/components/
+    // app-router.js). Without it, every detail open re-renders the
+    // catch-all [...slug] route, which flashes loading.tsx for ~350ms
+    // while the new RSC payload is fetched. We manage the dialog and
+    // URL ourselves; Next.js doesn't need to react.
+    window.history.pushState({ __NA: true }, "", pathWithPreview);
   }, [
     activeCategorySlug,
     buildPath,
@@ -244,74 +260,43 @@ export function ItemSheetProvider({
     setOpen(false);
     setCurrentItemSlug(null);
 
-    window.history.replaceState(null, "", pathWithPreview);
+    // `{ __NA: true }` keeps Next 16 from treating this as a navigation —
+    // see matching note in openItem above.
+    window.history.replaceState({ __NA: true }, "", pathWithPreview);
   }, [activeCategorySlug, buildPath]);
 
   const ctxValue: ItemSheetContextValue = useMemo(
     () => ({
+      isOpen: open,
       openItem,
       closeItem,
     }),
-    [closeItem, openItem],
+    [open, closeItem, openItem],
   );
 
   if (!categoriesWithItems.length) {
     return <>{children}</>;
   }
 
-  if (isFullscreenDetail) {
-    return (
-      <ItemSheetContext.Provider value={ctxValue}>
-        {children}
-        {open && currentItem && (
-          <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:p-6">
-            <ItemDetailComponent
-              item={currentItem}
-              category={currentCategory}
-              imageUrl={imageUrl}
-              itemAspectRatio={itemAspectRatio}
-              onClose={closeItem}
-              currencySettings={currencySettings}
-              activeLocale={activeLocale}
-              defaultLocale={defaultLocale}
-            />
-          </div>
-        )}
-      </ItemSheetContext.Provider>
-    );
-  }
-
   return (
     <ItemSheetContext.Provider value={ctxValue}>
       {children}
-
-      <Drawer
-        open={open && !!currentItem}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            closeItem();
-          }
-        }}
-      >
-      <DrawerContent
-        className={cn(
-          "bg-background px-0 pb-4 pt-2 sm:px-0",
-          itemDetailDrawerClassName,
-        )}
-      >
-        {currentItem && (
-          <ItemDetailComponent
+      {/* Native Telegram Back control while the detail overlay is open. */}
+      <TelegramBackButton active={open} onBack={closeItem} />
+      {open && currentItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:p-6">
+          <ItemDetailFullscreen
             item={currentItem}
             category={currentCategory}
             imageUrl={imageUrl}
             itemAspectRatio={itemAspectRatio}
+            onClose={closeItem}
             currencySettings={currencySettings}
             activeLocale={activeLocale}
             defaultLocale={defaultLocale}
           />
-        )}
-      </DrawerContent>
-      </Drawer>
+        </div>
+      )}
     </ItemSheetContext.Provider>
   );
 }
@@ -341,14 +326,48 @@ export function ItemSheetTrigger({
 }) {
   const { openItem } = useItemSheet();
 
+  // div + role=button (not a literal <button>) so descendants can include
+  // their own interactive controls (the catalog-card cart actions live
+  // inside this trigger so they can position absolutely over the photo).
+  // Nested literal <button>s inside a <button> would be invalid HTML and
+  // produce hydration warnings.
+  //
+  // Click suppression for opt-out zones: any descendant marked with
+  // `data-cart-action` (the Add pill, the stepper) is treated as a
+  // non-trigger zone — taps there mutate the cart instead of opening
+  // the item detail. More reliable than e.stopPropagation across
+  // React's delegated event chain.
+  //
+  // Portal escape: descendants like the customisations vaul-drawer are
+  // *DOM-portaled to body* but stay React-descendants of this trigger,
+  // so their overlay clicks synthetically bubble up through us and fire
+  // openItem (closing the disambiguation drawer would open the item
+  // detail underneath). Guard with `currentTarget.contains(target)` —
+  // portaled elements aren't DOM descendants, so the check rejects them
+  // even though the React event still bubbles here.
   return (
-    <button
-      type="button"
-      onClick={() => openItem(itemSlug, categorySlug)}
-      className="block w-full text-left"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest("[data-cart-action]")) return;
+        if (target && !e.currentTarget.contains(target)) return;
+        openItem(itemSlug, categorySlug);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          const target = e.target as HTMLElement | null;
+          if (target?.closest("[data-cart-action]")) return;
+          if (target && !e.currentTarget.contains(target)) return;
+          e.preventDefault();
+          openItem(itemSlug, categorySlug);
+        }
+      }}
+      className="block w-full cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       {children}
-    </button>
+    </div>
   );
 }
 
@@ -358,4 +377,9 @@ export function useItemSheet() {
     throw new Error("ItemSheet components must be used inside ItemSheetProvider.");
   }
   return ctx;
+}
+
+/** Null-safe variant for components that may render outside the provider. */
+export function useOptionalItemSheet(): ItemSheetContextValue | null {
+  return useContext(ItemSheetContext);
 }

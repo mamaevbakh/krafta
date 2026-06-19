@@ -52,8 +52,10 @@ export type StorefrontMessageKey =
   | "all"
   // Cart drawer chrome
   | "cart.title"
+  | "cart.description"
   | "cart.empty"
   | "cart.empty.hint"
+  | "cart.empty.cta"
   | "cart.continue"
   | "cart.subtotal"
   | "cart.total"
@@ -100,6 +102,45 @@ export type StorefrontMessageKey =
   | "checkout.phone.placeholder"
   | "checkout.note.label"
   | "checkout.note.placeholder"
+  // Inline "what's missing" hint shown above the Place order CTA
+  | "checkout.missing.address"
+  | "checkout.missing.name"
+  | "checkout.missing.phone"
+  | "checkout.missing.time"
+  | "checkout.missing.table"
+  | "checkout.out_of_zone"
+  | "checkout.below_min_order"
+  // Delivery address book — dedicated map + list screens
+  | "address.title"
+  | "address.use_location"
+  | "address.add"
+  | "address.change"
+  | "address.new"
+  | "address.edit_title"
+  | "address.loading"
+  | "address.search"
+  | "address.confirm"
+  | "address.resolving"
+  | "address.map_hint"
+  | "address.edit_on_map"
+  | "address.save"
+  | "address.delete"
+  | "address.delete_confirm_title"
+  | "address.delete_confirm_body"
+  | "address.set_default"
+  | "address.default"
+  | "address.summary_empty"
+  | "address.helps_delivery"
+  | "address.field.entrance"
+  | "address.field.floor"
+  | "address.field.apartment"
+  | "address.field.intercom"
+  | "address.field.note"
+  | "address.field.note_ph"
+  | "address.field.label"
+  | "address.label.home"
+  | "address.label.work"
+  | "address.label.other"
   // Placed step
   | "placed.title"
   | "placed.subtitle.dine_in"
@@ -114,9 +155,33 @@ export type StorefrontMessageKey =
   | "placed.scheduled_for"
   // Add to cart
   | "add_to_cart.label"
+  | "add_to_cart.label_with_price"
   | "add_to_cart.added"
   | "add_to_cart.view"
   | "add_to_cart.adding"
+  // Gating message on the item-detail bottom CTA when required mods
+  // aren't met yet. `{count}` is the number of unfilled required lists.
+  | "add_to_cart.gated_required_one"
+  | "add_to_cart.gated_required_many"
+  // Disambiguation drawer that opens when the customer taps +/- on a
+  // customisable item already in cart. Lists each existing config plus
+  // an "Add new customised item" CTA.
+  | "customisations.title"
+  | "customisations.add_new"
+  // Storefront bottom dock — search input placeholder + a11y label.
+  | "search.placeholder"
+  | "search.open_aria"
+  // Header language switcher — aria label on the globe-icon trigger.
+  // The dropdown items themselves use each locale's `display_name`
+  // (merchant-curated), so the only localized string we need is the
+  // affordance label for screen readers.
+  | "language.select_aria"
+  // Item detail view — variation selector. "Size" reads as the universal
+  // header for variation pickers in food/menu contexts even when the
+  // actual axis is something else (e.g. "Cold / Hot"). Renamed to
+  // generic "Choose option" if you'd rather not assume size semantics.
+  | "variation.label"
+  | "variation.sold_out"
   // Errors (interpolation-aware — use `{var}` placeholders in the string)
   | "errors.network"
   | "errors.item_not_found"
@@ -157,8 +222,10 @@ const EN: MessageTable = {
   all: "All",
 
   "cart.title": "Your cart",
+  "cart.description": "Review the items in your cart and continue to checkout.",
   "cart.empty": "Your cart is empty.",
   "cart.empty.hint": "Add items from the menu to get started.",
+  "cart.empty.cta": "Browse the menu",
   "cart.continue": "Continue",
   "cart.subtotal": "Subtotal",
   "cart.total": "Total",
@@ -202,6 +269,43 @@ const EN: MessageTable = {
   "checkout.phone.placeholder": "XX XXX XX XX",
   "checkout.note.label": "Note",
   "checkout.note.placeholder": "Anything we should know? (optional)",
+  "checkout.missing.address": "Choose a delivery address",
+  "checkout.missing.name": "Enter the recipient’s name",
+  "checkout.missing.phone": "Enter a valid phone number",
+  "checkout.missing.time": "Pick a time",
+  "checkout.missing.table": "Enter your table number",
+  "checkout.out_of_zone": "Outside the delivery area",
+  "checkout.below_min_order": "Minimum order for delivery is {amount}",
+  "address.title": "Delivery address",
+  "address.use_location": "Use my location",
+  "address.add": "Add address",
+  "address.change": "Change",
+  "address.new": "New address",
+  "address.edit_title": "Edit address",
+  "address.loading": "Loading addresses…",
+  "address.search": "Search address",
+  "address.confirm": "Confirm",
+  "address.resolving": "Finding address…",
+  "address.map_hint": "Drag the map to pinpoint the entrance",
+  "address.edit_on_map": "Edit on map",
+  "address.save": "Save",
+  "address.delete": "Delete address",
+  "address.delete_confirm_title": "Delete this address?",
+  "address.delete_confirm_body": "This can’t be undone.",
+  "address.set_default": "Set as default",
+  "address.default": "Default",
+  "address.summary_empty": "Add a delivery address",
+  "address.helps_delivery": "Helps the courier find you",
+  "address.field.entrance": "Entrance",
+  "address.field.floor": "Floor",
+  "address.field.apartment": "Apartment",
+  "address.field.intercom": "Intercom",
+  "address.field.note": "Courier note",
+  "address.field.note_ph": "Call 10 min before · entrance from the yard",
+  "address.field.label": "Label",
+  "address.label.home": "Home",
+  "address.label.work": "Work",
+  "address.label.other": "Other",
 
   "placed.title": "Order placed",
   "placed.subtitle.dine_in":
@@ -217,9 +321,19 @@ const EN: MessageTable = {
   "placed.scheduled_for": "Scheduled for {time}",
 
   "add_to_cart.label": "Add to cart",
+  "add_to_cart.label_with_price": "Add  •  {price}",
   "add_to_cart.added": "Added {name}",
   "add_to_cart.view": "View cart",
   "add_to_cart.adding": "Adding…",
+  "add_to_cart.gated_required_one": "Make 1 required selection",
+  "add_to_cart.gated_required_many": "Make {count} required selections",
+  "customisations.title": "Your customisations for this item",
+  "customisations.add_new": "Add new customised item",
+  "search.placeholder": "Search the menu",
+  "search.open_aria": "Open search",
+  "language.select_aria": "Select language",
+  "variation.label": "Choose option",
+  "variation.sold_out": "Sold out",
 
   "errors.network":
     "Network issue. Check your connection and try again.",
@@ -230,7 +344,7 @@ const EN: MessageTable = {
   "errors.order_expired":
     "This order expired. Start a new one to continue.",
   "errors.price_changed":
-    "The price of \"{name}\" changed from {old} to {new}. Update and continue?",
+    "Prices have changed for: {name}. Refresh the cart and try again.",
   "errors.table_session_expired":
     "This table session ended. Scan the QR again or pick another mode.",
   "errors.scheduled_time_too_soon":
@@ -258,8 +372,10 @@ const RU: MessageTable = {
   all: "Все",
 
   "cart.title": "Корзина",
+  "cart.description": "Просмотрите позиции в корзине и перейдите к оформлению.",
   "cart.empty": "Ваша корзина пуста.",
   "cart.empty.hint": "Добавьте позиции из меню, чтобы начать.",
+  "cart.empty.cta": "В меню",
   "cart.continue": "Далее",
   "cart.subtotal": "Подытог",
   "cart.total": "Итого",
@@ -303,6 +419,43 @@ const RU: MessageTable = {
   "checkout.phone.placeholder": "XX XXX XX XX",
   "checkout.note.label": "Комментарий",
   "checkout.note.placeholder": "Что нам стоит знать? (необязательно)",
+  "checkout.missing.address": "Выберите адрес доставки",
+  "checkout.missing.name": "Укажите имя получателя",
+  "checkout.missing.phone": "Введите корректный номер телефона",
+  "checkout.missing.time": "Выберите время",
+  "checkout.missing.table": "Укажите номер столика",
+  "checkout.out_of_zone": "Вне зоны доставки",
+  "checkout.below_min_order": "Минимальный заказ для доставки — {amount}",
+  "address.title": "Адрес доставки",
+  "address.use_location": "Использовать геолокацию",
+  "address.add": "Добавить адрес",
+  "address.change": "Изменить",
+  "address.new": "Новый адрес",
+  "address.edit_title": "Изменить адрес",
+  "address.loading": "Загрузка адресов…",
+  "address.search": "Поиск адреса",
+  "address.confirm": "Подтвердить",
+  "address.resolving": "Определяем адрес…",
+  "address.map_hint": "Подвиньте карту, чтобы уточнить вход",
+  "address.edit_on_map": "Изменить на карте",
+  "address.save": "Сохранить",
+  "address.delete": "Удалить адрес",
+  "address.delete_confirm_title": "Удалить этот адрес?",
+  "address.delete_confirm_body": "Это действие нельзя отменить.",
+  "address.set_default": "Сделать основным",
+  "address.default": "По умолчанию",
+  "address.summary_empty": "Добавить адрес доставки",
+  "address.helps_delivery": "Поможет курьеру вас найти",
+  "address.field.entrance": "Подъезд",
+  "address.field.floor": "Этаж",
+  "address.field.apartment": "Квартира",
+  "address.field.intercom": "Домофон",
+  "address.field.note": "Комментарий курьеру",
+  "address.field.note_ph": "позвонить за 10 минут · вход со двора",
+  "address.field.label": "Метка",
+  "address.label.home": "Дом",
+  "address.label.work": "Работа",
+  "address.label.other": "Другое",
 
   "placed.title": "Заказ оформлен",
   "placed.subtitle.dine_in":
@@ -319,9 +472,19 @@ const RU: MessageTable = {
   "placed.scheduled_for": "Запланировано на {time}",
 
   "add_to_cart.label": "В корзину",
+  "add_to_cart.label_with_price": "В корзину  •  {price}",
   "add_to_cart.added": "Добавлено: {name}",
   "add_to_cart.view": "Перейти в корзину",
   "add_to_cart.adding": "Добавляем…",
+  "add_to_cart.gated_required_one": "Сделайте 1 обязательный выбор",
+  "add_to_cart.gated_required_many": "Сделайте {count} обязательных выборов",
+  "customisations.title": "Ваши настройки этого блюда",
+  "customisations.add_new": "Добавить ещё с другими настройками",
+  "search.placeholder": "Поиск по меню",
+  "search.open_aria": "Открыть поиск",
+  "language.select_aria": "Выбрать язык",
+  "variation.label": "Выберите вариант",
+  "variation.sold_out": "Нет в наличии",
 
   "errors.network": "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   "errors.item_not_found": "Эта позиция больше недоступна.",
@@ -331,7 +494,7 @@ const RU: MessageTable = {
   "errors.order_expired":
     "Срок действия этого заказа истёк. Начните новый заказ.",
   "errors.price_changed":
-    "Цена «{name}» изменилась с {old} на {new}. Обновить и продолжить?",
+    "Цены изменились: {name}. Обновите корзину и попробуйте снова.",
   "errors.table_session_expired":
     "Сессия столика завершена. Отсканируйте QR заново или выберите другой режим.",
   "errors.scheduled_time_too_soon":
@@ -361,8 +524,10 @@ const UZ_LATN: MessageTable = {
   all: "Hammasi",
 
   "cart.title": "Savatcha",
+  "cart.description": "Savatchangizdagi taomlarni ko‘rib chiqing va buyurtma berishga o‘ting.",
   "cart.empty": "Savatchangiz bo‘sh.",
   "cart.empty.hint": "Boshlash uchun menyudan taom qo‘shing.",
+  "cart.empty.cta": "Menyuga o‘tish",
   "cart.continue": "Davom etish",
   "cart.subtotal": "Oraliq jami",
   "cart.total": "Jami",
@@ -406,6 +571,43 @@ const UZ_LATN: MessageTable = {
   "checkout.phone.placeholder": "XX XXX XX XX",
   "checkout.note.label": "Izoh",
   "checkout.note.placeholder": "Biz bilishimiz kerakmi? (ixtiyoriy)",
+  "checkout.missing.address": "Yetkazib berish manzilini tanlang",
+  "checkout.missing.name": "Qabul qiluvchi ismini kiriting",
+  "checkout.missing.phone": "To‘g‘ri telefon raqamini kiriting",
+  "checkout.missing.time": "Vaqtni tanlang",
+  "checkout.missing.table": "Stol raqamini kiriting",
+  "checkout.out_of_zone": "Yetkazib berish hududidan tashqarida",
+  "checkout.below_min_order": "Yetkazib berish uchun minimal buyurtma — {amount}",
+  "address.title": "Yetkazib berish manzili",
+  "address.use_location": "Joylashuvdan foydalanish",
+  "address.add": "Manzil qo‘shish",
+  "address.change": "O‘zgartirish",
+  "address.new": "Yangi manzil",
+  "address.edit_title": "Manzilni tahrirlash",
+  "address.loading": "Manzillar yuklanmoqda…",
+  "address.search": "Manzilni qidirish",
+  "address.confirm": "Tasdiqlash",
+  "address.resolving": "Manzil aniqlanmoqda…",
+  "address.map_hint": "Kirishni aniqlash uchun xaritani suring",
+  "address.edit_on_map": "Xaritada o‘zgartirish",
+  "address.save": "Saqlash",
+  "address.delete": "Manzilni o‘chirish",
+  "address.delete_confirm_title": "Ushbu manzil o‘chirilsinmi?",
+  "address.delete_confirm_body": "Buni bekor qilib bo‘lmaydi.",
+  "address.set_default": "Asosiy qilish",
+  "address.default": "Asosiy",
+  "address.summary_empty": "Yetkazish manzilini qo‘shing",
+  "address.helps_delivery": "Kuryerga sizni topishda yordam beradi",
+  "address.field.entrance": "Kirish",
+  "address.field.floor": "Qavat",
+  "address.field.apartment": "Xonadon",
+  "address.field.intercom": "Domofon",
+  "address.field.note": "Kuryerga izoh",
+  "address.field.note_ph": "10 daqiqa oldin qo‘ng‘iroq qiling · hovlidan kirish",
+  "address.field.label": "Yorliq",
+  "address.label.home": "Uy",
+  "address.label.work": "Ish",
+  "address.label.other": "Boshqa",
 
   "placed.title": "Buyurtma qabul qilindi",
   "placed.subtitle.dine_in":
@@ -424,9 +626,19 @@ const UZ_LATN: MessageTable = {
   "placed.scheduled_for": "{time} ga rejalashtirildi",
 
   "add_to_cart.label": "Savatchaga",
+  "add_to_cart.label_with_price": "Savatchaga  •  {price}",
   "add_to_cart.added": "Qo‘shildi: {name}",
   "add_to_cart.view": "Savatchaga o‘tish",
   "add_to_cart.adding": "Qo‘shilmoqda…",
+  "add_to_cart.gated_required_one": "1 ta majburiy tanlovni bajaring",
+  "add_to_cart.gated_required_many": "{count} ta majburiy tanlovni bajaring",
+  "customisations.title": "Bu mahsulot uchun sozlamalaringiz",
+  "customisations.add_new": "Boshqa sozlamalar bilan qo‘shish",
+  "search.placeholder": "Menyu bo‘yicha qidirish",
+  "search.open_aria": "Qidiruvni ochish",
+  "language.select_aria": "Tilni tanlash",
+  "variation.label": "Variantni tanlang",
+  "variation.sold_out": "Tugagan",
 
   "errors.network": "Internet bilan muammo. Aloqani tekshirib qaytadan urinib ko‘ring.",
   "errors.item_not_found": "Bu taom endi mavjud emas.",
@@ -436,7 +648,7 @@ const UZ_LATN: MessageTable = {
   "errors.order_expired":
     "Bu buyurtma muddati o‘tdi. Yangi buyurtma boshlang.",
   "errors.price_changed":
-    "«{name}» narxi {old} dan {new} ga o‘zgardi. Yangilab davom etamizmi?",
+    "Narxlar o‘zgardi: {name}. Savatchani yangilab qaytadan urinib ko‘ring.",
   "errors.table_session_expired":
     "Stol sessiyasi tugadi. QR-kodni qayta skanerlang yoki boshqa rejimni tanlang.",
   "errors.scheduled_time_too_soon":
