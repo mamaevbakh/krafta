@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
+import { getSsoAuthBaseUrl, hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { getUserSafely } from "@krafta/supabase/auth";
 
 /**
@@ -95,6 +96,19 @@ export async function signInWithGoogle(next?: string) {
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
+
+  // Single logout: when this app federates to the Krafta SSO IdP, the IdP holds
+  // its OWN session. Clearing only the local session leaves the IdP logged in,
+  // so the next /authorize silently re-issues a code — "I logged out but I'm
+  // back in". Bounce through the IdP's logout, which ends its session and
+  // returns here. (No SSO configured -> just land on home, as before.)
+  if (hasSsoRuntimeConfig()) {
+    const origin = getRequestOrigin(await headers());
+    const logoutUrl = new URL("/logout", getSsoAuthBaseUrl());
+    logoutUrl.searchParams.set("post_logout_redirect_uri", origin);
+    redirect(logoutUrl.toString());
+  }
+
   redirect("/");
 }
 

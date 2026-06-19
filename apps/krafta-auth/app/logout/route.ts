@@ -23,6 +23,31 @@ function getAllowedOrigins() {
   }).filter((value): value is string => Boolean(value)));
 }
 
+// RP-initiated logout (top-level GET): the main app's signOut bounces the
+// browser here after clearing its own session, so the IdP session is cleared
+// too and the next /authorize can't silently re-issue a code. SameSite=lax
+// session cookies are sent + cleared on this top-level navigation.
+export async function GET(request: NextRequest) {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+
+  const candidate = request.nextUrl.searchParams.get("post_logout_redirect_uri");
+  let redirectTo =
+    process.env.KRAFTA_APP_URL ?? `${request.nextUrl.origin}/login`;
+  if (candidate) {
+    try {
+      const target = new URL(candidate);
+      if (getAllowedOrigins().has(target.origin)) {
+        redirectTo = candidate;
+      }
+    } catch {
+      // keep the safe fallback
+    }
+  }
+
+  return NextResponse.redirect(redirectTo);
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   await supabase.auth.signOut();
