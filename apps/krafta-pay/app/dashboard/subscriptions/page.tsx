@@ -5,7 +5,8 @@ import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-fi
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createSubscriptionCheckoutAction } from "@/app/dashboard/actions";
 import { formatMinorAmount } from "@/lib/format";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/link-button";
 import { Input } from "@/components/ui/input";
 import {
   Card,
@@ -90,12 +91,13 @@ export default async function DashboardSubscriptionsPage({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link
+              <LinkButton
                 href={`/dashboard/plans${orgId ? `?orgId=${orgId}` : ""}`}
-                className={buttonVariants({ size: "sm", variant: "outline" })}
+                size="sm"
+                variant="outline"
               >
                 Create a plan
-              </Link>
+              </LinkButton>
             </CardContent>
           </Card>
         ) : (

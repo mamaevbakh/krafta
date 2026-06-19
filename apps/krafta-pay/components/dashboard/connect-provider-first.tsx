@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { CreditCard } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/link-button";
 import {
   Card,
   CardContent,
@@ -34,12 +33,9 @@ export function ConnectProviderFirst({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Link
-          href={`/dashboard/providers${orgId ? `?orgId=${orgId}` : ""}`}
-          className={buttonVariants({ size: "sm" })}
-        >
+        <LinkButton href={`/dashboard/providers${orgId ? `?orgId=${orgId}` : ""}`} size="sm">
           Connect a provider
-        </Link>
+        </LinkButton>
       </CardContent>
     </Card>
   );
