@@ -21,6 +21,7 @@ import {
 import {
   InputOTP,
   InputOTPGroup,
+  InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 
@@ -35,6 +36,16 @@ function formatCardNumber(raw: string) {
 function formatExpiry(raw: string) {
   const d = raw.replace(/\D/g, "").slice(0, 4);
   return d.length <= 2 ? d : `${d.slice(0, 2)}/${d.slice(2)}`;
+}
+
+// Render an Uzbek MSISDN as +998 XX XXX XX XX. Tolerates masked values (e.g.
+// "99890***1234") by allowing '*' in place of digits; falls back gracefully.
+function formatUzPhone(raw?: string | null) {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^\d*]/g, "");
+  const m = cleaned.match(/^998([\d*]{2})([\d*]{3})([\d*]{2})([\d*]{2})$/);
+  if (m) return `+998 ${m[1]} ${m[2]} ${m[3]} ${m[4]}`;
+  return cleaned.startsWith("998") ? `+${cleaned}` : raw;
 }
 
 type Step = "card" | "otp" | "success";
@@ -181,7 +192,7 @@ export function AtmosCardForm({
           <p className="text-sm text-muted-foreground">
             We sent a 6-digit code to the cardholder&apos;s phone
             {maskedPhone ? (
-              <span className="font-mono tabular-nums"> {maskedPhone}</span>
+              <span className="font-mono tabular-nums"> {formatUzPhone(maskedPhone)}</span>
             ) : null}
             .
           </p>
@@ -193,14 +204,24 @@ export function AtmosCardForm({
           onChange={(v) => setOtp(v.replace(/\D/g, ""))}
           inputMode="numeric"
           autoFocus
-          containerClassName="justify-center sm:justify-start"
+          containerClassName="w-full justify-center gap-3"
         >
-          <InputOTPGroup>
-            {[0, 1, 2, 3, 4, 5].map((i) => (
+          <InputOTPGroup className="flex-1">
+            {[0, 1, 2].map((i) => (
               <InputOTPSlot
                 key={i}
                 index={i}
-                className="size-11 text-base font-mono tabular-nums"
+                className="h-12 flex-1 text-base font-mono tabular-nums"
+              />
+            ))}
+          </InputOTPGroup>
+          <InputOTPSeparator />
+          <InputOTPGroup className="flex-1">
+            {[3, 4, 5].map((i) => (
+              <InputOTPSlot
+                key={i}
+                index={i}
+                className="h-12 flex-1 text-base font-mono tabular-nums"
               />
             ))}
           </InputOTPGroup>
