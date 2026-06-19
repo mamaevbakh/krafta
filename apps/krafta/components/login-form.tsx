@@ -26,25 +26,23 @@ import {
 } from "@/components/ui/input-otp";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { signInWithEmail, verifyOtpCode, signInWithGoogle } from "@/lib/auth/actions";
-import { signInWithTelegram } from "@/lib/auth/telegram-actions";
-import {
-  TelegramLoginButton,
-  type TelegramAuthPayload,
-} from "@/components/telegram-login-button";
+import { signInWithTelegramIdToken } from "@/lib/auth/telegram-actions";
+import { TelegramOidcLoginButton } from "@/components/telegram-oidc-login";
 import { toast } from "sonner";
 
 type Step = "email" | "otp";
 
 type LoginFormProps = React.ComponentProps<"div"> & {
   next?: string;
-  /** Enables the Telegram leg (KRA-46) when the server has it configured. */
-  telegramBotUsername?: string | null;
+  /** Enables the Telegram leg (KRA-46) when the server has it configured.
+   *  The numeric bot Client ID from BotFather's Web Login (new OIDC flow). */
+  telegramClientId?: string | null;
 };
 
 export function LoginForm({
   className,
   next = "/dashboard",
-  telegramBotUsername = null,
+  telegramClientId = null,
   ...props
 }: LoginFormProps) {
   const [step, setStep] = useState<Step>("email");
@@ -101,9 +99,9 @@ export function LoginForm({
     });
   };
 
-  const handleTelegramAuth = (payload: TelegramAuthPayload) => {
+  const handleTelegramAuth = (idToken: string) => {
     startTransition(async () => {
-      const result = await signInWithTelegram(payload, next);
+      const result = await signInWithTelegramIdToken(idToken, next);
       if ("error" in result) {
         toast.error(result.error);
         return;
@@ -151,10 +149,10 @@ export function LoginForm({
                     Continue with Google
                   </Button>
                 </Field>
-                {telegramBotUsername && (
+                {telegramClientId && (
                   <Field>
-                    <TelegramLoginButton
-                      botUsername={telegramBotUsername}
+                    <TelegramOidcLoginButton
+                      clientId={telegramClientId}
                       onAuth={handleTelegramAuth}
                       disabled={isPending}
                     />

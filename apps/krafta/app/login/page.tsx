@@ -40,9 +40,9 @@ export default async function LoginPage({
         </Link>
         <LoginForm
           next={next}
-          telegramBotUsername={
+          telegramClientId={
             telegramLoginConfigured()
-              ? (process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") ?? null)
+              ? (process.env.TELEGRAM_LOGIN_CLIENT_ID ?? null)
               : null
           }
         />
