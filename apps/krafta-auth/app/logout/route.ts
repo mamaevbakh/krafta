@@ -2,25 +2,47 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-function getAllowedOrigins() {
-  const values = [
-    process.env.KRAFTA_APP_URL,
-    process.env.KRAFTA_PAY_URL,
-    process.env.AUTH_APP_URL,
-    process.env.KRAFTA_ALLOWED_REDIRECT_ORIGINS,
-  ]
+function toOrigins(values: (string | undefined)[]): string[] {
+  return values
     .filter(Boolean)
     .flatMap((value) => (value ?? "").split(","))
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((value) => {
+      try {
+        return new URL(value).origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is string => Boolean(value));
+}
 
-  return new Set(values.map((value) => {
-    try {
-      return new URL(value).origin;
-    } catch {
-      return null;
-    }
-  }).filter((value): value is string => Boolean(value)));
+// Where the main app lives — used both to validate post_logout_redirect_uri
+// and as the post-logout landing fallback. Mirrors the sources lib/sso.ts
+// trusts for /authorize callbacks (singular + plural + NEXT_PUBLIC), so the
+// logout allowlist can't be narrower than the login one.
+function appOrigins(): string[] {
+  return toOrigins([
+    process.env.KRAFTA_APP_URL,
+    process.env.NEXT_PUBLIC_KRAFTA_APP_URL,
+    process.env.KRAFTA_APP_URLS,
+    process.env.NEXT_PUBLIC_KRAFTA_APP_URLS,
+  ]);
+}
+
+function getAllowedOrigins() {
+  return new Set([
+    ...appOrigins(),
+    ...toOrigins([
+      process.env.KRAFTA_PAY_URL,
+      process.env.NEXT_PUBLIC_KRAFTA_PAY_URL,
+      process.env.KRAFTA_PAY_URLS,
+      process.env.NEXT_PUBLIC_KRAFTA_PAY_URLS,
+      process.env.AUTH_APP_URL,
+      process.env.KRAFTA_ALLOWED_REDIRECT_ORIGINS,
+    ]),
+  ]);
 }
 
 // RP-initiated logout (top-level GET): the main app's signOut bounces the
@@ -32,8 +54,7 @@ export async function GET(request: NextRequest) {
   await supabase.auth.signOut();
 
   const candidate = request.nextUrl.searchParams.get("post_logout_redirect_uri");
-  let redirectTo =
-    process.env.KRAFTA_APP_URL ?? `${request.nextUrl.origin}/login`;
+  let redirectTo = appOrigins()[0] ?? `${request.nextUrl.origin}/login`;
   if (candidate) {
     try {
       const target = new URL(candidate);
