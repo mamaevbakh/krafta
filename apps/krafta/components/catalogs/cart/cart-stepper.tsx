@@ -129,7 +129,14 @@ export function CartStepper({
         </Button>
         <ButtonGroupText
           className={cn(
-            variant === "card" && "bg-primary text-primary-foreground",
+            // border-transparent: ButtonGroupText ships a light `--border`
+            // hairline (right for the light-bg `config` variant). On the dark
+            // `bg-primary` card pill it reads as glaring white lines on the
+            // top/right/bottom edges (the left is already dropped by the
+            // group's border-l-0). The pill's outer border-black/15 already
+            // frames the group, so kill the inner hairline here.
+            variant === "card" &&
+              "border-transparent bg-primary text-primary-foreground",
             variant === "config" && "min-w-[2.5rem] justify-center text-center",
           )}
         >

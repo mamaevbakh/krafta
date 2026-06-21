@@ -5,8 +5,8 @@ import {
   Clock,
   MapPin,
   Package,
-  Receipt,
   Truck,
+  User,
   Utensils,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -26,6 +26,7 @@ import {
   defaultDeliverySettings,
 } from "@/lib/catalogs/settings/delivery";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
+import { formatUzNational, normalizeUzPhone } from "@/lib/cart/phone";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import {
   getStorefrontMessage,
@@ -259,6 +260,14 @@ function formatScheduledTime(isoLocal: string): string {
   return `${date} ${time}`;
 }
 
+// Display a stored phone (9-digit local or E.164) as "+998 90 123 45 67".
+// Falls back to the raw value if it doesn't parse as a +998 number.
+function formatUzPhoneDisplay(raw: string): string {
+  const e164 = normalizeUzPhone(raw);
+  if (!e164) return raw;
+  return `+998 ${formatUzNational(e164.slice(4))}`;
+}
+
 function ModeDetails({
   snapshot,
   t,
@@ -292,12 +301,17 @@ function ModeDetails({
         />
         {snapshot.fields.recipientName || snapshot.fields.recipientPhone ? (
           <DetailRow
-            icon={Receipt}
-            secondary={t("checkout.recipient.label")}
+            icon={User}
+            secondary={t("checkout.contact")}
             primary={
-              [snapshot.fields.recipientName, snapshot.fields.recipientPhone]
+              [
+                snapshot.fields.recipientName,
+                snapshot.fields.recipientPhone
+                  ? formatUzPhoneDisplay(snapshot.fields.recipientPhone)
+                  : null,
+              ]
                 .filter(Boolean)
-                .join(" · ") || t("checkout.recipient.label")
+                .join(" · ") || t("checkout.contact")
             }
           />
         ) : null}
@@ -311,11 +325,14 @@ function ModeDetails({
         icon={MapPin}
         secondary={t("checkout.address.label")}
         primary={snapshot.fields.address}
+        clamp2
       />
       <DetailRow
-        icon={Receipt}
-        secondary={t("checkout.recipient.label")}
-        primary={`${snapshot.fields.recipientName} · ${snapshot.fields.recipientPhone}`}
+        icon={User}
+        secondary={t("checkout.contact")}
+        primary={`${snapshot.fields.recipientName} · ${formatUzPhoneDisplay(
+          snapshot.fields.recipientPhone,
+        )}`}
       />
       {snapshot.fields.scheduledFor ? (
         <DetailRow
@@ -338,10 +355,14 @@ function DetailRow({
   icon: Icon,
   primary,
   secondary,
+  clamp2 = false,
 }: {
   icon: LucideIcon;
   primary: string;
   secondary: string;
+  /** Let the primary value wrap to two lines (e.g. a long address) instead
+   *  of truncating to one — a confirmation should not hide the address. */
+  clamp2?: boolean;
 }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3">
@@ -352,7 +373,12 @@ function DetailRow({
         <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {secondary}
         </div>
-        <div className="mt-0.5 truncate text-sm font-medium text-foreground">
+        <div
+          className={cn(
+            "mt-0.5 text-sm font-medium text-foreground",
+            clamp2 ? "line-clamp-2" : "truncate",
+          )}
+        >
           {primary}
         </div>
       </div>
@@ -409,13 +435,15 @@ function SummaryBlock({
             {formatPriceCents(subtotalCents, currencySettings)}
           </span>
         </div>
-        {deliveryFeeCents > 0 ? (
+        {snapshot.mode === "delivery" ? (
           <div className="flex items-baseline justify-between">
             <span className="text-muted-foreground">
               {t("checkout.mode.delivery")}
             </span>
             <span className="font-mono tabular-nums text-foreground">
-              {formatPriceCents(deliveryFeeCents, currencySettings)}
+              {deliveryFeeCents > 0
+                ? formatPriceCents(deliveryFeeCents, currencySettings)
+                : t("cart.delivery_free")}
             </span>
           </div>
         ) : null}

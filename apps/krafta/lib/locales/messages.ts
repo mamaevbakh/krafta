@@ -110,6 +110,18 @@ export type StorefrontMessageKey =
   | "checkout.missing.table"
   | "checkout.out_of_zone"
   | "checkout.below_min_order"
+  // Delivery-checkout polish: clearer order summary, lower-friction tip,
+  // intentional section labels.
+  | "cart.delivery_free"
+  | "checkout.tip.add"
+  | "checkout.schedule.pickup_when"
+  | "checkout.schedule.delivery_when"
+  | "checkout.your_name"
+  | "checkout.section.contact"
+  | "checkout.contact"
+  | "checkout.summary.heading"
+  | "checkout.chip.required"
+  | "checkout.chip.optional"
   // Delivery address book — dedicated map + list screens
   | "address.title"
   | "address.use_location"
@@ -276,6 +288,16 @@ const EN: MessageTable = {
   "checkout.missing.table": "Enter your table number",
   "checkout.out_of_zone": "Outside the delivery area",
   "checkout.below_min_order": "Minimum order for delivery is {amount}",
+  "cart.delivery_free": "Free",
+  "checkout.tip.add": "Add a tip",
+  "checkout.schedule.pickup_when": "Pickup time",
+  "checkout.schedule.delivery_when": "Delivery time",
+  "checkout.your_name": "Your name",
+  "checkout.section.contact": "Contact details",
+  "checkout.contact": "Contact",
+  "checkout.summary.heading": "Order summary",
+  "checkout.chip.required": "Required",
+  "checkout.chip.optional": "Optional",
   "address.title": "Delivery address",
   "address.use_location": "Use my location",
   "address.add": "Add address",
@@ -310,8 +332,9 @@ const EN: MessageTable = {
   "placed.title": "Order placed",
   "placed.subtitle.dine_in":
     "We sent it to the kitchen — your order will arrive at table {table} shortly.",
-  "placed.subtitle.pickup": "We sent it to the kitchen — ready for pickup soon.",
-  "placed.subtitle.delivery": "We sent it to the kitchen — on its way to you.",
+  "placed.subtitle.pickup": "Your order’s in — it’ll be ready for pickup soon.",
+  "placed.subtitle.delivery":
+    "Your order’s in — the merchant will prepare it and send it your way.",
   "placed.pay.dine_in": "Pay at the table when your server brings the bill.",
   "placed.pay.pickup": "Pay at the counter when you pick up.",
   "placed.pay.delivery": "Pay the courier in cash on arrival.",
@@ -426,6 +449,16 @@ const RU: MessageTable = {
   "checkout.missing.table": "Укажите номер столика",
   "checkout.out_of_zone": "Вне зоны доставки",
   "checkout.below_min_order": "Минимальный заказ для доставки — {amount}",
+  "cart.delivery_free": "Бесплатно",
+  "checkout.tip.add": "Добавить чаевые",
+  "checkout.schedule.pickup_when": "Время самовывоза",
+  "checkout.schedule.delivery_when": "Время доставки",
+  "checkout.your_name": "Ваше имя",
+  "checkout.section.contact": "Контактные данные",
+  "checkout.contact": "Контакт",
+  "checkout.summary.heading": "Ваш заказ",
+  "checkout.chip.required": "Обязательно",
+  "checkout.chip.optional": "Необязательно",
   "address.title": "Адрес доставки",
   "address.use_location": "Использовать геолокацию",
   "address.add": "Добавить адрес",
@@ -461,8 +494,9 @@ const RU: MessageTable = {
   "placed.subtitle.dine_in":
     "Передали на кухню — заказ скоро принесут к столу {table}.",
   "placed.subtitle.pickup":
-    "Передали на кухню — будет готов к выдаче в ближайшее время.",
-  "placed.subtitle.delivery": "Передали на кухню — заказ уже в пути.",
+    "Заказ принят — скоро будет готов к выдаче.",
+  "placed.subtitle.delivery":
+    "Заказ принят — продавец подготовит его и отправит к вам.",
   "placed.pay.dine_in": "Оплата на столе, когда официант принесёт счёт.",
   "placed.pay.pickup": "Оплата на стойке при получении.",
   "placed.pay.delivery": "Оплата курьеру наличными при доставке.",
@@ -578,6 +612,16 @@ const UZ_LATN: MessageTable = {
   "checkout.missing.table": "Stol raqamini kiriting",
   "checkout.out_of_zone": "Yetkazib berish hududidan tashqarida",
   "checkout.below_min_order": "Yetkazib berish uchun minimal buyurtma — {amount}",
+  "cart.delivery_free": "Bepul",
+  "checkout.tip.add": "Chaqimcha qo‘shish",
+  "checkout.schedule.pickup_when": "Olib ketish vaqti",
+  "checkout.schedule.delivery_when": "Yetkazib berish vaqti",
+  "checkout.your_name": "Ismingiz",
+  "checkout.section.contact": "Aloqa ma’lumotlari",
+  "checkout.contact": "Aloqa",
+  "checkout.summary.heading": "Buyurtma tafsilotlari",
+  "checkout.chip.required": "Majburiy",
+  "checkout.chip.optional": "Ixtiyoriy",
   "address.title": "Yetkazib berish manzili",
   "address.use_location": "Joylashuvdan foydalanish",
   "address.add": "Manzil qo‘shish",
@@ -613,9 +657,9 @@ const UZ_LATN: MessageTable = {
   "placed.subtitle.dine_in":
     "Buyurtmangiz oshxonaga yuborildi — {table}-stol uchun tez orada keladi.",
   "placed.subtitle.pickup":
-    "Buyurtmangiz oshxonaga yuborildi — tez orada tayyor bo‘ladi.",
+    "Buyurtma qabul qilindi — tez orada olib ketishga tayyor bo‘ladi.",
   "placed.subtitle.delivery":
-    "Buyurtmangiz oshxonaga yuborildi — yo‘lda.",
+    "Buyurtma qabul qilindi — sotuvchi tayyorlab, sizga yuboradi.",
   "placed.pay.dine_in":
     "Ofitsiant hisob-kitobni keltirgach, stolda to‘laysiz.",
   "placed.pay.pickup": "Olib ketishda kassada to‘laysiz.",

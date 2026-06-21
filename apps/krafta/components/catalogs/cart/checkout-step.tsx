@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Package, Truck, Utensils } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  Loader2,
+  Package,
+  Plus,
+  Truck,
+  Utensils,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,12 +18,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldSet,
-} from "@/components/ui/field";
+import { FieldGroup, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -76,6 +80,11 @@ const MODE_ICONS: Record<CartFulfillmentMode, LucideIcon> = {
 // non-dine-in restaurant flows: pickup is simpler (no address) so we lead
 // with it; users who want delivery tap the second option.
 const PICKER_MODE_ORDER: CartFulfillmentMode[] = ["pickup", "delivery"];
+
+// Per-field validation chip, modifier-flow style: a calm neutral chip, an amber
+// "needs attention" state for the one field the customer is being guided to,
+// and green once satisfied. `optional` is a static muted chip.
+type FieldPillState = "neutral" | "attention" | "satisfied" | "optional";
 
 type CartCheckoutStepProps = {
   currencySettings?: CurrencySettings;
@@ -181,11 +190,8 @@ export function CartCheckoutStep({
   );
   const [deliveryAt, setDeliveryAt] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
-  // Persistent inline submit error (vs the ephemeral toast that's easy to miss
-  // over a full-screen modal). Cleared on each new submit attempt.
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  // Flips true on a tap while the form is incomplete, so the "what's missing"
-  // hint escalates from a muted nudge to a destructive prompt.
+  // Flips true on a tap while the form is incomplete, so the first unsatisfied
+  // field surfaces its inline error and the form scrolls to it.
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // Out-of-zone: the delivery pin falls outside the cafe's delivery radius.
@@ -258,57 +264,117 @@ export function CartCheckoutStep({
     tableLabel,
   ]);
 
-  // The single most relevant missing field, surfaced as an inline hint above the
-  // CTA so a customer is never staring at a button that "does nothing".
-  const firstMissingKey = useMemo<StorefrontMessageKey | null>(() => {
-    if (canSubmit || isPlacingOrder) return null;
-    const timeOk = (s: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
-    if (mode === "dine_in") {
-      return tableLabel.trim() ? null : "checkout.missing.table";
+  // ── Per-field validation, modifier-flow style ──────────────────────────────
+  // Each required field carries its own neutral→amber→green chip. Exactly one
+  // field is "attention" (amber) at a time — the first unsatisfied one — and it
+  // advances as the customer completes each field.
+  const timeOk = (s: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
+
+  const fieldSatisfied = (id: string): boolean => {
+    switch (id) {
+      case "dine-in-table":
+        return tableLabel.trim().length > 0;
+      case "delivery-address":
+        return (deliveryAddress?.freeform.trim().length ?? 0) > 0 && !outOfZone;
+      case "delivery-name":
+        return deliveryName.trim().length > 0;
+      case "delivery-phone":
+        return isValidUzPhone(deliveryPhone);
+      case "delivery-at":
+        return timeOk(deliveryAt);
+      case "pickup-at":
+        return timeOk(pickupAt);
+      default:
+        return true;
     }
-    if (mode === "pickup") {
-      if (pickupSchedule === "scheduled" && !timeOk(pickupAt))
-        return "checkout.missing.time";
-      if (pickupPhone.trim() && !isValidUzPhone(pickupPhone))
-        return "checkout.missing.phone";
-      return null;
+  };
+
+  // Ordered required fields for the active mode (matches the visual order).
+  const requiredFieldIds: string[] =
+    mode === "dine_in"
+      ? ["dine-in-table"]
+      : mode === "pickup"
+        ? pickupSchedule === "scheduled"
+          ? ["pickup-at"]
+          : []
+        : [
+            "delivery-address",
+            "delivery-name",
+            "delivery-phone",
+            ...(deliverySchedule === "scheduled" ? ["delivery-at"] : []),
+          ];
+
+  const firstUnsatisfiedId =
+    requiredFieldIds.find((id) => !fieldSatisfied(id)) ?? null;
+  const requiredRemaining = requiredFieldIds.filter(
+    (id) => !fieldSatisfied(id),
+  ).length;
+
+  // Chip state: optional fields show a static muted chip; required ones go
+  // satisfied (green) / attention (amber — only the current guided target) /
+  // neutral.
+  const pillState = (id: string, required: boolean): FieldPillState => {
+    if (!required) return "optional";
+    if (fieldSatisfied(id)) return "satisfied";
+    return submitAttempted && firstUnsatisfiedId === id
+      ? "attention"
+      : "neutral";
+  };
+
+  const fieldMessage = (id: string): string => {
+    switch (id) {
+      case "dine-in-table":
+        return t("checkout.missing.table");
+      case "delivery-address":
+        return outOfZone
+          ? t("checkout.out_of_zone")
+          : t("checkout.missing.address");
+      case "delivery-name":
+        return t("checkout.missing.name");
+      case "delivery-phone":
+      case "pickup-phone":
+        return t("checkout.missing.phone");
+      case "delivery-at":
+      case "pickup-at":
+        return t("checkout.missing.time");
+      default:
+        return "";
     }
-    if (belowMinOrder) return "checkout.below_min_order";
-    if (outOfZone) return "checkout.out_of_zone";
-    if (!deliveryAddress?.freeform.trim()) return "checkout.missing.address";
-    if (!deliveryName.trim()) return "checkout.missing.name";
-    if (!isValidUzPhone(deliveryPhone)) return "checkout.missing.phone";
-    if (deliverySchedule === "scheduled" && !timeOk(deliveryAt))
-      return "checkout.missing.time";
-    return null;
-  }, [
-    belowMinOrder,
-    canSubmit,
-    deliveryAddress,
-    deliveryAt,
-    outOfZone,
-    deliveryName,
-    deliveryPhone,
-    deliverySchedule,
-    isPlacingOrder,
-    mode,
-    pickupAt,
-    pickupPhone,
-    pickupSchedule,
-    tableLabel,
-  ]);
+  };
+
+  // Scroll the first unsatisfied field to the middle of the viewport and focus
+  // it, so a gated tap takes the customer straight to what's missing instead of
+  // leaving them to hunt for an error pinned at the bottom. Mirrors the item
+  // sheet's `enterGuidedMode`. preventScroll keeps the focus jump from fighting
+  // the smooth scroll above.
+  const revealField = (fieldId: string) => {
+    const el = document.getElementById(fieldId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el instanceof HTMLElement) el.focus({ preventScroll: true });
+  };
+
+  // Once a guided field is satisfied, the first-unsatisfied pointer has already
+  // moved on — scroll the next one into view (the modifier-flow advance).
+  // Called from each required field's completion event (blur for text inputs,
+  // value-complete for phone / time / address).
+  const advanceAfter = (id: string) => {
+    if (!submitAttempted) return;
+    if (!firstUnsatisfiedId || firstUnsatisfiedId === id) return;
+    revealField(firstUnsatisfiedId);
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit) {
       setSubmitAttempted(true);
+      if (firstUnsatisfiedId) revealField(firstUnsatisfiedId);
       return;
     }
-    setSubmitError(null);
-
     // The chosen address's freeform string is what a delivery order snapshots —
     // it's already " · "-joined, so it stays scannable on receipts / dashboard.
-    const result =
-      mode === "dine_in"
+    // placeOrder toasts on failure (cart-provider), so the footer never echoes
+    // an error — it stays just the total and the CTA.
+    void (mode === "dine_in"
         ? await placeOrder({
             mode: "dine_in",
             fields: { tableLabel: tableLabel.trim() },
@@ -341,9 +407,7 @@ export function CartCheckoutStep({
                   deliverySchedule === "scheduled" ? deliveryAt : null,
                 note: deliveryNote.trim() || null,
               },
-            });
-
-    if (!result.ok) setSubmitError(result.error);
+            }));
   };
 
   // Bottom-line total, mirrored into the sticky footer below so the price is
@@ -371,6 +435,36 @@ export function CartCheckoutStep({
       />
     );
   }
+
+  // Amber "needs attention" styling for the current guided field, replacing the
+  // old red. Never aria-invalid (that paints destructive) — we set the warning
+  // border via className and surface the message in amber below.
+  const amberInput = (state: FieldPillState) =>
+    state === "attention"
+      ? "border-warning focus-visible:border-warning focus-visible:ring-warning/25"
+      : undefined;
+  const amberGroup = (state: FieldPillState) =>
+    state === "attention"
+      ? "border-warning has-[[data-slot=input-group-control]:focus-visible]:border-warning has-[[data-slot=input-group-control]:focus-visible]:ring-warning/25"
+      : undefined;
+  const amberHint = (id: string, state: FieldPillState) =>
+    state === "attention" ? (
+      <p id={`${id}-msg`} className="text-xs text-warning">
+        {fieldMessage(id)}
+      </p>
+    ) : null;
+  const describe = (id: string, state: FieldPillState) =>
+    state === "attention" ? `${id}-msg` : undefined;
+
+  // Chip labels + per-field chip states for this render.
+  const requiredChip = t("checkout.chip.required");
+  const optionalChip = t("checkout.chip.optional");
+  const tableState = pillState("dine-in-table", true);
+  const pickupAtState = pillState("pickup-at", true);
+  const addressState = pillState("delivery-address", true);
+  const nameState = pillState("delivery-name", true);
+  const phoneState = pillState("delivery-phone", true);
+  const deliveryAtState = pillState("delivery-at", true);
 
   return (
     // flex-1 + min-h-0: drawer-content is a flex column with a 24px
@@ -437,18 +531,24 @@ export function CartCheckoutStep({
         {mode === "dine_in" ? (
           <FieldSet>
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="dine-in-table">
-                  {t("checkout.table.label")}
-                </FieldLabel>
+              <FieldRow
+                htmlFor="dine-in-table"
+                label={t("checkout.table.label")}
+                pill={tableState}
+                pillLabel={requiredChip}
+              >
                 <Input
                   id="dine-in-table"
                   value={tableLabel}
                   onChange={(event) => setTableLabel(event.target.value)}
+                  onBlur={() => advanceAfter("dine-in-table")}
                   placeholder={t("checkout.table.placeholder")}
                   autoComplete="off"
+                  className={amberInput(tableState)}
+                  aria-describedby={describe("dine-in-table", tableState)}
                 />
-              </Field>
+                {amberHint("dine-in-table", tableState)}
+              </FieldRow>
             </FieldGroup>
           </FieldSet>
         ) : null}
@@ -456,8 +556,7 @@ export function CartCheckoutStep({
         {mode === "pickup" ? (
           <FieldSet>
             <FieldGroup>
-              <Field>
-                <FieldLabel>{t("checkout.schedule.when")}</FieldLabel>
+              <FieldRow label={t("checkout.schedule.pickup_when")}>
                 <div className="grid grid-cols-2 gap-2">
                   <ScheduleToggle
                     label={t("checkout.schedule.asap")}
@@ -470,36 +569,46 @@ export function CartCheckoutStep({
                     onClick={() => setPickupSchedule("scheduled")}
                   />
                 </div>
-              </Field>
+              </FieldRow>
               {pickupSchedule === "scheduled" ? (
-                <Field>
-                  <FieldLabel htmlFor="pickup-at">
-                    {t("checkout.schedule.scheduled")}
-                  </FieldLabel>
+                <FieldRow
+                  htmlFor="pickup-at"
+                  label={t("checkout.schedule.scheduled")}
+                  pill={pickupAtState}
+                  pillLabel={requiredChip}
+                >
                   <ScheduledTimePicker
                     id="pickup-at"
                     value={pickupAt}
-                    onChange={setPickupAt}
+                    onChange={(v) => {
+                      setPickupAt(v);
+                      if (timeOk(v)) advanceAfter("pickup-at");
+                    }}
                     datePlaceholder={t("checkout.schedule.pick_date")}
                     locale={activeLocale}
                   />
-                </Field>
+                  {amberHint("pickup-at", pickupAtState)}
+                </FieldRow>
               ) : null}
-              <Field>
-                <FieldLabel htmlFor="pickup-name">
-                  {t("checkout.recipient.label")}
-                </FieldLabel>
+              <FieldRow
+                htmlFor="pickup-name"
+                label={t("checkout.your_name")}
+                pill="optional"
+                pillLabel={optionalChip}
+              >
                 <Input
                   id="pickup-name"
                   value={pickupName}
                   onChange={(event) => setPickupName(event.target.value)}
                   placeholder={t("checkout.recipient.placeholder")}
                 />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="pickup-phone">
-                  {t("checkout.phone.label")}
-                </FieldLabel>
+              </FieldRow>
+              <FieldRow
+                htmlFor="pickup-phone"
+                label={t("checkout.phone.label")}
+                pill="optional"
+                pillLabel={optionalChip}
+              >
                 {/* +998 stays pinned as a non-editable addon — Uzbek
                     market only for v1, and a locked prefix removes the
                     "which format do I type" cognitive load. The
@@ -522,11 +631,13 @@ export function CartCheckoutStep({
                     placeholder={t("checkout.phone.placeholder")}
                   />
                 </InputGroup>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="pickup-note">
-                  {t("checkout.note.label")}
-                </FieldLabel>
+              </FieldRow>
+              <FieldRow
+                htmlFor="pickup-note"
+                label={t("checkout.note.label")}
+                pill="optional"
+                pillLabel={optionalChip}
+              >
                 <Textarea
                   id="pickup-note"
                   value={pickupNote}
@@ -534,7 +645,7 @@ export function CartCheckoutStep({
                   placeholder={t("checkout.note.placeholder")}
                   className="min-h-[72px] resize-none"
                 />
-              </Field>
+              </FieldRow>
             </FieldGroup>
           </FieldSet>
         ) : null}
@@ -545,30 +656,47 @@ export function CartCheckoutStep({
               {/* Address book: pick a saved address or add one via the Yandex
                   map / manual form. Replaces the old district/street/building
                   trio — fewer taps, reusable, and routable (coords saved). */}
-              <Field>
-                <FieldLabel>{t("checkout.mode.delivery")}</FieldLabel>
+              <FieldRow
+                label={t("address.title")}
+                pill={addressState}
+                pillLabel={requiredChip}
+              >
                 <DeliveryAddressSummary
                   value={deliveryAddress}
-                  onChange={setDeliveryAddress}
+                  onChange={(a) => {
+                    setDeliveryAddress(a);
+                    advanceAfter("delivery-address");
+                  }}
                   onOpen={() => setAddressView("flow")}
+                  id="delivery-address"
+                  attention={addressState === "attention"}
                 />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="delivery-name">
-                  {t("checkout.recipient.label")}
-                </FieldLabel>
+                {amberHint("delivery-address", addressState)}
+              </FieldRow>
+              <FieldRow
+                htmlFor="delivery-name"
+                label={t("checkout.recipient.label")}
+                pill={nameState}
+                pillLabel={requiredChip}
+              >
                 <Input
                   id="delivery-name"
                   value={deliveryName}
                   onChange={(event) => setDeliveryName(event.target.value)}
+                  onBlur={() => advanceAfter("delivery-name")}
                   placeholder={t("checkout.recipient.placeholder")}
+                  className={amberInput(nameState)}
+                  aria-describedby={describe("delivery-name", nameState)}
                 />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="delivery-phone">
-                  {t("checkout.phone.label")}
-                </FieldLabel>
-                <InputGroup>
+                {amberHint("delivery-name", nameState)}
+              </FieldRow>
+              <FieldRow
+                htmlFor="delivery-phone"
+                label={t("checkout.phone.label")}
+                pill={phoneState}
+                pillLabel={requiredChip}
+              >
+                <InputGroup className={amberGroup(phoneState)}>
                   <InputGroupAddon>
                     <InputGroupText className="font-mono">+998</InputGroupText>
                   </InputGroupAddon>
@@ -578,15 +706,18 @@ export function CartCheckoutStep({
                     autoComplete="tel-national"
                     className="font-mono tabular-nums"
                     value={formatUzNational(deliveryPhone)}
-                    onChange={(event) =>
-                      setDeliveryPhone(event.target.value.replace(/\D/g, "").slice(0, 9))
-                    }
+                    onChange={(event) => {
+                      const d = event.target.value.replace(/\D/g, "").slice(0, 9);
+                      setDeliveryPhone(d);
+                      if (d.length === 9) advanceAfter("delivery-phone");
+                    }}
                     placeholder={t("checkout.phone.placeholder")}
+                    aria-describedby={describe("delivery-phone", phoneState)}
                   />
                 </InputGroup>
-              </Field>
-              <Field>
-                <FieldLabel>{t("checkout.schedule.when")}</FieldLabel>
+                {amberHint("delivery-phone", phoneState)}
+              </FieldRow>
+              <FieldRow label={t("checkout.schedule.delivery_when")}>
                 <div className="grid grid-cols-2 gap-2">
                   <ScheduleToggle
                     label={t("checkout.schedule.asap")}
@@ -599,25 +730,33 @@ export function CartCheckoutStep({
                     onClick={() => setDeliverySchedule("scheduled")}
                   />
                 </div>
-              </Field>
+              </FieldRow>
               {deliverySchedule === "scheduled" ? (
-                <Field>
-                  <FieldLabel htmlFor="delivery-at">
-                    {t("checkout.schedule.scheduled")}
-                  </FieldLabel>
+                <FieldRow
+                  htmlFor="delivery-at"
+                  label={t("checkout.schedule.scheduled")}
+                  pill={deliveryAtState}
+                  pillLabel={requiredChip}
+                >
                   <ScheduledTimePicker
                     id="delivery-at"
                     value={deliveryAt}
-                    onChange={setDeliveryAt}
+                    onChange={(v) => {
+                      setDeliveryAt(v);
+                      if (timeOk(v)) advanceAfter("delivery-at");
+                    }}
                     datePlaceholder={t("checkout.schedule.pick_date")}
                     locale={activeLocale}
                   />
-                </Field>
+                  {amberHint("delivery-at", deliveryAtState)}
+                </FieldRow>
               ) : null}
-              <Field>
-                <FieldLabel htmlFor="delivery-note">
-                  {t("checkout.note.label")}
-                </FieldLabel>
+              <FieldRow
+                htmlFor="delivery-note"
+                label={t("checkout.note.label")}
+                pill="optional"
+                pillLabel={optionalChip}
+              >
                 <Textarea
                   id="delivery-note"
                   value={deliveryNote}
@@ -625,26 +764,50 @@ export function CartCheckoutStep({
                   placeholder={t("checkout.note.placeholder")}
                   className="min-h-[72px] resize-none"
                 />
-              </Field>
+              </FieldRow>
             </FieldGroup>
           </FieldSet>
         ) : null}
 
+        {/* key={mode}: remount on mode switch so `defaultOpen` re-applies —
+            tip opens for delivery, stays collapsed for pickup. tipCents lives
+            in the parent, so a tip already set survives the remount. */}
         <TipControl
+          key={mode}
           subtotalCents={summary.subtotalCents}
           tipCents={tipCents}
           setTipCents={setTipCents}
           currencySettings={currencySettings}
+          defaultOpen={mode === "delivery"}
         />
 
-        <PricingBreakdown
-          subtotalCents={summary.subtotalCents}
-          taxes={taxes}
-          tipCents={tipCents}
-          deliveryFeeCents={deliveryFeeCents}
-          currencySettings={currencySettings}
-          showTotal={false}
-        />
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-foreground">
+            {t("checkout.summary.heading")}
+          </p>
+          <PricingBreakdown
+            subtotalCents={summary.subtotalCents}
+            taxes={taxes}
+            tipCents={tipCents}
+            deliveryFeeCents={deliveryFeeCents}
+            currencySettings={currencySettings}
+            showTotal={false}
+            deliveryActive={mode === "delivery"}
+          />
+          {/* Below-minimum is the one block with no field to anchor to, so it
+              lives in the summary (next to the totals it's about) rather than
+              the footer, which stays just the total + CTA. */}
+          {belowMinOrder ? (
+            <p className="text-xs text-muted-foreground">
+              {t("checkout.below_min_order", {
+                amount: formatPriceCents(
+                  deliverySettings.minOrderCents,
+                  currencySettings,
+                ),
+              })}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       {/* Sticky footer with safe-area padding so the CTA never hugs the
@@ -655,25 +818,6 @@ export function CartCheckoutStep({
           drawers (tablet, webviews). */}
       <div className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-          {submitError ? (
-            <p className="mb-2 text-xs text-destructive">{submitError}</p>
-          ) : firstMissingKey ? (
-            <p
-              className={cn(
-                "mb-2 text-xs",
-                submitAttempted ? "text-destructive" : "text-muted-foreground",
-              )}
-            >
-              {firstMissingKey === "checkout.below_min_order"
-                ? t(firstMissingKey, {
-                    amount: formatPriceCents(
-                      deliverySettings.minOrderCents,
-                      currencySettings,
-                    ),
-                  })
-                : t(firstMissingKey)}
-            </p>
-          ) : null}
           <div className="mb-3 flex items-baseline justify-between">
             <span className="text-sm text-muted-foreground">{t("cart.total")}</span>
             <span className="font-mono text-lg font-semibold tabular-nums">
@@ -692,6 +836,12 @@ export function CartCheckoutStep({
                 <Loader2 className="size-4 animate-spin" />
                 {t("checkout.placing")}
               </>
+            ) : requiredRemaining > 0 ? (
+              requiredRemaining === 1
+                ? t("add_to_cart.gated_required_one")
+                : t("add_to_cart.gated_required_many", {
+                    count: requiredRemaining,
+                  })
             ) : (
               t("checkout.place_order")
             )}
@@ -702,29 +852,101 @@ export function CartCheckoutStep({
   );
 }
 
-// Inline tip picker. Four percentage chips for quick choices; "Custom"
-// expands a number input in the catalog's currency major unit (e.g., dollars
-// for USD, the customer's intuitive unit). Source of truth is `tipCents`;
-// percentage chips compute cents from current subtotal so the value stays
-// correct if the customer re-adds items before submitting.
-const TIP_PRESET_PERCENTAGES = [0, 0.1, 0.15, 0.2] as const;
+// Chip + label row that replaces the bare field label. The chip mirrors the
+// item-sheet modifier groups: neutral / amber (attention) / green (satisfied)
+// for required fields, a static muted "Optional" for the rest. Module-level
+// (stable identity) so the inputs it wraps keep focus across renders.
+function FieldRow({
+  htmlFor,
+  label,
+  pill,
+  pillLabel,
+  children,
+}: {
+  htmlFor?: string;
+  label: string;
+  pill?: FieldPillState;
+  pillLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <label
+          htmlFor={htmlFor}
+          className="text-sm font-medium leading-none text-foreground"
+        >
+          {label}
+        </label>
+        {pill ? <RequiredPill state={pill} label={pillLabel ?? ""} /> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Pill classes mirror components/catalogs/items/modifier-picker.tsx so the cart
+// and the item sheet speak the same validation language.
+function RequiredPill({
+  state,
+  label,
+}: {
+  state: FieldPillState;
+  label: string;
+}) {
+  if (state === "satisfied") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-success-muted px-2 py-0.5 text-[11px] font-medium text-success">
+        <Check className="size-3" aria-hidden />
+        {label}
+      </span>
+    );
+  }
+  if (state === "attention") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-warning bg-warning-muted px-2 py-0.5 text-[11px] font-medium text-warning">
+        <AlertTriangle className="size-3" aria-hidden />
+        {label}
+      </span>
+    );
+  }
+  // neutral + optional share the muted look (optional is simply always muted).
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      {label}
+    </span>
+  );
+}
+
+// Inline tip picker. Low-friction presets (No tip / 5% / 10%) + a "Custom"
+// number input in the catalog's currency major unit. Collapsed behind an
+// "Add a tip" row by default — open for delivery (where a tip is more
+// expected) so it never pressures a pickup customer. Source of truth is
+// `tipCents`; percentage chips compute cents from current subtotal so the
+// value stays correct if the customer re-adds items before submitting.
+const TIP_PRESET_PERCENTAGES = [0, 0.05, 0.1] as const;
 
 function TipControl({
   subtotalCents,
   tipCents,
   setTipCents,
   currencySettings,
+  defaultOpen = false,
 }: {
   subtotalCents: number;
   tipCents: number;
   setTipCents: (next: number) => void;
   currencySettings: CurrencySettings;
+  defaultOpen?: boolean;
 }) {
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const t = (
     key: StorefrontMessageKey,
     vars?: Record<string, string | number>,
   ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
+  // Collapsed by default for pickup (a tip prompt there feels pushy); open
+  // for delivery, or whenever a tip has already been set.
+  const [open, setOpen] = useState(defaultOpen || tipCents > 0);
   const [mode, setModeState] = useState<"preset" | "custom">("preset");
   // Preset percentage that the tip matches, if any. Computed defensively each
   // render so a re-add that changes subtotal doesn't strand the chip
@@ -762,12 +984,25 @@ function TipControl({
     setTipCents(Math.round(parsed * factor));
   };
 
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex min-h-11 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Plus className="size-4" aria-hidden />
+        {t("checkout.tip.add")}
+      </button>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-foreground">
         {t("checkout.tip.label")}
       </p>
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         {TIP_PRESET_PERCENTAGES.map((pct) => {
           const isActive = mode === "preset" && matchingPreset === pct;
           const label =

@@ -4,6 +4,11 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { computePricing } from "@/lib/cart/pricing";
 import type { PublicTax } from "@/lib/catalogs/types";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import {
+  getStorefrontMessage,
+  type StorefrontMessageKey,
+} from "@/lib/locales/messages";
 
 type Props = {
   subtotalCents: number;
@@ -24,6 +29,13 @@ type Props = {
    * the line-item breakdown here. Defaults to `true`.
    */
   showTotal?: boolean;
+  /**
+   * When true, the order is a delivery order: always render the Delivery
+   * row even when the fee is 0 (shown as "Free") so the customer can tell
+   * free delivery apart from a fee that hasn't been calculated. Defaults to
+   * `false` (pickup / dine-in / the cart list, where there is no delivery).
+   */
+  deliveryActive?: boolean;
 };
 
 // Renders the subtotal -> fees -> tip -> total stack.
@@ -41,19 +53,26 @@ export function PricingBreakdown({
   currencySettings,
   compact = false,
   showTotal = true,
+  deliveryActive = false,
 }: Props) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (key: StorefrontMessageKey) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
   const pricing = computePricing({
     subtotalCents,
     taxes,
     tipCents,
     deliveryFeeCents,
   });
+  // Delivery row shows whenever this is a delivery order (so a 0 fee reads
+  // as "Free", not absent) or whenever a fee is actually charged.
+  const showDelivery = deliveryActive || deliveryFeeCents > 0;
 
   return (
     <div className="space-y-1.5 text-sm">
       {!compact ? (
         <Row
-          label="Subtotal"
+          label={t("cart.subtotal")}
           valueCents={subtotalCents}
           currencySettings={currencySettings}
           muted
@@ -71,16 +90,21 @@ export function PricingBreakdown({
           muted
         />
       ))}
-      {deliveryFeeCents > 0 ? (
+      {showDelivery ? (
         <Row
-          label="Delivery"
+          label={t("checkout.mode.delivery")}
           valueCents={deliveryFeeCents}
+          // A 0 fee on a delivery order reads as "Free" — the customer needs
+          // to know delivery is included, not that it wasn't calculated.
+          valueText={
+            deliveryFeeCents === 0 ? t("cart.delivery_free") : undefined
+          }
           currencySettings={currencySettings}
         />
       ) : null}
       {tipCents > 0 ? (
         <Row
-          label="Tip"
+          label={t("cart.tip")}
           valueCents={tipCents}
           currencySettings={currencySettings}
           muted
@@ -88,7 +112,9 @@ export function PricingBreakdown({
       ) : null}
       {showTotal ? (
         <div className="flex items-baseline justify-between pt-1">
-          <span className="text-sm text-muted-foreground">Total</span>
+          <span className="text-sm text-muted-foreground">
+            {t("cart.total")}
+          </span>
           <span className="font-mono text-lg font-semibold tabular-nums text-foreground">
             {formatPriceCents(pricing.totalCents, currencySettings)}
           </span>
@@ -103,11 +129,14 @@ function Row({
   valueCents,
   currencySettings,
   muted = false,
+  valueText,
 }: {
   label: string;
   valueCents: number;
   currencySettings: CurrencySettings;
   muted?: boolean;
+  /** Overrides the formatted price — e.g. "Free" for a 0 delivery fee. */
+  valueText?: string;
 }) {
   return (
     <div className="flex items-baseline justify-between">
@@ -115,7 +144,7 @@ function Row({
         {label}
       </span>
       <span className="font-mono tabular-nums text-foreground">
-        {formatPriceCents(valueCents, currencySettings)}
+        {valueText ?? formatPriceCents(valueCents, currencySettings)}
       </span>
     </div>
   );

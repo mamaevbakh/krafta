@@ -138,10 +138,16 @@ export function DeliveryAddressSummary({
   value,
   onChange,
   onOpen,
+  id,
+  attention,
 }: {
   value: SelectedDeliveryAddress | null;
   onChange: (a: SelectedDeliveryAddress | null) => void;
   onOpen: () => void;
+  /** id for the row button so checkout can scroll/focus it when missing. */
+  id?: string;
+  /** Amber "needs attention" border when checkout guides the customer here. */
+  attention?: boolean;
 }) {
   const t = useT();
   // Zero-tap default: on first mount with no selection, auto-pick the default
@@ -167,8 +173,12 @@ export function DeliveryAddressSummary({
   return (
     <button
       type="button"
+      id={id}
       onClick={onOpen}
-      className="flex min-h-[52px] w-full items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left transition-colors hover:bg-accent"
+      className={cn(
+        "flex min-h-[52px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-accent",
+        attention ? "border-warning" : "border-border",
+      )}
     >
       <LabelIcon
         label={value?.freeform ?? null}
@@ -582,7 +592,13 @@ function AddressEditScreen({
         />
         {mapOk ? (
           <>
-            <div className="relative min-h-[50dvh] flex-1">
+            {/* Fullscreen (<sm): the cart dialog is h-[100dvh] (definite), so the
+                map can fill via flex-1. Popup (≥sm): the dialog is h-auto
+                (indefinite) — a flex-1/basis-0% child several flex-levels deep
+                gives ymaps an unstable height at init and its WebGL canvas never
+                paints → blank map. Pin a definite height in popup mode so ymaps
+                measures real px from the first frame. (cart-drawer.tsx:77-79) */}
+            <div className="relative flex-1 min-h-[50dvh] sm:h-[55dvh] sm:min-h-0 sm:flex-none">
               <AddressMapPicker
                 initial={
                   existing
@@ -597,23 +613,31 @@ function AddressEditScreen({
               />
             </div>
             <div className="border-t border-border bg-background px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-              {resolving || !candidate ? (
-                <div className="space-y-1.5">
-                  <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-                  <p className="text-xs text-muted-foreground">
-                    {t("address.resolving")}
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {candidate.freeform}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("address.map_hint")}
-                  </p>
-                </div>
-              )}
+              {/* Fixed-height address region. A 1- vs 2-line result must NOT
+                  change this bar's height, or the flex-1 map above reflows
+                  (ymaps reruns its ResizeObserver → visible recenter/flash).
+                  Reserve the 2-line worst case (2×text-sm + text-xs hint =
+                  3.5rem, +cushion) and clamp both lines so content can never
+                  exceed it → constant footer height → the map never resizes. */}
+              <div className="min-h-[3.75rem]">
+                {resolving || !candidate ? (
+                  <div className="space-y-1.5">
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
+                      {t("address.resolving")}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="line-clamp-2 text-sm font-medium text-foreground">
+                      {candidate.freeform}
+                    </p>
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
+                      {t("address.map_hint")}
+                    </p>
+                  </>
+                )}
+              </div>
               <Button
                 type="button"
                 size="xl"
