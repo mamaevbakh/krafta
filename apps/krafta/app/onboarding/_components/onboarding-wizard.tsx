@@ -45,8 +45,10 @@ import { Iphone, IphoneStatusBar } from "@/components/ui/iphone";
 import { Label } from "@/components/ui/label";
 import { LocalePicker } from "@/components/locales/locale-picker";
 import { CurrencyPicker } from "@/components/locales/currency-picker";
+import { CountryPicker } from "@/components/locales/country-picker";
 import { getLocaleDefinition } from "@/lib/locales/registry";
 import { getCurrencyDefaults } from "@/lib/locale/currency-defaults";
+import { getCurrencyForCountry } from "@/lib/locale/country-defaults";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import {
   normalizeCurrencySettings,
@@ -114,6 +116,7 @@ type MenuMethod = "manual" | "upload";
 type Step =
   | { kind: "type" }
   | { kind: "name" }
+  | { kind: "country" }
   | { kind: "currency" }
   | { kind: "logo" }
   | { kind: "menu_method" }
@@ -137,6 +140,9 @@ function buildSteps(
   return [
     { kind: "type" },
     { kind: "name" },
+    // Country first — it anchors the currency default (and later phone/locale
+    // hints), so the currency step opens pre-set to the country's money.
+    { kind: "country" },
     // Currency is foundational — pick it early so the menu's prices render in
     // the merchant's own currency as they build it.
     { kind: "currency" },
@@ -281,6 +287,8 @@ type WizardDraft = {
   browseOnly?: boolean;
   /** Per-shop currency + formatting; absent in pre-currency drafts → UZS. */
   currency?: CurrencySettings;
+  /** Country of operation (ISO 3166-1 alpha-2); absent in pre-country drafts → "UZ". */
+  country?: string;
   tableCount: number;
   locales: { code: string; isDefault: boolean }[];
   /** Order-alerts preference; absent in pre-PR3 drafts → "telegram". */
@@ -338,6 +346,9 @@ export function OnboardingWizard() {
   // Browse-only ("just a catalog") — mutually exclusive with the order modes.
   const [browseOnly, setBrowseOnly] = React.useState(false);
   const [tableCount, setTableCount] = React.useState(8);
+  // Country of operation. Anchors the currency default (and later phone country
+  // code / locale hints). Defaults to UZ — Krafta's home market → UZS.
+  const [country, setCountry] = React.useState<string>("UZ");
   // Per-shop currency + formatting. Defaults to UZS (Krafta's home market);
   // the currency step lets a merchant switch to any currency for another
   // country and fine-tune the format.
@@ -383,6 +394,7 @@ export function OnboardingWizard() {
           if (d.currency && typeof d.currency === "object") {
             setCurrency(normalizeCurrencySettings(d.currency));
           }
+          if (typeof d.country === "string") setCountry(d.country);
           if (typeof d.tableCount === "number") setTableCount(d.tableCount);
           if (Array.isArray(d.locales) && d.locales.length > 0) setLocales(d.locales);
           if (typeof d.phone === "string") setPhone(d.phone);
@@ -417,6 +429,7 @@ export function OnboardingWizard() {
         modes,
         browseOnly,
         currency,
+        country,
         tableCount,
         locales,
         alertsIntent,
@@ -429,7 +442,7 @@ export function OnboardingWizard() {
     } catch {
       // Storage full/blocked — persistence is best-effort.
     }
-  }, [hydrated, phase, cursor, vertical, name, sections, modes, browseOnly, currency, tableCount, locales, alertsIntent, menuMethod, phone, city, customCity]);
+  }, [hydrated, phase, cursor, vertical, name, sections, modes, browseOnly, currency, country, tableCount, locales, alertsIntent, menuMethod, phone, city, customCity]);
 
   const steps = buildSteps(sections, modes, menuMethod, browseOnly);
   const safeCursor = Math.min(Math.max(cursor, 0), steps.length - 1);
@@ -455,6 +468,14 @@ export function OnboardingWizard() {
   const goBack = () => {
     setError(null);
     setCursor(Math.max(safeCursor - 1, 0));
+  };
+
+  // Picking a country pre-sets the currency (code + formatting) so the next
+  // step opens on the right money. The merchant can still override everything
+  // on the currency screen — country just supplies the smart default.
+  const chooseCountry = (code: string) => {
+    setCountry(code);
+    setCurrency(getCurrencyDefaults(getCurrencyForCountry(code)));
   };
 
   const pickVertical = async (key: ShopVertical) => {
@@ -620,6 +641,7 @@ export function OnboardingWizard() {
       modes: browseOnly ? ["pickup"] : modes,
       browseOnly,
       currency,
+      country,
       tableCount: !browseOnly && modes.includes("dine_in") ? tableCount : 0,
       locales,
       phone: phone.trim(),
@@ -1262,6 +1284,24 @@ export function OnboardingWizard() {
               </div>
             </div>
           ))}
+        </div>
+        {continueButton(goNext)}
+      </section>
+    );
+  }
+
+  // ── country ────────────────────────────────────────────────────────────────
+  if (current.kind === "country") {
+    return (
+      <section key="country">
+        {header(wizardCopy.country.title, wizardCopy.country.subtitle)}
+        <div className="mt-6 flex flex-col gap-3">
+          <CountryPicker value={country} onChange={chooseCountry} />
+          <p className="text-sm text-muted-foreground">
+            {fmt(wizardCopy.country.currencyHint, {
+              currency: getCurrencyForCountry(country),
+            })}
+          </p>
         </div>
         {continueButton(goNext)}
       </section>

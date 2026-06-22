@@ -211,6 +211,11 @@ const wizardPayloadSchema = z.object({
       showDecimals: false,
       labelPosition: "suffix",
     }),
+  // Country of operation (ISO 3166-1 alpha-2). Drives the wizard's currency
+  // default and is persisted on the organization (the column the tax system +
+  // future locale/phone defaults key off). Optional + dropped if malformed so a
+  // bad value never blocks shop creation.
+  country: z.string().trim().length(2).optional().catch(undefined),
 });
 
 export type WizardPayload = z.input<typeof wizardPayloadSchema>;
@@ -486,6 +491,19 @@ export async function createShopFromWizard(
     .eq("catalog_id", shop.catalogId);
   if (venueCurErr) {
     console.error("[onboarding] venue currency sync failed", venueCurErr);
+  }
+
+  // Persist the merchant's country on the organization — the column the tax
+  // system (org_tax_profiles / tax_schemas) and future locale/phone defaults
+  // key off. Best-effort: a failure leaves country unset, never blocks create.
+  if (input.country) {
+    const { error: countryErr } = await supabase
+      .from("organizations")
+      .update({ country_iso2: input.country })
+      .eq("id", shop.orgId);
+    if (countryErr) {
+      console.error("[onboarding] org country persist failed", countryErr);
+    }
   }
 
   // Browse-only ("just a catalog"): turn the cart OFF. The wizard seeded a

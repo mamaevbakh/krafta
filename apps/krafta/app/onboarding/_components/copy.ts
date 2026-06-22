@@ -101,6 +101,11 @@ export const wizardCopy = {
     sizesLabel: "Sizes",
     addOnsLabel: "Add-ons",
   },
+  country: {
+    title: "Where are you based?",
+    subtitle: "We'll set your currency to match — you can fine-tune it next.",
+    currencyHint: "Currency set to {currency} — adjust it on the next step.",
+  },
   currency: {
     title: "What currency?",
     subtitle: "Shown on every price across your shop. Switch it for any country.",
