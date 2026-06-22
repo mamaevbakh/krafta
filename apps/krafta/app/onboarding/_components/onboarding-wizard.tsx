@@ -41,6 +41,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Iphone } from "@/components/ui/iphone";
 import { Label } from "@/components/ui/label";
 import { LocalePicker } from "@/components/locales/locale-picker";
 import { CurrencyPicker } from "@/components/locales/currency-picker";
@@ -753,16 +754,25 @@ export function OnboardingWizard() {
             we just created (owner-session draft fallback). Same-origin iframe
             carries the merchant's cookies, so /preview resolves the unpublished
             draft. This IS what customers will see — not a reconstruction. */}
-        <div className="relative mx-auto mt-6 h-[540px] w-full max-w-[300px] overflow-hidden rounded-[2rem] border-4 border-foreground bg-background">
-          {/* Render the storefront at a real phone width (380px) and scale it
-              down into the 300px frame, so the preview reads as "zoomed out" —
-              more of the menu is visible than at a cramped 300px render. */}
-          <iframe
-            title="Your storefront preview"
-            src={`/preview/${shop.catalogSlug}`}
-            className="absolute left-0 top-0 origin-top-left border-0"
-            style={{ width: "380px", height: "692px", transform: "scale(0.768)" }}
-          />
+        {/* Framed in an iPhone mockup. The storefront is rendered at a real
+            phone width (390px) and scaled to fill the screen, and inset below
+            the dynamic island so its header stays in the top safe area. */}
+        <div className="mx-auto mt-6 w-full max-w-[300px]">
+          <Iphone className="w-full">
+            <div className="absolute inset-0 bg-background">
+              <iframe
+                title="Your storefront preview"
+                src={`/preview/${shop.catalogSlug}`}
+                className="absolute left-0 origin-top-left border-0"
+                style={{
+                  top: "38px",
+                  width: "390px",
+                  height: "780px",
+                  transform: "scale(0.692)",
+                }}
+              />
+            </div>
+          </Iphone>
         </div>
         {alertsIntent === "telegram" ? (
           <Button asChild className="mt-6 w-full">
