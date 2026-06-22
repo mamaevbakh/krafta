@@ -1,5 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react"
 
+import { cn } from "@/lib/utils"
+
 const PHONE_WIDTH = 433
 const PHONE_HEIGHT = 882
 const SCREEN_X = 21.25
@@ -193,6 +195,53 @@ export function Iphone({
           </clipPath>
         </defs>
       </svg>
+    </div>
+  )
+}
+
+/**
+ * iOS-style status bar to drop into the Iphone screen's top safe area (above
+ * inset live content). Time on the left, signal/Wi-Fi/battery on the right;
+ * `currentColor` so it flips with the theme. `px-6` keeps both ends clear of
+ * the screen's rounded corners. pointer-events-none so it never blocks the
+ * content below.
+ */
+export function IphoneStatusBar({
+  time = "9:41",
+  className,
+}: {
+  time?: string
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-x-0 top-0 z-10 flex h-[38px] items-center justify-between px-6 text-foreground",
+        className,
+      )}
+    >
+      <span className="text-[11px] font-semibold tracking-tight tabular-nums">
+        {time}
+      </span>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {/* cellular */}
+        <svg viewBox="0 0 18 12" className="h-[9px] w-auto" fill="currentColor" aria-hidden="true">
+          <rect x="0" y="8" width="3" height="4" rx="0.6" />
+          <rect x="5" y="5.5" width="3" height="6.5" rx="0.6" />
+          <rect x="10" y="3" width="3" height="9" rx="0.6" />
+          <rect x="15" y="0" width="3" height="12" rx="0.6" />
+        </svg>
+        {/* wi-fi */}
+        <svg viewBox="0 0 16 12" className="h-[9px] w-auto" fill="currentColor" aria-hidden="true">
+          <path d="M8 2.2c2.6 0 5 1 6.8 2.7l-1.4 1.5A7.6 7.6 0 0 0 8 4.3 7.6 7.6 0 0 0 2.6 6.4L1.2 4.9A9.7 9.7 0 0 1 8 2.2Zm0 3.4c1.6 0 3.1.6 4.2 1.7l-1.5 1.5A4 4 0 0 0 8 7.6a4 4 0 0 0-2.7 1.2L3.8 7.3A6 6 0 0 1 8 5.6Zm0 3.3c.8 0 1.5.3 2 .8L8 11.4 6 9.7c.5-.5 1.2-.8 2-.8Z" />
+        </svg>
+        {/* battery */}
+        <svg viewBox="0 0 26 12" className="h-[9px] w-auto" aria-hidden="true">
+          <rect x="0.5" y="0.5" width="22" height="11" rx="3" fill="none" stroke="currentColor" strokeOpacity="0.4" />
+          <rect x="2" y="2" width="16" height="8" rx="1.6" fill="currentColor" />
+          <path d="M24 4.2v3.6c1-.2 1-3.4 0-3.6Z" fill="currentColor" fillOpacity="0.5" />
+        </svg>
+      </div>
     </div>
   )
 }

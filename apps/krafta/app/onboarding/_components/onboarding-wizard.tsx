@@ -41,7 +41,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Iphone } from "@/components/ui/iphone";
+import { Iphone, IphoneStatusBar } from "@/components/ui/iphone";
 import { Label } from "@/components/ui/label";
 import { LocalePicker } from "@/components/locales/locale-picker";
 import { CurrencyPicker } from "@/components/locales/currency-picker";
@@ -759,7 +759,10 @@ export function OnboardingWizard() {
             the dynamic island so its header stays in the top safe area. */}
         <div className="mx-auto mt-6 w-full max-w-[300px]">
           <Iphone className="w-full">
-            <div className="absolute inset-0 bg-background">
+            {/* Screen bg matches the storefront's own (white / dark) so the
+                safe area has no seam in dark mode; the iOS status bar fills it. */}
+            <div className="absolute inset-0 bg-white dark:bg-secondary-background">
+              <IphoneStatusBar />
               <iframe
                 title="Your storefront preview"
                 src={`/preview/${shop.catalogSlug}`}
