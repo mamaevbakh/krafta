@@ -67,6 +67,7 @@ import { extractMenuAction, type ExtractMenuResult } from "./menu-actions";
 import type { ExtractedMenu } from "@/lib/menu-extraction/schema";
 import { trackWizard } from "./analytics";
 import { CITY_CHIPS, fmt, wizardCopy } from "./copy";
+import { ConfettiSideCannons } from "./confetti-side-cannons";
 import {
   VERTICALS,
   VERTICAL_KEYS,
@@ -756,6 +757,8 @@ export function OnboardingWizard() {
   if (phase === "reveal" && shop) {
     return (
       <section key="reveal">
+        {/* Shop-created celebration — fires once on mount. */}
+        <ConfettiSideCannons />
         <div
           role="progressbar"
           aria-label={wizardCopy.common.progressLabel}
