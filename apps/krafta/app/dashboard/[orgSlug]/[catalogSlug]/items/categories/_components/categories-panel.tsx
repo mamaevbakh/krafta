@@ -9,7 +9,17 @@ import type { CatalogCategory } from "@/lib/catalogs/types"
 import { DataTable } from "./data-table"
 import { createColumns } from "./columns"
 import { Button } from "@/components/ui/button"
-import { CreateCategoryDialog } from "./create-category-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { CategoryEditorDrawer } from "./category-editor-drawer"
 import { deleteCategory } from "./actions"
 
 type LocaleOption = {
@@ -48,6 +58,9 @@ export function CategoriesPanel({
   const [editingCategory, setEditingCategory] = useState<CatalogCategory | null>(
     null,
   )
+  const [pendingDelete, setPendingDelete] =
+    useState<CatalogCategory | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const editingTranslations = useMemo(() => {
     if (!editingCategory) return []
@@ -56,30 +69,38 @@ export function CategoriesPanel({
     )
   }, [editingCategory, translations])
 
-  async function handleDeleteCategory(category: CatalogCategory) {
-    const shouldDelete = window.confirm(
-      `Delete "${category.name}" and all of its items? This cannot be undone.`,
-    )
-    if (!shouldDelete) return
+  async function handleConfirmRowDelete() {
+    if (!pendingDelete) return
+    setIsDeleting(true)
+    try {
+      const result = await deleteCategory({
+        catalogId,
+        catalogSlug,
+        categoryId: pendingDelete.id,
+      })
 
-    const result = await deleteCategory({
-      catalogId,
-      catalogSlug,
-      categoryId: category.id,
-    })
+      if (!result.ok) {
+        toast.error(result.error ?? "Failed to delete category.")
+        return
+      }
 
-    if (!result.ok) {
-      toast.error(result.error ?? "Failed to delete category.")
-      return
+      if (editingCategory?.id === pendingDelete.id) {
+        setEditingCategory(null)
+        setCategoryDialogOpen(false)
+      }
+
+      toast.success(
+        result.deletedItems
+          ? `Category and ${result.deletedItems} item${
+              result.deletedItems === 1 ? "" : "s"
+            } deleted.`
+          : "Category deleted.",
+      )
+      setPendingDelete(null)
+      router.refresh()
+    } finally {
+      setIsDeleting(false)
     }
-
-    if (editingCategory?.id === category.id) {
-      setEditingCategory(null)
-      setCategoryDialogOpen(false)
-    }
-
-    toast.success("Category deleted.")
-    router.refresh()
   }
 
   return (
@@ -111,7 +132,7 @@ export function CategoriesPanel({
               setCategoryDialogOpen(true)
             },
             onDelete: (category) => {
-              void handleDeleteCategory(category)
+              setPendingDelete(category)
             },
           })}
           data={categories}
@@ -124,9 +145,12 @@ export function CategoriesPanel({
         />
       </div>
 
-      <CreateCategoryDialog
+      <CategoryEditorDrawer
         open={categoryDialogOpen}
-        onOpenChange={setCategoryDialogOpen}
+        onOpenChange={(open) => {
+          setCategoryDialogOpen(open)
+          if (!open) setEditingCategory(null)
+        }}
         catalogId={catalogId}
         catalogSlug={catalogSlug}
         locales={locales}
@@ -134,7 +158,40 @@ export function CategoriesPanel({
         category={editingCategory ?? undefined}
         initialTranslations={editingTranslations}
         existingSlugs={categories.map((category) => category.slug)}
+        onDeleted={() => setEditingCategory(null)}
       />
+
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this category?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &ldquo;{pendingDelete?.name ?? "This category"}&rdquo; and all
+              of its items will be removed permanently. This cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                void handleConfirmRowDelete()
+              }}
+              disabled={isDeleting}
+            >
+              Delete category
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }
