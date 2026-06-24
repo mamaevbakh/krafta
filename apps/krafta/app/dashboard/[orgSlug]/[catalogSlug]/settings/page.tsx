@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 import { normalizeDeliverySettings } from "@/lib/catalogs/settings/delivery";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
@@ -15,7 +16,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
   const { data: catalog } = await supabase
     .from("catalogs")
     .select(
-      "id, org_id, name, description, tags, logo_path, settings_currency, settings_delivery",
+      "id, org_id, name, description, tags, logo_path, settings_currency, settings_delivery, settings_qr_style",
     )
     .eq("slug", catalogSlug)
     .maybeSingle();
@@ -63,8 +64,9 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
   const tmaDeepLink = tmaBotUsername
     ? `https://t.me/${tmaBotUsername}?startapp=${catalogSlug}`
     : null;
+  const qrStyle = normalizeQrStyle(catalog.settings_qr_style);
   const tmaQrSvg = tmaDeepLink
-    ? await renderQrSvg(tmaDeepLink, { size: 320 })
+    ? await renderQrSvg(tmaDeepLink, { size: 320, style: qrStyle })
     : null;
 
   const delivery = normalizeDeliverySettings(

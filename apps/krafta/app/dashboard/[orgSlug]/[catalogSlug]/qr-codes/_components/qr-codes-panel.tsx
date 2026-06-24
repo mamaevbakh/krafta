@@ -49,6 +49,9 @@ import {
   setVenueModes,
   updateTable,
 } from "@/lib/tables/actions";
+import type { QrStyleConfig } from "@/lib/qr/config";
+
+import { QrStudio } from "./qr-studio";
 
 type ModeQr = {
   kind: "main" | "pickup" | "delivery";
@@ -86,9 +89,12 @@ type QrCodesPanelProps = {
   modesEnabled: string[];
   modeQrs: ModeQr[];
   tables: TableRow[];
+  initialQrStyle: QrStyleConfig;
+  previewUrl: string;
 };
 
 export function QrCodesPanel({
+  catalogId,
   catalogName,
   catalogSlug,
   venueId,
@@ -96,6 +102,8 @@ export function QrCodesPanel({
   modesEnabled,
   modeQrs,
   tables,
+  initialQrStyle,
+  previewUrl,
 }: QrCodesPanelProps) {
   const modeQrByKind = React.useMemo(() => {
     const map: Partial<Record<ModeQr["kind"], ModeQr>> = {};
@@ -113,6 +121,13 @@ export function QrCodesPanel({
           Customers scan → land in the right ordering mode.
         </p>
       </header>
+
+      <QrStudio
+        catalogId={catalogId}
+        catalogSlug={catalogSlug}
+        initialStyle={initialQrStyle}
+        previewUrl={previewUrl}
+      />
 
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-muted-foreground">

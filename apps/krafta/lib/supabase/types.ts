@@ -2774,6 +2774,7 @@ export type Database = {
           settings_delivery: Json
           settings_i18n: Json
           settings_layout: Json
+          settings_qr_style: Json
           slug: string
           status: Database["public"]["Enums"]["catalog_status"]
           tags: string[] | null
@@ -2794,6 +2795,7 @@ export type Database = {
           settings_delivery?: Json
           settings_i18n?: Json
           settings_layout?: Json
+          settings_qr_style?: Json
           slug: string
           status?: Database["public"]["Enums"]["catalog_status"]
           tags?: string[] | null
@@ -2814,6 +2816,7 @@ export type Database = {
           settings_delivery?: Json
           settings_i18n?: Json
           settings_layout?: Json
+          settings_qr_style?: Json
           slug?: string
           status?: Database["public"]["Enums"]["catalog_status"]
           tags?: string[] | null

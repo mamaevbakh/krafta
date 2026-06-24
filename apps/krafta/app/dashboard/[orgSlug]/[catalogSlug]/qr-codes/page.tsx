@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getRequestOrigin } from "@/lib/auth/redirect";
+import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 
 import { QrCodesPanel } from "./_components/qr-codes-panel";
@@ -74,11 +75,15 @@ export default async function QrCodesPage({
   // dashboard layout above us; venue belongs to the catalog 1:1.
   const { data: catalog } = await supabase
     .from("catalogs")
-    .select("id, name, slug, org_id, organizations!inner(slug)")
+    .select(
+      "id, name, slug, org_id, settings_qr_style, organizations!inner(slug)",
+    )
     .eq("slug", catalogSlug)
     .eq("organizations.slug", orgSlug)
     .maybeSingle();
   if (!catalog) notFound();
+
+  const qrStyle = normalizeQrStyle(catalog.settings_qr_style);
 
   const { data: venue } = await supabase
     .from("venues")
@@ -124,7 +129,9 @@ export default async function QrCodesPage({
         qrId: qr.id,
         shortcode: qr.shortcode,
         url: `${origin}/q/${qr.shortcode}`,
-        svg: await renderQrSvg(`${origin}/q/${qr.shortcode}`),
+        svg: await renderQrSvg(`${origin}/q/${qr.shortcode}`, {
+          style: qrStyle,
+        }),
         isActive: qr.is_active,
         scanCountTotal: counts.total,
         scanCountLast7: counts.last7,
@@ -148,12 +155,21 @@ export default async function QrCodesPage({
         qrId: qrRel?.id ?? null,
         shortcode,
         url,
-        svg: shortcode ? await renderQrSvg(url) : null,
+        svg: shortcode ? await renderQrSvg(url, { style: qrStyle }) : null,
         scanCountTotal: counts.total,
         scanCountLast7: counts.last7,
       };
     }),
   );
+
+  // The studio's live preview needs a representative URL — the "main"
+  // mode QR is the most relatable since merchants think about it as
+  // "the storefront QR". Fall back to a fake catalog URL if the main
+  // mode QR somehow doesn't exist (shouldn't happen — venue trigger
+  // auto-creates it — but defense in depth).
+  const previewUrl =
+    modeQrPayload.find((m) => m.kind === "main")?.url ??
+    `${origin}/${catalogSlug}`;
 
   return (
     <QrCodesPanel
@@ -165,6 +181,8 @@ export default async function QrCodesPage({
       modesEnabled={venue.modes_enabled as string[]}
       modeQrs={modeQrPayload}
       tables={tablePayload}
+      initialQrStyle={qrStyle}
+      previewUrl={previewUrl}
     />
   );
 }

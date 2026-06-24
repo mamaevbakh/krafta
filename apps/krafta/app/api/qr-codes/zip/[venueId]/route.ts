@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { getRequestOrigin } from "@/lib/auth/redirect";
+import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 import { createClient } from "@/lib/supabase/server";
 
@@ -36,12 +37,20 @@ export async function GET(
   // scopes by org membership.
   const { data: venue } = await supabase
     .from("venues")
-    .select("id, name, catalog_id, catalogs(slug)")
+    .select("id, name, catalog_id, catalogs(slug, settings_qr_style)")
     .eq("id", venueId)
     .maybeSingle();
   if (!venue) {
     return NextResponse.json({ error: "venue not found" }, { status: 404 });
   }
+
+  // Pull the catalog's saved QR studio style so the ZIP renders with the
+  // merchant's customizations (colors, gradient, logo, frame, etc.) and
+  // matches the on-screen preview exactly.
+  const venueCatalog = Array.isArray(venue.catalogs)
+    ? venue.catalogs[0]
+    : venue.catalogs;
+  const qrStyle = normalizeQrStyle(venueCatalog?.settings_qr_style);
 
   const { data: tables, error: tablesErr } = await supabase
     .from("tables")
@@ -64,13 +73,17 @@ export async function GET(
     if (!qrRel || !qrRel.is_active) continue;
 
     const url = `${origin}/q/${qrRel.shortcode}`;
-    const svg = await renderQrSvg(url, { size: PNG_SIZE });
+    const svg = await renderQrSvg(url, { size: PNG_SIZE, style: qrStyle });
     // Resvg ships a WASM rasterizer — no native deps, Vercel-friendly.
     // fitTo=width with PNG_SIZE keeps the output square at our intended
-    // print resolution.
+    // print resolution. Background defaults to white; an explicit
+    // transparent bgColor in the studio would render as white in the
+    // PNG (still a printable card) — Resvg can't express "transparent"
+    // without an alpha channel which most printers don't honor.
     const png = new Resvg(svg, {
       fitTo: { mode: "width", value: PNG_SIZE },
-      background: "#ffffff",
+      background:
+        qrStyle.bgColor === "transparent" ? "#FFFFFF" : qrStyle.bgColor,
     })
       .render()
       .asPng();
@@ -83,9 +96,7 @@ export async function GET(
   // narrowing in Next 16. arraybuffer is the cleanest acceptable shape;
   // NextResponse passes it through to the underlying Response.
   const zipBuffer = await zip.generateAsync({ type: "arraybuffer" });
-  const catalogSlug = Array.isArray(venue.catalogs)
-    ? venue.catalogs[0]?.slug
-    : venue.catalogs?.slug;
+  const catalogSlug = venueCatalog?.slug;
   const zipName = `${catalogSlug ?? venue.name ?? "venue"}-tables-qrs.zip`;
 
   return new NextResponse(zipBuffer, {

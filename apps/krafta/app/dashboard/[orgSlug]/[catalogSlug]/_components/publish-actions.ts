@@ -25,6 +25,7 @@ import {
   telegramLoginConfigured,
 } from "@/lib/auth/telegram-bridge";
 import { isValidSlug, suffixSlug, suggestSlug } from "@/lib/onboarding/slug";
+import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 import { createClient } from "@/lib/supabase/server";
 import { validateTelegramLoginPayload } from "@/lib/telegram/login-widget";
@@ -365,11 +366,23 @@ export async function publishShop(params: {
   // (app/[...slug]/page.tsx). After publish_shop all three slugs are equal,
   // but the catalog slug is the semantically correct one.
   const storefrontUrl = `${origin}/${data.catalog_slug}`;
+
+  // Pick up any merchant-customized QR style so the celebration screen's
+  // QR matches what they'll print. Fresh publishes normalize to the
+  // legacy default (no studio visit yet). publish_shop returns only the
+  // slug trio, so look the catalog up by slug to read settings_qr_style.
+  const { data: catalogStyleRow } = await supabase
+    .from("catalogs")
+    .select("settings_qr_style")
+    .eq("slug", data.catalog_slug)
+    .maybeSingle();
+  const qrStyle = normalizeQrStyle(catalogStyleRow?.settings_qr_style);
+
   return {
     orgSlug: data.org_slug,
     catalogSlug: data.catalog_slug,
     venueSlug: data.venue_slug,
     storefrontUrl,
-    qrSvg: await renderQrSvg(storefrontUrl),
+    qrSvg: await renderQrSvg(storefrontUrl, { style: qrStyle }),
   };
 }
