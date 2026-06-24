@@ -278,10 +278,14 @@ export function QrStudio({
       </header>
 
       <div className="grid gap-6 p-4 md:grid-cols-[320px_1fr] md:p-5">
-        {/* Live preview */}
+        {/* Live preview. The SVG renderQrSvg returns carries intrinsic
+            width/height attributes which we override via the descendant
+            selector so the artwork respects its container — without that,
+            the SVG renders at its absolute pixel size and overflows the
+            grid cell. */}
         <div className="flex flex-col items-center gap-3">
           <div
-            className="grid aspect-square w-full max-w-[320px] place-items-center rounded-md border bg-white p-3"
+            className="grid aspect-square w-full max-w-[320px] place-items-center overflow-hidden rounded-md border bg-white p-3 [&>svg]:h-full [&>svg]:max-h-full [&>svg]:w-full [&>svg]:max-w-full"
             role="img"
             aria-label="QR style preview"
             dangerouslySetInnerHTML={{ __html: previewSvg }}
@@ -323,13 +327,17 @@ export function QrStudio({
               onChange={(value) => update("eyeInnerShape", value)}
             />
 
-            <ColorRow
-              label="Foreground color"
-              value={draft.fgColor}
-              onChange={(value) => update("fgColor", value)}
-              disabled={!!draft.fgGradient}
-              disabledHint="Disabled while a gradient is on."
-            />
+            {/* Hide the FG color row entirely when a gradient is on —
+                showing it disabled with a "currently overridden" hint was
+                confusing in QA. The merchant can toggle the gradient
+                off to get the picker back. */}
+            {!draft.fgGradient ? (
+              <ColorRow
+                label="Foreground color"
+                value={draft.fgColor}
+                onChange={(value) => update("fgColor", value)}
+              />
+            ) : null}
             <ColorRow
               label="Background color"
               value={draft.bgColor}
