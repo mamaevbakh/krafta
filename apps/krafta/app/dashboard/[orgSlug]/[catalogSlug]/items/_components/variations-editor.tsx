@@ -65,6 +65,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  formatPriceInputDisplay,
   formatPriceInputValue,
   parsePriceInput,
 } from "@/lib/catalogs/pricing";
@@ -743,13 +744,16 @@ export function VariationPriceInput({
   "data-slot": dataSlot = "variation-price-input",
 }: VariationPriceInputProps) {
   const [focused, setFocused] = React.useState(false);
+  // Unfocused: grouped display ("28 000") to match the onboarding
+  // wizard. Focused: the bare value ("28000") so the merchant edits
+  // digits without thousand separators reflowing under the caret.
   const [raw, setRaw] = React.useState(() =>
-    formatPriceInputValue(valueCents, currencySettings),
+    formatPriceInputDisplay(valueCents, currencySettings),
   );
 
   React.useEffect(() => {
     if (!focused) {
-      setRaw(formatPriceInputValue(valueCents, currencySettings));
+      setRaw(formatPriceInputDisplay(valueCents, currencySettings));
     }
   }, [valueCents, focused, currencySettings]);
 
@@ -768,17 +772,22 @@ export function VariationPriceInput({
         const parsed = parsePriceInput(next, currencySettings);
         if (parsed !== null) onChange(parsed);
       }}
-      onFocus={() => setFocused(true)}
+      onFocus={() => {
+        setFocused(true);
+        // Swap the grouped display for the bare value so backspace /
+        // insertion behaves naturally while typing.
+        setRaw(formatPriceInputValue(valueCents, currencySettings));
+      }}
       onBlur={() => {
         setFocused(false);
-        setRaw(formatPriceInputValue(valueCents, currencySettings));
+        setRaw(formatPriceInputDisplay(valueCents, currencySettings));
       }}
       disabled={disabled}
       inputMode={currencySettings.showDecimals ? "decimal" : "numeric"}
       placeholder={
         disabled
           ? ""
-          : (placeholder ?? formatPriceInputValue(0, currencySettings))
+          : (placeholder ?? formatPriceInputDisplay(0, currencySettings))
       }
       data-slot={dataSlot}
       className={cn(

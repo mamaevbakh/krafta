@@ -62,12 +62,26 @@ export function formatPriceCents(
  * the merchant types. Returns just the number (no currency label, no
  * surrounding chrome) per the catalog's currency settings.
  *
- *   - showDecimals=true,  USD  → "15.00"
- *   - showDecimals=false, UZS  → "15000"
+ *   - showDecimals=true,  USD  → "15.00"   (1500 cents)
+ *   - showDecimals=false, UZS  → "15000"   (1_500_000 cents)
  *
- * Thousand separators are NOT applied here — the input is for typing, not
- * presentation. Display-formatted value (with separators + label) is for
- * read-only renderings via formatPriceCents.
+ * IMPORTANT — the `*_cents` columns store major units × 100 for EVERY
+ * currency, including no-decimal ones like UZS (25 000 sum → 2 500 000
+ * cents). This mirrors the onboarding wizard (`parseSum(sum) * 100` on
+ * submit) and the read-only formatter (`formatPriceCents`, which divides
+ * by 100 unconditionally). So this input value ALWAYS divides by 100 —
+ * the only difference between currencies is whether we keep the two
+ * decimal places (USD) or round to a whole number (UZS).
+ *
+ * The earlier version skipped the /100 for no-decimal currencies, which
+ * made the editor show a UZS item's price 100× too large ("2800000" for
+ * a 28 000 sum item) and persist new prices 100× too small. That's the
+ * bug this repairs.
+ *
+ * Thousand separators are NOT applied here — this is the bare value for
+ * the focused/typing state. For the grouped unfocused display use
+ * formatPriceInputDisplay; for a fully labelled read-only render use
+ * formatPriceCents.
  */
 export function formatPriceInputValue(
   amountCents: number,
@@ -75,10 +89,38 @@ export function formatPriceInputValue(
 ): string {
   const currency = settings ?? defaultCurrencySettings;
   if (!Number.isFinite(amountCents)) return "0";
+  const major = amountCents / 100;
   if (currency.showDecimals) {
-    return (amountCents / 100).toFixed(2);
+    return major.toFixed(2);
   }
-  return String(Math.trunc(amountCents));
+  return String(Math.round(major));
+}
+
+/**
+ * formatPriceInputDisplay — like formatPriceInputValue but with the
+ * catalog's thousand separator applied, for the UNFOCUSED display of a
+ * price input (matches the wizard's "28 000" UX). The focused/typing
+ * state should stay on the bare formatPriceInputValue so separators don't
+ * reflow under the caret mid-keystroke.
+ */
+export function formatPriceInputDisplay(
+  amountCents: number,
+  settings?: CurrencySettings,
+): string {
+  const currency = settings ?? defaultCurrencySettings;
+  const bare = formatPriceInputValue(amountCents, currency);
+  if (!bare) return bare;
+  // formatPriceInputValue always emits "." as the decimal separator
+  // (toFixed), so split on it to group only the integer portion.
+  const [intPart, fracPart] = bare.split(".");
+  const grouped = applyThousandsSeparator(
+    intPart,
+    currency.thousandSeparator,
+  );
+  if (currency.showDecimals && fracPart != null) {
+    return `${grouped}${currency.decimalSeparator}${fracPart}`;
+  }
+  return grouped;
 }
 
 /**
@@ -88,7 +130,12 @@ export function formatPriceInputValue(
  * Accepts:
  *   - "15.00", "15.5", "15" with showDecimals=true USD (decimal=".") → 1500, 1550, 1500
  *   - "15,00", "15,5", "15" with showDecimals=true EUR (decimal=",") → 1500, 1550, 1500
- *   - "15", "1,500" with showDecimals=false UZS → 15, 1500
+ *   - "15", "1 500" with showDecimals=false UZS → 1500, 150000
+ *
+ * Note the UZS examples: the merchant types major units (sums) and we
+ * persist sums × 100, the same scale formatPriceCents reads back and the
+ * onboarding wizard writes. "15" sum → 1500 cents, "1 500" sum → 150 000
+ * cents.
  *
  * Returns null on invalid input so the caller can ignore the keystroke
  * (e.g. letters typed into a numeric field).
@@ -133,11 +180,13 @@ export function parsePriceInput(
 
   // No-decimal currencies (UZS). Strip everything that isn't a digit;
   // a stray decimal-style character is a paste-from-other-catalog typo,
-  // we drop it.
+  // we drop it. The merchant types whole sums; we persist sums × 100 so
+  // the cents column stays on the same scale as decimal currencies and
+  // the wizard (which also multiplies by 100 on submit).
   const digitsOnly = cleaned.replaceAll(/[^\d-]/g, "");
   if (!digitsOnly.length || digitsOnly === "-") return 0;
   if (!/^-?\d+$/.test(digitsOnly)) return null;
   const parsed = Number.parseInt(digitsOnly, 10);
   if (!Number.isFinite(parsed)) return null;
-  return parsed;
+  return parsed * 100;
 }
