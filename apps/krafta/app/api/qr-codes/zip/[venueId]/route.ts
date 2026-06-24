@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 import { getRequestOrigin } from "@/lib/auth/redirect";
 import { normalizeQrStyle } from "@/lib/qr/config";
+import { urlToDataUri } from "@/lib/qr/inline-images";
 import { renderQrSvg } from "@/lib/qr/render";
 import { createClient } from "@/lib/supabase/server";
 
@@ -51,6 +52,17 @@ export async function GET(
     ? venue.catalogs[0]
     : venue.catalogs;
   const qrStyle = normalizeQrStyle(venueCatalog?.settings_qr_style);
+
+  // Resvg can't fetch a remote logo URL. Resolve the logo to a base64
+  // data URI ONCE (server-to-server fetch, no CORS concern) and swap it
+  // into the style so every rendered SVG embeds the bytes inline. Failed
+  // fetch → leave the URL (the QR is still scannable, just no logo).
+  if (qrStyle.logo?.src && /^https?:\/\//.test(qrStyle.logo.src)) {
+    const dataUri = await urlToDataUri(qrStyle.logo.src);
+    if (dataUri) {
+      qrStyle.logo = { ...qrStyle.logo, src: dataUri };
+    }
+  }
 
   const { data: tables, error: tablesErr } = await supabase
     .from("tables")

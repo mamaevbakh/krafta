@@ -50,6 +50,7 @@ import {
   updateTable,
 } from "@/lib/tables/actions";
 import type { QrStyleConfig } from "@/lib/qr/config";
+import { inlineSvgImages } from "@/lib/qr/inline-images";
 
 import { QrStudio } from "./qr-studio";
 
@@ -710,11 +711,17 @@ function DownloadPngButton({
  * Rasterize an inline SVG string to a PNG blob URL via an in-memory
  * <canvas>. Browser-only — no server round-trip. Output is square at
  * the requested pixel size.
+ *
+ * Any external <image href="https://…"> (a custom logo) is inlined to a
+ * data URI first: a browser blocks external resource loads when an SVG is
+ * drawn through an <img>, so without inlining the logo rasterizes as the
+ * broken-image placeholder.
  */
 async function rasterizeSvgToPng(
-  svg: string,
+  rawSvg: string,
   pxSize: number,
 ): Promise<string> {
+  const svg = await inlineSvgImages(rawSvg);
   const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   const svgUrl = URL.createObjectURL(svgBlob);
   try {
