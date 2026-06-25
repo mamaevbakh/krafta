@@ -592,7 +592,11 @@ export function StorefrontAssistant({
                 key={`${r.entityId}`}
                 className="flex w-72 max-w-[82%] shrink-0 snap-start flex-col gap-2 rounded-2xl border border-border bg-card p-2"
               >
-                <button type="button" onClick={onItemClick} className="text-left">
+                <button
+                  type="button"
+                  onClick={() => handleItemOpen(item, categorySlug)}
+                  className="text-left"
+                >
                   <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-muted">
                     {imageUrl ? (
                       <Image
@@ -618,22 +622,47 @@ export function StorefrontAssistant({
                     </div>
                   </div>
                 </button>
-                <div className="mt-auto px-1 pb-1">
+                <div className="mt-auto space-y-1.5 px-1 pb-1">
                   {line && simple ? (
-                    <Stepper
-                      qty={line.quantity}
-                      decIcon={
-                        line.quantity <= 1 ? (
-                          <Trash2 className="size-3.5" />
-                        ) : undefined
-                      }
-                      onDec={() =>
-                        line.quantity <= 1
-                          ? void cart?.removeItem(line.id)
-                          : cart?.bumpQuantity(line.id, -1)
-                      }
-                      onInc={() => cart?.bumpQuantity(line.id, 1)}
-                    />
+                    <>
+                      {/* Full-width quantity stepper: − left, qty centre, + right. */}
+                      <div className="flex w-full items-center justify-between rounded-full border border-border p-1">
+                        <button
+                          type="button"
+                          aria-label={line.quantity <= 1 ? "Remove" : "Decrease"}
+                          onClick={() =>
+                            line.quantity <= 1
+                              ? void cart?.removeItem(line.id)
+                              : cart?.bumpQuantity(line.id, -1)
+                          }
+                          className="grid size-9 place-items-center rounded-full text-foreground transition hover:bg-muted"
+                        >
+                          {line.quantity <= 1 ? (
+                            <Trash2 className="size-4" />
+                          ) : (
+                            <Minus className="size-4" />
+                          )}
+                        </button>
+                        <span className="text-sm font-semibold tabular-nums">
+                          {line.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Increase"
+                          onClick={() => cart?.bumpQuantity(line.id, 1)}
+                          className="grid size-9 place-items-center rounded-full text-foreground transition hover:bg-muted"
+                        >
+                          <Plus className="size-4" />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleItemOpen(item, categorySlug)}
+                        className="w-full rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:border-foreground/30"
+                      >
+                        {t("add_to_cart.view_item")}
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"
