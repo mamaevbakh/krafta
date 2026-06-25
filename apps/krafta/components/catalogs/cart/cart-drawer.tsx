@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { ImageIcon, ShoppingCart, Trash2 } from "lucide-react";
+import { ImageIcon, ShoppingCart, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -81,7 +82,20 @@ export function CartDrawer({
           // a centered card); desktop keeps the dialog's centered zoom.
           "data-[state=open]:slide-in-from-bottom-4 data-[state=closed]:slide-out-to-bottom-4 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:slide-out-to-bottom-0",
         )}
+        showCloseButton={false}
       >
+        {/* Outline circular close, matching the assistant chat's button. */}
+        <DialogClose asChild>
+          <Button
+            type="button"
+            aria-label="Close"
+            variant="outline"
+            size="icon"
+            className="absolute right-4 top-4 z-20 rounded-full"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogClose>
         <div
           key={step}
           className={cn(
@@ -141,7 +155,9 @@ function CartListStep({
     // See full note in checkout-step.tsx.
     <div className="flex min-h-0 flex-1 flex-col">
       <DialogHeader className="px-4 pb-3 pt-4 text-left">
-        <DialogTitle className="text-lg">{t("cart.title")}</DialogTitle>
+        <DialogTitle className="text-2xl font-semibold">
+          {t("cart.title")}
+        </DialogTitle>
         {/* sr-only: satisfies Radix's DialogContent describedby requirement
             (silences the "Missing Description" console warning) without
             adding visible subtitle chrome. Mirrors placed-step.tsx. */}
