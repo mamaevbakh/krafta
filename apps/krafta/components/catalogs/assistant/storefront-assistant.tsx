@@ -32,6 +32,7 @@ import {
 } from "@/lib/locales/messages";
 import { useItemSheet } from "@/components/catalogs/items/item-detail-controller";
 import { PricingBreakdown } from "@/components/catalogs/cart/pricing-breakdown";
+import { ItemWidget } from "@/components/catalogs/assistant/item-widget";
 import {
   useOptionalCart,
   type CartFulfillmentMode,
@@ -64,6 +65,8 @@ type ClientToolDeps = {
   cart: ReturnType<typeof useOptionalCart>;
   itemById: Map<string, { item: PublicItem; categorySlug: string | null }>;
   openItem: (slug: string, categorySlug?: string | null) => void;
+  /** Open the in-assistant item configurator (NOT the external sheet). */
+  openItemWidget: (item: PublicItem) => void;
   onClose: () => void;
   displayName: (item: PublicItem) => string;
   addToolResult: (args: {
@@ -94,18 +97,20 @@ async function runClientTool(call: ClientToolCall, deps: ClientToolDeps | null) 
       };
       const resolved = itemId ? deps.itemById.get(itemId) : undefined;
       if (!resolved) return add({ ok: false, reason: "not_found" });
-      const { item, categorySlug } = resolved;
-      // Complex = needs choices (modifiers or >1 variation) → open the sheet so
-      // the shopper picks; never guess options. Also open if cart is off.
+      const { item } = resolved;
+      if (!deps.cart) {
+        return add({ ok: false, reason: "cart_unavailable" });
+      }
+      // Complex = needs choices (modifiers or >1 variation) → open the
+      // in-assistant configurator so the shopper picks; never guess options.
       const complex =
         (item.modifier_lists?.length ?? 0) > 0 ||
         (item.variations?.length ?? 0) > 1;
-      if (!deps.cart || complex) {
-        deps.onClose();
-        deps.openItem(item.slug ?? item.id, categorySlug);
+      if (complex) {
+        deps.openItemWidget(item);
         return add({
           ok: false,
-          reason: deps.cart ? "needs_options" : "cart_unavailable",
+          reason: "needs_options",
           opened: true,
           name: deps.displayName(item),
         });
@@ -152,8 +157,7 @@ async function runClientTool(call: ClientToolCall, deps: ClientToolDeps | null) 
       const { itemId } = (call.input ?? {}) as { itemId?: string };
       const resolved = itemId ? deps.itemById.get(itemId) : undefined;
       if (!resolved) return add({ ok: false, reason: "not_found" });
-      deps.onClose();
-      deps.openItem(resolved.item.slug ?? resolved.item.id, resolved.categorySlug);
+      deps.openItemWidget(resolved.item);
       return add({ ok: true, opened: deps.displayName(resolved.item) });
     }
   } catch {
@@ -189,7 +193,8 @@ export function StorefrontAssistant({
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // In-assistant checkout state.
+  // In-assistant item configurator + checkout state.
+  const [detailItem, setDetailItem] = React.useState<PublicItem | null>(null);
   const [checkoutOpen, setCheckoutOpen] = React.useState(false);
   const [mode, setMode] = React.useState<CartFulfillmentMode | null>(null);
   const [coFields, setCoFields] = React.useState({
@@ -263,6 +268,7 @@ export function StorefrontAssistant({
     cart,
     itemById,
     openItem,
+    openItemWidget: (item) => setDetailItem(item),
     onClose: () => onOpenChange?.(false),
     displayName: (item) => localizedName(item) || item.name,
     addToolResult: addToolResult as unknown as ClientToolDeps["addToolResult"],
@@ -295,6 +301,7 @@ export function StorefrontAssistant({
   React.useEffect(() => {
     if (!open) {
       setInput("");
+      setDetailItem(null);
       setCheckoutOpen(false);
       setOrderError(null);
     }
@@ -323,13 +330,10 @@ export function StorefrontAssistant({
     [busy, sendMessage],
   );
 
-  const handleItemOpen = React.useCallback(
-    (item: PublicItem, categorySlug: string | null) => {
-      onOpenChange?.(false);
-      openItem(item.slug ?? item.id, categorySlug);
-    },
-    [onOpenChange, openItem],
-  );
+  // Open the item in the in-assistant configurator (no external sheet).
+  const handleItemOpen = React.useCallback((item: PublicItem) => {
+    setDetailItem(item);
+  }, []);
 
   // Simple = no modifiers and ≤1 variation → safe to one-tap add/step from the
   // assistant. Complex items open the item sheet to pick options.
@@ -605,7 +609,7 @@ export function StorefrontAssistant({
             >
               <button
                 type="button"
-                onClick={() => handleItemOpen(item, resolved!.categorySlug)}
+                onClick={() => handleItemOpen(item)}
                 className="text-left"
               >
                 <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
@@ -651,7 +655,7 @@ export function StorefrontAssistant({
                     onClick={() =>
                       isSimpleItem(item)
                         ? addSimple(item)
-                        : handleItemOpen(item, resolved!.categorySlug)
+                        : handleItemOpen(item)
                     }
                     className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-foreground bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
                   >
@@ -901,6 +905,19 @@ export function StorefrontAssistant({
               </Button>
             </form>
           </div>
+
+          {/* Item configurator — in-assistant item detail overlay. */}
+          {detailItem ? (
+            <ItemWidget
+              item={detailItem}
+              currency={currency}
+              onBack={() => setDetailItem(null)}
+              onAdded={(next) => {
+                setDetailItem(null);
+                if (next === "checkout") setCheckoutOpen(true);
+              }}
+            />
+          ) : null}
 
           {/* Checkout — full in-assistant ordering overlay. */}
           {checkoutOpen && cart ? (
