@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Sparkles } from "lucide-react";
+import { ArrowUp, Sparkles } from "lucide-react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 
@@ -28,7 +28,6 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Loader } from "@/components/ai-elements/loader";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
-import { cn } from "@/lib/utils";
 import type {
   PublicCategoryWithItems,
   PublicItem,
@@ -250,8 +249,10 @@ export function LabAssistant({
           <PromptInputSubmit
             status={status}
             disabled={!input.trim()}
-            className={cn(status === "ready" && !input.trim() && "opacity-50")}
-          />
+            className="size-9 rounded-full"
+          >
+            {status === "ready" ? <ArrowUp className="size-4" /> : undefined}
+          </PromptInputSubmit>
         </PromptInputFooter>
       </PromptInput>
     </div>
