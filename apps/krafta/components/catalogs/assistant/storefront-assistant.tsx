@@ -896,6 +896,10 @@ export function StorefrontAssistant({
               <CheckoutWidget
                 currency={currency}
                 onClose={() => setCheckoutOpen(false)}
+                onEditCart={() => {
+                  setCheckoutOpen(false);
+                  setCartOpen(true);
+                }}
               />
             ) : null}
           </div>

@@ -78,6 +78,9 @@ export type StorefrontMessageKey =
   | "checkout.mode.dine_in"
   | "checkout.mode.pickup"
   | "checkout.mode.delivery"
+  | "checkout.mode.title"
+  | "checkout.mode.subtitle"
+  | "checkout.edit_cart"
   | "checkout.mode_unavailable"
   | "checkout.tip.label"
   | "checkout.tip.none"
@@ -259,6 +262,9 @@ const EN: MessageTable = {
   "checkout.mode.dine_in": "Dine-in",
   "checkout.mode.pickup": "Pickup",
   "checkout.mode.delivery": "Delivery",
+  "checkout.mode.title": "Choose order mode",
+  "checkout.mode.subtitle": "Select how you'd like to get your order",
+  "checkout.edit_cart": "Edit cart",
   "checkout.mode_unavailable":
     "This option isn't available right now. Pick another mode.",
   "checkout.tip.label": "Tip",
@@ -423,6 +429,9 @@ const RU: MessageTable = {
   "checkout.mode.dine_in": "В зале",
   "checkout.mode.pickup": "Самовывоз",
   "checkout.mode.delivery": "Доставка",
+  "checkout.mode.title": "Как получить заказ?",
+  "checkout.mode.subtitle": "Выберите способ получения заказа",
+  "checkout.edit_cart": "Изменить корзину",
   "checkout.mode_unavailable":
     "Этот способ сейчас недоступен. Выберите другой.",
   "checkout.tip.label": "Чаевые",
@@ -589,6 +598,9 @@ const UZ_LATN: MessageTable = {
   "checkout.mode.dine_in": "Zalda",
   "checkout.mode.pickup": "O‘zi olib ketish",
   "checkout.mode.delivery": "Yetkazib berish",
+  "checkout.mode.title": "Buyurtmani qanday olasiz?",
+  "checkout.mode.subtitle": "Buyurtmani olish usulini tanlang",
+  "checkout.edit_cart": "Savatchani tahrirlash",
   "checkout.mode_unavailable":
     "Bu variant hozir mavjud emas. Boshqasini tanlang.",
   "checkout.tip.label": "Chaqimcha",
