@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronLeft, MapPin, Plus } from "lucide-react";
+import { Check, MapPin, Plus, ChevronLeft } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { computePricing } from "@/lib/cart/pricing";
@@ -23,9 +22,29 @@ import {
   AddressMapPicker,
   type PickedAddress,
 } from "@/components/catalogs/cart/address-map-picker";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Separator } from "@/components/ui/separator";
 
-// mode → one combined "details" form → review. Confirmation when placed.
-type Step = "mode" | "details" | "review";
+type Step = "mode" | "table" | "address" | "contact" | "schedule" | "review";
+
+// Delivery is intentionally broken into several short steps.
+function modeSteps(mode: CartFulfillmentMode): Step[] {
+  if (mode === "dine_in") return ["table"];
+  if (mode === "pickup") return ["schedule", "contact"];
+  return ["address", "contact", "schedule"]; // delivery
+}
 
 const MODE_KEY: Record<CartFulfillmentMode, StorefrontMessageKey> = {
   dine_in: "checkout.mode.dine_in",
@@ -33,27 +52,11 @@ const MODE_KEY: Record<CartFulfillmentMode, StorefrontMessageKey> = {
   delivery: "checkout.mode.delivery",
 };
 
-function RadioDot({ selected }: { selected: boolean }) {
-  return (
-    <span
-      className={cn(
-        "grid size-5 shrink-0 place-items-center rounded-full border-2 transition-colors",
-        selected ? "border-foreground" : "border-muted-foreground/40",
-      )}
-    >
-      {selected ? <span className="size-2.5 rounded-full bg-foreground" /> : null}
-    </span>
-  );
-}
-
-const inputCls =
-  "h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60";
-
 /**
- * Guided checkout rendered inline in the assistant. Picks the fulfillment mode
- * (QR dine-in lock > single mode > ?mode hint > picker), collects the per-mode
- * details in one form (delivery uses a saved-address selector + a create-new
- * map), reviews, then places a CASH/COD order via cart.placeOrder.
+ * Guided checkout rendered inline in the assistant, composed from shadcn
+ * primitives. mode → per-mode steps (delivery is split into address → contact
+ * → time) → review → cash/COD placeOrder. Delivery uses a saved-address
+ * selector with a create-new map.
  */
 export function CheckoutWidget({
   currency,
@@ -100,13 +103,10 @@ export function CheckoutWidget({
   ) => setFields((f) => ({ ...f, [key]: value }));
   const [orderError, setOrderError] = React.useState<string | null>(null);
 
-  // Delivery address: saved-address selector + create-new map. Real coords are
-  // required (no 0,0 fallback per the locked decision).
+  // Delivery address: saved-address selector + create-new map.
   const [addresses, setAddresses] = React.useState<CustomerAddress[]>([]);
   const [addressesLoaded, setAddressesLoaded] = React.useState(false);
-  const [selectedAddressId, setSelectedAddressId] = React.useState<string | null>(
-    null,
-  );
+  const [selectedAddressId, setSelectedAddressId] = React.useState<string>("");
   const [showNewAddress, setShowNewAddress] = React.useState(false);
   const [pickedAddress, setPickedAddress] = React.useState<PickedAddress | null>(
     null,
@@ -115,13 +115,12 @@ export function CheckoutWidget({
 
   const steps: Step[] = React.useMemo(() => {
     if (mode === null) return ["mode"];
-    return [...(needsPicker ? (["mode"] as Step[]) : []), "details", "review"];
+    return [...(needsPicker ? (["mode"] as Step[]) : []), ...modeSteps(mode), "review"];
   }, [mode, needsPicker]);
   const step = steps[Math.min(stepIndex, steps.length - 1)];
 
-  // Load the shopper's saved addresses when they reach delivery details.
   React.useEffect(() => {
-    if (mode !== "delivery" || step !== "details" || addressesLoaded) return;
+    if (mode !== "delivery" || step !== "address" || addressesLoaded) return;
     let cancelled = false;
     listAddressesAction()
       .then((rows) => {
@@ -137,9 +136,10 @@ export function CheckoutWidget({
         }
       })
       .catch(() => {
-        if (cancelled) return;
-        setAddressesLoaded(true);
-        setShowNewAddress(true);
+        if (!cancelled) {
+          setAddressesLoaded(true);
+          setShowNewAddress(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -147,11 +147,8 @@ export function CheckoutWidget({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, step, addressesLoaded]);
 
-  const selectedSaved = selectedAddressId
-    ? (addresses.find((a) => a.id === selectedAddressId) ?? null)
-    : null;
-  // The address that will be ordered to — the freshly-pinned one wins, else the
-  // selected saved one.
+  const selectedSaved =
+    addresses.find((a) => a.id === selectedAddressId) ?? null;
   const deliveryAddr = pickedAddress
     ? {
         freeform: pickedAddress.freeform,
@@ -179,21 +176,25 @@ export function CheckoutWidget({
     fields.scheduleType === "asap" || fields.scheduledFor.trim() !== "";
 
   const canContinue = (() => {
-    if (step === "details") {
-      if (mode === "dine_in") return fields.tableLabel.trim().length > 0;
-      if (mode === "pickup") return scheduleOk;
-      // delivery — real coords + name + phone + schedule
-      return (
-        !!deliveryAddr &&
-        deliveryAddr.latitude != null &&
-        deliveryAddr.longitude != null &&
-        !addrResolving &&
-        fields.name.trim().length > 0 &&
-        phoneValid(fields.phone) &&
-        scheduleOk
-      );
+    switch (step) {
+      case "table":
+        return fields.tableLabel.trim().length > 0;
+      case "address":
+        return (
+          !!deliveryAddr &&
+          deliveryAddr.latitude != null &&
+          deliveryAddr.longitude != null &&
+          !addrResolving
+        );
+      case "contact":
+        if (mode === "delivery")
+          return fields.name.trim().length > 0 && phoneValid(fields.phone);
+        return true;
+      case "schedule":
+        return scheduleOk;
+      default:
+        return true;
     }
-    return true;
   })();
 
   const isLast = step === "review";
@@ -219,7 +220,6 @@ export function CheckoutWidget({
           note: fields.note.trim() || null,
         },
       } as const;
-    // Apartment isn't a placeOrder field — fold it into the courier note.
     const apt = fields.apt.trim();
     const note =
       [apt ? `${t("address.field.apartment")}: ${apt}` : "", fields.note.trim()]
@@ -289,263 +289,246 @@ export function CheckoutWidget({
       } as const
     )[mode];
     return (
-      <div className="mt-2 flex w-full max-w-md flex-col items-center gap-3 rounded-2xl border border-border bg-card p-5 text-center">
-        <div className="grid size-12 place-items-center rounded-full bg-primary text-primary-foreground">
-          <Check className="size-6" />
-        </div>
-        <div className="space-y-1">
-          <p className="text-base font-semibold">{t("placed.title")}</p>
-          <p className="text-sm text-muted-foreground">{t(subtitleKey)}</p>
-          <p className="text-sm text-muted-foreground">{t(payKey)}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            cart?.resetForNewCart();
-            onClose();
-          }}
-          className="rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:border-foreground/30"
-        >
-          {t("placed.order_more")}
-        </button>
-      </div>
+      <Card className="mt-2 w-full max-w-md text-center">
+        <CardContent className="flex flex-col items-center gap-3">
+          <div className="grid size-12 place-items-center rounded-full bg-primary text-primary-foreground">
+            <Check className="size-6" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold">{t("placed.title")}</p>
+            <p className="text-sm text-muted-foreground">{t(subtitleKey)}</p>
+            <p className="text-sm text-muted-foreground">{t(payKey)}</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              cart?.resetForNewCart();
+              onClose();
+            }}
+          >
+            {t("placed.order_more")}
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
-  // Title + subtitle per step.
   const title =
     step === "mode"
       ? t("checkout.mode.title")
       : step === "review"
         ? t("checkout.summary.heading")
-        : mode
-          ? t(MODE_KEY[mode])
-          : "";
-  const subtitle = step === "mode" ? t("checkout.mode.subtitle") : null;
+        : step === "table"
+          ? t("checkout.mode.dine_in")
+          : step === "address"
+            ? t("address.title")
+            : step === "contact"
+              ? t("checkout.section.contact")
+              : t(
+                  mode === "delivery"
+                    ? "checkout.schedule.delivery_when"
+                    : "checkout.schedule.pickup_when",
+                );
 
-  const whenControl = (
-    <div className="space-y-2">
-      <p className="text-sm font-medium">
-        {t(
-          mode === "delivery"
-            ? "checkout.schedule.delivery_when"
-            : "checkout.schedule.pickup_when",
-        )}
-      </p>
-      <div className="flex items-center gap-5">
-        {(["asap", "scheduled"] as const).map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => setField("scheduleType", opt)}
-            className="flex items-center gap-2 text-sm font-medium"
-          >
-            <RadioDot selected={fields.scheduleType === opt} />
-            {t(
-              opt === "asap"
-                ? "checkout.schedule.asap"
-                : "checkout.schedule.scheduled",
-            )}
-          </button>
-        ))}
-      </div>
-      {fields.scheduleType === "scheduled" ? (
-        <input
-          type="datetime-local"
-          value={fields.scheduledFor}
-          onChange={(e) => setField("scheduledFor", e.target.value)}
-          className={inputCls}
-        />
-      ) : null}
-    </div>
-  );
-
-  const contactFields = (
-    <>
-      <label className="block space-y-1.5">
-        <span className="text-sm font-medium">{t("checkout.your_name")}</span>
-        <input
-          value={fields.name}
-          onChange={(e) => setField("name", e.target.value)}
-          placeholder={t("checkout.recipient.placeholder")}
-          className={inputCls}
-        />
-      </label>
-      <label className="block space-y-1.5">
-        <span className="text-sm font-medium">{t("checkout.phone.label")}</span>
-        <input
-          value={fields.phone}
-          inputMode="tel"
-          onChange={(e) => setField("phone", e.target.value)}
-          placeholder={t("checkout.phone.placeholder")}
-          className={inputCls}
-        />
-      </label>
-    </>
+  const placePrice = formatPriceCents(
+    computePricing({
+      subtotalCents,
+      taxes: cart?.taxes ?? [],
+      tipCents: cart?.tipCents ?? 0,
+    }).totalCents,
+    currency,
   );
 
   return (
     <div className="mt-2 w-full max-w-md space-y-3">
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="space-y-4 p-4">
-          <div className="space-y-0.5">
-            <h2 className="text-lg font-semibold leading-tight">{title}</h2>
-            {subtitle ? (
-              <p className="text-sm text-muted-foreground">{subtitle}</p>
-            ) : null}
-          </div>
-
-          {/* ── Mode ─────────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
           {step === "mode" ? (
-            <div className="space-y-1">
+            <CardDescription>{t("checkout.mode.subtitle")}</CardDescription>
+          ) : null}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Mode */}
+          {step === "mode" ? (
+            <RadioGroup
+              value={mode ?? ""}
+              onValueChange={(v) => setMode(v as CartFulfillmentMode)}
+            >
               {modes.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMode(m)}
-                  className="flex w-full items-center gap-3 rounded-xl px-1 py-2.5 text-left transition hover:bg-muted/60"
-                >
-                  <RadioDot selected={mode === m} />
-                  <span className="text-sm font-medium">{t(MODE_KEY[m])}</span>
-                </button>
+                <div key={m} className="flex items-center gap-3">
+                  <RadioGroupItem value={m} id={`mode-${m}`} />
+                  <Label htmlFor={`mode-${m}`}>{t(MODE_KEY[m])}</Label>
+                </div>
               ))}
-            </div>
+            </RadioGroup>
           ) : null}
 
-          {/* ── Details ──────────────────────────────────────────────────── */}
-          {step === "details" && mode === "dine_in" ? (
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">
-                {t("checkout.table.label")}
-              </span>
-              <input
+          {/* Dine-in table */}
+          {step === "table" ? (
+            <div className="grid gap-2">
+              <Label htmlFor="co-table">{t("checkout.table.label")}</Label>
+              <Input
+                id="co-table"
                 value={fields.tableLabel}
                 disabled={!!lockedTable}
                 onChange={(e) => setField("tableLabel", e.target.value)}
                 placeholder={t("checkout.table.placeholder")}
-                className={inputCls}
               />
-            </label>
-          ) : null}
-
-          {step === "details" && mode === "pickup" ? (
-            <div className="space-y-4">
-              {whenControl}
-              {contactFields}
             </div>
           ) : null}
 
-          {step === "details" && mode === "delivery" ? (
-            <div className="space-y-4">
-              {/* Address selector: saved list / create new on the map. */}
-              <div className="space-y-1.5">
-                <span className="text-sm font-medium">{t("address.title")}</span>
-                {!showNewAddress && addresses.length > 0 ? (
-                  <div className="space-y-1.5">
+          {/* Delivery — address selector / create new */}
+          {step === "address" ? (
+            <div className="space-y-3">
+              {!showNewAddress && addresses.length > 0 ? (
+                <>
+                  <RadioGroup
+                    value={selectedAddressId}
+                    onValueChange={(id) => {
+                      setSelectedAddressId(id);
+                      setPickedAddress(null);
+                      const a = addresses.find((x) => x.id === id);
+                      setField("apt", a?.apartment ?? "");
+                    }}
+                  >
                     {addresses.map((a) => (
-                      <button
+                      <Label
                         key={a.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAddressId(a.id);
-                          setPickedAddress(null);
-                          setField("apt", a.apartment ?? "");
-                        }}
-                        className="flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left transition hover:border-foreground/30"
+                        htmlFor={`addr-${a.id}`}
+                        className="flex items-center gap-3 rounded-md border p-3"
                       >
-                        <RadioDot selected={selectedAddressId === a.id} />
+                        <RadioGroupItem value={a.id} id={`addr-${a.id}`} />
                         <MapPin className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate text-sm">
+                        <span className="min-w-0 flex-1 truncate font-normal">
                           {a.freeform}
                         </span>
                         {a.isDefault ? (
-                          <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {t("address.default")}
-                          </span>
+                          <Badge variant="outline">{t("address.default")}</Badge>
                         ) : null}
-                      </button>
+                      </Label>
                     ))}
-                    <button
-                      type="button"
+                  </RadioGroup>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setShowNewAddress(true);
+                      setPickedAddress(null);
+                    }}
+                  >
+                    <Plus /> {t("address.add")}
+                  </Button>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  {addresses.length > 0 ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
                       onClick={() => {
-                        setShowNewAddress(true);
+                        setShowNewAddress(false);
                         setPickedAddress(null);
                       }}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border p-3 text-sm font-medium text-muted-foreground transition hover:border-foreground/30 hover:text-foreground"
                     >
-                      <Plus className="size-4" />
-                      {t("address.add")}
-                    </button>
+                      <ChevronLeft /> {t("address.title")}
+                    </Button>
+                  ) : null}
+                  <div className="h-60 w-full overflow-hidden rounded-md border">
+                    <AddressMapPicker
+                      onChange={setPickedAddress}
+                      onResolvingChange={setAddrResolving}
+                      searchPlaceholder={t("address.search")}
+                    />
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {addresses.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowNewAddress(false);
-                          setPickedAddress(null);
-                        }}
-                        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition hover:text-foreground"
-                      >
-                        <ChevronLeft className="size-4" />
-                        {t("address.title")}
-                      </button>
-                    ) : null}
-                    <div className="h-60 w-full overflow-hidden rounded-xl border border-border">
-                      <AddressMapPicker
-                        onChange={setPickedAddress}
-                        onResolvingChange={setAddrResolving}
-                        searchPlaceholder={t("address.search")}
-                      />
-                    </div>
-                    <p className="text-sm">
-                      {addrResolving ? (
-                        <span className="text-muted-foreground">
-                          {t("address.resolving")}
-                        </span>
-                      ) : pickedAddress ? (
-                        pickedAddress.freeform
-                      ) : (
-                        <span className="text-muted-foreground">
-                          {t("address.map_hint")}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                )}
-              </div>
+                  <p className="text-sm text-muted-foreground">
+                    {addrResolving
+                      ? t("address.resolving")
+                      : (pickedAddress?.freeform ?? t("address.map_hint"))}
+                  </p>
+                </div>
+              )}
 
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium">
-                  {t("address.field.apartment")}
-                </span>
-                <input
+              <div className="grid gap-2">
+                <Label htmlFor="co-apt">{t("address.field.apartment")}</Label>
+                <Input
+                  id="co-apt"
                   value={fields.apt}
                   onChange={(e) => setField("apt", e.target.value)}
                   placeholder={t("address.field.apartment")}
-                  className={inputCls}
                 />
-              </label>
-
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium">
-                  {t("checkout.note.label")}
-                </span>
-                <input
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="co-note">{t("checkout.note.label")}</Label>
+                <Textarea
+                  id="co-note"
                   value={fields.note}
                   onChange={(e) => setField("note", e.target.value)}
                   placeholder={t("checkout.note.placeholder")}
-                  className={inputCls}
                 />
-              </label>
-
-              {whenControl}
-              {contactFields}
+              </div>
             </div>
           ) : null}
 
-          {/* ── Review ───────────────────────────────────────────────────── */}
+          {/* Contact */}
+          {step === "contact" ? (
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="co-name">{t("checkout.your_name")}</Label>
+                <Input
+                  id="co-name"
+                  value={fields.name}
+                  onChange={(e) => setField("name", e.target.value)}
+                  placeholder={t("checkout.recipient.placeholder")}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="co-phone">{t("checkout.phone.label")}</Label>
+                <Input
+                  id="co-phone"
+                  inputMode="tel"
+                  value={fields.phone}
+                  onChange={(e) => setField("phone", e.target.value)}
+                  placeholder={t("checkout.phone.placeholder")}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {/* Schedule */}
+          {step === "schedule" ? (
+            <div className="space-y-3">
+              <RadioGroup
+                value={fields.scheduleType}
+                onValueChange={(v) =>
+                  setField("scheduleType", v as "asap" | "scheduled")
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <RadioGroupItem value="asap" id="when-asap" />
+                  <Label htmlFor="when-asap">
+                    {t("checkout.schedule.asap")}
+                  </Label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <RadioGroupItem value="scheduled" id="when-scheduled" />
+                  <Label htmlFor="when-scheduled">
+                    {t("checkout.schedule.scheduled")}
+                  </Label>
+                </div>
+              </RadioGroup>
+              {fields.scheduleType === "scheduled" ? (
+                <Input
+                  type="datetime-local"
+                  value={fields.scheduledFor}
+                  onChange={(e) => setField("scheduledFor", e.target.value)}
+                />
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Review */}
           {step === "review" ? (
             <div className="space-y-4">
               <div className="space-y-1">
@@ -566,82 +549,62 @@ export function CheckoutWidget({
                   </div>
                 ))}
               </div>
-              <div className="border-t border-border pt-3">
-                <PricingBreakdown
-                  subtotalCents={subtotalCents}
-                  taxes={cart?.taxes ?? []}
-                  tipCents={cart?.tipCents ?? 0}
-                  currencySettings={currency}
-                  compact
-                />
-              </div>
-
+              <Separator />
+              <PricingBreakdown
+                subtotalCents={subtotalCents}
+                taxes={cart?.taxes ?? []}
+                tipCents={cart?.tipCents ?? 0}
+                currencySettings={currency}
+                compact
+              />
               <div className="space-y-2">
-                <p className="text-sm font-medium">{t("checkout.tip.label")}</p>
+                <Label>{t("checkout.tip.label")}</Label>
                 <div className="flex flex-wrap gap-2">
-                  {tipPresets.map((cents, i) => {
-                    const selected = (cart?.tipCents ?? 0) === cents;
-                    return (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => cart?.setTipCents(cents)}
-                        className={cn(
-                          "rounded-full border px-3 py-1.5 text-sm font-medium transition",
-                          selected
-                            ? "border-foreground bg-foreground text-background"
-                            : "border-border hover:border-foreground/30",
-                        )}
-                      >
-                        {i === 0 ? (
-                          t("checkout.tip.none")
-                        ) : (
-                          <span className="font-mono tabular-nums">
-                            {i === 1 ? "5%" : "10%"}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+                  {tipPresets.map((cents, i) => (
+                    <Button
+                      key={i}
+                      type="button"
+                      size="sm"
+                      variant={
+                        (cart?.tipCents ?? 0) === cents ? "default" : "outline"
+                      }
+                      onClick={() => cart?.setTipCents(cents)}
+                    >
+                      {i === 0 ? (
+                        t("checkout.tip.none")
+                      ) : (
+                        <span className="font-mono tabular-nums">
+                          {i === 1 ? "5%" : "10%"}
+                        </span>
+                      )}
+                    </Button>
+                  ))}
                 </div>
               </div>
-
               {orderError ? (
                 <p className="text-sm text-destructive">{orderError}</p>
               ) : null}
             </div>
           ) : null}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Actions — below the card, like the reference layout. */}
+      {/* Actions below the card */}
       <div className="flex gap-2">
-        <button
-          type="button"
+        <Button
+          className="flex-1"
           disabled={!canContinue || placing}
           onClick={advance}
-          className="flex-1 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40"
         >
           {isLast
             ? placing
               ? t("checkout.placing")
-              : `${t("checkout.place_order")} · ${formatPriceCents(
-                  computePricing({
-                    subtotalCents,
-                    taxes: cart?.taxes ?? [],
-                    tipCents: cart?.tipCents ?? 0,
-                  }).totalCents,
-                  currency,
-                )}`
+              : `${t("checkout.place_order")} · ${placePrice}`
             : t("cart.continue")}
-        </button>
-        <button
-          type="button"
-          onClick={back}
-          className="rounded-full border border-border px-4 py-3 text-sm font-medium transition hover:border-foreground/30"
-        >
+        </Button>
+        <Button variant="outline" onClick={back}>
           {stepIndex === 0 ? t("checkout.edit_cart") : t("checkout.back")}
-        </button>
+        </Button>
       </div>
     </div>
   );
