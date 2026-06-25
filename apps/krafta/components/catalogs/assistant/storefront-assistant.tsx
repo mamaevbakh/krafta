@@ -2,9 +2,12 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Sparkles, ArrowUp, X } from "lucide-react";
+import { Sparkles, ArrowUp, X, Check } from "lucide-react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import {
+  DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithToolCalls,
+} from "ai";
 import { DialogTitle } from "@radix-ui/react-dialog";
 
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
@@ -21,6 +24,7 @@ import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { useItemSheet } from "@/components/catalogs/items/item-detail-controller";
+import { useOptionalCart } from "@/components/catalogs/cart/cart-provider";
 
 export type StorefrontAssistantProps = {
   catalogId: string;
@@ -44,6 +48,108 @@ const SUGGESTIONS = [
   "I'm looking for a gift",
 ];
 
+type ClientToolCall = { toolCallId: string; toolName: string; input?: unknown };
+type ClientToolDeps = {
+  cart: ReturnType<typeof useOptionalCart>;
+  itemById: Map<string, { item: PublicItem; categorySlug: string | null }>;
+  openItem: (slug: string, categorySlug?: string | null) => void;
+  onClose: () => void;
+  displayName: (item: PublicItem) => string;
+  addToolResult: (args: {
+    tool: string;
+    toolCallId: string;
+    output: unknown;
+  }) => Promise<void> | void;
+};
+
+// Handles the CLIENT-side agent tools (no server execute). Resolves the item
+// the model named, mutates the live cart context, or opens the item sheet, then
+// reports a structured result so the model can confirm.
+async function runClientTool(call: ClientToolCall, deps: ClientToolDeps | null) {
+  if (!deps) return;
+  // Await the result so it's committed before onToolCall resolves (the SDK
+  // awaits onToolCall; an uncommitted result is treated as unhandled).
+  const add = (output: unknown) =>
+    deps.addToolResult({
+      tool: call.toolName,
+      toolCallId: call.toolCallId,
+      output,
+    });
+  try {
+    if (call.toolName === "addToCart") {
+      const { itemId, quantity } = (call.input ?? {}) as {
+        itemId?: string;
+        quantity?: number;
+      };
+      const resolved = itemId ? deps.itemById.get(itemId) : undefined;
+      if (!resolved) return add({ ok: false, reason: "not_found" });
+      const { item, categorySlug } = resolved;
+      // Complex = needs choices (modifiers or >1 variation) → open the sheet so
+      // the shopper picks; never guess options. Also open if cart is off.
+      const complex =
+        (item.modifier_lists?.length ?? 0) > 0 ||
+        (item.variations?.length ?? 0) > 1;
+      if (!deps.cart || complex) {
+        deps.onClose();
+        deps.openItem(item.slug ?? item.id, categorySlug);
+        return add({
+          ok: false,
+          reason: deps.cart ? "needs_options" : "cart_unavailable",
+          opened: true,
+          name: deps.displayName(item),
+        });
+      }
+      const defaultVariationId =
+        item.variations?.find((v) => v.is_default)?.id ??
+        item.variations?.[0]?.id;
+      await deps.cart.addItem({
+        itemId: item.id,
+        defaultVariationId,
+        name: item.name,
+        basePriceCents: item.price_cents,
+        quantity: quantity ?? 1,
+      });
+      return add({
+        ok: true,
+        added: { name: deps.displayName(item), quantity: quantity ?? 1 },
+      });
+    }
+
+    if (call.toolName === "viewCart") {
+      const summary = deps.cart?.summary;
+      if (!summary)
+        return add({
+          ok: false,
+          reason: "cart_unavailable",
+          lines: [],
+          subtotalCents: 0,
+        });
+      return add({
+        ok: true,
+        count: summary.lineItems.length,
+        subtotalCents: summary.subtotalCents,
+        lines: summary.lineItems.map((l) => ({
+          name: l.name,
+          variation: l.variation_name,
+          quantity: l.quantity,
+          totalCents: l.total_price_cents,
+        })),
+      });
+    }
+
+    if (call.toolName === "openItem") {
+      const { itemId } = (call.input ?? {}) as { itemId?: string };
+      const resolved = itemId ? deps.itemById.get(itemId) : undefined;
+      if (!resolved) return add({ ok: false, reason: "not_found" });
+      deps.onClose();
+      deps.openItem(resolved.item.slug ?? resolved.item.id, resolved.categorySlug);
+      return add({ ok: true, opened: deps.displayName(resolved.item) });
+    }
+  } catch {
+    add({ ok: false, reason: "error" });
+  }
+}
+
 export function StorefrontAssistant({
   catalogId,
   orgId,
@@ -53,6 +159,7 @@ export function StorefrontAssistant({
   onOpenChange,
 }: StorefrontAssistantProps) {
   const { openItem } = useItemSheet();
+  const cart = useOptionalCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const [input, setInput] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -67,7 +174,19 @@ export function StorefrontAssistant({
     [catalogId, orgId],
   );
 
-  const { messages, sendMessage, status, error } = useChat({ transport });
+  // The (stable) client-tool handler reads live deps through this ref (assigned
+  // every render below). Client tool calls are resolved in a post-commit effect
+  // (see below) — NOT in onToolCall, which fires mid-stream and whose result
+  // gets clobbered when the stream commits the final message.
+  const toolDepsRef = React.useRef<ClientToolDeps | null>(null);
+  const handledToolCalls = React.useRef<Set<string>>(new Set());
+
+  const { messages, sendMessage, status, error, addToolResult } = useChat({
+    transport,
+    // After a client tool result is added, send it back so the model produces
+    // its final reply (e.g. "Added 2 lattes ✓").
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+  });
 
   const busy = status === "submitted" || status === "streaming";
 
@@ -102,6 +221,39 @@ export function StorefrontAssistant({
       }).value,
     [activeLocale, defaultLocale],
   );
+
+  // Keep the client-tool handler's deps current (it reads toolDepsRef.current).
+  toolDepsRef.current = {
+    cart,
+    itemById,
+    openItem,
+    onClose: () => onOpenChange?.(false),
+    displayName: (item) => localizedName(item) || item.name,
+    addToolResult: addToolResult as unknown as ClientToolDeps["addToolResult"],
+  };
+
+  // Resolve client-side tool calls AFTER the stream commits the message
+  // (status "ready"). Running them mid-stream via onToolCall gets clobbered by
+  // the final message commit, leaving the call stuck "input-available".
+  React.useEffect(() => {
+    if (status !== "ready") return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant") return;
+    const CLIENT = new Set(["addToCart", "viewCart", "openItem"]);
+    for (const part of last.parts as Array<Record<string, unknown>>) {
+      const type = String(part.type ?? "");
+      if (!type.startsWith("tool-")) continue;
+      const name = type.slice("tool-".length);
+      if (!CLIENT.has(name) || part.state !== "input-available") continue;
+      const id = String(part.toolCallId ?? "");
+      if (!id || handledToolCalls.current.has(id)) continue;
+      handledToolCalls.current.add(id);
+      void runClientTool(
+        { toolCallId: id, toolName: name, input: part.input },
+        toolDepsRef.current,
+      );
+    }
+  }, [messages, status]);
 
   // Reset the conversation each time the dialog is freshly opened.
   React.useEffect(() => {
@@ -279,6 +431,19 @@ export function StorefrontAssistant({
                       p.type === "tool-searchCatalog" &&
                       p.state !== "output-available",
                   );
+                // addToCart / viewCart resolve client-side — render their result
+                // as a chip so the shopper gets instant confirmation.
+                const cartActions = parts
+                  .filter(
+                    (p) =>
+                      (p.type === "tool-addToCart" ||
+                        p.type === "tool-viewCart") &&
+                      p.state === "output-available",
+                  )
+                  .map((p) => ({
+                    kind: String(p.type),
+                    output: (p.output ?? {}) as Record<string, unknown>,
+                  }));
 
                 return (
                   <div
@@ -308,6 +473,91 @@ export function StorefrontAssistant({
                     {toolResults.length > 0 ? (
                       <div className="w-full">{renderResultCards(toolResults)}</div>
                     ) : null}
+                    {cartActions.map((a, i) => {
+                      const o = a.output;
+                      if (a.kind === "tool-addToCart") {
+                        if (o.ok && o.added) {
+                          const added = o.added as {
+                            name?: string;
+                            quantity?: number;
+                          };
+                          return (
+                            <div
+                              key={`ca-${i}`}
+                              className="mt-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm"
+                            >
+                              <Check className="size-4" aria-hidden />
+                              Added{" "}
+                              {added.quantity && added.quantity > 1
+                                ? `${added.quantity}× `
+                                : ""}
+                              {added.name} to cart
+                            </div>
+                          );
+                        }
+                        if (o.opened) {
+                          return (
+                            <div
+                              key={`ca-${i}`}
+                              className="mt-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground"
+                            >
+                              Opened {String(o.name ?? "the item")} — choose
+                              options to add
+                            </div>
+                          );
+                        }
+                        return null;
+                      }
+                      // viewCart
+                      const lines =
+                        (o.lines as Array<{
+                          name?: string;
+                          quantity?: number;
+                          totalCents?: number;
+                        }>) ?? [];
+                      if (!o.ok || lines.length === 0) {
+                        return (
+                          <div
+                            key={`ca-${i}`}
+                            className="mt-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground"
+                          >
+                            Your cart is empty.
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          key={`ca-${i}`}
+                          className="mt-2 w-full max-w-[85%] rounded-xl border border-border bg-card p-3 text-sm"
+                        >
+                          {lines.map((l, j) => (
+                            <div
+                              key={j}
+                              className="flex justify-between gap-3 py-0.5"
+                            >
+                              <span className="truncate">
+                                {l.quantity}× {l.name}
+                              </span>
+                              <span className="font-mono tabular-nums">
+                                {formatPriceCents(
+                                  l.totalCents ?? 0,
+                                  currencySettings,
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
+                            <span>Subtotal</span>
+                            <span className="font-mono tabular-nums">
+                              {formatPriceCents(
+                                Number(o.subtotalCents ?? 0),
+                                currencySettings,
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })

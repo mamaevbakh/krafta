@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   const { data: catalog, error } = await supabase
     .from("catalogs")
-    .select("name, org_id, settings_behavior")
+    .select("name, slug, org_id, settings_behavior")
     .eq("id", catalogId)
     .maybeSingle();
 
@@ -65,6 +65,7 @@ export async function POST(request: Request) {
     const assistant = buildShopAssistant({
       catalogId,
       orgId: catalog.org_id ?? body?.orgId ?? null,
+      catalogSlug: catalog.slug,
       shopName: catalog.name,
     });
 
