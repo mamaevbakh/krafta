@@ -435,7 +435,7 @@ export function CheckoutWidget({
                       <ChevronLeft /> {t("address.title")}
                     </Button>
                   ) : null}
-                  <div className="h-60 w-full overflow-hidden rounded-md border">
+                  <div className="h-[60vh] w-full overflow-hidden rounded-md border">
                     <AddressMapPicker
                       onChange={setPickedAddress}
                       onResolvingChange={setAddrResolving}
@@ -589,13 +589,9 @@ export function CheckoutWidget({
         </CardContent>
       </Card>
 
-      {/* Actions below the card */}
+      {/* Actions below the card — content-sized, left-aligned. */}
       <div className="flex gap-2">
-        <Button
-          className="flex-1"
-          disabled={!canContinue || placing}
-          onClick={advance}
-        >
+        <Button disabled={!canContinue || placing} onClick={advance}>
           {isLast
             ? placing
               ? t("checkout.placing")
