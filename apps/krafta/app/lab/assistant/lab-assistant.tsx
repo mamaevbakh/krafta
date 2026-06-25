@@ -113,7 +113,7 @@ export function LabAssistant({
       .filter((x) => x.resolved);
     if (cards.length === 0) return null;
     return (
-      <div className="mt-2 w-full space-y-2">
+      <div className="-mx-1 mt-2 flex w-full snap-x gap-2 overflow-x-auto px-1 pb-1">
         {cards.map(({ r, resolved }) => {
           const item = resolved!.item;
           const imageUrl = getItemImageUrl(item);
@@ -124,31 +124,26 @@ export function LabAssistant({
             <a
               key={r.entityId}
               href={`/${slug}/${categoryPart}${item.slug ?? item.id}`}
-              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 transition hover:border-foreground/30"
+              className="flex w-36 shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-2 transition hover:border-foreground/30"
             >
-              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
+              <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
                 {imageUrl ? (
                   <Image
                     src={imageUrl}
                     alt={item.name}
                     fill
-                    sizes="48px"
+                    sizes="144px"
                     className="object-cover"
                   />
                 ) : null}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">
+              <div className="min-w-0">
+                <div className="line-clamp-2 text-xs font-semibold leading-snug">
                   {item.name}
                 </div>
-                {r.category ? (
-                  <div className="truncate text-xs text-muted-foreground">
-                    {r.category}
-                  </div>
-                ) : null}
-              </div>
-              <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-                {formatPriceCents(item.price_cents, currencySettings)}
+                <div className="mt-1 font-mono text-xs font-semibold tabular-nums">
+                  {formatPriceCents(item.price_cents, currencySettings)}
+                </div>
               </div>
             </a>
           );
