@@ -329,18 +329,23 @@ function ScreenHeader({
   onBack: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2 border-b border-border px-2 py-2">
+    // Circular outline back (44px) + centered title, vertically aligned with
+    // the close X (both anchored at top-4, size-11). px-16 keeps the title off
+    // the buttons; justify-center keeps it centered in the header.
+    <div className="relative border-b border-border px-4 pb-3 pt-4">
       <Button
         type="button"
-        variant="ghost"
+        variant="outline"
         size="icon"
-        className="size-9 text-muted-foreground"
+        className="absolute left-4 top-4 z-10 size-11 rounded-full"
         onClick={onBack}
         aria-label="Back"
       >
         <ArrowLeft className="size-5" />
       </Button>
-      <span className="text-sm font-medium">{title}</span>
+      <div className="flex h-11 items-center justify-center px-16">
+        <h2 className="truncate text-base font-semibold">{title}</h2>
+      </div>
     </div>
   );
 }

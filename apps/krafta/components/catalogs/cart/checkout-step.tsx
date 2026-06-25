@@ -480,16 +480,19 @@ export function CartCheckoutStep({
       <DialogDescription className="sr-only">
         {t("checkout.title")}
       </DialogDescription>
-      <div className="mx-auto flex w-full max-w-md items-center gap-2 px-4 pb-2 pt-1">
+      {/* Header: circular outline back (44px), aligned with the close X. */}
+      <div className="relative px-4 pb-3 pt-4">
         <Button
           type="button"
-          size="sm"
-          variant="ghost"
-          className="text-muted-foreground"
+          variant="outline"
+          size="icon"
+          className="absolute left-4 top-4 z-10 size-11 rounded-full"
           onClick={() => setStep("cart")}
+          aria-label={t("checkout.back")}
         >
-          <ArrowLeft className="mr-1 h-4 w-4" /> {t("checkout.back")}
+          <ArrowLeft className="size-5" />
         </Button>
+        <div className="h-11" />
       </div>
 
       <div className="mx-auto w-full max-w-md flex-1 space-y-6 overflow-y-auto px-4 pb-4">

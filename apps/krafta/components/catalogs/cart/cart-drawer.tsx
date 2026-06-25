@@ -84,16 +84,18 @@ export function CartDrawer({
         )}
         showCloseButton={false}
       >
-        {/* Outline circular close, matching the assistant chat's button. */}
+        {/* Outline circular close (44px), aligned with the per-screen back
+            button. Shared across the cart / checkout / placed steps + the
+            address sub-screens. */}
         <DialogClose asChild>
           <Button
             type="button"
             aria-label="Close"
             variant="outline"
             size="icon"
-            className="absolute right-4 top-4 z-20 rounded-full"
+            className="absolute right-4 top-4 z-20 size-11 rounded-full"
           >
-            <X className="h-4 w-4" />
+            <X className="size-5" />
           </Button>
         </DialogClose>
         <div
