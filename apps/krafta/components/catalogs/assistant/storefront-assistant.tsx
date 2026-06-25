@@ -288,6 +288,21 @@ export function StorefrontAssistant({
       }).value,
     [activeLocale, defaultLocale],
   );
+  const localizedDescription = React.useCallback(
+    (item: PublicItem) =>
+      pickLocalizedField({
+        translations: item.translations,
+        defaults: {
+          name: item.name,
+          description: item.description,
+          image_alt: item.image_alt,
+        },
+        activeLocale,
+        defaultLocale,
+        field: "description",
+      }).value || null,
+    [activeLocale, defaultLocale],
+  );
 
   // Keep the client-tool handler's deps current (it reads toolDepsRef.current).
   toolDepsRef.current = {
@@ -560,11 +575,12 @@ export function StorefrontAssistant({
     return (
       <div className="mt-2 space-y-2">
         <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
-          {cards.map(({ r, resolved }) => {
+          {cards.map(({ r, resolved }, i) => {
             const item = resolved!.item;
             const categorySlug = resolved!.categorySlug;
             const imageUrl = getItemImageUrl(item);
             const name = localizedName(item) || item.name;
+            const description = localizedDescription(item);
             const line = lineForItem(item.id);
             const simple = isSimpleItem(item);
             // Tapping the card adds simple items straight; complex items open
@@ -574,30 +590,40 @@ export function StorefrontAssistant({
             return (
               <div
                 key={`${r.entityId}`}
-                className="flex w-36 shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-2"
+                className="flex w-72 max-w-[82%] shrink-0 snap-start flex-col gap-2 rounded-2xl border border-border bg-card p-2"
               >
                 <button type="button" onClick={onItemClick} className="text-left">
-                  <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
+                  <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-muted">
                     {imageUrl ? (
                       <Image
                         src={imageUrl}
                         alt={name}
                         fill
-                        sizes="144px"
+                        sizes="288px"
                         className="object-cover"
                       />
                     ) : null}
                   </div>
-                  <div className="mt-2 min-w-0">
-                    <div className="line-clamp-2 text-xs font-semibold leading-snug">
+                  <div className="mt-2 space-y-1 px-1">
+                    {cards.length > 1 ? (
+                      <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                        {i + 1} / {cards.length}
+                      </div>
+                    ) : null}
+                    <div className="line-clamp-1 text-sm font-semibold leading-snug">
                       {name}
                     </div>
-                    <div className="mt-1 font-mono text-xs font-semibold tabular-nums">
+                    {description ? (
+                      <p className="line-clamp-2 text-xs leading-snug text-muted-foreground">
+                        {description}
+                      </p>
+                    ) : null}
+                    <div className="font-mono text-sm font-semibold tabular-nums">
                       {formatPriceCents(item.price_cents, currency)}
                     </div>
                   </div>
                 </button>
-                <div className="mt-auto pt-1">
+                <div className="mt-auto px-1 pb-1">
                   {line && simple ? (
                     <Stepper
                       qty={line.quantity}
@@ -618,11 +644,11 @@ export function StorefrontAssistant({
                       type="button"
                       disabled={!cart}
                       onClick={onItemClick}
-                      className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-foreground bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-foreground bg-foreground px-4 py-2 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
                     >
                       {simple ? (
                         <>
-                          <Plus className="size-3.5" />
+                          <Plus className="size-4" />
                           {t("add_to_cart.label")}
                         </>
                       ) : (
