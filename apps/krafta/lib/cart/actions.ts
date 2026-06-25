@@ -56,11 +56,15 @@ import {
 //      we already return the fresh cart summary from these actions for
 //      the client to reconcile against.
 //
-// placeOrderAction is the only cart action that DOES revalidate, and
-// only because the order transitions draft → open (which surfaces on
-// the merchant orders dashboard if they're looking) and clears the
-// customer's cart at the same moment — by then the optimistic /
-// stepper UI is gone, so the re-render is harmless.
+// placeOrderAction is the only cart action that revalidates the catalog
+// path — but it does so via after(), AFTER the response is flushed.
+// Done synchronously, revalidatePath made Next 16 bundle a full catalog
+// RSC re-render (~1-2 s on a large menu) into the action response,
+// blocking the "Order placed" screen and remounting the cart-provider
+// mid-confirmation (the sessionStorage placed-state hack exists only to
+// paper over that remount). Deferred, the cache still goes stale for the
+// next storefront load, but the customer sees the confirmation the moment
+// the order is written.
 
 export async function ensureCartIdentityAction(
   orgId: string,
@@ -106,7 +110,11 @@ export async function placeOrderAction(
     } as Parameters<typeof notifyMerchantOfOrder>[0]);
   });
 
-  revalidatePath(input.catalogPath);
+  // Deferred (see note above): invalidate the storefront cache without
+  // blocking the response on a catalog re-render.
+  after(() => {
+    revalidatePath(input.catalogPath);
+  });
   return result;
 }
 

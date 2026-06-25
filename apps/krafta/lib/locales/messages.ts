@@ -159,6 +159,8 @@ export type StorefrontMessageKey =
   | "address.label.other"
   // Placed step
   | "placed.title"
+  | "placed.order_label"
+  | "placed.status"
   | "placed.subtitle.dine_in"
   | "placed.subtitle.pickup"
   | "placed.subtitle.delivery"
@@ -340,6 +342,8 @@ const EN: MessageTable = {
   "address.label.other": "Other",
 
   "placed.title": "Order placed",
+  "placed.order_label": "Order",
+  "placed.status": "Placed",
   "placed.subtitle.dine_in":
     "We sent it to the kitchen — your order will arrive at table {table} shortly.",
   "placed.subtitle.pickup": "Your order’s in — it’ll be ready for pickup soon.",
@@ -507,6 +511,8 @@ const RU: MessageTable = {
   "address.label.other": "Другое",
 
   "placed.title": "Заказ оформлен",
+  "placed.order_label": "Заказ",
+  "placed.status": "Принят",
   "placed.subtitle.dine_in":
     "Передали на кухню — заказ скоро принесут к столу {table}.",
   "placed.subtitle.pickup":
@@ -676,6 +682,8 @@ const UZ_LATN: MessageTable = {
   "address.label.other": "Boshqa",
 
   "placed.title": "Buyurtma qabul qilindi",
+  "placed.order_label": "Buyurtma",
+  "placed.status": "Qabul qilindi",
   "placed.subtitle.dine_in":
     "Buyurtmangiz oshxonaga yuborildi — {table}-stol uchun tez orada keladi.",
   "placed.subtitle.pickup":

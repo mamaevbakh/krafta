@@ -273,43 +273,140 @@ export function CheckoutWidget({
   };
 
   // ── Confirmation ──────────────────────────────────────────────────────────
-  if (placed && mode) {
-    const subtitleKey = (
-      {
-        dine_in: "placed.subtitle.dine_in",
-        pickup: "placed.subtitle.pickup",
-        delivery: "placed.subtitle.delivery",
-      } as const
-    )[mode];
+  if (placed) {
+    const orderNo = placed.orderId.slice(0, 8).toUpperCase();
+    let placedDate: string | null = null;
+    if (placed.placedAt) {
+      try {
+        placedDate = new Date(placed.placedAt).toLocaleDateString(activeLocale, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+      } catch {
+        placedDate = null;
+      }
+    }
+    // <Input type="datetime-local"> emits "2026-05-07T19:30" — show as-is.
+    const fmtSched = (iso: string) => {
+      const [d, tm] = iso.split("T");
+      return d && tm ? `${d} ${tm}` : iso;
+    };
+    const fulfillment =
+      placed.mode === "dine_in"
+        ? {
+            label: t("checkout.mode.dine_in"),
+            detail: `${t("checkout.table.label")} ${placed.fields.tableLabel}`,
+          }
+        : placed.mode === "pickup"
+          ? {
+              label: t("checkout.mode.pickup"),
+              detail:
+                placed.fields.scheduleType === "scheduled" &&
+                placed.fields.pickupAt
+                  ? fmtSched(placed.fields.pickupAt)
+                  : t("checkout.schedule.asap"),
+            }
+          : {
+              label: t("checkout.mode.delivery"),
+              detail: placed.fields.scheduledFor
+                ? `${placed.fields.address} · ${fmtSched(placed.fields.scheduledFor)}`
+                : placed.fields.address,
+            };
     const payKey = (
       {
         dine_in: "placed.pay.dine_in",
         pickup: "placed.pay.pickup",
         delivery: "placed.pay.delivery",
       } as const
-    )[mode];
+    )[placed.mode];
+    const totalCents = placed.subtotalCents + placed.tipCents;
     return (
-      <Card className="mt-2 w-full max-w-md text-center">
-        <CardContent className="flex flex-col items-center gap-3">
-          <div className="grid size-12 place-items-center rounded-full bg-primary text-primary-foreground">
-            <Check className="size-6" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-base font-semibold">{t("placed.title")}</p>
-            <p className="text-sm text-muted-foreground">{t(subtitleKey)}</p>
-            <p className="text-sm text-muted-foreground">{t(payKey)}</p>
-          </div>
-          <Button
-            variant="outline"
-            onClick={() => {
-              cart?.resetForNewCart();
-              onClose();
-            }}
-          >
-            {t("placed.order_more")}
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="mt-2 w-full max-w-md space-y-3">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+                <Check className="size-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <CardTitle>
+                  {t("placed.order_label")}{" "}
+                  <span className="font-mono">#{orderNo}</span>
+                </CardTitle>
+                <CardDescription>
+                  {t("placed.status")}
+                  {placedDate ? ` · ${placedDate}` : ""}
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Separator />
+            <ul className="space-y-2">
+              {placed.lineItems.map((l) => (
+                <li
+                  key={l.id}
+                  className="flex items-baseline justify-between gap-3 text-sm"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-mono tabular-nums text-muted-foreground">
+                      {l.quantity}×
+                    </span>{" "}
+                    {l.name}
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums">
+                    {formatPriceCents(l.total_price_cents, currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <Separator />
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="shrink-0 text-muted-foreground">
+                  {fulfillment.label}
+                </span>
+                <span className="min-w-0 truncate text-right">
+                  {fulfillment.detail}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted-foreground">
+                  {t("cart.subtotal")}
+                </span>
+                <span className="font-mono tabular-nums">
+                  {formatPriceCents(placed.subtotalCents, currency)}
+                </span>
+              </div>
+              {placed.tipCents > 0 ? (
+                <div className="flex items-baseline justify-between">
+                  <span className="text-muted-foreground">{t("cart.tip")}</span>
+                  <span className="font-mono tabular-nums">
+                    {formatPriceCents(placed.tipCents, currency)}
+                  </span>
+                </div>
+              ) : null}
+              <div className="flex items-baseline justify-between pt-1">
+                <span className="font-medium">{t("cart.total")}</span>
+                <span className="font-mono text-base font-semibold tabular-nums">
+                  {formatPriceCents(totalCents, currency)}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t(payKey)}</p>
+          </CardContent>
+        </Card>
+        <Button
+          variant="outline"
+          onClick={() => {
+            cart?.resetForNewCart();
+            onClose();
+          }}
+        >
+          {t("placed.order_more")}
+        </Button>
+      </div>
     );
   }
 

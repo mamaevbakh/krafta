@@ -60,6 +60,7 @@ export type PlacedOrderSnapshot =
       lineItems: CartLineItem[];
       subtotalCents: number;
       tipCents: number;
+      placedAt: string;
     }
   | {
       orderId: string;
@@ -74,6 +75,7 @@ export type PlacedOrderSnapshot =
       lineItems: CartLineItem[];
       subtotalCents: number;
       tipCents: number;
+      placedAt: string;
     }
   | {
       orderId: string;
@@ -88,6 +90,7 @@ export type PlacedOrderSnapshot =
       lineItems: CartLineItem[];
       subtotalCents: number;
       tipCents: number;
+      placedAt: string;
     };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1217,6 +1220,7 @@ export function CartProvider({
           lineItems: optimisticCart.lineItems,
           subtotalCents: optimisticCart.subtotalCents,
           tipCents,
+          placedAt: new Date().toISOString(),
         };
         const snapshot: PlacedOrderSnapshot =
           input.mode === "dine_in"
