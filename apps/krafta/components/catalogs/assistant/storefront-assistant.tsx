@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Sparkles, ArrowUp, X, Check } from "lucide-react";
+import { Sparkles, ArrowUp, X, Check, Plus, Minus, Trash2 } from "lucide-react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -293,6 +293,111 @@ export function StorefrontAssistant({
     [onOpenChange, openItem],
   );
 
+  // Simple = no modifiers and ≤1 variation → safe to one-tap add/step from the
+  // assistant. Complex items open the item sheet to pick options.
+  const isSimpleItem = (item: PublicItem) =>
+    (item.modifier_lists?.length ?? 0) === 0 &&
+    (item.variations?.length ?? 0) <= 1;
+  // The single un-modified cart line for an item (drives the inline stepper).
+  const lineForItem = (itemId: string) =>
+    cart?.summary.lineItems.find(
+      (l) => l.catalog_item_id === itemId && l.modifiers.length === 0,
+    ) ?? null;
+  const addSimple = (item: PublicItem) => {
+    if (!cart) return;
+    void cart.addItem({
+      itemId: item.id,
+      defaultVariationId:
+        item.variations?.find((v) => v.is_default)?.id ??
+        item.variations?.[0]?.id,
+      name: item.name,
+      basePriceCents: item.price_cents,
+      quantity: 1,
+    });
+  };
+
+  // Compact −/qty/+ stepper used on product cards and cart lines.
+  const Stepper = ({
+    qty,
+    onDec,
+    onInc,
+    decIcon,
+  }: {
+    qty: number;
+    onDec: () => void;
+    onInc: () => void;
+    decIcon?: React.ReactNode;
+  }) => (
+    <div className="inline-flex items-center gap-1 rounded-full border border-border bg-background">
+      <button
+        type="button"
+        onClick={onDec}
+        aria-label="Decrease"
+        className="grid size-7 place-items-center rounded-full text-foreground transition hover:bg-muted"
+      >
+        {decIcon ?? <Minus className="size-3.5" />}
+      </button>
+      <span className="min-w-4 text-center text-sm font-semibold tabular-nums">
+        {qty}
+      </span>
+      <button
+        type="button"
+        onClick={onInc}
+        aria-label="Increase"
+        className="grid size-7 place-items-center rounded-full text-foreground transition hover:bg-muted"
+      >
+        <Plus className="size-3.5" />
+      </button>
+    </div>
+  );
+
+  // Live, editable cart — reads cart.summary so quantity/remove reflect
+  // instantly and are reversible.
+  const renderCart = () => {
+    if (!cart || cart.summary.lineItems.length === 0) {
+      return (
+        <div className="mt-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
+          Your cart is empty.
+        </div>
+      );
+    }
+    return (
+      <div className="mt-2 w-full max-w-[90%] space-y-2 rounded-xl border border-border bg-card p-3">
+        {cart.summary.lineItems.map((l) => (
+          <div key={l.id} className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{l.name}</div>
+              {l.variation_name ? (
+                <div className="truncate text-xs text-muted-foreground">
+                  {l.variation_name}
+                </div>
+              ) : null}
+            </div>
+            <Stepper
+              qty={l.quantity}
+              decIcon={l.quantity <= 1 ? <Trash2 className="size-3.5" /> : undefined}
+              onDec={() =>
+                l.quantity <= 1
+                  ? void cart.removeItem(l.id)
+                  : cart.bumpQuantity(l.id, -1)
+              }
+              onInc={() => cart.bumpQuantity(l.id, 1)}
+            />
+            <div className="w-16 shrink-0 text-right font-mono text-sm font-semibold tabular-nums">
+              {formatPriceCents(l.total_price_cents, currencySettings)}
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+          <span>Subtotal</span>
+          <span className="font-mono tabular-nums">
+            {formatPriceCents(cart.summary.subtotalCents, currencySettings)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const renderResultCards = (results: ToolResultItem[]) => {
     const cards = results
       .filter((r) => r.kind === "item" && r.entityId)
@@ -307,33 +412,70 @@ export function StorefrontAssistant({
           const item = resolved!.item;
           const imageUrl = getItemImageUrl(item);
           const name = localizedName(item) || item.name;
+          const line = lineForItem(item.id);
           return (
-            <button
+            <div
               key={`${r.entityId}`}
-              type="button"
-              onClick={() => handleItemOpen(item, resolved!.categorySlug)}
-              className="flex w-36 shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition hover:border-foreground/30"
+              className="flex w-36 shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-2"
             >
-              <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
-                {imageUrl ? (
-                  <Image
-                    src={imageUrl}
-                    alt={name}
-                    fill
-                    sizes="144px"
-                    className="object-cover"
+              <button
+                type="button"
+                onClick={() => handleItemOpen(item, resolved!.categorySlug)}
+                className="text-left"
+              >
+                <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
+                  {imageUrl ? (
+                    <Image
+                      src={imageUrl}
+                      alt={name}
+                      fill
+                      sizes="144px"
+                      className="object-cover"
+                    />
+                  ) : null}
+                </div>
+                <div className="mt-2 min-w-0">
+                  <div className="line-clamp-2 text-xs font-semibold leading-snug">
+                    {name}
+                  </div>
+                  <div className="mt-1 font-mono text-xs font-semibold tabular-nums">
+                    {formatPriceCents(item.price_cents, currencySettings)}
+                  </div>
+                </div>
+              </button>
+              <div className="mt-auto pt-1">
+                {line && isSimpleItem(item) ? (
+                  <Stepper
+                    qty={line.quantity}
+                    decIcon={
+                      line.quantity <= 1 ? (
+                        <Trash2 className="size-3.5" />
+                      ) : undefined
+                    }
+                    onDec={() =>
+                      line.quantity <= 1
+                        ? void cart?.removeItem(line.id)
+                        : cart?.bumpQuantity(line.id, -1)
+                    }
+                    onInc={() => cart?.bumpQuantity(line.id, 1)}
                   />
-                ) : null}
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!cart}
+                    onClick={() =>
+                      isSimpleItem(item)
+                        ? addSimple(item)
+                        : handleItemOpen(item, resolved!.categorySlug)
+                    }
+                    className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-foreground bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                  >
+                    <Plus className="size-3.5" />
+                    Add
+                  </button>
+                )}
               </div>
-              <div className="min-w-0">
-                <div className="line-clamp-2 text-xs font-semibold leading-snug">
-                  {name}
-                </div>
-                <div className="mt-1 font-mono text-xs font-semibold tabular-nums">
-                  {formatPriceCents(item.price_cents, currencySettings)}
-                </div>
-              </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -508,53 +650,10 @@ export function StorefrontAssistant({
                         }
                         return null;
                       }
-                      // viewCart
-                      const lines =
-                        (o.lines as Array<{
-                          name?: string;
-                          quantity?: number;
-                          totalCents?: number;
-                        }>) ?? [];
-                      if (!o.ok || lines.length === 0) {
-                        return (
-                          <div
-                            key={`ca-${i}`}
-                            className="mt-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground"
-                          >
-                            Your cart is empty.
-                          </div>
-                        );
-                      }
+                      // viewCart → the live, editable cart (qty / remove)
                       return (
-                        <div
-                          key={`ca-${i}`}
-                          className="mt-2 w-full max-w-[85%] rounded-xl border border-border bg-card p-3 text-sm"
-                        >
-                          {lines.map((l, j) => (
-                            <div
-                              key={j}
-                              className="flex justify-between gap-3 py-0.5"
-                            >
-                              <span className="truncate">
-                                {l.quantity}× {l.name}
-                              </span>
-                              <span className="font-mono tabular-nums">
-                                {formatPriceCents(
-                                  l.totalCents ?? 0,
-                                  currencySettings,
-                                )}
-                              </span>
-                            </div>
-                          ))}
-                          <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold">
-                            <span>Subtotal</span>
-                            <span className="font-mono tabular-nums">
-                              {formatPriceCents(
-                                Number(o.subtotalCents ?? 0),
-                                currencySettings,
-                              )}
-                            </span>
-                          </div>
+                        <div key={`ca-${i}`} className="w-full">
+                          {renderCart()}
                         </div>
                       );
                     })}
