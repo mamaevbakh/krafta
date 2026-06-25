@@ -157,7 +157,7 @@ function CartListStep({
     // See full note in checkout-step.tsx.
     <div className="flex min-h-0 flex-1 flex-col">
       <DialogHeader className="px-4 pb-3 pt-4 text-left">
-        <DialogTitle className="text-2xl font-semibold">
+        <DialogTitle className="flex h-11 items-center text-3xl font-semibold">
           {t("cart.title")}
         </DialogTitle>
         {/* sr-only: satisfies Radix's DialogContent describedby requirement
