@@ -30,6 +30,7 @@ import {
   DeliveryCourierForm,
   type DeliveryCourierInitial,
 } from "./delivery-courier-form";
+import { AssistantForm } from "./assistant-form";
 
 type VenueRow = {
   name: string;
@@ -58,6 +59,7 @@ type SettingsPanelProps = {
   currency: CurrencySettings;
   deliveryModeEnabled: boolean;
   courier: DeliveryCourierInitial;
+  assistantEnabled: boolean;
 };
 
 function normalizeTag(value: string) {
@@ -97,6 +99,7 @@ export function SettingsPanel({
   currency,
   deliveryModeEnabled,
   courier,
+  assistantEnabled,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
@@ -313,6 +316,12 @@ export function SettingsPanel({
                     : "Organization settings are coming soon."}
                 </div>
               ) : (
+                <div className="space-y-8">
+                <AssistantForm
+                  catalogId={catalogId}
+                  catalogSlug={catalogSlug}
+                  initialEnabled={assistantEnabled}
+                />
                 <form onSubmit={handleSave} className="space-y-6">
                   <FieldSet>
                     <FieldLegend>Catalog</FieldLegend>
@@ -465,6 +474,7 @@ export function SettingsPanel({
                     </Button>
                   </div>
                 </form>
+                </div>
               )}
             </div>
           </section>

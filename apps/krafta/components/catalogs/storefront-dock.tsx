@@ -12,12 +12,16 @@ import { cn } from "@/lib/utils";
 
 import { CartTrigger } from "./cart/cart-trigger";
 import { CatalogSearchLazy } from "./search/catalog-search-lazy";
+import { StorefrontAssistantLazy } from "./assistant/storefront-assistant-lazy";
 
 type StorefrontDockProps = {
   catalogId: string;
   orgId?: string | null;
   categoriesWithItems: PublicCategoryWithItems[];
   currencySettings?: CurrencySettings;
+  /** When true, the search slot opens the conversational assistant instead of
+   *  the classic search dialog (Settings → Catalog → AI shopping assistant). */
+  enableAssistant?: boolean;
 };
 
 /**
@@ -54,8 +58,14 @@ export function StorefrontDock({
   orgId,
   categoriesWithItems,
   currencySettings,
+  enableAssistant = false,
 }: StorefrontDockProps) {
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [assistantOpen, setAssistantOpen] = React.useState(false);
+  const openSearchSurface = React.useCallback(() => {
+    if (enableAssistant) setAssistantOpen(true);
+    else setSearchOpen(true);
+  }, [enableAssistant]);
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   const t = (key: Parameters<typeof getStorefrontMessage>[0]) =>
     getStorefrontMessage(key, { activeLocale, defaultLocale });
@@ -110,11 +120,11 @@ export function StorefrontDock({
             <div
               role="button"
               tabIndex={0}
-              onClick={() => setSearchOpen(true)}
+              onClick={openSearchSurface}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setSearchOpen(true);
+                  openSearchSurface();
                 }
               }}
               aria-label={t("search.open_aria")}
@@ -151,14 +161,25 @@ export function StorefrontDock({
           `open` + `onOpenChange` are both provided (see
           catalog-search.tsx isControlled branch). The dialog itself
           owns the real search input + result list. */}
-      <CatalogSearchLazy
-        catalogId={catalogId}
-        orgId={orgId}
-        categoriesWithItems={categoriesWithItems}
-        currencySettings={currencySettings}
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-      />
+      {enableAssistant ? (
+        <StorefrontAssistantLazy
+          catalogId={catalogId}
+          orgId={orgId}
+          categoriesWithItems={categoriesWithItems}
+          currencySettings={currencySettings}
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+        />
+      ) : (
+        <CatalogSearchLazy
+          catalogId={catalogId}
+          orgId={orgId}
+          categoriesWithItems={categoriesWithItems}
+          currencySettings={currencySettings}
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+        />
+      )}
     </>
   );
 }

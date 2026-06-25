@@ -3,6 +3,7 @@ import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 import { normalizeDeliverySettings } from "@/lib/catalogs/settings/delivery";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
+import { normalizeBehaviorSettings } from "@/lib/catalogs/settings/behavior";
 import { SettingsPanel } from "./_components/settings-panel";
 
 type PageProps = {
@@ -16,7 +17,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
   const { data: catalog } = await supabase
     .from("catalogs")
     .select(
-      "id, org_id, name, description, tags, logo_path, settings_currency, settings_delivery, settings_qr_style",
+      "id, org_id, name, description, tags, logo_path, settings_currency, settings_delivery, settings_behavior, settings_qr_style",
     )
     .eq("slug", catalogSlug)
     .maybeSingle();
@@ -75,6 +76,9 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
   const currency = normalizeCurrencySettings(
     (catalog.settings_currency ?? {}) as Record<string, unknown>,
   );
+  const behavior = normalizeBehaviorSettings(
+    (catalog.settings_behavior ?? {}) as Record<string, unknown>,
+  );
   const deliveryModeEnabled = (venue?.modes_enabled ?? []).includes("delivery");
 
   // Org-level courier connection state. credentials_encrypted is reduced to a
@@ -109,6 +113,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       currency={currency}
       deliveryModeEnabled={deliveryModeEnabled}
       courier={courier}
+      assistantEnabled={behavior.enableAssistant}
       telegram={
         telegram
           ? {

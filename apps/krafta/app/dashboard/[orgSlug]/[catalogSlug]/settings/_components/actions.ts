@@ -6,6 +6,7 @@ import {
   type DeliverySettings,
   normalizeDeliverySettings,
 } from "@/lib/catalogs/settings/delivery";
+import { normalizeBehaviorSettings } from "@/lib/catalogs/settings/behavior";
 import type { Json } from "@/lib/supabase/types";
 
 export async function updateCatalogSettings(params: {
@@ -198,4 +199,48 @@ export async function updateDeliverySettings(params: {
   });
 
   return { ok: true as const, settings };
+}
+
+/**
+ * Toggle the storefront AI shopping assistant. Merges into the existing
+ * `settings_behavior` JSON so the cart flag (and any future behavior flags) are
+ * preserved — read-modify-write rather than overwrite.
+ */
+export async function updateAssistantSettings(params: {
+  catalogId: string;
+  catalogSlug: string;
+  enabled: boolean;
+}) {
+  const supabase = await createClient();
+
+  const { data: row, error: readError } = await supabase
+    .from("catalogs")
+    .select("settings_behavior")
+    .eq("id", params.catalogId)
+    .maybeSingle();
+
+  if (readError) {
+    return { ok: false as const, error: readError.message };
+  }
+
+  const behavior = normalizeBehaviorSettings(
+    (row?.settings_behavior ?? {}) as Record<string, unknown>,
+  );
+  const next = { ...behavior, enableAssistant: params.enabled };
+
+  const { error } = await supabase
+    .from("catalogs")
+    .update({ settings_behavior: next as unknown as Json })
+    .eq("id", params.catalogId);
+
+  if (error) {
+    return { ok: false as const, error: error.message };
+  }
+
+  await updateCatalogByIdAndSlug({
+    catalogId: params.catalogId,
+    catalogSlug: params.catalogSlug,
+  });
+
+  return { ok: true as const, enabled: params.enabled };
 }

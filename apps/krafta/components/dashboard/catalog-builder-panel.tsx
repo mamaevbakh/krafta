@@ -487,13 +487,22 @@ export function CatalogBuilderPanel({
     [initialCurrency],
   );
 
+  // Carry enableAssistant through unchanged — the builder has no assistant
+  // toggle (it lives in Settings → Catalog), so the builder must PRESERVE it on
+  // save rather than overwrite settings_behavior to a cart-only object.
   const behaviorOverrides = useMemo<CatalogBehaviorSettings>(
-    () => ({ enableCart: cartEnabled }),
-    [cartEnabled],
+    () => ({
+      enableCart: cartEnabled,
+      enableAssistant: initialBehavior.enableAssistant,
+    }),
+    [cartEnabled, initialBehavior.enableAssistant],
   );
   const initialBehaviorOverride = useMemo<CatalogBehaviorSettings>(
-    () => ({ enableCart: initialBehavior.enableCart }),
-    [initialBehavior.enableCart],
+    () => ({
+      enableCart: initialBehavior.enableCart,
+      enableAssistant: initialBehavior.enableAssistant,
+    }),
+    [initialBehavior.enableCart, initialBehavior.enableAssistant],
   );
 
   const currentSignature = useMemo(
