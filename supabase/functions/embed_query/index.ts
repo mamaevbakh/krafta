@@ -49,12 +49,22 @@ serve(async (req) => {
     apiKey: Deno.env.get("OPENAI_API_KEY"),
   });
 
+  // Multilingual upgrade: text-embedding-3-large gives materially better
+  // cross-lingual (ru/uz/en) retrieval than 3-small. We truncate it to 1536
+  // dims via the Matryoshka `dimensions` param so the existing halfvec(1536)
+  // column + HNSW index are reused unchanged. The CORPUS embedder
+  // (supabase/functions/embed) MUST stay in lockstep on model + dimensions —
+  // query and document vectors are only comparable when produced identically.
   const model =
-    Deno.env.get("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+    Deno.env.get("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-large";
+  const dimensions = Number(
+    Deno.env.get("OPENAI_EMBEDDING_DIMENSIONS") ?? "1536",
+  );
 
   const res = await openai.embeddings.create({
     model,
     input: query,
+    dimensions,
   });
 
   const vector = res.data[0].embedding;

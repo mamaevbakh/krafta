@@ -42,7 +42,12 @@ serve(async (req) => {
       return new Response("Missing OPENAI_API_KEY", { status: 500 });
     }
 
-    const model = Deno.env.get("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+    // Keep in lockstep with supabase/functions/embed_query — query + document
+    // vectors must be produced by the SAME model + dimensions to be comparable.
+    // text-embedding-3-large @ 1536 dims (Matryoshka-truncated) reuses the
+    // existing halfvec(1536) column + HNSW index.
+    const model = Deno.env.get("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-large";
+    const dimensions = Number(Deno.env.get("OPENAI_EMBEDDING_DIMENSIONS") ?? "1536");
 
     // Supabase project env vars are available by default in Edge Functions runtime.
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -112,6 +117,7 @@ serve(async (req) => {
         const emb = await openai.embeddings.create({
           model,
           input,
+          dimensions,
         });
 
         const vector = emb.data?.[0]?.embedding;

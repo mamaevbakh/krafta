@@ -4214,15 +4214,23 @@ export type Database = {
       catalog_search_auto: {
         Args: {
           p_catalog_id?: string
+          p_exact_boost?: number
+          p_fts_weight?: number
           p_limit?: number
           p_org_id?: string
+          p_prefix_boost?: number
           p_query: string
           p_query_embedding?: unknown
+          p_rrf_k?: number
+          p_trgm_threshold?: number
+          p_vec_weight?: number
+          p_word_boost?: number
         }
         Returns: {
           catalog_id: string
           description: string
           distance: number
+          entity_id: string
           id: string
           locale: string
           mode: string
@@ -4231,6 +4239,7 @@ export type Database = {
           score: number
           sim_desc: number
           sim_title: number
+          source_table: string
           subtitle: string
           tags: string[]
           title: string
@@ -4381,6 +4390,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      uz_cyrl_to_latn: { Args: { q: string }; Returns: string }
     }
     Enums: {
       catalog_item_product_type:
