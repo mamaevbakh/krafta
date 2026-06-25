@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 
 import type { PublicItem } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
@@ -144,34 +144,23 @@ export function ItemWidget({
           });
 
   return (
-    <div className="absolute inset-0 z-[60] flex flex-col bg-background">
-      <div className="flex items-center justify-between px-4 py-3 sm:px-6">
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm text-muted-foreground transition hover:text-foreground"
-        >
-          ← {t("checkout.back")}
-        </button>
-        <span className="w-12" />
-      </div>
+    <div className="mt-2 w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="space-y-4 p-3">
+        {imageUrl ? (
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-muted">
+            <Image
+              src={imageUrl}
+              alt={localizedImageAlt ?? localizedName}
+              fill
+              sizes="(max-width: 640px) 100vw, 448px"
+              className="object-cover"
+            />
+          </div>
+        ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
-        <div className="mx-auto max-w-md space-y-4">
-          {imageUrl ? (
-            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-muted">
-              <Image
-                src={imageUrl}
-                alt={localizedImageAlt ?? localizedName}
-                fill
-                sizes="(max-width: 640px) 100vw, 448px"
-                className="object-cover"
-              />
-            </div>
-          ) : null}
-
-          <div>
-            <h2 className="text-lg font-semibold leading-tight">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold leading-tight">
               {localizedName}
             </h2>
             {localizedDescription ? (
@@ -180,25 +169,33 @@ export function ItemWidget({
               </p>
             ) : null}
           </div>
-
-          <VariationSelector
-            variations={item.variations}
-            value={variationId}
-            onChange={setVariationId}
-          />
-
-          {item.modifier_lists.length > 0 ? (
-            <ModifierPicker
-              modifierLists={item.modifier_lists}
-              onChange={setPicker}
-              formatPrice={(cents) => formatPriceCents(cents, currency)}
-            />
-          ) : null}
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onBack}
+            className="-mr-1 -mt-1 grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:bg-muted"
+          >
+            <X className="size-4" />
+          </button>
         </div>
+
+        <VariationSelector
+          variations={item.variations}
+          value={variationId}
+          onChange={setVariationId}
+        />
+
+        {item.modifier_lists.length > 0 ? (
+          <ModifierPicker
+            modifierLists={item.modifier_lists}
+            onChange={setPicker}
+            formatPrice={(cents) => formatPriceCents(cents, currency)}
+          />
+        ) : null}
       </div>
 
-      <div className="border-t border-border bg-background px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-md items-center gap-3">
+      <div className="space-y-3 border-t border-border p-3">
+        <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-1 rounded-full border border-border">
             <button
               type="button"
@@ -225,7 +222,7 @@ export function ItemWidget({
           </div>
         </div>
 
-        <div className="mx-auto mt-3 max-w-md space-y-2">
+        <div className="space-y-2">
           <button
             type="button"
             disabled={!canAdd || adding}

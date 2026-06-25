@@ -33,10 +33,8 @@ import {
 import { useItemSheet } from "@/components/catalogs/items/item-detail-controller";
 import { PricingBreakdown } from "@/components/catalogs/cart/pricing-breakdown";
 import { ItemWidget } from "@/components/catalogs/assistant/item-widget";
-import {
-  useOptionalCart,
-  type CartFulfillmentMode,
-} from "@/components/catalogs/cart/cart-provider";
+import { CheckoutWidget } from "@/components/catalogs/assistant/checkout-widget";
+import { useOptionalCart } from "@/components/catalogs/cart/cart-provider";
 
 export type StorefrontAssistantProps = {
   catalogId: string;
@@ -193,18 +191,9 @@ export function StorefrontAssistant({
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // In-assistant item configurator + checkout state.
+  // In-assistant item configurator + checkout overlays.
   const [detailItem, setDetailItem] = React.useState<PublicItem | null>(null);
   const [checkoutOpen, setCheckoutOpen] = React.useState(false);
-  const [mode, setMode] = React.useState<CartFulfillmentMode | null>(null);
-  const [coFields, setCoFields] = React.useState({
-    tableLabel: "",
-    name: "",
-    phone: "",
-    address: "",
-  });
-  const [placing, setPlacing] = React.useState(false);
-  const [orderError, setOrderError] = React.useState<string | null>(null);
 
   const transport = React.useMemo(
     () =>
@@ -303,7 +292,6 @@ export function StorefrontAssistant({
       setInput("");
       setDetailItem(null);
       setCheckoutOpen(false);
-      setOrderError(null);
     }
   }, [open]);
 
@@ -312,7 +300,7 @@ export function StorefrontAssistant({
     if (!open) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, open, busy]);
+  }, [messages, open, busy, detailItem, checkoutOpen]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -513,78 +501,6 @@ export function StorefrontAssistant({
         </div>
       </div>
     );
-  };
-
-  // Default the checkout mode to the venue's first available mode.
-  React.useEffect(() => {
-    if (checkoutOpen && !mode && cart?.modes.length) setMode(cart.modes[0]);
-  }, [checkoutOpen, mode, cart]);
-
-  const placeOrder = React.useCallback(async () => {
-    if (!cart || !mode) return;
-    setOrderError(null);
-    setPlacing(true);
-    try {
-      const input2 =
-        mode === "dine_in"
-          ? {
-              mode,
-              fields: { tableLabel: coFields.tableLabel.trim() },
-            }
-          : mode === "pickup"
-            ? {
-                mode,
-                fields: {
-                  scheduleType: "asap" as const,
-                  pickupAt: null,
-                  recipientName: coFields.name.trim() || null,
-                  recipientPhone: coFields.phone.trim() || null,
-                  note: null,
-                },
-              }
-            : {
-                mode,
-                fields: {
-                  address: coFields.address.trim(),
-                  latitude: null,
-                  longitude: null,
-                  district: null,
-                  street: null,
-                  building: null,
-                  recipientName: coFields.name.trim(),
-                  recipientPhone: coFields.phone.trim(),
-                  scheduledFor: null,
-                  note: null,
-                },
-              };
-      const res = await cart.placeOrder(
-        input2 as Parameters<typeof cart.placeOrder>[0],
-      );
-      if (!res.ok) setOrderError(res.error);
-    } catch (e) {
-      setOrderError(
-        e instanceof Error ? e.message : "Could not place the order.",
-      );
-    } finally {
-      setPlacing(false);
-    }
-  }, [cart, mode, coFields]);
-
-  const checkoutValid =
-    mode === "dine_in"
-      ? coFields.tableLabel.trim().length > 0
-      : mode === "pickup"
-        ? coFields.name.trim().length > 0 && coFields.phone.trim().length > 0
-        : mode === "delivery"
-          ? coFields.address.trim().length > 0 &&
-            coFields.name.trim().length > 0 &&
-            coFields.phone.trim().length > 0
-          : false;
-
-  const MODE_LABEL: Record<CartFulfillmentMode, string> = {
-    dine_in: "Dine-in",
-    pickup: "Pickup",
-    delivery: "Delivery",
   };
 
   const renderResultCards = (results: ToolResultItem[]) => {
@@ -856,6 +772,27 @@ export function StorefrontAssistant({
                 Something went wrong. Please try again.
               </div>
             ) : null}
+
+            {/* Item configurator — inline card in the conversation. */}
+            {detailItem ? (
+              <ItemWidget
+                item={detailItem}
+                currency={currency}
+                onBack={() => setDetailItem(null)}
+                onAdded={(next) => {
+                  setDetailItem(null);
+                  if (next === "checkout") setCheckoutOpen(true);
+                }}
+              />
+            ) : null}
+
+            {/* Guided checkout — inline card in the conversation. */}
+            {checkoutOpen && cart ? (
+              <CheckoutWidget
+                currency={currency}
+                onClose={() => setCheckoutOpen(false)}
+              />
+            ) : null}
           </div>
 
           {/* iOS-style progressive blur — fades messages as they reach the
@@ -905,175 +842,6 @@ export function StorefrontAssistant({
               </Button>
             </form>
           </div>
-
-          {/* Item configurator — in-assistant item detail overlay. */}
-          {detailItem ? (
-            <ItemWidget
-              item={detailItem}
-              currency={currency}
-              onBack={() => setDetailItem(null)}
-              onAdded={(next) => {
-                setDetailItem(null);
-                if (next === "checkout") setCheckoutOpen(true);
-              }}
-            />
-          ) : null}
-
-          {/* Checkout — full in-assistant ordering overlay. */}
-          {checkoutOpen && cart ? (
-            <div className="absolute inset-0 z-[60] flex flex-col bg-background">
-              <div className="flex items-center justify-between px-4 py-3 sm:px-6">
-                <button
-                  type="button"
-                  onClick={() => setCheckoutOpen(false)}
-                  className="text-sm text-muted-foreground transition hover:text-foreground"
-                >
-                  ← Back
-                </button>
-                <span className="text-sm font-semibold">Checkout</span>
-                <span className="w-12" />
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 sm:px-6">
-                {cart.placedOrder ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-                    <div className="grid size-14 place-items-center rounded-full bg-foreground text-background">
-                      <Check className="size-7" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-lg font-semibold">Order placed!</p>
-                      <p className="text-sm text-muted-foreground">
-                        Thanks — your order is in. The shop has been notified.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        cart.resetForNewCart();
-                        setCoFields({
-                          tableLabel: "",
-                          name: "",
-                          phone: "",
-                          address: "",
-                        });
-                        setOrderError(null);
-                        setCheckoutOpen(false);
-                      }}
-                      className="rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:border-foreground/30"
-                    >
-                      Start a new order
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mx-auto max-w-md space-y-5 pt-2">
-                    {cart.modes.length > 1 ? (
-                      <div className="flex gap-2">
-                        {cart.modes.map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setMode(m)}
-                            className={cn(
-                              "flex-1 rounded-full border px-3 py-2 text-sm font-medium transition",
-                              mode === m
-                                ? "border-foreground bg-foreground text-background"
-                                : "border-border hover:border-foreground/30",
-                            )}
-                          >
-                            {MODE_LABEL[m]}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {mode === "dine_in" ? (
-                      <label className="block space-y-1.5">
-                        <span className="text-sm font-medium">Table number</span>
-                        <input
-                          value={coFields.tableLabel}
-                          onChange={(e) =>
-                            setCoFields((f) => ({
-                              ...f,
-                              tableLabel: e.target.value,
-                            }))
-                          }
-                          placeholder="e.g. 12"
-                          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                        />
-                      </label>
-                    ) : (
-                      <>
-                        {mode === "delivery" ? (
-                          <label className="block space-y-1.5">
-                            <span className="text-sm font-medium">
-                              Delivery address
-                            </span>
-                            <input
-                              value={coFields.address}
-                              onChange={(e) =>
-                                setCoFields((f) => ({
-                                  ...f,
-                                  address: e.target.value,
-                                }))
-                              }
-                              placeholder="Street, building, apartment"
-                              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                            />
-                          </label>
-                        ) : null}
-                        <label className="block space-y-1.5">
-                          <span className="text-sm font-medium">Your name</span>
-                          <input
-                            value={coFields.name}
-                            onChange={(e) =>
-                              setCoFields((f) => ({ ...f, name: e.target.value }))
-                            }
-                            placeholder="Name"
-                            className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                          />
-                        </label>
-                        <label className="block space-y-1.5">
-                          <span className="text-sm font-medium">Phone</span>
-                          <input
-                            value={coFields.phone}
-                            inputMode="tel"
-                            onChange={(e) =>
-                              setCoFields((f) => ({
-                                ...f,
-                                phone: e.target.value,
-                              }))
-                            }
-                            placeholder="+998…"
-                            className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                          />
-                        </label>
-                      </>
-                    )}
-
-                    {renderCart()}
-
-                    {orderError ? (
-                      <p className="text-sm text-destructive">{orderError}</p>
-                    ) : null}
-
-                    <button
-                      type="button"
-                      disabled={!checkoutValid || placing || cart.itemCount === 0}
-                      onClick={placeOrder}
-                      className="w-full rounded-full bg-foreground px-4 py-3 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
-                    >
-                      {placing
-                        ? "Placing…"
-                        : `Place order · ${formatPriceCents(
-                            cart.summary.subtotalCents,
-                            currencySettings,
-                          )}`}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
         </div>
       </DialogContent>
     </Dialog>

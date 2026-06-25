@@ -12,9 +12,12 @@ import {
 import { LandingNav } from "./_components/landing/landing-nav";
 import { LandingHero } from "./_components/landing/landing-hero";
 import { LandingProof } from "./_components/landing/landing-proof";
+import { LandingProblem } from "./_components/landing/landing-problem";
 import { LandingFeatures } from "./_components/landing/landing-features";
-import { LandingHow } from "./_components/landing/landing-how";
 import { LandingChannels } from "./_components/landing/landing-channels";
+import { LandingPayments } from "./_components/landing/landing-payments";
+import { LandingAi } from "./_components/landing/landing-ai";
+import { LandingHow } from "./_components/landing/landing-how";
 import { LandingPricing } from "./_components/landing/landing-pricing";
 import { LandingFaq } from "./_components/landing/landing-faq";
 import { LandingClosing } from "./_components/landing/landing-closing";
@@ -24,19 +27,19 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 const META: Record<LandingLocale, { title: string; description: string }> = {
   ru: {
-    title: "Krafta — касса и приём заказов для кафе",
+    title: "Krafta — операционная система локальной торговли",
     description:
-      "Касса и платформа приёма заказов уровня Square для кафе, ресторанов и магазинов Узбекистана. Цифровое меню, зал, самовывоз и доставка — управление с телефона.",
+      "Витрина, заказы, QR и платежи в одной системе для кафе, ресторанов и магазинов Узбекистана. Зал, самовывоз и доставка — управление с телефона. Инфраструктура, а не комиссия.",
   },
   uz: {
-    title: "Krafta — kafe uchun kassa va buyurtmalar",
+    title: "Krafta — lokal savdoning operatsion tizimi",
     description:
-      "Oʻzbekistondagi kafe, restoran va doʻkonlar uchun Square darajasidagi kassa va buyurtma platformasi. Raqamli menyu, zal, olib ketish va yetkazib berish — telefondan boshqaring.",
+      "Oʻzbekistondagi kafe, restoran va doʻkonlar uchun vitrina, buyurtmalar, QR va toʻlovlar — yagona tizimda. Zal, olib ketish va yetkazib berish — telefondan boshqaring. Infratuzilma, komissiya emas.",
   },
   en: {
-    title: "Krafta — POS & ordering for cafes",
+    title: "Krafta — the operating system for local commerce",
     description:
-      "A Square-quality point of sale and ordering platform for cafes, restaurants, and shops in Uzbekistan. Digital menu, dine-in, pickup, and delivery — managed from your phone.",
+      "Storefront, orders, QR, and payments in one system for cafes, restaurants, and shops in Uzbekistan. Dine-in, pickup, and delivery — run from your phone. Infrastructure, not commission.",
   },
 };
 
@@ -82,9 +85,12 @@ async function LandingPage({ searchParams }: { searchParams: SearchParams }) {
       <main className="flex-1">
         <LandingHero authed={authed} content={content} locale={locale} />
         <LandingProof content={content} />
+        <LandingProblem content={content} />
         <LandingFeatures content={content} />
-        <LandingHow content={content} />
         <LandingChannels content={content} />
+        <LandingPayments content={content} />
+        <LandingAi content={content} />
+        <LandingHow content={content} />
         <LandingPricing authed={authed} content={content} />
         <LandingFaq content={content} />
         <LandingClosing authed={authed} content={content} />
