@@ -65,6 +65,8 @@ type ClientToolDeps = {
   openItem: (slug: string, categorySlug?: string | null) => void;
   /** Open the in-assistant item configurator (NOT the external sheet). */
   openItemWidget: (item: PublicItem) => void;
+  /** Open the inline guided checkout. */
+  startCheckout: () => void;
   onClose: () => void;
   displayName: (item: PublicItem) => string;
   addToolResult: (args: {
@@ -157,6 +159,14 @@ async function runClientTool(call: ClientToolCall, deps: ClientToolDeps | null) 
       if (!resolved) return add({ ok: false, reason: "not_found" });
       deps.openItemWidget(resolved.item);
       return add({ ok: true, opened: deps.displayName(resolved.item) });
+    }
+
+    if (call.toolName === "checkout") {
+      if (!deps.cart || deps.cart.summary.lineItems.length === 0) {
+        return add({ ok: false, reason: "empty_cart" });
+      }
+      deps.startCheckout();
+      return add({ ok: true, opened: true });
     }
   } catch {
     add({ ok: false, reason: "error" });
@@ -258,6 +268,7 @@ export function StorefrontAssistant({
     itemById,
     openItem,
     openItemWidget: (item) => setDetailItem(item),
+    startCheckout: () => setCheckoutOpen(true),
     onClose: () => onOpenChange?.(false),
     displayName: (item) => localizedName(item) || item.name,
     addToolResult: addToolResult as unknown as ClientToolDeps["addToolResult"],
@@ -270,7 +281,7 @@ export function StorefrontAssistant({
     if (status !== "ready") return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
-    const CLIENT = new Set(["addToCart", "viewCart", "openItem"]);
+    const CLIENT = new Set(["addToCart", "viewCart", "openItem", "checkout"]);
     for (const part of last.parts as Array<Record<string, unknown>>) {
       const type = String(part.type ?? "");
       if (!type.startsWith("tool-")) continue;

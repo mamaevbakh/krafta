@@ -45,3 +45,16 @@ export const openItemTool = tool({
       .describe("The entityId of the item (from searchCatalog results)."),
   }),
 });
+
+export const checkoutTool = tool({
+  description:
+    "Start checkout / place the shopper's order. Call this whenever the shopper " +
+    "signals they're ready to order or pay — e.g. 'checkout', 'place my order', " +
+    "'make an order', 'order now', \"that's all\", 'I'm done', 'оформить заказ', " +
+    "'заказать', 'хочу заказать', 'оформить', 'buyurtma berish'. It opens the " +
+    "guided checkout (choose dine-in / pickup / delivery, then the details). " +
+    "If the result is empty_cart, the cart has nothing in it — help them add " +
+    "items first instead of claiming an order was placed. Payment is cash on " +
+    "pickup / on delivery (no online card payment yet).",
+  inputSchema: z.object({}),
+});

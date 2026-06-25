@@ -5,16 +5,15 @@
  * a single foreground line. No icons, no cards — type and rules carry it.
  */
 
+import { SectionEyebrow } from "./section-heading";
 import type { LandingContent } from "./content";
 
 export function LandingProblem({ content }: { content: LandingContent }) {
   const { problem } = content;
   return (
     <section className="scroll-mt-16 border-t border-border">
-      <div className="mx-auto max-w-[1248px] px-6 py-20">
-        <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          {problem.eyebrow}
-        </p>
+      <div className="mx-auto max-w-[1248px] px-6 py-16">
+        <SectionEyebrow text={problem.eyebrow} />
         <h2 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
           {problem.heading}
         </h2>
@@ -32,6 +31,9 @@ export function LandingProblem({ content }: { content: LandingContent }) {
 
         <p className="mt-8 max-w-xl text-base leading-relaxed text-foreground sm:text-lg">
           {problem.note}
+        </p>
+        <p className="mt-4 max-w-xl text-base leading-relaxed text-foreground sm:text-lg">
+          {problem.contrast}
         </p>
       </div>
     </section>

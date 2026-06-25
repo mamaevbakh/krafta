@@ -6,17 +6,16 @@
  * and rules do the work.
  */
 
+import { SectionEyebrow } from "./section-heading";
 import type { LandingContent } from "./content";
 
 export function LandingChannels({ content }: { content: LandingContent }) {
   const { channels } = content;
   return (
     <section id="channels" className="scroll-mt-16 border-t border-border">
-      <div className="mx-auto grid max-w-[1248px] gap-12 px-6 py-20 lg:grid-cols-2 lg:gap-16">
+      <div className="mx-auto grid max-w-[1248px] gap-12 px-6 py-16 lg:grid-cols-2 lg:gap-16">
         <div className="flex flex-col justify-between gap-10">
-          <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-            {channels.eyebrow}
-          </p>
+          <SectionEyebrow text={channels.eyebrow} />
           <h2 className="max-w-md text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
             {channels.heading}
           </h2>

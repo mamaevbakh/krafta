@@ -32,7 +32,10 @@ const FEATURE_ICONS: LucideIcon[] = [
 export function LandingFeatures({ content }: { content: LandingContent }) {
   const { features } = content;
   return (
-    <section id="features" className="scroll-mt-16 border-t border-border">
+    <section
+      id="features"
+      className="scroll-mt-16 border-t border-border bg-secondary-background"
+    >
       <div className="mx-auto max-w-[1248px] px-6 py-20">
         <SectionHeading
           eyebrow={features.eyebrow}

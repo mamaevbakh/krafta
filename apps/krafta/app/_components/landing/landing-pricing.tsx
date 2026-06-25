@@ -23,10 +23,7 @@ export function LandingPricing({
 }) {
   const { pricing } = content;
   return (
-    <section
-      id="pricing"
-      className="scroll-mt-16 border-t border-border bg-secondary-background"
-    >
+    <section id="pricing" className="scroll-mt-16 border-t border-border">
       <div className="mx-auto max-w-[1248px] px-6 py-20">
         <SectionHeading
           eyebrow={pricing.eyebrow}

@@ -66,10 +66,10 @@ const en = {
   },
   hero: {
     eyebrow: "Storefront · Orders · QR · Payments · AI",
-    titleLead: "The future of",
-    titlePayoff: "local commerce",
+    titleLead: "One menu.",
+    titlePayoff: "Every order, yours.",
     subtitle:
-      "One system to sell: a storefront your guests love, every order in one place, QR and payments built in — run from your phone.",
+      "Your own storefront and order-taking for cafes, restaurants, and shops. Dine-in, pickup, delivery, QR, and payments — all from your phone.",
     spec: ["Free to start", "No signup", "RU · UZ · EN"],
   },
   demo: {
@@ -81,6 +81,7 @@ const en = {
     totalLabel: "Total",
     addAria: "Add",
     deliveryFeeLabel: "Delivery",
+    keepLine: "No commission · you keep it all",
     channels: [
       { key: "dinein", label: "Dine-in · QR", context: "Table 7" },
       { key: "pickup", label: "Pickup", context: "Ready by 18:30" },
@@ -95,7 +96,7 @@ const en = {
   },
   proof: {
     statement:
-      "Not a marketplace. Your storefront — your own brand, in light and dark.",
+      "Not a marketplace. Your storefront — your own brand, your own name.",
     ledger: [
       { label: "Cash now", soon: false },
       { label: "Card soon", soon: true },
@@ -109,12 +110,14 @@ const en = {
     heading: "Local commerce still runs on chaos",
     fragments: ["Chats", "Calls", "Notebooks", "Lost orders"],
     note: "The problem was never a missing website. It was a missing system.",
+    contrast:
+      "A marketplace takes your customer and a cut of every sale. Your storefront leaves you both.",
   },
   features: {
     eyebrow: "02 / Operating system",
-    heading: "Everything you need to sell",
+    heading: "One system instead of ten apps",
     subheading:
-      "Menu, orders, QR, and translations — one system, not a pile of apps.",
+      "Menu, orders, QR, delivery, and translations — in one place, at hand.",
     mockCaption: "Every order, one screen",
     items: [
       {
@@ -191,9 +194,11 @@ const en = {
   },
   ai: {
     eyebrow: "05 / AI",
+    soonLabel: "Soon",
     heading: "The next interface is conversation",
     subheading: "Customers ask. Krafta builds the order.",
     searchPlaceholder: "Ask Vintage Coffee…",
+    queriesLabel: "Guests ask",
     queries: [
       "Show me low-calorie dishes",
       "Anything without lactose?",
@@ -203,7 +208,7 @@ const en = {
     suggestionName: "Granola with coconut yogurt",
     suggestionPrice: 42000,
     personalNote:
-      "Preferences, allergies, diet, order history — Krafta remembers, and commerce becomes personal.",
+      "Preferences, allergies, diet, order history — Krafta remembers for the guest and suggests what they'll order.",
   },
   pricing: {
     eyebrow: "07 / Pricing",
@@ -293,10 +298,10 @@ const ru: LandingContent = {
   },
   hero: {
     eyebrow: "Витрина · Заказы · QR · Оплата · AI",
-    titleLead: "Будущее",
-    titlePayoff: "локальной торговли",
+    titleLead: "Одно меню.",
+    titlePayoff: "Каждый заказ — у вас.",
     subtitle:
-      "Одна система, чтобы продавать: витрина, которую любят гости, каждый заказ в одном месте, QR и оплата внутри — и всё это с телефона.",
+      "Своя витрина и приём заказов для кафе, ресторанов и магазинов. Зал, самовывоз, доставка, QR и оплата — всё с телефона.",
     spec: ["Бесплатный старт", "Без регистрации", "RU · UZ · EN"],
   },
   demo: {
@@ -308,6 +313,7 @@ const ru: LandingContent = {
     totalLabel: "Итого",
     addAria: "Добавить",
     deliveryFeeLabel: "Доставка",
+    keepLine: "Без комиссии · вся выручка ваша",
     channels: [
       { key: "dinein", label: "Зал · QR", context: "Стол 7" },
       { key: "pickup", label: "Самовывоз", context: "Готово к 18:30" },
@@ -322,7 +328,7 @@ const ru: LandingContent = {
   },
   proof: {
     statement:
-      "Не маркетплейс. Ваша витрина — со своим брендом, в светлой и тёмной теме.",
+      "Не маркетплейс. Ваша витрина — со своим брендом и своим именем.",
     ledger: [
       { label: "Наличные — сейчас", soon: false },
       { label: "Карта — скоро", soon: true },
@@ -336,12 +342,14 @@ const ru: LandingContent = {
     heading: "Локальная торговля всё ещё держится на хаосе",
     fragments: ["Переписки", "Звонки", "Блокнот", "Потерянные заказы"],
     note: "Дело не в отсутствии сайта. Дело в отсутствии системы.",
+    contrast:
+      "Маркетплейс заберёт клиента и процент с каждой продажи. Витрина оставляет и то, и другое вам.",
   },
   features: {
     eyebrow: "02 / Операционная система",
-    heading: "Всё, что нужно, чтобы продавать",
+    heading: "Одна система вместо десятка приложений",
     subheading:
-      "Меню, заказы, QR и переводы — одна система, а не набор приложений.",
+      "Меню, заказы, QR, доставка и переводы — в одном месте, под рукой.",
     mockCaption: "Все заказы на одном экране",
     items: [
       {
@@ -418,9 +426,11 @@ const ru: LandingContent = {
   },
   ai: {
     eyebrow: "05 / AI",
+    soonLabel: "Скоро",
     heading: "Следующий интерфейс — это разговор",
     subheading: "Гость спрашивает — Krafta собирает заказ.",
     searchPlaceholder: "Спросите Vintage Coffee…",
+    queriesLabel: "Гости спрашивают",
     queries: [
       "Покажи блюда без лактозы",
       "Что-нибудь лёгкое, до 400 ккал",
@@ -430,7 +440,7 @@ const ru: LandingContent = {
     suggestionName: "Гранола с кокосовым йогуртом",
     suggestionPrice: 42000,
     personalNote:
-      "Предпочтения, аллергии, диета, история заказов — Krafta помнит, и торговля становится персональной.",
+      "Предпочтения, аллергии, диета, история заказов — Krafta помнит за гостя и подбирает то, что он закажет.",
   },
   pricing: {
     eyebrow: "07 / Цены",
@@ -518,10 +528,10 @@ const uz: LandingContent = {
   },
   hero: {
     eyebrow: "Vitrina · Buyurtmalar · QR · Toʻlov · AI",
-    titleLead: "Lokal savdoning",
-    titlePayoff: "kelajagi",
+    titleLead: "Bitta menyu.",
+    titlePayoff: "Har bir buyurtma — sizniki.",
     subtitle:
-      "Sotish uchun yagona tizim: mehmonlar yoqtiradigan vitrina, har bir buyurtma bir joyda, QR va toʻlov ichida — hammasi telefondan.",
+      "Oʻzingizning vitringiz va buyurtma qabul qilish — kafe, restoran va doʻkonlar uchun. Zal, olib ketish, yetkazib berish, QR va toʻlov — hammasi telefondan.",
     spec: ["Bepul boshlash", "Roʻyxatsiz", "RU · UZ · EN"],
   },
   demo: {
@@ -533,6 +543,7 @@ const uz: LandingContent = {
     totalLabel: "Jami",
     addAria: "Qoʻshish",
     deliveryFeeLabel: "Yetkazib berish",
+    keepLine: "Komissiyasiz · butun tushum sizniki",
     channels: [
       { key: "dinein", label: "Zal · QR", context: "7-stol" },
       { key: "pickup", label: "Olib ketish", context: "18:30 ga tayyor" },
@@ -547,7 +558,7 @@ const uz: LandingContent = {
   },
   proof: {
     statement:
-      "Marketpleys emas. Sizning vitrinangiz — oʻz brendingiz bilan, yorugʻ va qorongʻi temada.",
+      "Marketpleys emas. Sizning vitrinangiz — oʻz brendingiz va oʻz nomingiz bilan.",
     ledger: [
       { label: "Naqd — hozir", soon: false },
       { label: "Karta — tez orada", soon: true },
@@ -561,12 +572,14 @@ const uz: LandingContent = {
     heading: "Lokal savdo hamon chalkashlikka tayanadi",
     fragments: ["Yozishmalar", "Qoʻngʻiroqlar", "Bloknot", "Yoʻqolgan buyurtmalar"],
     note: "Gap sayt yoʻqligida emas. Gap tizim yoʻqligida.",
+    contrast:
+      "Marketpleys mijozni va har bir sotuvdan foizni oladi. Vitrina ikkalasini ham sizga qoldiradi.",
   },
   features: {
     eyebrow: "02 / Operatsion tizim",
-    heading: "Sotish uchun kerak boʻlgan hamma narsa",
+    heading: "Oʻnta ilova oʻrniga bitta tizim",
     subheading:
-      "Menyu, buyurtmalar, QR va tarjimalar — yagona tizim, ilovalar uyumi emas.",
+      "Menyu, buyurtmalar, QR, yetkazib berish va tarjimalar — bir joyda, qoʻl ostida.",
     mockCaption: "Har bir buyurtma — bitta ekranda",
     items: [
       {
@@ -643,9 +656,11 @@ const uz: LandingContent = {
   },
   ai: {
     eyebrow: "05 / AI",
+    soonLabel: "Tez orada",
     heading: "Keyingi interfeys — bu suhbat",
     subheading: "Mehmon soʻraydi — Krafta buyurtmani yigʻadi.",
     searchPlaceholder: "Vintage Coffee’dan soʻrang…",
+    queriesLabel: "Mehmonlar soʻraydi",
     queries: [
       "Laktozasiz taomlarni koʻrsat",
       "Yengilroq nimadir, 400 kkalgacha",
@@ -655,7 +670,7 @@ const uz: LandingContent = {
     suggestionName: "Kokos yogurtli granola",
     suggestionPrice: 42000,
     personalNote:
-      "Afzalliklar, allergiya, parhez, buyurtmalar tarixi — Krafta eslab qoladi, va savdo shaxsiy boʻladi.",
+      "Afzalliklar, allergiya, parhez, buyurtmalar tarixi — Krafta mehmon oʻrniga eslab qoladi va u buyurtma qiladigan narsani taklif qiladi.",
   },
   pricing: {
     eyebrow: "07 / Narxlar",

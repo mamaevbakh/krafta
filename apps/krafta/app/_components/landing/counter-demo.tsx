@@ -178,11 +178,15 @@ export function CounterDemo({
           </span>
           <span
             key={pulse}
+            aria-live="polite"
             className="font-mono text-base font-semibold tabular-nums text-foreground animate-cart-qty-pulse"
           >
             {formatSum(total)}
           </span>
         </div>
+        <p className="mt-2.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+          {demo.keepLine}
+        </p>
       </div>
     </div>
   );
