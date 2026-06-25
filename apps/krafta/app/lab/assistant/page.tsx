@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 
-import { getCatalogBySlug } from "@/lib/catalogs/data";
+import { getCatalogBySlug, getCatalogStructure } from "@/lib/catalogs/data";
+import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
 import { LabAssistant } from "./lab-assistant";
 
 // Internal design-exploration page: the SAME shop-assistant backend
@@ -47,12 +48,21 @@ async function LabAssistantLoader({
     );
   }
 
+  // Items + currency so the tool output can render as real product cards
+  // (the hybrid: AI Elements chrome + the storefront's product cards).
+  const categoriesWithItems = await getCatalogStructure(catalog.id);
+  const currencySettings = normalizeCurrencySettings(
+    (catalog.settings_currency ?? {}) as Record<string, unknown>,
+  );
+
   return (
     <LabAssistant
       catalogId={catalog.id}
       orgId={catalog.org_id ?? null}
       shopName={catalog.name}
       slug={slug}
+      categoriesWithItems={categoriesWithItems}
+      currencySettings={currencySettings}
     />
   );
 }
