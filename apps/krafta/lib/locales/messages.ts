@@ -171,6 +171,7 @@ export type StorefrontMessageKey =
   | "add_to_cart.label_with_price"
   | "add_to_cart.added"
   | "add_to_cart.view"
+  | "add_to_cart.choose_options"
   | "add_to_cart.adding"
   // Gating message on the item-detail bottom CTA when required mods
   // aren't met yet. `{count}` is the number of unfilled required lists.
@@ -349,6 +350,7 @@ const EN: MessageTable = {
   "add_to_cart.label_with_price": "Add  •  {price}",
   "add_to_cart.added": "Added {name}",
   "add_to_cart.view": "View cart",
+  "add_to_cart.choose_options": "Choose options",
   "add_to_cart.adding": "Adding…",
   "add_to_cart.gated_required_one": "Make 1 required selection",
   "add_to_cart.gated_required_many": "Make {count} required selections",
@@ -512,6 +514,7 @@ const RU: MessageTable = {
   "add_to_cart.label_with_price": "В корзину  •  {price}",
   "add_to_cart.added": "Добавлено: {name}",
   "add_to_cart.view": "Перейти в корзину",
+  "add_to_cart.choose_options": "Выбрать опции",
   "add_to_cart.adding": "Добавляем…",
   "add_to_cart.gated_required_one": "Сделайте 1 обязательный выбор",
   "add_to_cart.gated_required_many": "Сделайте {count} обязательных выборов",
@@ -677,6 +680,7 @@ const UZ_LATN: MessageTable = {
   "add_to_cart.label_with_price": "Savatchaga  •  {price}",
   "add_to_cart.added": "Qo‘shildi: {name}",
   "add_to_cart.view": "Savatchaga o‘tish",
+  "add_to_cart.choose_options": "Tanlash",
   "add_to_cart.adding": "Qo‘shilmoqda…",
   "add_to_cart.gated_required_one": "1 ta majburiy tanlovni bajaring",
   "add_to_cart.gated_required_many": "{count} ta majburiy tanlovni bajaring",

@@ -2,7 +2,16 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Sparkles, ArrowUp, X, Check, Plus, Minus, Trash2 } from "lucide-react";
+import {
+  Sparkles,
+  ArrowUp,
+  X,
+  Check,
+  Plus,
+  Minus,
+  Trash2,
+  ShoppingBag,
+} from "lucide-react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -32,7 +41,6 @@ import {
 } from "@/lib/locales/messages";
 import { useItemSheet } from "@/components/catalogs/items/item-detail-controller";
 import { PricingBreakdown } from "@/components/catalogs/cart/pricing-breakdown";
-import { ItemWidget } from "@/components/catalogs/assistant/item-widget";
 import { CheckoutWidget } from "@/components/catalogs/assistant/checkout-widget";
 import { useOptionalCart } from "@/components/catalogs/cart/cart-provider";
 
@@ -62,9 +70,11 @@ type ClientToolCall = { toolCallId: string; toolName: string; input?: unknown };
 type ClientToolDeps = {
   cart: ReturnType<typeof useOptionalCart>;
   itemById: Map<string, { item: PublicItem; categorySlug: string | null }>;
-  openItem: (slug: string, categorySlug?: string | null) => void;
-  /** Open the in-assistant item configurator (NOT the external sheet). */
-  openItemWidget: (item: PublicItem) => void;
+  /** Open the ORIGINAL full item-detail sheet (closes the assistant; it
+   *  reopens when the sheet closes — see handleItemOpen). */
+  openItemSheet: (item: PublicItem, categorySlug: string | null) => void;
+  /** Open the inline cart panel. */
+  openCart: () => void;
   /** Open the inline guided checkout. */
   startCheckout: () => void;
   onClose: () => void;
@@ -97,17 +107,18 @@ async function runClientTool(call: ClientToolCall, deps: ClientToolDeps | null) 
       };
       const resolved = itemId ? deps.itemById.get(itemId) : undefined;
       if (!resolved) return add({ ok: false, reason: "not_found" });
-      const { item } = resolved;
+      const { item, categorySlug } = resolved;
       if (!deps.cart) {
         return add({ ok: false, reason: "cart_unavailable" });
       }
-      // Complex = needs choices (modifiers or >1 variation) → open the
-      // in-assistant configurator so the shopper picks; never guess options.
+      // Complex = needs choices (modifiers or >1 variation) → open the full
+      // item-detail sheet so the shopper picks; never guess options. Simple
+      // items add straight (below).
       const complex =
         (item.modifier_lists?.length ?? 0) > 0 ||
         (item.variations?.length ?? 0) > 1;
       if (complex) {
-        deps.openItemWidget(item);
+        deps.openItemSheet(item, categorySlug);
         return add({
           ok: false,
           reason: "needs_options",
@@ -132,6 +143,7 @@ async function runClientTool(call: ClientToolCall, deps: ClientToolDeps | null) 
     }
 
     if (call.toolName === "viewCart") {
+      deps.openCart();
       const summary = deps.cart?.summary;
       if (!summary)
         return add({
@@ -157,7 +169,7 @@ async function runClientTool(call: ClientToolCall, deps: ClientToolDeps | null) 
       const { itemId } = (call.input ?? {}) as { itemId?: string };
       const resolved = itemId ? deps.itemById.get(itemId) : undefined;
       if (!resolved) return add({ ok: false, reason: "not_found" });
-      deps.openItemWidget(resolved.item);
+      deps.openItemSheet(resolved.item, resolved.categorySlug);
       return add({ ok: true, opened: deps.displayName(resolved.item) });
     }
 
@@ -181,7 +193,7 @@ export function StorefrontAssistant({
   open = false,
   onOpenChange,
 }: StorefrontAssistantProps) {
-  const { openItem } = useItemSheet();
+  const itemSheet = useItemSheet();
   const cart = useOptionalCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
   // Localized widget chrome — follows the storefront's active locale, falling
@@ -201,9 +213,24 @@ export function StorefrontAssistant({
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // In-assistant item configurator + checkout overlays.
-  const [detailItem, setDetailItem] = React.useState<PublicItem | null>(null);
+  // Inline cart + checkout panels.
+  const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutOpen, setCheckoutOpen] = React.useState(false);
+
+  // Reopen the assistant after the (original) item-detail sheet closes, so
+  // tapping a configurable item → sheet → close lands the shopper back in the
+  // conversation. The dock keeps this component mounted, so the refs persist
+  // across the assistant's own open/close.
+  const reopenAfterSheetRef = React.useRef(false);
+  const prevSheetOpenRef = React.useRef(false);
+  React.useEffect(() => {
+    const was = prevSheetOpenRef.current;
+    prevSheetOpenRef.current = itemSheet.isOpen;
+    if (was && !itemSheet.isOpen && reopenAfterSheetRef.current) {
+      reopenAfterSheetRef.current = false;
+      onOpenChange?.(true);
+    }
+  }, [itemSheet.isOpen, onOpenChange]);
 
   const transport = React.useMemo(
     () =>
@@ -266,8 +293,8 @@ export function StorefrontAssistant({
   toolDepsRef.current = {
     cart,
     itemById,
-    openItem,
-    openItemWidget: (item) => setDetailItem(item),
+    openItemSheet: (item, categorySlug) => handleItemOpen(item, categorySlug),
+    openCart: () => setCartOpen(true),
     startCheckout: () => setCheckoutOpen(true),
     onClose: () => onOpenChange?.(false),
     displayName: (item) => localizedName(item) || item.name,
@@ -301,7 +328,7 @@ export function StorefrontAssistant({
   React.useEffect(() => {
     if (!open) {
       setInput("");
-      setDetailItem(null);
+      setCartOpen(false);
       setCheckoutOpen(false);
     }
   }, [open]);
@@ -311,7 +338,7 @@ export function StorefrontAssistant({
     if (!open) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, open, busy, detailItem, checkoutOpen]);
+  }, [messages, open, busy, cartOpen, checkoutOpen]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -329,10 +356,17 @@ export function StorefrontAssistant({
     [busy, sendMessage],
   );
 
-  // Open the item in the in-assistant configurator (no external sheet).
-  const handleItemOpen = React.useCallback((item: PublicItem) => {
-    setDetailItem(item);
-  }, []);
+  // Open the ORIGINAL full item-detail sheet. Close the assistant so the sheet
+  // gets the full screen; the effect above reopens the assistant when the
+  // sheet closes, for a seamless return to the conversation.
+  const handleItemOpen = React.useCallback(
+    (item: PublicItem, categorySlug: string | null) => {
+      reopenAfterSheetRef.current = true;
+      onOpenChange?.(false);
+      itemSheet.openItem(item.slug ?? item.id, categorySlug);
+    },
+    [itemSheet, onOpenChange],
+  );
 
   // Simple = no modifiers and ≤1 variation → safe to one-tap add/step from the
   // assistant. Complex items open the item sheet to pick options.
@@ -495,16 +529,17 @@ export function StorefrontAssistant({
         <div className="mt-3 space-y-2">
           <button
             type="button"
-            onClick={() => setCheckoutOpen(true)}
+            onClick={() => {
+              setCartOpen(false);
+              setCheckoutOpen(true);
+            }}
             className="w-full rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
           >
             {t("checkout.place_order")}
           </button>
           <button
             type="button"
-            onClick={() => {
-              onOpenChange?.(false);
-            }}
+            onClick={() => setCartOpen(false)}
             className="w-full rounded-full border border-border px-4 py-2.5 text-sm font-medium transition hover:border-foreground/30"
           >
             {t("cart.keep_shopping")}
@@ -523,77 +558,98 @@ export function StorefrontAssistant({
     if (cards.length === 0) return null;
 
     return (
-      <div className="-mx-1 mt-2 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
-        {cards.map(({ r, resolved }) => {
-          const item = resolved!.item;
-          const imageUrl = getItemImageUrl(item);
-          const name = localizedName(item) || item.name;
-          const line = lineForItem(item.id);
-          return (
-            <div
-              key={`${r.entityId}`}
-              className="flex w-36 shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-2"
-            >
-              <button
-                type="button"
-                onClick={() => handleItemOpen(item)}
-                className="text-left"
+      <div className="mt-2 space-y-2">
+        <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
+          {cards.map(({ r, resolved }) => {
+            const item = resolved!.item;
+            const categorySlug = resolved!.categorySlug;
+            const imageUrl = getItemImageUrl(item);
+            const name = localizedName(item) || item.name;
+            const line = lineForItem(item.id);
+            const simple = isSimpleItem(item);
+            // Tapping the card adds simple items straight; complex items open
+            // the original full item-detail sheet to choose options.
+            const onItemClick = () =>
+              simple ? addSimple(item) : handleItemOpen(item, categorySlug);
+            return (
+              <div
+                key={`${r.entityId}`}
+                className="flex w-36 shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-2"
               >
-                <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
-                  {imageUrl ? (
-                    <Image
-                      src={imageUrl}
-                      alt={name}
-                      fill
-                      sizes="144px"
-                      className="object-cover"
+                <button type="button" onClick={onItemClick} className="text-left">
+                  <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
+                    {imageUrl ? (
+                      <Image
+                        src={imageUrl}
+                        alt={name}
+                        fill
+                        sizes="144px"
+                        className="object-cover"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="mt-2 min-w-0">
+                    <div className="line-clamp-2 text-xs font-semibold leading-snug">
+                      {name}
+                    </div>
+                    <div className="mt-1 font-mono text-xs font-semibold tabular-nums">
+                      {formatPriceCents(item.price_cents, currency)}
+                    </div>
+                  </div>
+                </button>
+                <div className="mt-auto pt-1">
+                  {line && simple ? (
+                    <Stepper
+                      qty={line.quantity}
+                      decIcon={
+                        line.quantity <= 1 ? (
+                          <Trash2 className="size-3.5" />
+                        ) : undefined
+                      }
+                      onDec={() =>
+                        line.quantity <= 1
+                          ? void cart?.removeItem(line.id)
+                          : cart?.bumpQuantity(line.id, -1)
+                      }
+                      onInc={() => cart?.bumpQuantity(line.id, 1)}
                     />
-                  ) : null}
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!cart}
+                      onClick={onItemClick}
+                      className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-foreground bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                    >
+                      {simple ? (
+                        <>
+                          <Plus className="size-3.5" />
+                          {t("add_to_cart.label")}
+                        </>
+                      ) : (
+                        t("add_to_cart.choose_options")
+                      )}
+                    </button>
+                  )}
                 </div>
-                <div className="mt-2 min-w-0">
-                  <div className="line-clamp-2 text-xs font-semibold leading-snug">
-                    {name}
-                  </div>
-                  <div className="mt-1 font-mono text-xs font-semibold tabular-nums">
-                    {formatPriceCents(item.price_cents, currencySettings)}
-                  </div>
-                </div>
-              </button>
-              <div className="mt-auto pt-1">
-                {line && isSimpleItem(item) ? (
-                  <Stepper
-                    qty={line.quantity}
-                    decIcon={
-                      line.quantity <= 1 ? (
-                        <Trash2 className="size-3.5" />
-                      ) : undefined
-                    }
-                    onDec={() =>
-                      line.quantity <= 1
-                        ? void cart?.removeItem(line.id)
-                        : cart?.bumpQuantity(line.id, -1)
-                    }
-                    onInc={() => cart?.bumpQuantity(line.id, 1)}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    disabled={!cart}
-                    onClick={() =>
-                      isSimpleItem(item)
-                        ? addSimple(item)
-                        : handleItemOpen(item)
-                    }
-                    className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-foreground bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
-                  >
-                    <Plus className="size-3.5" />
-                    Add
-                  </button>
-                )}
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        {cart && cart.itemCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:border-foreground/30"
+          >
+            <ShoppingBag className="size-4" />
+            {t("add_to_cart.view")}
+            <span className="text-muted-foreground">·</span>
+            <span className="font-mono tabular-nums">
+              {formatPriceCents(cart.summary.subtotalCents, currency)}
+            </span>
+          </button>
+        ) : null}
       </div>
     );
   };
@@ -689,13 +745,13 @@ export function StorefrontAssistant({
                       p.type === "tool-searchCatalog" &&
                       p.state !== "output-available",
                   );
-                // addToCart / viewCart resolve client-side — render their result
-                // as a chip so the shopper gets instant confirmation.
+                // addToCart resolves client-side — render its result as a chip
+                // for instant confirmation. (viewCart opens the cart panel
+                // below instead of rendering inline here.)
                 const cartActions = parts
                   .filter(
                     (p) =>
-                      (p.type === "tool-addToCart" ||
-                        p.type === "tool-viewCart") &&
+                      p.type === "tool-addToCart" &&
                       p.state === "output-available",
                   )
                   .map((p) => ({
@@ -766,12 +822,7 @@ export function StorefrontAssistant({
                         }
                         return null;
                       }
-                      // viewCart → the live, editable cart (qty / remove)
-                      return (
-                        <div key={`ca-${i}`} className="w-full">
-                          {renderCart()}
-                        </div>
-                      );
+                      return null;
                     })}
                   </div>
                 );
@@ -784,17 +835,10 @@ export function StorefrontAssistant({
               </div>
             ) : null}
 
-            {/* Item configurator — inline card in the conversation. */}
-            {detailItem ? (
-              <ItemWidget
-                item={detailItem}
-                currency={currency}
-                onBack={() => setDetailItem(null)}
-                onAdded={(next) => {
-                  setDetailItem(null);
-                  if (next === "checkout") setCheckoutOpen(true);
-                }}
-              />
+            {/* Cart — inline panel, opened by the View-cart button or the
+                viewCart tool. Hidden while checkout is open. */}
+            {cartOpen && !checkoutOpen && cart ? (
+              <div className="w-full">{renderCart()}</div>
             ) : null}
 
             {/* Guided checkout — inline card in the conversation. */}

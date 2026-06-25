@@ -46,14 +46,14 @@ export function createSearchCatalogTool(scope: {
         .min(1)
         .max(20)
         .optional()
-        .describe("Maximum number of results to return (default 8)."),
+        .describe("Maximum number of results to return (default 10)."),
     }),
     execute: async ({ query, limit }) => {
       const rows = await searchCatalog({
         query,
         catalogId: scope.catalogId,
         orgId: scope.orgId ?? null,
-        limit: limit ?? 8,
+        limit: limit ?? 10,
       });
 
       // Compact, LLM-friendly projection. `entityId` is the stable logical
