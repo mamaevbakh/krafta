@@ -31,6 +31,7 @@ import {
   normalizeCurrencySettings,
   type CurrencySettings,
 } from "@/lib/catalogs/settings/currency";
+import type { DeliverySettings } from "@/lib/catalogs/settings/delivery";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
@@ -49,6 +50,7 @@ export type StorefrontAssistantProps = {
   orgId?: string | null;
   categoriesWithItems: PublicCategoryWithItems[];
   currencySettings?: CurrencySettings;
+  deliverySettings?: DeliverySettings;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 };
@@ -190,6 +192,7 @@ export function StorefrontAssistant({
   orgId,
   categoriesWithItems,
   currencySettings,
+  deliverySettings,
   open = false,
   onOpenChange,
 }: StorefrontAssistantProps) {
@@ -895,6 +898,7 @@ export function StorefrontAssistant({
             {checkoutOpen && cart ? (
               <CheckoutWidget
                 currency={currency}
+                deliverySettings={deliverySettings}
                 onClose={() => setCheckoutOpen(false)}
                 onEditCart={() => {
                   setCheckoutOpen(false);

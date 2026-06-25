@@ -325,6 +325,7 @@ export async function CatalogLayout({
           orgId={catalog.org_id ?? null}
           categoriesWithItems={categoriesWithItems}
           currencySettings={resolvedCurrency}
+          deliverySettings={delivery}
           enableAssistant={behavior.enableAssistant}
         />
         {/* Arms Telegram's closing confirmation while the cart has items, so a

@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 
 import { ProgressiveBlur } from "@/components/ui/progressive-blur";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import type { DeliverySettings } from "@/lib/catalogs/settings/delivery";
 import type { PublicCategoryWithItems } from "@/lib/catalogs/types";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
@@ -19,6 +20,7 @@ type StorefrontDockProps = {
   orgId?: string | null;
   categoriesWithItems: PublicCategoryWithItems[];
   currencySettings?: CurrencySettings;
+  deliverySettings?: DeliverySettings;
   /** When true, the search slot opens the conversational assistant instead of
    *  the classic search dialog (Settings → Catalog → AI shopping assistant). */
   enableAssistant?: boolean;
@@ -58,6 +60,7 @@ export function StorefrontDock({
   orgId,
   categoriesWithItems,
   currencySettings,
+  deliverySettings,
   enableAssistant = false,
 }: StorefrontDockProps) {
   const [searchOpen, setSearchOpen] = React.useState(false);
@@ -167,6 +170,7 @@ export function StorefrontDock({
           orgId={orgId}
           categoriesWithItems={categoriesWithItems}
           currencySettings={currencySettings}
+          deliverySettings={deliverySettings}
           open={assistantOpen}
           onOpenChange={setAssistantOpen}
         />

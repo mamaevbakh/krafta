@@ -4,6 +4,10 @@ import * as React from "react";
 import { Check, MapPin, Plus, ChevronLeft } from "lucide-react";
 
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import {
+  type DeliverySettings,
+  defaultDeliverySettings,
+} from "@/lib/catalogs/settings/delivery";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { computePricing } from "@/lib/cart/pricing";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
@@ -60,10 +64,12 @@ const MODE_KEY: Record<CartFulfillmentMode, StorefrontMessageKey> = {
  */
 export function CheckoutWidget({
   currency,
+  deliverySettings = defaultDeliverySettings,
   onClose,
   onEditCart,
 }: {
   currency: CurrencySettings;
+  deliverySettings?: DeliverySettings;
   onClose: () => void;
   onEditCart: () => void;
 }) {
@@ -170,6 +176,10 @@ export function CheckoutWidget({
       : null;
 
   const subtotalCents = cart?.summary.subtotalCents ?? 0;
+  // Flat delivery fee the server charges for delivery orders — mirror it so the
+  // assistant's review + receipt totals match what's actually billed.
+  const feeCents = Math.max(0, Math.round(deliverySettings.feeCents));
+  const deliveryFeeCents = mode === "delivery" ? feeCents : 0;
   const tipPresets = [0, 0.05, 0.1].map((p) => Math.round(subtotalCents * p));
   const phoneValid = (v: string) => /\+?\d[\d\s()-]{6,}/.test(v.trim());
   const scheduleOk =
@@ -320,7 +330,8 @@ export function CheckoutWidget({
         delivery: "placed.pay.delivery",
       } as const
     )[placed.mode];
-    const totalCents = placed.subtotalCents + placed.tipCents;
+    const confDeliveryFee = placed.mode === "delivery" ? feeCents : 0;
+    const totalCents = placed.subtotalCents + confDeliveryFee + placed.tipCents;
     return (
       <div className="mt-2 w-full max-w-md space-y-3">
         <Card>
@@ -379,6 +390,18 @@ export function CheckoutWidget({
                   {formatPriceCents(placed.subtotalCents, currency)}
                 </span>
               </div>
+              {placed.mode === "delivery" ? (
+                <div className="flex items-baseline justify-between">
+                  <span className="text-muted-foreground">
+                    {t("checkout.mode.delivery")}
+                  </span>
+                  <span className="font-mono tabular-nums">
+                    {confDeliveryFee > 0
+                      ? formatPriceCents(confDeliveryFee, currency)
+                      : t("cart.delivery_free")}
+                  </span>
+                </div>
+              ) : null}
               {placed.tipCents > 0 ? (
                 <div className="flex items-baseline justify-between">
                   <span className="text-muted-foreground">{t("cart.tip")}</span>
@@ -432,6 +455,7 @@ export function CheckoutWidget({
       subtotalCents,
       taxes: cart?.taxes ?? [],
       tipCents: cart?.tipCents ?? 0,
+      deliveryFeeCents,
     }).totalCents,
     currency,
   );
@@ -657,6 +681,8 @@ export function CheckoutWidget({
                 subtotalCents={subtotalCents}
                 taxes={cart?.taxes ?? []}
                 tipCents={cart?.tipCents ?? 0}
+                deliveryFeeCents={deliveryFeeCents}
+                deliveryActive={mode === "delivery"}
                 currencySettings={currency}
                 compact
               />
