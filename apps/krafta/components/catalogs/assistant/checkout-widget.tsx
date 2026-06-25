@@ -17,6 +17,10 @@ import {
   type CartFulfillmentMode,
 } from "@/components/catalogs/cart/cart-provider";
 import { PricingBreakdown } from "@/components/catalogs/cart/pricing-breakdown";
+import {
+  AddressMapPicker,
+  type PickedAddress,
+} from "@/components/catalogs/cart/address-map-picker";
 
 type Step = "mode" | "table" | "address" | "contact" | "schedule" | "review";
 
@@ -82,6 +86,12 @@ export function CheckoutWidget({
     value: (typeof fields)[K],
   ) => setFields((f) => ({ ...f, [key]: value }));
   const [orderError, setOrderError] = React.useState<string | null>(null);
+  // Delivery address captured from the map (real coords — required for a
+  // delivery order; no 0,0 fallback per the locked decision).
+  const [pickedAddress, setPickedAddress] = React.useState<PickedAddress | null>(
+    null,
+  );
+  const [addrResolving, setAddrResolving] = React.useState(false);
 
   const steps: Step[] = React.useMemo(() => {
     if (mode === null) return ["mode"];
@@ -105,7 +115,8 @@ export function CheckoutWidget({
       case "table":
         return fields.tableLabel.trim().length > 0;
       case "address":
-        return false; // map widget arrives in Phase 4; delivery can't complete yet
+        // Require a real pinned coordinate (the map onChange supplies it).
+        return !!pickedAddress && !addrResolving;
       case "contact":
         if (mode === "delivery")
           return fields.name.trim().length > 0 && phoneValid(fields.phone);
@@ -144,12 +155,12 @@ export function CheckoutWidget({
     return {
       mode: "delivery" as const,
       fields: {
-        address: fields.address.trim(),
-        latitude: null,
-        longitude: null,
-        district: null,
-        street: null,
-        building: null,
+        address: pickedAddress?.freeform ?? "",
+        latitude: pickedAddress?.latitude ?? null,
+        longitude: pickedAddress?.longitude ?? null,
+        district: pickedAddress?.district ?? null,
+        street: pickedAddress?.street ?? null,
+        building: pickedAddress?.building ?? null,
         recipientName: fields.name.trim(),
         recipientPhone: fields.phone.trim(),
         scheduledFor:
@@ -288,11 +299,29 @@ export function CheckoutWidget({
           ) : null}
 
           {step === "address" ? (
-            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-              {t("address.map_hint")}
-              <p className="mt-2 text-xs">
-                {/* Phase 4 swaps in the Yandex map widget + “use my location”. */}
-                Map address picker — coming in the next step.
+            <div className="space-y-2">
+              {/* Inline Yandex map — drag to pin the entrance or use the
+                  locate button. onChange supplies real coords; delivery can't
+                  continue without them (no 0,0 fallback). */}
+              <div className="h-64 w-full overflow-hidden rounded-xl border border-border">
+                <AddressMapPicker
+                  onChange={setPickedAddress}
+                  onResolvingChange={setAddrResolving}
+                  searchPlaceholder={t("address.search")}
+                />
+              </div>
+              <p className="text-sm">
+                {addrResolving ? (
+                  <span className="text-muted-foreground">
+                    {t("address.resolving")}
+                  </span>
+                ) : pickedAddress ? (
+                  pickedAddress.freeform
+                ) : (
+                  <span className="text-muted-foreground">
+                    {t("address.map_hint")}
+                  </span>
+                )}
               </p>
             </div>
           ) : null}
