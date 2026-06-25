@@ -575,7 +575,7 @@ export function StorefrontAssistant({
     return (
       <div className="mt-2 space-y-2">
         <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
-          {cards.map(({ r, resolved }, i) => {
+          {cards.map(({ r, resolved }) => {
             const item = resolved!.item;
             const categorySlug = resolved!.categorySlug;
             const imageUrl = getItemImageUrl(item);
@@ -605,11 +605,6 @@ export function StorefrontAssistant({
                     ) : null}
                   </div>
                   <div className="mt-2 space-y-1 px-1">
-                    {cards.length > 1 ? (
-                      <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                        {i + 1} / {cards.length}
-                      </div>
-                    ) : null}
                     <div className="line-clamp-1 text-sm font-semibold leading-snug">
                       {name}
                     </div>
