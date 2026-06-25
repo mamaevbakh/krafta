@@ -9,6 +9,7 @@ import { DialogTitle } from "@radix-ui/react-dialog";
 
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ProgressiveBlur } from "@/components/ui/progressive-blur";
 import { cn } from "@/lib/utils";
 import type {
   PublicCategoryWithItems,
@@ -149,7 +150,7 @@ export function StorefrontAssistant({
     if (cards.length === 0) return null;
 
     return (
-      <div className="mt-2 space-y-2">
+      <div className="-mx-1 mt-2 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
         {cards.map(({ r, resolved }) => {
           const item = resolved!.item;
           const imageUrl = getItemImageUrl(item);
@@ -159,29 +160,26 @@ export function StorefrontAssistant({
               key={`${r.entityId}`}
               type="button"
               onClick={() => handleItemOpen(item, resolved!.categorySlug)}
-              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition hover:border-foreground/30"
+              className="flex w-36 shrink-0 snap-start flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition hover:border-foreground/30"
             >
-              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
+              <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
                 {imageUrl ? (
                   <Image
                     src={imageUrl}
                     alt={name}
                     fill
-                    sizes="48px"
+                    sizes="144px"
                     className="object-cover"
                   />
                 ) : null}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">{name}</div>
-                {r.category ? (
-                  <div className="truncate text-xs text-muted-foreground">
-                    {r.category}
-                  </div>
-                ) : null}
-              </div>
-              <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-                {formatPriceCents(item.price_cents, currencySettings)}
+              <div className="min-w-0">
+                <div className="line-clamp-2 text-xs font-semibold leading-snug">
+                  {name}
+                </div>
+                <div className="mt-1 font-mono text-xs font-semibold tabular-nums">
+                  {formatPriceCents(item.price_cents, currencySettings)}
+                </div>
               </div>
             </button>
           );
@@ -204,7 +202,7 @@ export function StorefrontAssistant({
       >
         <DialogTitle className="sr-only">Shopping assistant</DialogTitle>
 
-        <div className="mx-auto flex h-full w-full max-w-2xl min-h-0 flex-col">
+        <div className="relative mx-auto flex h-full w-full max-w-2xl min-h-0 flex-col">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex items-center gap-2">
@@ -227,7 +225,7 @@ export function StorefrontAssistant({
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4 sm:px-6"
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-28 sm:px-6"
           >
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
@@ -308,9 +306,7 @@ export function StorefrontAssistant({
                       </div>
                     ) : null}
                     {toolResults.length > 0 ? (
-                      <div className="w-full max-w-[85%]">
-                        {renderResultCards(toolResults)}
-                      </div>
+                      <div className="w-full">{renderResultCards(toolResults)}</div>
                     ) : null}
                   </div>
                 );
@@ -324,8 +320,18 @@ export function StorefrontAssistant({
             ) : null}
           </div>
 
-          {/* Composer */}
-          <div className="border-t border-border px-4 py-3 sm:px-6">
+          {/* iOS-style progressive blur — fades messages as they reach the
+              composer, replacing the hard top border. */}
+          <ProgressiveBlur
+            position="bottom"
+            height="120px"
+            blurAmount="2px"
+            className="z-40"
+            backgroundColor="oklch(from var(--background) l c h / 0.6)"
+          />
+
+          {/* Composer — floats over the messages, borderless. */}
+          <div className="absolute inset-x-0 bottom-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 sm:px-6">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
