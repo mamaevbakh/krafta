@@ -57,6 +57,7 @@ export type StorefrontMessageKey =
   | "cart.empty.hint"
   | "cart.empty.cta"
   | "cart.continue"
+  | "cart.keep_shopping"
   | "cart.subtotal"
   | "cart.total"
   | "cart.tax"
@@ -239,6 +240,7 @@ const EN: MessageTable = {
   "cart.empty.hint": "Add items from the menu to get started.",
   "cart.empty.cta": "Browse the menu",
   "cart.continue": "Continue",
+  "cart.keep_shopping": "Keep shopping",
   "cart.subtotal": "Subtotal",
   "cart.total": "Total",
   "cart.tax": "Tax",
@@ -400,6 +402,7 @@ const RU: MessageTable = {
   "cart.empty.hint": "Добавьте позиции из меню, чтобы начать.",
   "cart.empty.cta": "В меню",
   "cart.continue": "Далее",
+  "cart.keep_shopping": "Продолжить покупки",
   "cart.subtotal": "Подытог",
   "cart.total": "Итого",
   "cart.tax": "Налог",
@@ -563,6 +566,7 @@ const UZ_LATN: MessageTable = {
   "cart.empty.hint": "Boshlash uchun menyudan taom qo‘shing.",
   "cart.empty.cta": "Menyuga o‘tish",
   "cart.continue": "Davom etish",
+  "cart.keep_shopping": "Xaridni davom ettirish",
   "cart.subtotal": "Oraliq jami",
   "cart.total": "Jami",
   "cart.tax": "Soliq",

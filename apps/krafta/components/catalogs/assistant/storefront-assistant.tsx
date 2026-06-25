@@ -18,13 +18,24 @@ import type {
   PublicCategoryWithItems,
   PublicItem,
 } from "@/lib/catalogs/types";
-import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import {
+  normalizeCurrencySettings,
+  type CurrencySettings,
+} from "@/lib/catalogs/settings/currency";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import {
+  getStorefrontMessage,
+  type StorefrontMessageKey,
+} from "@/lib/locales/messages";
 import { useItemSheet } from "@/components/catalogs/items/item-detail-controller";
-import { useOptionalCart } from "@/components/catalogs/cart/cart-provider";
+import { PricingBreakdown } from "@/components/catalogs/cart/pricing-breakdown";
+import {
+  useOptionalCart,
+  type CartFulfillmentMode,
+} from "@/components/catalogs/cart/cart-provider";
 
 export type StorefrontAssistantProps = {
   catalogId: string;
@@ -161,9 +172,34 @@ export function StorefrontAssistant({
   const { openItem } = useItemSheet();
   const cart = useOptionalCart();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
+  // Localized widget chrome — follows the storefront's active locale, falling
+  // back to the catalog default then English. The model's prose replies still
+  // follow the shopper's message language (handled server-side).
+  const t = React.useCallback(
+    (key: StorefrontMessageKey) =>
+      getStorefrontMessage(key, { activeLocale, defaultLocale }),
+    [activeLocale, defaultLocale],
+  );
+  // Concrete currency for the shared PricingBreakdown (which requires it).
+  const currency = React.useMemo(
+    () => currencySettings ?? normalizeCurrencySettings({}),
+    [currencySettings],
+  );
   const [input, setInput] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // In-assistant checkout state.
+  const [checkoutOpen, setCheckoutOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<CartFulfillmentMode | null>(null);
+  const [coFields, setCoFields] = React.useState({
+    tableLabel: "",
+    name: "",
+    phone: "",
+    address: "",
+  });
+  const [placing, setPlacing] = React.useState(false);
+  const [orderError, setOrderError] = React.useState<string | null>(null);
 
   const transport = React.useMemo(
     () =>
@@ -259,6 +295,8 @@ export function StorefrontAssistant({
   React.useEffect(() => {
     if (!open) {
       setInput("");
+      setCheckoutOpen(false);
+      setOrderError(null);
     }
   }, [open]);
 
@@ -351,51 +389,198 @@ export function StorefrontAssistant({
     </div>
   );
 
-  // Live, editable cart — reads cart.summary so quantity/remove reflect
-  // instantly and are reversible.
+  // Build the muted "options" line for a cart row: variation + selected
+  // modifiers (text-mode shows its value; qty>1 shows ×N).
+  const cartOptionLine = (line: {
+    variation_name: string | null;
+    modifiers: Array<{
+      name: string;
+      quantity: number;
+      text_value: string | null;
+    }>;
+  }) =>
+    [
+      // Drop the implicit single-variation label ("Default") — it's noise.
+      line.variation_name &&
+      line.variation_name.trim().toLowerCase() !== "default"
+        ? line.variation_name
+        : null,
+      ...line.modifiers.map((m) =>
+        m.text_value
+          ? `${m.name}: ${m.text_value}`
+          : m.quantity > 1
+            ? `${m.name} ×${m.quantity}`
+            : m.name,
+      ),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+  // The ChatKit-style cart widget — live & editable. Thumbnail + options line
+  // + line price, with the −/qty/+ stepper on the RIGHT; then the shared
+  // price breakdown; then Оформить заказ / Keep shopping.
   const renderCart = () => {
     if (!cart || cart.summary.lineItems.length === 0) {
       return (
-        <div className="mt-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
-          Your cart is empty.
+        <div className="mt-2 w-full max-w-md rounded-2xl border border-border bg-card px-4 py-3">
+          <div className="text-sm font-medium">{t("cart.empty")}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {t("cart.empty.hint")}
+          </div>
         </div>
       );
     }
     return (
-      <div className="mt-2 w-full max-w-[90%] space-y-2 rounded-xl border border-border bg-card p-3">
-        {cart.summary.lineItems.map((l) => (
-          <div key={l.id} className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{l.name}</div>
-              {l.variation_name ? (
-                <div className="truncate text-xs text-muted-foreground">
-                  {l.variation_name}
+      <div className="mt-2 w-full max-w-md rounded-2xl border border-border bg-card p-3">
+        <div className="space-y-3">
+          {cart.summary.lineItems.map((l) => {
+            const opts = cartOptionLine(l);
+            return (
+              <div key={l.id} className="flex items-start gap-3">
+                <div className="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted">
+                  {l.image_url ? (
+                    <Image
+                      src={l.image_url}
+                      alt={l.name}
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                    />
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-            <Stepper
-              qty={l.quantity}
-              decIcon={l.quantity <= 1 ? <Trash2 className="size-3.5" /> : undefined}
-              onDec={() =>
-                l.quantity <= 1
-                  ? void cart.removeItem(l.id)
-                  : cart.bumpQuantity(l.id, -1)
-              }
-              onInc={() => cart.bumpQuantity(l.id, 1)}
-            />
-            <div className="w-16 shrink-0 text-right font-mono text-sm font-semibold tabular-nums">
-              {formatPriceCents(l.total_price_cents, currencySettings)}
-            </div>
-          </div>
-        ))}
-        <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
-          <span>Subtotal</span>
-          <span className="font-mono tabular-nums">
-            {formatPriceCents(cart.summary.subtotalCents, currencySettings)}
-          </span>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <div className="truncate text-sm font-medium">{l.name}</div>
+                  {opts ? (
+                    <div className="truncate text-xs text-muted-foreground">
+                      {opts}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <Stepper
+                    qty={l.quantity}
+                    decIcon={
+                      l.quantity <= 1 ? (
+                        <Trash2 className="size-3.5" />
+                      ) : undefined
+                    }
+                    onDec={() =>
+                      l.quantity <= 1
+                        ? void cart.removeItem(l.id)
+                        : cart.bumpQuantity(l.id, -1)
+                    }
+                    onInc={() => cart.bumpQuantity(l.id, 1)}
+                  />
+                  <div className="font-mono text-sm font-semibold tabular-nums">
+                    {formatPriceCents(l.total_price_cents, currency)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 border-t border-border pt-3">
+          <PricingBreakdown
+            subtotalCents={cart.summary.subtotalCents}
+            taxes={cart.taxes}
+            tipCents={cart.tipCents}
+            currencySettings={currency}
+          />
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <button
+            type="button"
+            onClick={() => setCheckoutOpen(true)}
+            className="w-full rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+          >
+            {t("checkout.place_order")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onOpenChange?.(false);
+            }}
+            className="w-full rounded-full border border-border px-4 py-2.5 text-sm font-medium transition hover:border-foreground/30"
+          >
+            {t("cart.keep_shopping")}
+          </button>
         </div>
       </div>
     );
+  };
+
+  // Default the checkout mode to the venue's first available mode.
+  React.useEffect(() => {
+    if (checkoutOpen && !mode && cart?.modes.length) setMode(cart.modes[0]);
+  }, [checkoutOpen, mode, cart]);
+
+  const placeOrder = React.useCallback(async () => {
+    if (!cart || !mode) return;
+    setOrderError(null);
+    setPlacing(true);
+    try {
+      const input2 =
+        mode === "dine_in"
+          ? {
+              mode,
+              fields: { tableLabel: coFields.tableLabel.trim() },
+            }
+          : mode === "pickup"
+            ? {
+                mode,
+                fields: {
+                  scheduleType: "asap" as const,
+                  pickupAt: null,
+                  recipientName: coFields.name.trim() || null,
+                  recipientPhone: coFields.phone.trim() || null,
+                  note: null,
+                },
+              }
+            : {
+                mode,
+                fields: {
+                  address: coFields.address.trim(),
+                  latitude: null,
+                  longitude: null,
+                  district: null,
+                  street: null,
+                  building: null,
+                  recipientName: coFields.name.trim(),
+                  recipientPhone: coFields.phone.trim(),
+                  scheduledFor: null,
+                  note: null,
+                },
+              };
+      const res = await cart.placeOrder(
+        input2 as Parameters<typeof cart.placeOrder>[0],
+      );
+      if (!res.ok) setOrderError(res.error);
+    } catch (e) {
+      setOrderError(
+        e instanceof Error ? e.message : "Could not place the order.",
+      );
+    } finally {
+      setPlacing(false);
+    }
+  }, [cart, mode, coFields]);
+
+  const checkoutValid =
+    mode === "dine_in"
+      ? coFields.tableLabel.trim().length > 0
+      : mode === "pickup"
+        ? coFields.name.trim().length > 0 && coFields.phone.trim().length > 0
+        : mode === "delivery"
+          ? coFields.address.trim().length > 0 &&
+            coFields.name.trim().length > 0 &&
+            coFields.phone.trim().length > 0
+          : false;
+
+  const MODE_LABEL: Record<CartFulfillmentMode, string> = {
+    dine_in: "Dine-in",
+    pickup: "Pickup",
+    delivery: "Delivery",
   };
 
   const renderResultCards = (results: ToolResultItem[]) => {
@@ -496,7 +681,7 @@ export function StorefrontAssistant({
       >
         <DialogTitle className="sr-only">Shopping assistant</DialogTitle>
 
-        <div className="relative mx-auto flex h-full w-full max-w-2xl min-h-0 flex-col">
+        <div className="relative mx-auto flex h-full w-full min-w-0 max-w-2xl min-h-0 flex-col">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex items-center gap-2">
@@ -519,7 +704,7 @@ export function StorefrontAssistant({
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-28 sm:px-6"
+            className="min-h-0 w-full min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-4 pb-28 sm:px-6"
           >
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
@@ -591,7 +776,7 @@ export function StorefrontAssistant({
                   <div
                     key={message.id}
                     className={cn(
-                      "flex flex-col",
+                      "flex w-full min-w-0 flex-col",
                       message.role === "user" ? "items-end" : "items-start",
                     )}
                   >
@@ -716,6 +901,162 @@ export function StorefrontAssistant({
               </Button>
             </form>
           </div>
+
+          {/* Checkout — full in-assistant ordering overlay. */}
+          {checkoutOpen && cart ? (
+            <div className="absolute inset-0 z-[60] flex flex-col bg-background">
+              <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => setCheckoutOpen(false)}
+                  className="text-sm text-muted-foreground transition hover:text-foreground"
+                >
+                  ← Back
+                </button>
+                <span className="text-sm font-semibold">Checkout</span>
+                <span className="w-12" />
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 sm:px-6">
+                {cart.placedOrder ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+                    <div className="grid size-14 place-items-center rounded-full bg-foreground text-background">
+                      <Check className="size-7" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-lg font-semibold">Order placed!</p>
+                      <p className="text-sm text-muted-foreground">
+                        Thanks — your order is in. The shop has been notified.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        cart.resetForNewCart();
+                        setCoFields({
+                          tableLabel: "",
+                          name: "",
+                          phone: "",
+                          address: "",
+                        });
+                        setOrderError(null);
+                        setCheckoutOpen(false);
+                      }}
+                      className="rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:border-foreground/30"
+                    >
+                      Start a new order
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mx-auto max-w-md space-y-5 pt-2">
+                    {cart.modes.length > 1 ? (
+                      <div className="flex gap-2">
+                        {cart.modes.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setMode(m)}
+                            className={cn(
+                              "flex-1 rounded-full border px-3 py-2 text-sm font-medium transition",
+                              mode === m
+                                ? "border-foreground bg-foreground text-background"
+                                : "border-border hover:border-foreground/30",
+                            )}
+                          >
+                            {MODE_LABEL[m]}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {mode === "dine_in" ? (
+                      <label className="block space-y-1.5">
+                        <span className="text-sm font-medium">Table number</span>
+                        <input
+                          value={coFields.tableLabel}
+                          onChange={(e) =>
+                            setCoFields((f) => ({
+                              ...f,
+                              tableLabel: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. 12"
+                          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                        />
+                      </label>
+                    ) : (
+                      <>
+                        {mode === "delivery" ? (
+                          <label className="block space-y-1.5">
+                            <span className="text-sm font-medium">
+                              Delivery address
+                            </span>
+                            <input
+                              value={coFields.address}
+                              onChange={(e) =>
+                                setCoFields((f) => ({
+                                  ...f,
+                                  address: e.target.value,
+                                }))
+                              }
+                              placeholder="Street, building, apartment"
+                              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                            />
+                          </label>
+                        ) : null}
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-medium">Your name</span>
+                          <input
+                            value={coFields.name}
+                            onChange={(e) =>
+                              setCoFields((f) => ({ ...f, name: e.target.value }))
+                            }
+                            placeholder="Name"
+                            className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                          />
+                        </label>
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-medium">Phone</span>
+                          <input
+                            value={coFields.phone}
+                            inputMode="tel"
+                            onChange={(e) =>
+                              setCoFields((f) => ({
+                                ...f,
+                                phone: e.target.value,
+                              }))
+                            }
+                            placeholder="+998…"
+                            className="h-11 w-full rounded-xl border border-border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                          />
+                        </label>
+                      </>
+                    )}
+
+                    {renderCart()}
+
+                    {orderError ? (
+                      <p className="text-sm text-destructive">{orderError}</p>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      disabled={!checkoutValid || placing || cart.itemCount === 0}
+                      onClick={placeOrder}
+                      className="w-full rounded-full bg-foreground px-4 py-3 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-40"
+                    >
+                      {placing
+                        ? "Placing…"
+                        : `Place order · ${formatPriceCents(
+                            cart.summary.subtotalCents,
+                            currencySettings,
+                          )}`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
