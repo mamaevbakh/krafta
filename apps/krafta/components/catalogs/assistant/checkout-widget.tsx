@@ -396,15 +396,21 @@ export function CheckoutWidget({
                       <Label
                         key={a.id}
                         htmlFor={`addr-${a.id}`}
-                        className="flex items-center gap-3 rounded-md border p-3"
+                        className="flex items-start gap-3 rounded-md border p-3"
                       >
-                        <RadioGroupItem value={a.id} id={`addr-${a.id}`} />
-                        <MapPin className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate font-normal">
+                        <RadioGroupItem
+                          value={a.id}
+                          id={`addr-${a.id}`}
+                          className="mt-0.5"
+                        />
+                        <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 break-words font-normal">
                           {a.freeform}
                         </span>
                         {a.isDefault ? (
-                          <Badge variant="outline">{t("address.default")}</Badge>
+                          <Badge variant="outline" className="mt-0.5 shrink-0">
+                            {t("address.default")}
+                          </Badge>
                         ) : null}
                       </Label>
                     ))}
