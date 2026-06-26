@@ -230,6 +230,16 @@ export function CheckoutWidget({
           note: fields.note.trim() || null,
         },
       } as const;
+    // Delivery requires a real pinned location (locked invariant). The
+    // canContinue gate already enforces this, but never build an order with
+    // missing coords even if a stale-state path slips past it — placing a
+    // 0,0 / null-coord delivery would bypass the server's zone check.
+    if (
+      !deliveryAddr ||
+      deliveryAddr.latitude == null ||
+      deliveryAddr.longitude == null
+    )
+      return null;
     const apt = fields.apt.trim();
     const note =
       [apt ? `${t("address.field.apartment")}: ${apt}` : "", fields.note.trim()]
@@ -582,6 +592,7 @@ export function CheckoutWidget({
                 <Input
                   id="co-apt"
                   value={fields.apt}
+                  maxLength={32}
                   onChange={(e) => setField("apt", e.target.value)}
                   placeholder={t("address.field.apartment")}
                 />
@@ -591,6 +602,7 @@ export function CheckoutWidget({
                 <Textarea
                   id="co-note"
                   value={fields.note}
+                  maxLength={200}
                   onChange={(e) => setField("note", e.target.value)}
                   placeholder={t("checkout.note.placeholder")}
                 />
