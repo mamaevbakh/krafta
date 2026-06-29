@@ -1,0 +1,18 @@
+{
+  "name": "@krafta/commerce",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Typed client for the Krafta commerce engine. Generated/ejected Krafta Studio shops use this to drive catalog, cart, and checkout through a publishable key — never the internal service-role path. Server-authoritative pricing is preserved by the engine.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.9"
+  }
+}
