@@ -256,6 +256,9 @@ type BuilderPanelProps = {
   itemCardOptions: OptionConfig<CatalogLayoutSettings["itemCardVariant"]>[];
   itemDetailOptions: OptionConfig<CatalogLayoutSettings["itemDetailVariant"]>[];
   navOptions: OptionConfig<CatalogLayoutSettings["categoryNavVariant"]>[];
+  /** Tab to open on mount (e.g. "assistant" via ?tab=assistant after creating a
+   *  coded shop). Defaults to "structure". */
+  initialFocus?: BuilderFocus;
 };
 
 export function CatalogBuilderPanel({
@@ -272,6 +275,7 @@ export function CatalogBuilderPanel({
   itemCardOptions,
   itemDetailOptions,
   navOptions,
+  initialFocus,
 }: BuilderPanelProps) {
   const initialAspectInputs = useMemo(
     () => getAspectInputs(initialLayout.itemCard.aspectRatio, COMMON_ASPECT_RATIOS),
@@ -351,7 +355,9 @@ export function CatalogBuilderPanel({
   const [isUploadingHeaderBannerDark, setIsUploadingHeaderBannerDark] =
     useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [builderFocus, setBuilderFocus] = useState<BuilderFocus>("structure");
+  const [builderFocus, setBuilderFocus] = useState<BuilderFocus>(
+    initialFocus ?? "structure",
+  );
   const [lastSavedSignature, setLastSavedSignature] = useState<string | null>(null);
   const headerBannerLightInputRef = useRef<HTMLInputElement>(null);
   const headerBannerDarkInputRef = useRef<HTMLInputElement>(null);

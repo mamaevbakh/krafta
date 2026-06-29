@@ -56,12 +56,15 @@ const ITEM_DETAIL_LABELS: Record<
 
 type BuilderPageProps = {
   params: Promise<{ orgSlug: string; catalogSlug: string }>;
+  searchParams?: Promise<{ tab?: string }>;
 };
 
 export default async function CatalogBuilderPage({
   params,
+  searchParams,
 }: BuilderPageProps) {
   const { catalogSlug, orgSlug } = await params;
+  const { tab } = (await searchParams) ?? {};
   const supabase = await createClient();
   const { data: orgRecord } = await supabase
     .from("organizations")
@@ -126,6 +129,7 @@ export default async function CatalogBuilderPage({
       itemCardOptions={itemCardOptions}
       itemDetailOptions={itemDetailOptions}
       navOptions={navOptions}
+      initialFocus={tab === "assistant" ? "assistant" : undefined}
     />
   );
 }
