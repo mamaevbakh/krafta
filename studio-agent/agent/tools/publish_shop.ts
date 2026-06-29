@@ -44,6 +44,21 @@ const DEPLOY_TIMEOUT_MS = 300_000;
 const PUBLIC_ENGINE_URL =
   process.env.KRAFTA_PUBLIC_API_URL ?? "https://dev.krafta.org";
 
+// Shops live at <slug>.<apex>. The krafta-shops project owns the *.<apex>
+// wildcard, so each deployment just needs its subdomain aliased to it.
+const SHOP_APEX = process.env.KRAFTA_SHOPS_APEX ?? "krafta.org";
+
+// Coerce a shop slug into a valid DNS label (lowercase, alphanumeric + hyphens,
+// no leading/trailing hyphen, ≤63 chars).
+function toSubdomain(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63)
+    .replace(/-+$/g, "");
+}
+
 function publicApiUrl(apiUrl: string): string {
   return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(
     apiUrl,
@@ -126,8 +141,14 @@ export default defineTool({
     publishableKey: z
       .string()
       .describe("The shop's krc_pub_… publishable key from your context."),
+    subdomain: z
+      .string()
+      .optional()
+      .describe(
+        "The shop's slug from your context — the shop goes live at <slug>.krafta.org. Omit only if you don't have it; then the shop gets a temporary URL instead.",
+      ),
   }),
-  async execute({ commerceApiUrl, publishableKey }, ctx) {
+  async execute({ commerceApiUrl, publishableKey, subdomain }, ctx) {
     if (!REPO_ROOT) {
       throw new Error("could not locate the repo root to publish the shop");
     }
@@ -216,13 +237,30 @@ export default defineTool({
 
     // The deploy prints the deployment URL; take the last *.vercel.app it emits.
     const urls = out.match(/https:\/\/[a-z0-9-]+\.vercel\.app/g);
-    const url = urls ? urls[urls.length - 1] : null;
-    if (!url) {
+    const deploymentUrl = urls ? urls[urls.length - 1] : null;
+    if (!deploymentUrl) {
       throw new Error(
         `the shop deployed but no public URL was found in the output:\n${out.slice(-400)}`,
       );
     }
 
-    return { url, projectId: VERCEL_PROJECT_ID };
+    // 5. Point the shop's own subdomain at this deployment. The project owns the
+    //    *.<apex> wildcard, so the alias provisions instantly. If aliasing fails
+    //    (or we have no slug), fall back to the raw deployment URL so publish
+    //    still succeeds with a usable link.
+    const label = subdomain ? toSubdomain(subdomain) : "";
+    if (label) {
+      const aliasHost = `${label}.${SHOP_APEX}`;
+      const alias = await runVercel(
+        ["alias", "set", deploymentUrl, aliasHost, "--scope", VERCEL_SCOPE],
+        dir,
+      );
+      if (alias.code === 0) {
+        return { url: `https://${aliasHost}`, deploymentUrl, projectId: VERCEL_PROJECT_ID };
+      }
+      // Aliasing failed — surface nothing fatal; return the working deploy URL.
+    }
+
+    return { url: deploymentUrl, deploymentUrl, projectId: VERCEL_PROJECT_ID };
   },
 });

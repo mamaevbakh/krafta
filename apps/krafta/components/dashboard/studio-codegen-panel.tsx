@@ -107,10 +107,12 @@ function readLatestPreview(messages: ReadonlyArray<{ parts?: readonly unknown[] 
 export function StudioCodegenPanel({
   shopName,
   catalogId,
+  catalogSlug,
   publishableKey,
 }: {
   shopName: string;
   catalogId?: string;
+  catalogSlug?: string;
   publishableKey?: string | null;
 }) {
   // Tell the agent which shop it's building for. clientContext rides every turn
@@ -127,6 +129,8 @@ export function StudioCodegenPanel({
         // origin is used when NEXT_PUBLIC_KRAFTA_API_URL is unset.
         commerceApiUrl: resolveCommerceApiUrl(),
         publishableKey: publishableKey ?? null,
+        // The shop's slug → its <slug>.krafta.org subdomain when published.
+        subdomain: catalogSlug ?? null,
       },
     }),
   });

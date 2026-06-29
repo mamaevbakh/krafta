@@ -783,6 +783,7 @@ export function CatalogBuilderPanel({
           <StudioCodegenPanel
             shopName={catalogName}
             catalogId={catalogId}
+            catalogSlug={catalogSlug}
             publishableKey={studioPublishableKey}
           />
         </div>
