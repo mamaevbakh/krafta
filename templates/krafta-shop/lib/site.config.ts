@@ -6,6 +6,8 @@
 export const siteConfig = {
   tagline: "Handmade goods, made with care.",
   heroCta: "Shop the collection",
+  // Short chips shown under the shop title (the Krafta storefront header look).
+  tags: ["Handmade", "Local"],
   nav: [
     { label: "Home", href: "/" },
     { label: "Shop", href: "/menu" },

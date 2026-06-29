@@ -5,18 +5,22 @@
  * Studio agent rewrites these values to reskin the entire shop — every component
  * reads them through Tailwind utilities, so a recolor is a one-file change with
  * zero risk to commerce. Edit freely.
+ *
+ * Default = the Krafta storefront look: clean, neutral, typography-led
+ * (white surface, near-black ink, Geist). A per-shop eject overwrites these
+ * with the merchant's actual branding tokens.
  */
 :root {
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.18 0.01 60);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.18 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.01 60);
-  --muted: oklch(0.96 0.005 70);
-  --muted-foreground: oklch(0.5 0.01 60);
-  --primary: oklch(0.45 0.07 45);
+  --card-foreground: oklch(0.18 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.55 0 0);
+  --primary: oklch(0.2 0 0);
   --primary-foreground: oklch(0.99 0 0);
-  --accent: oklch(0.93 0.02 60);
-  --accent-foreground: oklch(0.25 0.03 50);
-  --border: oklch(0.9 0.008 70);
-  --radius: 0.75rem;
+  --accent: oklch(0.96 0 0);
+  --accent-foreground: oklch(0.2 0 0);
+  --border: oklch(0.92 0 0);
+  --radius: 0.625rem;
 }
