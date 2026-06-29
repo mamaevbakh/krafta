@@ -11,6 +11,7 @@ import {
   PanelsTopLeft,
   ReceiptText,
   ShoppingBag,
+  Sparkles,
 } from "lucide-react";
 import type {
   CatalogLayoutOverride,
@@ -20,6 +21,7 @@ import type {
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { CatalogBehaviorSettings } from "@/lib/catalogs/settings/behavior";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
+import { StudioAgentPanel } from "@/components/dashboard/studio-agent-panel";
 import { Button } from "@/components/ui/button";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { toast } from "sonner";
@@ -38,7 +40,13 @@ type AspectPreset = {
   height: number;
 };
 
-type BuilderFocus = "structure" | "cards" | "brand" | "pricing" | "cart";
+type BuilderFocus =
+  | "structure"
+  | "cards"
+  | "brand"
+  | "pricing"
+  | "cart"
+  | "assistant";
 
 type BrandTokenKey =
   | "pageBackground"
@@ -99,6 +107,12 @@ const BUILDER_FOCUS_OPTIONS: Array<{
     label: "Cart",
     description: "Cart and checkout entry points",
     icon: ShoppingBag,
+  },
+  {
+    value: "assistant",
+    label: "Krafta Studio",
+    description: "Build your shop with AI",
+    icon: Sparkles,
   },
 ];
 
@@ -743,6 +757,20 @@ export function CatalogBuilderPanel({
       </div>
 
       <div className="mx-auto max-w-312 px-6 py-8">
+      {builderFocus === "assistant" ? (
+        <div className="space-y-4">
+          <StudioSectionSwitcher
+            builderFocus={builderFocus}
+            onChange={setBuilderFocus}
+          />
+          <StudioAgentPanel
+            catalogId={catalogId}
+            orgId={orgId}
+            catalogSlug={catalogSlug}
+            catalogName={catalogName}
+          />
+        </div>
+      ) : (
       <div className="grid gap-6 xl:grid-cols-[384px_minmax(0,1fr)] xl:items-start">
         <aside className="space-y-4 xl:sticky xl:top-6 xl:h-fit">
           <StudioSectionSwitcher
@@ -861,6 +889,7 @@ export function CatalogBuilderPanel({
           currencyOverrides={currencyOverrides}
         />
       </div>
+      )}
       </div>
     </main>
   );
@@ -900,6 +929,18 @@ function StudioSectionSwitcher({
             >
               <Icon className="size-4" />
               <span>{focus.label}</span>
+              {focus.value === "assistant" ? (
+                <span
+                  className={cn(
+                    "rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
+                    isActive
+                      ? "border-background/40 text-background/80"
+                      : "border-border text-muted-foreground",
+                  )}
+                >
+                  Beta
+                </span>
+              ) : null}
             </button>
           );
         })}
