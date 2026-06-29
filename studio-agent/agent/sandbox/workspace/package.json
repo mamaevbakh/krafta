@@ -1,0 +1,28 @@
+{
+  "name": "krafta-shop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Krafta Studio shop starter \u2014 the runnable Next.js + Tailwind scaffold the codegen agent scaffolds every shop from and freely restyles. Commerce flows only through @krafta/commerce.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "geist": "^1.7.0",
+    "next": "16.2.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^25.0.9",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3"
+  }
+}

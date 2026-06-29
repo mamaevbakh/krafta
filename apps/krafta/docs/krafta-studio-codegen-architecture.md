@@ -53,7 +53,7 @@ Minimal, real, runnable Next 16 + Tailwind v4 + shadcn + `@krafta/commerce`. ~6 
 - **Integration:** the codegen agent is its own eve agent; the Studio dashboard surfaces it via eve's web channel / API (our existing ai-elements chat can drive it, or we use eve's channel). The lightweight read+`applyDesign` Studio agent we already shipped can stay on AI SDK or migrate to eve later.
 - **Risk (accepted):** eve is brand-new (early framework — API churn / bugs). Mitigants: first-party Vercel, we're already all-in on Vercel, and the commerce layer (1+2) is framework-agnostic, so we can drop to raw `@vercel/sandbox` without touching the engine if eve disappoints.
 
-Auth/cost for the sandbox is handled by eve/Vercel: `VERCEL_OIDC_TOKEN` auto-injected when our backend runs on Vercel (off-Vercel needs `VERCEL_TOKEN` + team/project ids). Put Studio's eve agent on a **dedicated Vercel project** for clean cost attribution + spend caps. Latency from UZ ~150–200ms (fine for a preview iframe).
+Auth/cost for the sandbox is handled by eve/Vercel: `VERCEL_OIDC_TOKEN` auto-injected when our backend runs on Vercel (off-Vercel needs `VERCEL_TOKEN` + team/project ids). **No new/dedicated Vercel project needed — runs under the existing Krafta Vercel scope** (Sandboxes are already available there); use Spend Management for cost caps. Latency from UZ ~150–200ms (fine for a preview iframe).
 
 ## Sequencing
 
@@ -67,4 +67,4 @@ Auth/cost for the sandbox is handled by eve/Vercel: `VERCEL_OIDC_TOKEN` auto-inj
 ## What's needed from the founder
 
 - Approval to add the `commerce.api_keys` migration to the dev Supabase branch (layer 1, next slice).
-- At the eve/agent layer: a **dedicated Vercel project** for the Studio eve agent (clean cost attribution + spend caps); when Studio's backend runs on Vercel the sandbox auth (OIDC) is zero-config. **Pro Vercel plan** is the realistic floor once multi-merchant (24h sessions, high concurrency). The eve agent's model is **OpenAI direct** (`model: openai("gpt-5.4")` via `@ai-sdk/openai` + `OPENAI_API_KEY`) — **no AI Gateway**, per the founder's requirement.
+- At the eve/agent layer: **use the existing Krafta Vercel project** (no new project) — Sandboxes are already available under the `krafta` scope; when Studio's backend runs on Vercel the sandbox auth (OIDC) is zero-config; use Spend Management for caps. **Pro Vercel plan** is the realistic floor once multi-merchant (24h sessions, high concurrency). The eve agent's model is **OpenAI direct** (`model: openai("gpt-5.4")` via `@ai-sdk/openai` + `OPENAI_API_KEY`) — **no AI Gateway**, per the founder's requirement.

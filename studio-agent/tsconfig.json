@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["agent/**/*.ts", "evals/**/*.ts", ".eve/**/*.d.ts"],
+  "comment-exclude": "agent/sandbox/workspace is the SEEDED shop project (Next/React) mounted into the sandbox — it is data, not part of the eve agent's own compilation.",
+  "exclude": ["agent/sandbox/workspace"]
+}
