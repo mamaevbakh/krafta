@@ -10,8 +10,8 @@ A merchant describes a shop; an AI **coding agent** generates and iterates on a 
 
 1. **Public commerce API + `@krafta/commerce` client** — the foundation. A sandboxed/ejected shop has no cookie session and can't hold the service-role key, so it calls a public, key-gated HTTP API.
 2. **The shop starter template** — the real Next 16 + shadcn project the agent scaffolds from and freely restyles.
-3. **The codegen agent** — AI SDK v6 file-tool loop (write/edit/read/list/move/delete + addDependency + runCommand + readLogs), edit→run→fix.
-4. **Sandbox runtime + live preview** — Vercel Sandbox boots the project, `sandbox.domain(3000)` → preview iframe beside the chat.
+3. **The codegen agent** — built on **eve** (Vercel's agent framework): file tools + edit→run→fix loop come prebuilt; we add the commerce tools.
+4. **Sandbox runtime + live preview** — **eve wraps Vercel Sandbox** (lifecycle, durable resume, preview URL); iframe beside the chat.
 5. **Deploy to subdomain** — Vercel for Platforms → `merchant-name.krafta.org`.
 
 What we've already built feeds straight in: the org-gated Studio agent + chat UI (layers 3/4 reuse it), the `lib/commerce-sdk` read seed (generalizes into layer 1), the `applyDesign` enum path (kept as a fast restyle that never touches the filesystem).
@@ -29,13 +29,18 @@ What we've already built feeds straight in: the org-gated Studio agent + chat UI
 
 Minimal, real, runnable Next 16 + Tailwind v4 + shadcn + `@krafta/commerce`. ~6 pages (landing, menu, menu/[category], product/[slug], cart, checkout, order/[id]), ~8 editable blocks. `theme.css` is the **one-file reskin surface** (oklch tokens). Money renders only through `<Price cents>`; totals come only from the engine breakdown. The agent owns 100% of structure + skin as portable code; it must keep the `<CommerceProvider>` wrap and the `components/commerce/*` call contracts.
 
-## Layer 3 — codegen agent
+## Layers 3 + 4 — codegen agent + sandbox = **eve** (adopted 2026-06-29)
 
-AI SDK v6 `streamText`/tool loop (OpenAI-direct, reuses `buildStudioAgent` + `STUDIO_AGENT_MODEL`). Lovable/v0-style tools: `writeFile` (full file), `editFile` (search/replace + `...` ellipsis — the cheap default), `readFile`/`readFiles`, `listFiles`, `moveFile`, `deleteFile`, `addDependency` (allowlisted, install-before-import), `runCommand`, `startDevServer` (once), `readLogs`. Keep `getCatalogOverview`/`searchCatalog` for grounding and `applyDesign` for pure restyles. **Loop:** deps-first → write/edit → build (`tsc --noEmit` + eslint + build) → on red, feed source-mapped errors back and auto-fix (cap ~3 via `stepCountIs`) → dev server hot-reloads the preview. On-rails: locked deps + fixed skeleton + the SDK-only commerce rule + lint/typecheck/build gates.
+**Decision:** build the codegen agent on **eve** (Vercel's new "framework for building agents" — https://vercel.com/eve), not a hand-rolled AI SDK loop. eve IS layers 3+4 prebuilt: an agent is a directory (`instructions.md` + `tools/*.ts` + `sandbox/` + `subagents/` + `schedules/`) that wraps **Vercel Sandbox** (isolated VM + file tools out of the box), **Vercel Workflows** (durable execution — checkpointed steps, park-between-messages, resume), **human-in-the-loop approval gates**, subagents, and evals. This removes the most novel infra we'd otherwise build by hand.
 
-## Layer 4 — sandbox runtime
+- **Model:** `defineAgent({ model: "openai/gpt-5.4" })` — keeps **OpenAI as the provider** (founder requirement), routed through **Vercel AI Gateway** (gateway-billed/observed, not the OpenAI-direct wiring used for the storefront assistant + menu-extraction — a deliberate, accepted shift for this agent; gains fallback + observability).
+- **Tools (`tools/*.ts`):** the file CRUD comes free from eve's sandbox; we add the COMMERCE rail as eve tools that wrap `@krafta/commerce` (so the agent imports/uses commerce but can never recompute money), plus `applyDesign` (kept as a fast no-codegen restyle) and `getCatalogOverview`/`searchCatalog` for grounding.
+- **Skeleton + loop:** the sandbox is pre-scaffolded from the `krafta-shop/` starter (layer 2). The agent edits files → build (`tsc --noEmit` + eslint) → on red, eve's durable loop feeds errors back + auto-fixes. On-rails = locked deps + fixed skeleton + the SDK-only commerce rule + lint/typecheck gates.
+- **Sandbox config:** `sandbox/sandbox.ts` → `vercelSandboxBackend({ runtime: "node24" })`. eve manages the Vercel Sandbox lifecycle (create / writeFiles / install / dev / preview URL / persistent resume / stop-on-idle) so we don't. Cost is still dominated by idle `next dev` memory — eve's park/stop semantics handle this.
+- **Integration:** the codegen agent is its own eve agent; the Studio dashboard surfaces it via eve's web channel / API (our existing ai-elements chat can drive it, or we use eve's channel). The lightweight read+`applyDesign` Studio agent we already shipped can stay on AI SDK or migrate to eve later.
+- **Risk (accepted):** eve is brand-new (early framework — API churn / bugs). Mitigants: first-party Vercel, we're already all-in on Vercel, and the commerce layer (1+2) is framework-agnostic, so we can drop to raw `@vercel/sandbox` without touching the engine if eve disappoints.
 
-Vercel Sandbox (Firecracker microVMs, `node24`, iad1). Flow: `Sandbox.create({ ports:[3000], resources:{vcpus:2}, timeout: ms('30m') })` → `writeFiles` (Buffers) → `runCommand('npm install')` → `runCommand('npm run dev', { detached:true })` (dev script binds `-H 0.0.0.0 -p 3000`) → `sandbox.domain(3000)` = public preview URL → iframe. Persistent-by-default snapshots → `Sandbox.getOrCreate({ name })` resumes a draft. **Cost is dominated by idle memory** while `next dev` sits open ($0.0212/GB-hr full wall-clock) — so **stop on idle** and `extendTimeout` while active. Latency from UZ ~150–200ms (fine for a preview iframe). Auth: `VERCEL_OIDC_TOKEN` auto-injected when our backend runs on Vercel; off-Vercel needs `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`. Put Studio sandbox usage on a dedicated Vercel project for clean cost attribution + spend caps. (Alternatives — e2b / Daytona / WebContainers — are viable but Vercel Sandbox is the native fit since we're already on Vercel and it integrates with the deploy step.)
+Auth/cost for the sandbox is handled by eve/Vercel: `VERCEL_OIDC_TOKEN` auto-injected when our backend runs on Vercel (off-Vercel needs `VERCEL_TOKEN` + team/project ids). Put Studio's eve agent on a **dedicated Vercel project** for clean cost attribution + spend caps. Latency from UZ ~150–200ms (fine for a preview iframe).
 
 ## Sequencing
 
@@ -43,11 +48,10 @@ Vercel Sandbox (Firecracker microVMs, `node24`, iad1). Flow: `Sandbox.create({ p
 2. Public API: `commerce.api_keys` migration + `authenticateCommerceApiKey` + the read endpoints (catalog/items/search), then cart + checkout with `cartToken` identity.
 3. Dashboard: issue/rotate/revoke commerce keys per shop.
 4. The `krafta-shop/` starter template, compiling against the client.
-5. Codegen agent: file tools + the sandbox + build/fix loop, behind a flag on one example shop.
-6. Live preview beside the chat; deploy-to-subdomain.
+5. The **eve** codegen agent: `npx eve init`, wrap `@krafta/commerce` as tools, pre-scaffold the sandbox from the starter, build/fix loop — behind a flag on one example shop.
+6. Live preview beside the chat (eve sandbox URL); deploy-to-subdomain.
 
-## What's needed from the founder (only at layer 4/5)
+## What's needed from the founder
 
-- A **Vercel access token** (or run Studio's backend on Vercel for zero-config OIDC) + a **dedicated Vercel project** for sandbox cost attribution. Not needed until the sandbox-wiring slice.
-- Approval to add the `commerce.api_keys` migration to the dev Supabase branch.
-- Pro Vercel plan is the realistic floor (24h sessions, high concurrency) once multi-merchant.
+- Approval to add the `commerce.api_keys` migration to the dev Supabase branch (layer 1, next slice).
+- At the eve/agent layer: a **dedicated Vercel project** for the Studio eve agent (clean cost attribution + spend caps); when Studio's backend runs on Vercel the sandbox auth (OIDC) is zero-config. **Pro Vercel plan** is the realistic floor once multi-merchant (24h sessions, high concurrency). The eve agent's model stays `openai/*` (OpenAI via AI Gateway) per the OpenAI-provider requirement.
