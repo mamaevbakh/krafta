@@ -25,6 +25,19 @@ What we've already built feeds straight in: the org-gated Studio agent + chat UI
 - **Endpoints** — `GET /api/commerce/v1/catalog`, `GET …/items/{id}`, `POST …/search`, `POST …/carts`, `GET/PUT …/carts/{token}[/lines]`, `POST …/carts/{token}/pricing`, `POST …/carts/{token}/checkout`, `GET …/orders/{id}`, `GET …/orders` (secret only).
 - **Client** — `packages/commerce` (`@krafta/commerce`): a dependency-free, fetch-based typed client (`createCommerceClient({ apiUrl, publishableKey })` → `getCatalog/getItem/search/createCart/getCart/setLines/getCartPricing/checkout/getOrder`). Shipped into generated/ejected shops.
 
+## Layer 1.5 — cart + checkout write path (design locked, build pending)
+
+The read API is live; the **write** path (cart mutations + checkout) is the security-critical money slice. Today's write path runs `commerce.cart_apply_writes` (`SECURITY INVOKER`) + `placeOrder`, scoped by RLS to a per-shopper **anonymous Supabase session** (`signInAnonymously` cookie → `auth.uid()`). A headless key has no cookie session, so we bridge identity. **Decision: approach A — anon-user per `cartToken`, preserve RLS** (the DB stays the isolation boundary; reuses all business logic). Rejected B (service-role + app-level scoping) because it moves isolation into hand-written filters — one missing `WHERE customer_id` is a cross-tenant breach.
+
+Design:
+- **`commerce.cart_sessions`** (new table, service-role only): `token_hash` (unique) → `customer_id`, `org_id`, `catalog_id`, `auth_user_id`, `refresh_token` (the anon user's), `created_at`, `expires_at`, `last_used_at`. The opaque `cartToken` is random; only its hash is stored.
+- **`createCart`** (`POST /carts`): server-side `signInAnonymously` (fresh anon-key client) → anon user + session; `ensureCartIdentity`-mint the `commerce.customers` row for the key's org; store the session under a new `cartToken`; return `{ cartToken, cart }`.
+- **`clientForCartToken(cartToken)`**: resolve the session → build a Supabase client authed AS that anon user (Authorization: Bearer access_token; refresh via the stored refresh_token when stale). RLS then scopes exactly as the storefront.
+- **Refactor (low-risk, mechanical):** `getOrCreateDraftOrder` / `getCartSummary` / `upsertCartLines` / `placeOrder` take an OPTIONAL injected `supabase` client, defaulting to `createClient()` — the live storefront path stays byte-identical; headless passes the cart-token client.
+- **Endpoints:** `POST /carts` (create), `GET /carts/{token}` (getCartSummary), `PUT /carts/{token}/lines` (upsertCartLines — server re-prices, client never sends price), `POST /carts/{token}/pricing` (computePricing preview), `POST /carts/{token}/checkout` (placeOrder — re-validates price-drift / zone / min-order / tip-cap; returns typed error codes). `GET /orders/{id}` reads the placed order, cartToken-scoped.
+- **Invariants preserved:** server re-reads every price (`upsertCartLines`), recomputes all totals/taxes/fees server-side (`computePricing` at checkout), runs price-drift + delivery-zone + min-order + tip-cap re-validation (`placeOrder`). No price/total/fee/tax ever accepted from the body. Cash/COD only (matches v1).
+- **Build as its own focused effort** with live end-to-end verification (createCart → setLines → re-priced cart → placeOrder against a real shop). Not to be rushed.
+
 ## Layer 2 — starter template (`krafta-shop/`)
 
 Minimal, real, runnable Next 16 + Tailwind v4 + shadcn + `@krafta/commerce`. ~6 pages (landing, menu, menu/[category], product/[slug], cart, checkout, order/[id]), ~8 editable blocks. `theme.css` is the **one-file reskin surface** (oklch tokens). Money renders only through `<Price cents>`; totals come only from the engine breakdown. The agent owns 100% of structure + skin as portable code; it must keep the `<CommerceProvider>` wrap and the `components/commerce/*` call contracts.
