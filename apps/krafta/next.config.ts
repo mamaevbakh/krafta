@@ -104,4 +104,16 @@ const nextConfig: NextConfig = {
 // spreads the rest of this config untouched; only /eve-prefixed routes proxy to
 // the eve runtime. The agent's heavy deps (AI SDK v7, sandbox, workflow) live in
 // studio-agent, not this bundle.
-export default withEve(nextConfig, { eveRoot: "../../studio-agent" });
+//
+// NOT on Vercel for now: eve 0.17.0's Vercel multi-service build is broken — its
+// `eve build` emits the service function under `.eve/nitro-output/flow/…` without
+// the `.vc-config.json` the Vercel build runner expects at
+// `studio-agent/.vercel/output/functions/__server.func/.vc-config.json`, so the
+// deploy fails at output assembly (eve is preview-stage; 0.17.0 is latest). Until
+// that's fixed upstream we mount eve ONLY in local dev — everything else (commerce
+// API, new-shop flow, storefront, dashboard) ships to Vercel; the in-dashboard
+// codegen chat stays dev-only. Re-enable by dropping the VERCEL guard once eve's
+// Vercel build is fixed.
+export default process.env.VERCEL
+  ? nextConfig
+  : withEve(nextConfig, { eveRoot: "../../studio-agent" });
