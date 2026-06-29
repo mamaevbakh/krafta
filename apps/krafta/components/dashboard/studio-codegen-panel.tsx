@@ -4,6 +4,8 @@ import { useEveAgent } from "eve/react";
 import {
   ExternalLink,
   FilePen,
+  Globe,
+  Loader2,
   Monitor,
   RefreshCw,
   Sparkles,
@@ -209,6 +211,18 @@ export function StudioCodegenPanel({
     send(message.text ?? "");
   };
 
+  // The Publish button just asks the agent to publish — it owns the sandbox, so
+  // a programmatic message reuses the exact same path as typing it in chat.
+  const [publishing, setPublishing] = useState(false);
+  useEffect(() => {
+    if (!busy) setPublishing(false);
+  }, [busy]);
+  const publish = () => {
+    if (busy) return;
+    setPublishing(true);
+    send("Publish my shop to the web and give me the public link.");
+  };
+
   return (
     <section className="flex h-[78vh] min-h-[580px] w-full flex-col overflow-hidden rounded-xl border border-border bg-background lg:flex-row">
       {/* ── Chat pane ──────────────────────────────────────────────── */}
@@ -379,6 +393,20 @@ export function StudioCodegenPanel({
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={publish}
+              disabled={busy || !catalogId}
+              className="mr-1 inline-flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              title={liveUrl ? "Re-publish the latest version" : "Publish your shop to the web"}
+            >
+              {publishing ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Globe className="size-3.5" aria-hidden />
+              )}
+              {publishing ? "Publishing…" : liveUrl ? "Update" : "Publish"}
+            </button>
             <button
               type="button"
               onClick={() => setRefreshNonce((n) => n + 1)}

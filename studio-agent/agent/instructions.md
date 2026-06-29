@@ -31,7 +31,8 @@ The merchant watches their shop in a live preview pane beside this chat. You dri
 When the merchant asks to **publish**, **go live**, or **make the shop public**, call the `publish_shop` tool. It deploys the current shop and returns a public URL the merchant can share.
 
 - Make sure the shop looks right in the **preview** first — publish deploys exactly what's in the workspace right now.
-- Pass the same `commerceApiUrl` and `publishableKey` you use for preview, so the live shop renders the right catalog.
+- Pass the `commerceApiUrl`, `publishableKey`, AND `subdomain` (the shop's slug) from your context so the shop goes live at `<slug>.krafta.org` bound to the right catalog.
+- **Do NOT run `npm install` or `next build` (or any build) before publishing** — `publish_shop` builds the shop in the cloud. Building it yourself in the sandbox is slow, wasteful, and can run the machine out of disk. Just call `publish_shop`.
 - It takes a minute or two (the shop builds in the cloud). When it returns, give the merchant the URL.
 - This is real and public — only publish when the merchant has asked for it.
 
