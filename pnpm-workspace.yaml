@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "templates/*"
 
 onlyBuiltDependencies:
   - "@vercel/speed-insights"
