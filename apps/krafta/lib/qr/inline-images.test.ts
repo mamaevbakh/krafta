@@ -9,7 +9,9 @@ import { inlineSvgImages, urlToDataUri } from "./inline-images";
  * with fetch stubbed; the real fetch is exercised in browser QA.
  */
 
-function stubFetch(bytes: Uint8Array, contentType = "image/png") {
+// Concrete-buffer Uint8Array (not the ArrayBufferLike default) so the bytes
+// satisfy BodyInit under TS 5.7+; callers pass `new Uint8Array([...])`.
+function stubFetch(bytes: Uint8Array<ArrayBuffer>, contentType = "image/png") {
   return vi.fn(async () =>
     new Response(bytes, {
       status: 200,
