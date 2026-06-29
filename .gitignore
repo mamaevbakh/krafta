@@ -56,3 +56,4 @@ apps/krafta/demo-assets/
 
 # Krafta Studio local live-preview servers (per-shop next dev runners; ephemeral)
 .krafta-previews/
+.krafta-publishes/
