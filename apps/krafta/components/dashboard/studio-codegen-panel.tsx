@@ -44,8 +44,35 @@ function toolLabel(name: string): { label: string; icon: typeof FilePen } | null
   return null;
 }
 
-export function StudioCodegenPanel({ shopName }: { shopName: string }) {
-  const agent = useEveAgent();
+// Where the sandbox shop fetches commerce from. The sandbox is isolated, so this
+// must be the PUBLIC Krafta API, not a localhost dev server.
+const COMMERCE_API_URL =
+  process.env.NEXT_PUBLIC_KRAFTA_API_URL ?? "https://www.krafta.org";
+
+export function StudioCodegenPanel({
+  shopName,
+  catalogId,
+  publishableKey,
+}: {
+  shopName: string;
+  catalogId?: string;
+  publishableKey?: string | null;
+}) {
+  // Tell the agent which shop it's building for. clientContext rides every turn
+  // (per eve's prepareSend) as ephemeral context — the agent writes the sandbox's
+  // .env.local from it (NEXT_PUBLIC_KRAFTA_API_URL + NEXT_PUBLIC_KRAFTA_PUBLISHABLE_KEY)
+  // so the generated shop renders THIS catalog's data through @krafta/commerce.
+  const agent = useEveAgent({
+    prepareSend: (input) => ({
+      ...input,
+      clientContext: {
+        shopName,
+        catalogId: catalogId ?? null,
+        commerceApiUrl: COMMERCE_API_URL,
+        publishableKey: publishableKey ?? null,
+      },
+    }),
+  });
   const busy = agent.status === "submitted" || agent.status === "streaming";
   const messages = agent.data.messages;
   const isEmpty = messages.length === 0;

@@ -91,6 +91,18 @@ export default async function CatalogBuilderPage({
     );
   }
 
+  // studio_publishable_key (migration 20260629140000) isn't in generated types
+  // yet — fetch it with an isolated cast. Set only for Studio-created coded shops.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- column not in generated types until regen
+  const studioDb = supabase as any;
+  const { data: studioRow } = await studioDb
+    .from("catalogs")
+    .select("studio_publishable_key")
+    .eq("id", catalog.id)
+    .maybeSingle();
+  const studioPublishableKey: string | null =
+    studioRow?.studio_publishable_key ?? null;
+
   const { layout, currency, behavior } = normalizeCatalogSettings(catalog);
 
   const headerOptions = headerVariants.map((variant) => ({
@@ -130,6 +142,7 @@ export default async function CatalogBuilderPage({
       itemDetailOptions={itemDetailOptions}
       navOptions={navOptions}
       initialFocus={tab === "assistant" ? "assistant" : undefined}
+      studioPublishableKey={studioPublishableKey}
     />
   );
 }

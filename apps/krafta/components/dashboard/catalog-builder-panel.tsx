@@ -259,6 +259,9 @@ type BuilderPanelProps = {
   /** Tab to open on mount (e.g. "assistant" via ?tab=assistant after creating a
    *  coded shop). Defaults to "structure". */
   initialFocus?: BuilderFocus;
+  /** The coded shop's publishable commerce key (Studio-created shops only), so the
+   *  codegen agent can wire the sandbox shop to this catalog's data. */
+  studioPublishableKey?: string | null;
 };
 
 export function CatalogBuilderPanel({
@@ -276,6 +279,7 @@ export function CatalogBuilderPanel({
   itemDetailOptions,
   navOptions,
   initialFocus,
+  studioPublishableKey,
 }: BuilderPanelProps) {
   const initialAspectInputs = useMemo(
     () => getAspectInputs(initialLayout.itemCard.aspectRatio, COMMON_ASPECT_RATIOS),
@@ -769,7 +773,11 @@ export function CatalogBuilderPanel({
             builderFocus={builderFocus}
             onChange={setBuilderFocus}
           />
-          <StudioCodegenPanel shopName={catalogName} />
+          <StudioCodegenPanel
+            shopName={catalogName}
+            catalogId={catalogId}
+            publishableKey={studioPublishableKey}
+          />
         </div>
       ) : (
       <div className="grid gap-6 xl:grid-cols-[384px_minmax(0,1fr)] xl:items-start">
