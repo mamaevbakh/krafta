@@ -68,6 +68,10 @@ function mapLine(line: CartLineItem): ApiCartLine {
   };
 }
 
+export function mapCartLines(summary: CartSummary): ApiCartLine[] {
+  return summary.lineItems.map(mapLine);
+}
+
 export function mapCart(
   cartToken: string,
   summary: CartSummary,
@@ -75,7 +79,7 @@ export function mapCart(
 ): ApiCart {
   return {
     cartToken,
-    lines: summary.lineItems.map(mapLine),
+    lines: mapCartLines(summary),
     subtotalCents: summary.subtotalCents,
     currency,
   };

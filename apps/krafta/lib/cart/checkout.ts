@@ -1,7 +1,11 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { ensureCartIdentity } from "./identity";
+import {
+  ensureCartIdentity,
+  type CartIdentity,
+  type SupabaseServerClient,
+} from "./identity";
 import { normalizeUzPhone } from "./phone";
 import {
   computePricing,
@@ -41,7 +45,13 @@ export type DeliveryFields = {
 // payments row that's created in the same transaction (KRA-63 D2). 0 = no
 // tip. Value is the absolute cents the customer agreed to (whatever the UI
 // computed from percentage / fixed; server doesn't re-derive).
-type CommonFields = { tipCents?: number };
+type CommonFields = {
+  tipCents?: number;
+  /** Injected client + pre-resolved identity (headless commerce API). Storefront
+   *  omits both → cookie-authed client + ensureCartIdentity (path unchanged). */
+  supabase?: SupabaseServerClient;
+  identity?: CartIdentity;
+};
 
 export type PlaceOrderInput =
   | ({ orgId: string; venueId: string; mode: "dine_in"; fields: DineInFields } & CommonFields)
@@ -62,8 +72,9 @@ export type PlaceOrderResult = {
  * creates the customer's guest_session, attaching both to the order.
  */
 export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult> {
-  const supabase = await createClient();
-  const { customerId, userId } = await ensureCartIdentity(input.orgId);
+  const supabase = input.supabase ?? (await createClient());
+  const { customerId, userId } =
+    input.identity ?? (await ensureCartIdentity(input.orgId, input.supabase));
 
   // Preflight: the venue must be accepting orders AND the requested mode
   // must be enabled on it. The customer-side UI gates these via
