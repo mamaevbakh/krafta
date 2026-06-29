@@ -9,7 +9,9 @@ import {
   Sparkles,
   Terminal,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { recordShopPublish } from "@/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions";
 
 import {
   Conversation,
@@ -104,16 +106,45 @@ function readLatestPreview(messages: ReadonlyArray<{ parts?: readonly unknown[] 
   return { url, port, version };
 }
 
+// The most recent PUBLISH out of the stream. `publish_shop` surfaces the same
+// way as preview; its output carries the public { url } + the { deploymentUrl }.
+function readLatestPublish(messages: ReadonlyArray<{ parts?: readonly unknown[] }>): {
+  url: string | null;
+  deploymentUrl: string | null;
+} {
+  let url: string | null = null;
+  let deploymentUrl: string | null = null;
+  for (const message of messages) {
+    for (const raw of (message.parts ?? []) as EvePart[]) {
+      if (
+        raw.type === "dynamic-tool" &&
+        raw.toolName === "publish_shop" &&
+        raw.state === "output-available"
+      ) {
+        const output = raw.output as { url?: unknown; deploymentUrl?: unknown } | undefined;
+        if (output && typeof output.url === "string") {
+          url = output.url;
+          deploymentUrl =
+            typeof output.deploymentUrl === "string" ? output.deploymentUrl : null;
+        }
+      }
+    }
+  }
+  return { url, deploymentUrl };
+}
+
 export function StudioCodegenPanel({
   shopName,
   catalogId,
   catalogSlug,
   publishableKey,
+  initialPublishedUrl,
 }: {
   shopName: string;
   catalogId?: string;
   catalogSlug?: string;
   publishableKey?: string | null;
+  initialPublishedUrl?: string | null;
 }) {
   // Tell the agent which shop it's building for. clientContext rides every turn
   // (per eve's prepareSend) as ephemeral context — the agent writes the sandbox's
@@ -151,6 +182,22 @@ export function StudioCodegenPanel({
     }
     return preview.url;
   }, [preview.port, preview.url]);
+
+  // When the agent publishes the shop, remember the live URL on the catalog so
+  // the dashboard shows it across sessions. Persist once per distinct URL.
+  const published = useMemo(() => readLatestPublish(messages), [messages]);
+  // Show this session's fresh publish, else the URL persisted from a past one.
+  const liveUrl = published.url ?? initialPublishedUrl ?? null;
+  const persistedUrl = useRef<string | null>(null);
+  useEffect(() => {
+    if (!catalogId || !published.url || persistedUrl.current === published.url) return;
+    persistedUrl.current = published.url;
+    void recordShopPublish({
+      catalogId,
+      publishedUrl: published.url,
+      deploymentUrl: published.deploymentUrl,
+    });
+  }, [catalogId, published.url, published.deploymentUrl]);
 
   const send = (text: string) => {
     const value = text.trim();
@@ -317,6 +364,18 @@ export function StudioCodegenPanel({
               <span className="truncate text-xs text-muted-foreground">
                 {previewSrc.replace(/^https?:\/\//, "")}
               </span>
+            ) : null}
+            {liveUrl ? (
+              <a
+                href={liveUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={liveUrl}
+                className="inline-flex shrink-0 items-center gap-1 truncate rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-600/20"
+              >
+                <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
+                Live · {liveUrl.replace(/^https?:\/\//, "")}
+              </a>
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">

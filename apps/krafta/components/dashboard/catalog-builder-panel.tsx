@@ -262,6 +262,8 @@ type BuilderPanelProps = {
   /** The coded shop's publishable commerce key (Studio-created shops only), so the
    *  codegen agent can wire the sandbox shop to this catalog's data. */
   studioPublishableKey?: string | null;
+  /** The shop's public URL once published (from catalogs.published_url). */
+  studioPublishedUrl?: string | null;
 };
 
 export function CatalogBuilderPanel({
@@ -280,6 +282,7 @@ export function CatalogBuilderPanel({
   navOptions,
   initialFocus,
   studioPublishableKey,
+  studioPublishedUrl,
 }: BuilderPanelProps) {
   const initialAspectInputs = useMemo(
     () => getAspectInputs(initialLayout.itemCard.aspectRatio, COMMON_ASPECT_RATIOS),
@@ -785,6 +788,7 @@ export function CatalogBuilderPanel({
             catalogId={catalogId}
             catalogSlug={catalogSlug}
             publishableKey={studioPublishableKey}
+            initialPublishedUrl={studioPublishedUrl}
           />
         </div>
       ) : (

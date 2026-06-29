@@ -97,11 +97,12 @@ export default async function CatalogBuilderPage({
   const studioDb = supabase as any;
   const { data: studioRow } = await studioDb
     .from("catalogs")
-    .select("studio_publishable_key")
+    .select("studio_publishable_key, published_url")
     .eq("id", catalog.id)
     .maybeSingle();
   const studioPublishableKey: string | null =
     studioRow?.studio_publishable_key ?? null;
+  const studioPublishedUrl: string | null = studioRow?.published_url ?? null;
 
   const { layout, currency, behavior } = normalizeCatalogSettings(catalog);
 
@@ -143,6 +144,7 @@ export default async function CatalogBuilderPage({
       navOptions={navOptions}
       initialFocus={tab === "assistant" ? "assistant" : undefined}
       studioPublishableKey={studioPublishableKey}
+      studioPublishedUrl={studioPublishedUrl}
     />
   );
 }
