@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -22,6 +22,7 @@ import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { CatalogBehaviorSettings } from "@/lib/catalogs/settings/behavior";
 import { CatalogPreviewFrame } from "@/components/dashboard/catalog-preview-frame";
 import { StudioAgentPanel } from "@/components/dashboard/studio-agent-panel";
+import type { DesignPatch } from "@/lib/tools/studio-design-tools";
 import { Button } from "@/components/ui/button";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { toast } from "sonner";
@@ -610,6 +611,31 @@ export function CatalogBuilderPanel({
     headerBannerDarkPath,
   ]);
 
+  // The Studio agent's one write capability: apply a validated design patch to
+  // the live builder state. The merchant then sees it in the preview and keeps
+  // it via the existing "Save changes" button — nothing persists silently.
+  // useState setters are stable, so an empty dep list is correct here.
+  const applyDesignPatch = useCallback((patch: DesignPatch) => {
+    if (patch.headerVariant) setHeaderVariant(patch.headerVariant);
+    if (patch.sectionVariant) setSectionVariant(patch.sectionVariant);
+    if (patch.itemCardVariant) setItemCardVariant(patch.itemCardVariant);
+    if (patch.categoryNavVariant) setCategoryNavVariant(patch.categoryNavVariant);
+    if (patch.itemDetailVariant) setItemDetailVariant(patch.itemDetailVariant);
+    if (typeof patch.columns === "number") {
+      setItemCardColumns(Math.min(4, Math.max(1, Math.round(patch.columns))));
+    }
+    if (typeof patch.enableCart === "boolean") setCartEnabled(patch.enableCart);
+    if (typeof patch.showDecimals === "boolean") {
+      setShowDecimals(patch.showDecimals);
+    }
+    if (patch.labelPosition) setLabelPosition(patch.labelPosition);
+    if (patch.thousandSeparator) setThousandSeparator(patch.thousandSeparator);
+    if (patch.decimalSeparator) setDecimalSeparator(patch.decimalSeparator);
+    if (typeof patch.currencyLabel === "string") {
+      setCurrencyLabel(patch.currencyLabel);
+    }
+  }, []);
+
   const handleSave = async () => {
     if (isSaving || !hasUnsavedChanges) return;
     setIsSaving(true);
@@ -768,6 +794,7 @@ export function CatalogBuilderPanel({
             orgId={orgId}
             catalogSlug={catalogSlug}
             catalogName={catalogName}
+            onApplyDesign={applyDesignPatch}
           />
         </div>
       ) : (

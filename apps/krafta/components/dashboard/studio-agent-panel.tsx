@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { LayoutDashboard, Search, Sparkles } from "lucide-react";
+import {
+  DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithToolCalls,
+} from "ai";
+import { LayoutDashboard, Search, Sparkles, Wand2 } from "lucide-react";
 
 import {
   Conversation,
@@ -25,23 +28,28 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion } from "@/components/ai-elements/suggestion";
 import { Loader } from "@/components/ai-elements/loader";
+import type { DesignPatch } from "@/lib/tools/studio-design-tools";
 
 type StudioAgentPanelProps = {
   catalogId: string;
   orgId: string;
   catalogSlug: string;
   catalogName: string;
+  /** Applies an agent design change to the live builder state (the merchant
+   *  then keeps it with "Save changes"). When omitted, applyDesign is a no-op. */
+  onApplyDesign?: (patch: DesignPatch) => void;
 };
 
 const SUGGESTIONS = [
   "Review my shop and suggest improvements",
-  "How should I organize my categories?",
-  "What layout fits my shop best?",
-  "Write a sharper description for my shop",
+  "Switch my product cards to big photos",
+  "Use a centered header",
+  "Turn the grid to 3 columns",
 ];
 
 const TOOL_LABELS: Record<string, { label: string; icon: typeof Search }> = {
   "tool-getCatalogOverview": { label: "Read your shop", icon: LayoutDashboard },
+  "tool-applyDesign": { label: "Updated your design", icon: Wand2 },
   "tool-searchCatalog": { label: "Searched your menu", icon: Search },
 };
 
@@ -49,6 +57,7 @@ export function StudioAgentPanel({
   catalogId,
   orgId,
   catalogName,
+  onApplyDesign,
 }: StudioAgentPanelProps) {
   const transport = useMemo(
     () =>
@@ -59,7 +68,32 @@ export function StudioAgentPanel({
     [catalogId, orgId],
   );
 
-  const { messages, sendMessage, status, error } = useChat({ transport });
+  const { messages, sendMessage, status, error, addToolResult } = useChat({
+    transport,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+  });
+
+  // Resolve the applyDesign CLIENT tool once the stream settles (mirrors the
+  // storefront assistant's post-commit resolution): apply the patch to the live
+  // builder state and report the result so the agent can confirm. Guard on
+  // state "input-available" so each tool call resolves exactly once.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant") return;
+    const parts = (last.parts ?? []) as Array<Record<string, unknown>>;
+    for (const part of parts) {
+      if (part.type === "tool-applyDesign" && part.state === "input-available") {
+        const patch = (part.input ?? {}) as DesignPatch;
+        onApplyDesign?.(patch);
+        void addToolResult({
+          tool: "applyDesign",
+          toolCallId: String(part.toolCallId),
+          output: { ok: true, applied: patch },
+        });
+      }
+    }
+  }, [messages, status, addToolResult, onApplyDesign]);
 
   const busy = status === "submitted" || status === "streaming";
   const isEmpty = messages.length === 0;
@@ -197,7 +231,7 @@ export function StudioAgentPanel({
           </PromptInputBody>
           <PromptInputFooter>
             <span className="px-1 text-xs text-muted-foreground">
-              Beta · advice &amp; planning. Building actions coming soon.
+              Beta · I can restyle your shop — review in preview, then Save.
             </span>
             <PromptInputSubmit status={status} disabled={busy} />
           </PromptInputFooter>

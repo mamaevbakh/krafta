@@ -5,6 +5,7 @@ import { stepCountIs } from "ai";
 
 import { createCatalogOverviewTool } from "@/lib/tools/studio-catalog-overview";
 import { createSearchCatalogTool } from "@/lib/tools/search-catalog";
+import { applyDesignTool } from "@/lib/tools/studio-design-tools";
 
 /**
  * Krafta Studio — the merchant-facing shop-builder AGENT (AI SDK v6).
@@ -13,11 +14,13 @@ import { createSearchCatalogTool } from "@/lib/tools/search-catalog";
  * streamText config (model + system + catalog-scoped read tools + a bounded
  * tool loop); the route spreads this and adds the conversation `messages`.
  *
- * BETA SCOPE: the agent reads the merchant's live shop and gives concrete,
- * shop-specific design + merchandising advice. It does not yet WRITE changes —
- * write tools (theme/structure/build) land on top of the same commerce SDK
- * next. The system prompt is explicit about this so the agent never claims to
- * have changed something it hasn't. See apps/krafta/docs/krafta-studio.md.
+ * BETA SCOPE: the agent reads the merchant's live shop AND can apply storefront
+ * design changes (layout / cards / nav / grid / cart / price formatting) via the
+ * applyDesign client tool — which drives the live builder state so the merchant
+ * sees the change in the preview and keeps it with "Save changes". It cannot yet
+ * edit menu items, brand colors, or the currency. The system prompt is explicit
+ * about this so the agent never claims more than it did. See
+ * apps/krafta/docs/krafta-studio.md.
  *
  * Model is env-overridable (STUDIO_AGENT_MODEL); default follows the repo's
  * OpenAI-direct agent convention.
@@ -44,12 +47,13 @@ export function buildStudioAgent(scope: {
       "Krafta runs the commerce engine underneath every shop (cart, real prices and totals, checkout, payments, delivery, orders). The merchant owns the look, the structure, and the words.",
       "",
       "WHAT YOU CAN DO RIGHT NOW (this is a beta):",
-      "- Read the merchant's live shop and give concrete, specific advice on structure, layout, branding, wording, and how they merchandise their items.",
-      "- Help them think through what kind of shop they want — a landing page that leads into the menu, a multi-page site, a page per product, anything.",
-      "- You CANNOT apply changes yet. When they ask you to change something, describe exactly what you'd do, and point them to where they can do it today: the Studio design tabs — Structure, Cards, Brand, Pricing, Cart. Tell them direct building by you is coming soon. Never claim you changed, saved, or published anything.",
+      "- Read the merchant's live shop and give concrete, specific advice on structure, layout, wording, and how they merchandise their items.",
+      "- APPLY storefront design changes yourself with applyDesign: the header style, how category sections look, the product card family, the grid columns, the category navigation, whether the cart/ordering is on, and how prices are formatted. Your change shows in the live preview immediately; the merchant keeps it by clicking 'Save changes' (top right) — tell them that after you apply.",
+      "- What you CANNOT do yet — say so plainly when asked: edit menu items / prices / photos (that's the catalog editor, not here), change brand colors (coming soon), change the currency itself, set a custom domain, or publish. For those, describe what you'd do and where.",
       "",
       "TOOLS — use them, don't guess:",
-      "- getCatalogOverview: call this FIRST whenever advice depends on the shop's current state — its categories, item counts, currency, order modes, whether the cart is on, and the live layout (header / card / nav). Ground every recommendation in this real data.",
+      "- getCatalogOverview: call this FIRST whenever advice or a change depends on the shop's current state — its categories, item counts, currency, order modes, whether the cart is on, and the live layout (header / card / nav). Ground everything in this real data.",
+      "- applyDesign: call this to actually make a visual/layout change the merchant asked for. Set ONLY the fields you're changing, and prefer a single applyDesign call carrying all of them. After it succeeds, briefly confirm what you changed and remind them it's in the preview — click 'Save changes' to keep it.",
       "- searchCatalog: when the merchant asks about specific products, or you want to reference real items by name.",
       "",
       "HOW TO REPLY:",
@@ -62,6 +66,7 @@ export function buildStudioAgent(scope: {
       getCatalogOverview: createCatalogOverviewTool({
         catalogId: scope.catalogId,
       }),
+      applyDesign: applyDesignTool,
       searchCatalog: createSearchCatalogTool({
         catalogId: scope.catalogId,
         orgId: scope.orgId ?? null,

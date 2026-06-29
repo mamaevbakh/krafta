@@ -64,9 +64,14 @@ First slice shipped on branch `feat/krafta-studio`: the **Krafta Studio (Beta)**
 
 **Verified:** typecheck clean (one pre-existing unrelated QR-test error); panel renders in light + dark (screenshotted via a temporary isolated route, since the real tab is auth-gated); API returns 400/404 correctly with no 500s. The real builder route never SSR-renders the panel (it mounts only on the client tab click), so the `useChat`/Math.random prerender notice seen on the temp route does not apply.
 
+### Update — first write tool (2026-06-29)
+
+The agent can now **change the shop**, not just advise. New `applyDesign` **client tool** (`lib/tools/studio-design-tools.ts`): the agent sets the header style, section style, product-card family, grid columns, category nav, cart on/off, and price formatting. It's misuse-proof by construction — every field is enum/range-constrained to values the storefront already renders. The patch flows into the live builder state (`applyDesignPatch` in `catalog-builder-panel.tsx`) via the proven storefront client-tool pattern (resolved post-stream in `studio-agent-panel.tsx`), so the merchant sees it in **Open preview** and keeps it with the existing **Save changes** button — nothing persists silently. Deliberately excluded from the agent's reach: menu items/prices/photos, the currency code, brand colors, custom domain, publish.
+
 **Next (in order):**
-1. Final visual QA of the live tab inside the authenticated dashboard (needs a merchant session).
-2. Write tools — let the agent actually apply theme/structure changes (the misuse-proof SDK hooks), starting with branding tokens (`settings_branding`).
-3. Grow the commerce SDK from read-only into the cart/checkout facade.
-4. The v0-style project scaffold + live preview + deploy-to-`merchant-name.krafta.org` loop (Vercel for Platforms + Sandbox).
+1. Final visual QA of the live tab + the apply→preview→Save loop inside the authenticated dashboard (needs a merchant session + `OPENAI_API_KEY`).
+2. Show the live preview alongside the agent (so changes are visible without leaving the chat), and let the agent auto-save on confirm.
+3. Wire **brand colors** end-to-end: persist `settings_branding` + a storefront theming engine, then add it to `applyDesign`.
+4. Grow the commerce SDK from read-only into the cart/checkout facade.
+5. The v0-style project scaffold + live preview + deploy-to-`merchant-name.krafta.org` loop (Vercel for Platforms + Sandbox).
 
