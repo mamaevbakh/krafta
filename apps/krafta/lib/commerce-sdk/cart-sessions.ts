@@ -54,6 +54,28 @@ export function getCommerceAnonClient(): SupabaseClient<Database> | null {
   });
 }
 
+/**
+ * An anon-key client that carries a specific user's access token on EVERY
+ * request via a global Authorization header, so PostgREST resolves the request
+ * as role `authenticated` (the commerce-table grants live there; the bare anon
+ * role has none). We attach the header explicitly rather than rely on
+ * refreshSession's in-memory session, which supabase-js does not reliably bind
+ * to outgoing PostgREST/RPC calls when the session is set from an external
+ * refresh token. The caller supplies the identity hint, so getSession() is never
+ * needed on this client.
+ */
+function anonClientWithToken(
+  accessToken: string,
+): SupabaseClient<Database> | null {
+  const url = supabaseUrl();
+  const key = anonKey();
+  if (!url || !key) return null;
+  return createClient<Database>(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+}
+
 function hashSecret() {
   return process.env.KRAFTA_COMMERCE_API_KEYS_SECRET ?? "";
 }
@@ -202,8 +224,11 @@ export async function clientForCartToken(
       .eq("token_hash", tokenHash);
   }
 
+  const authed = anonClientWithToken(refreshed.session.access_token);
+  if (!authed) return null;
+
   return {
-    client: anon,
+    client: authed,
     identity: { userId: row.auth_user_id, customerId: row.customer_id },
     orgId: row.org_id,
     catalogId: row.catalog_id,

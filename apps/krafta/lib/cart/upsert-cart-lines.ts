@@ -2,7 +2,11 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 
-import { ensureCartIdentity, type CartIdentity } from "./identity";
+import {
+  ensureCartIdentity,
+  type CartIdentity,
+  type SupabaseServerClient,
+} from "./identity";
 import {
   fetchItemModifierLists,
   getCartSummary,
@@ -83,6 +87,9 @@ export type UpsertCartLinesInput = {
    *  orderId, we skip the draft lookup. */
   orderId?: string;
   identity?: CartIdentity;
+  /** Injected client (headless commerce API). Omit on the storefront → the
+   *  cookie-authed server client. */
+  supabase?: SupabaseServerClient;
 };
 
 export type UpsertCartLineError = {
@@ -130,6 +137,7 @@ export async function upsertCartLines(
       venueId: input.venueId,
       identity: input.identity,
       orderId: input.orderId,
+      supabase: input.supabase,
     });
   }
 
@@ -154,7 +162,7 @@ export async function upsertCartLines(
   }
   const dedupedLines = [...seenByKey.values()];
 
-  const supabase = await createClient();
+  const supabase = input.supabase ?? (await createClient());
 
   // Resolve identity + draft order. Reuses the existing helpers; same
   // contract as setLineQuantity / the deleted addLineItem path.
@@ -162,6 +170,7 @@ export async function upsertCartLines(
     orgId: input.orgId,
     venueId: input.venueId,
     identity: input.identity,
+    supabase: input.supabase,
   });
   const orderId = draft.orderId;
 
@@ -416,6 +425,7 @@ export async function upsertCartLines(
       venueId: input.venueId,
       identity: input.identity,
       orderId,
+      supabase: input.supabase,
     });
   }
 
@@ -443,5 +453,6 @@ export async function upsertCartLines(
     venueId: input.venueId,
     identity: input.identity,
     orderId,
+    supabase: input.supabase,
   });
 }
