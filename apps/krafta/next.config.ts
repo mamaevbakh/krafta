@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withEve } from "eve/next";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -97,4 +98,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Mount the Krafta Studio codegen agent (studio-agent/, an eve app) behind this
+// same app/origin via eve's Next.js integration. withEve MERGES rewrites — our
+// existing rules become afterFiles, eve's proxy routes become beforeFiles — and
+// spreads the rest of this config untouched; only /eve-prefixed routes proxy to
+// the eve runtime. The agent's heavy deps (AI SDK v7, sandbox, workflow) live in
+// studio-agent, not this bundle.
+export default withEve(nextConfig, { eveRoot: "../../studio-agent" });
