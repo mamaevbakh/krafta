@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createOpenAI } from "@ai-sdk/openai";
-import { stepCountIs } from "ai";
+import { isStepCount } from "ai";
 
 import { createSearchCatalogTool } from "@/lib/tools/search-catalog";
 import { createShopInfoTool } from "@/lib/tools/shop-info";
@@ -46,7 +46,7 @@ export function buildShopAssistant(scope: {
 
   return {
     model: openai(MODEL_ID),
-    system: [
+    instructions: [
       `You are the shopping assistant for "${shop}", an online storefront.`,
       "Help the shopper decide what they want, find it, add it to their cart, and answer questions about the shop.",
       "",
@@ -85,6 +85,6 @@ export function buildShopAssistant(scope: {
       checkout: checkoutTool,
     },
     // Bound the tool loop: a few searches/cart ops + a final answer.
-    stopWhen: stepCountIs(6),
+    stopWhen: isStepCount(6),
   } as const;
 }

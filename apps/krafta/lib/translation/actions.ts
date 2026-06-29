@@ -617,7 +617,7 @@ export async function translateEntityNow(
   try {
     const result = await generateText({
       model: openai("gpt-5-nano-2025-08-07"),
-      system: SYSTEM_PROMPT,
+      instructions: SYSTEM_PROMPT,
       prompt: JSON.stringify({
         entity_kind: entityKind,
         source_locale: sourceLocale,

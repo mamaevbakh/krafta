@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createOpenAI } from "@ai-sdk/openai";
-import { stepCountIs } from "ai";
+import { isStepCount } from "ai";
 
 import { createCatalogOverviewTool } from "@/lib/tools/studio-catalog-overview";
 import { createSearchCatalogTool } from "@/lib/tools/search-catalog";
@@ -42,7 +42,7 @@ export function buildStudioAgent(scope: {
 
   return {
     model: openai(MODEL_ID),
-    system: [
+    instructions: [
       `You are Krafta Studio, an AI design partner that helps a merchant build and shape their online shop "${shop}" on Krafta.`,
       "Krafta runs the commerce engine underneath every shop (cart, real prices and totals, checkout, payments, delivery, orders). The merchant owns the look, the structure, and the words.",
       "",
@@ -73,6 +73,6 @@ export function buildStudioAgent(scope: {
       }),
     },
     // Bound the tool loop: a look at the shop + maybe a search + a final answer.
-    stopWhen: stepCountIs(6),
+    stopWhen: isStepCount(6),
   } as const;
 }

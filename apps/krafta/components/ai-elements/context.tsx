@@ -316,7 +316,11 @@ export const ContextReasoningUsage = ({
   ...props
 }: ContextReasoningUsageProps) => {
   const { usage, modelId } = useContextValue();
-  const reasoningTokens = usage?.reasoningTokens ?? 0;
+  // reasoningTokens was removed from LanguageModelUsage in AI SDK v7; read it
+  // defensively in case a provider still surfaces it.
+  const reasoningTokens =
+    (usage as unknown as { reasoningTokens?: number } | undefined)
+      ?.reasoningTokens ?? 0;
 
   if (children) {
     return children;
@@ -356,7 +360,11 @@ export const ContextCacheUsage = ({
   ...props
 }: ContextCacheUsageProps) => {
   const { usage, modelId } = useContextValue();
-  const cacheTokens = usage?.cachedInputTokens ?? 0;
+  // cachedInputTokens was removed from LanguageModelUsage in AI SDK v7; read it
+  // defensively in case a provider still surfaces it.
+  const cacheTokens =
+    (usage as unknown as { cachedInputTokens?: number } | undefined)
+      ?.cachedInputTokens ?? 0;
 
   if (children) {
     return children;

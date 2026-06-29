@@ -105,7 +105,7 @@ async function extractOneFile(
 ): Promise<ExtractedMenu> {
   const { output } = await generateText({
     model,
-    system: SYSTEM_PROMPT,
+    instructions: SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
