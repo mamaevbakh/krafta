@@ -5,7 +5,11 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { QR_SOURCE_COOKIE } from "./qr-source-cookie";
-import { ensureCartIdentity, type CartIdentity } from "./identity";
+import {
+  ensureCartIdentity,
+  type CartIdentity,
+  type SupabaseServerClient,
+} from "./identity";
 import { modifierSignature, type ModifierSelection } from "./modifier-signature";
 
 /**
@@ -22,9 +26,10 @@ import { modifierSignature, type ModifierSelection } from "./modifier-signature"
 async function resolveCartIdentity(
   orgId: string,
   hint?: CartIdentity,
+  injected?: SupabaseServerClient,
 ): Promise<CartIdentity> {
   if (hint?.customerId && hint?.userId) return hint;
-  return ensureCartIdentity(orgId);
+  return ensureCartIdentity(orgId, injected);
 }
 
 /**
@@ -93,6 +98,10 @@ type GetOrCreateDraftInput = {
   /** Pre-resolved identity from the action layer. Skips ensureCartIdentity
    *  when present — saves a round-trip on the hot path. See resolveCartIdentity. */
   identity?: CartIdentity;
+  /** Injected Supabase client. Storefront callers omit it → cookie-authed server
+   *  client (path unchanged). The headless commerce API passes a client authed as
+   *  the cart's anonymous user, so RLS scopes writes exactly as the storefront. */
+  supabase?: SupabaseServerClient;
 };
 
 /**
@@ -105,8 +114,12 @@ type GetOrCreateDraftInput = {
 export async function getOrCreateDraftOrder(
   input: GetOrCreateDraftInput,
 ): Promise<{ orderId: string; version: number; customerId: string }> {
-  const supabase = await createClient();
-  const { customerId } = await resolveCartIdentity(input.orgId, input.identity);
+  const supabase = input.supabase ?? (await createClient());
+  const { customerId } = await resolveCartIdentity(
+    input.orgId,
+    input.identity,
+    input.supabase,
+  );
 
   const { data: existing, error: selectError } = await supabase
     .schema("commerce")
@@ -454,8 +467,10 @@ export async function getCartSummary(input: {
   venueId: string;
   identity?: CartIdentity;
   orderId?: string;
+  /** Injected client (headless commerce API). Omit on the storefront. */
+  supabase?: SupabaseServerClient;
 }): Promise<CartSummary> {
-  const supabase = await createClient();
+  const supabase = input.supabase ?? (await createClient());
 
   // Embedded select: lines + their modifiers in ONE round-trip (down from
   // two). The modifiers join lives at the same nesting depth as the lines
@@ -497,7 +512,11 @@ export async function getCartSummary(input: {
 
   // Slow path: resolve identity and look up the draft order ourselves. Still
   // benefits from the embedded lines+modifiers select (one RT instead of two).
-  const { customerId } = await resolveCartIdentity(input.orgId, input.identity);
+  const { customerId } = await resolveCartIdentity(
+    input.orgId,
+    input.identity,
+    input.supabase,
+  );
 
   const { data: order, error: orderError } = await supabase
     .schema("commerce")

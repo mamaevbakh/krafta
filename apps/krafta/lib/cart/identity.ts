@@ -9,7 +9,7 @@ export type CartIdentity = {
   customerId: string;
 };
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+export type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * The current auth uid, working for BOTH Supabase-issued sessions (anonymous
@@ -76,8 +76,15 @@ export async function ensureCustomerUserId(
  * per (org, auth user) at the DB level; concurrent first calls converge on
  * the winner via the 23505 catch below.
  */
-export async function ensureCartIdentity(orgId: string): Promise<CartIdentity> {
-  const supabase = await createClient();
+export async function ensureCartIdentity(
+  orgId: string,
+  injected?: SupabaseServerClient,
+): Promise<CartIdentity> {
+  // Storefront callers pass nothing → the cookie-authed server client (path
+  // unchanged). The headless commerce API injects a client already authed as the
+  // cart's anonymous user (resolveAuthUserId then reads that session), so the
+  // commerce.customers row is minted under that user's RLS — same isolation.
+  const supabase = injected ?? (await createClient());
 
   const userId = await resolveAuthUserId(supabase);
 
