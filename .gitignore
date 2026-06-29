@@ -53,3 +53,6 @@ next-env.d.ts
 apps/krafta/test-results/
 apps/krafta/playwright-report/
 apps/krafta/demo-assets/
+
+# Krafta Studio local live-preview servers (per-shop next dev runners; ephemeral)
+.krafta-previews/

@@ -359,9 +359,15 @@ export function CatalogBuilderPanel({
   const [isUploadingHeaderBannerDark, setIsUploadingHeaderBannerDark] =
     useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [builderFocus, setBuilderFocus] = useState<BuilderFocus>(
-    initialFocus ?? "structure",
-  );
+  // The Krafta Studio (codegen) tab is only meaningful for coded shops, which
+  // carry a publishable commerce key. Regular catalogs have none, so the agent
+  // would build against an empty NEXT_PUBLIC_KRAFTA_PUBLISHABLE_KEY.
+  const isCodedShop = Boolean(studioPublishableKey);
+  const [builderFocus, setBuilderFocus] = useState<BuilderFocus>(() => {
+    const requested = initialFocus ?? "structure";
+    // Guard the ?tab=assistant deep link landing on a non-coded catalog.
+    return requested === "assistant" && !isCodedShop ? "structure" : requested;
+  });
   const [lastSavedSignature, setLastSavedSignature] = useState<string | null>(null);
   const headerBannerLightInputRef = useRef<HTMLInputElement>(null);
   const headerBannerDarkInputRef = useRef<HTMLInputElement>(null);
@@ -767,11 +773,12 @@ export function CatalogBuilderPanel({
       </div>
 
       <div className="mx-auto max-w-312 px-6 py-8">
-      {builderFocus === "assistant" ? (
+      {builderFocus === "assistant" && isCodedShop ? (
         <div className="space-y-4">
           <StudioSectionSwitcher
             builderFocus={builderFocus}
             onChange={setBuilderFocus}
+            showAssistant={isCodedShop}
           />
           <StudioCodegenPanel
             shopName={catalogName}
@@ -785,6 +792,7 @@ export function CatalogBuilderPanel({
           <StudioSectionSwitcher
             builderFocus={builderFocus}
             onChange={setBuilderFocus}
+            showAssistant={isCodedShop}
           />
 
           {builderFocus === "structure" ? (
@@ -907,10 +915,16 @@ export function CatalogBuilderPanel({
 function StudioSectionSwitcher({
   builderFocus,
   onChange,
+  showAssistant,
 }: {
   builderFocus: BuilderFocus;
   onChange: (value: BuilderFocus) => void;
+  /** Coded shops only — gate the "Krafta Studio" (codegen) tab. */
+  showAssistant: boolean;
 }) {
+  const focusOptions = showAssistant
+    ? BUILDER_FOCUS_OPTIONS
+    : BUILDER_FOCUS_OPTIONS.filter((focus) => focus.value !== "assistant");
   return (
     <StudioCard className="p-5">
       <div>
@@ -921,7 +935,7 @@ function StudioSectionSwitcher({
         </p>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {BUILDER_FOCUS_OPTIONS.map((focus) => {
+        {focusOptions.map((focus) => {
           const Icon = focus.icon;
           const isActive = builderFocus === focus.value;
           return (
