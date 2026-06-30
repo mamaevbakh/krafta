@@ -109,30 +109,54 @@ function readLatestPreview(messages: ReadonlyArray<{ parts?: readonly unknown[] 
 }
 
 // The most recent PUBLISH out of the stream. `publish_shop` surfaces the same
-// way as preview; its output carries the public { url } + the { deploymentUrl }.
+// way as preview; its output carries the public { url }, the { deploymentUrl },
+// and { subdomainProvisioned } — false when the <slug>.krafta.org alias didn't
+// take and the url is just the raw, temporary deploy URL. A failed publish lands
+// as `state: "output-error"`; we capture that so it isn't swallowed (CORR-2).
 function readLatestPublish(messages: ReadonlyArray<{ parts?: readonly unknown[] }>): {
   url: string | null;
   deploymentUrl: string | null;
+  subdomainProvisioned: boolean;
+  intendedUrl: string | null;
+  error: string | null;
 } {
   let url: string | null = null;
   let deploymentUrl: string | null = null;
+  let subdomainProvisioned = true;
+  let intendedUrl: string | null = null;
+  let error: string | null = null;
   for (const message of messages) {
     for (const raw of (message.parts ?? []) as EvePart[]) {
-      if (
-        raw.type === "dynamic-tool" &&
-        raw.toolName === "publish_shop" &&
-        raw.state === "output-available"
-      ) {
-        const output = raw.output as { url?: unknown; deploymentUrl?: unknown } | undefined;
+      if (raw.type !== "dynamic-tool" || raw.toolName !== "publish_shop") continue;
+      if (raw.state === "output-available") {
+        const output = raw.output as
+          | {
+              url?: unknown;
+              deploymentUrl?: unknown;
+              subdomainProvisioned?: unknown;
+              intendedUrl?: unknown;
+            }
+          | undefined;
         if (output && typeof output.url === "string") {
           url = output.url;
           deploymentUrl =
             typeof output.deploymentUrl === "string" ? output.deploymentUrl : null;
+          // Default true for older outputs that predate the flag (their url was
+          // already the provisioned subdomain); only an explicit false downgrades.
+          subdomainProvisioned = output.subdomainProvisioned !== false;
+          intendedUrl =
+            typeof output.intendedUrl === "string" ? output.intendedUrl : null;
+          error = null; // a success supersedes an earlier failure in the stream
         }
+      } else if (raw.state === "output-error") {
+        error =
+          typeof raw.errorText === "string" && raw.errorText
+            ? raw.errorText
+            : "Publishing failed. Please try again.";
       }
     }
   }
-  return { url, deploymentUrl };
+  return { url, deploymentUrl, subdomainProvisioned, intendedUrl, error };
 }
 
 export function StudioCodegenPanel({
@@ -190,16 +214,27 @@ export function StudioCodegenPanel({
   const published = useMemo(() => readLatestPublish(messages), [messages]);
   // Show this session's fresh publish, else the URL persisted from a past one.
   const liveUrl = published.url ?? initialPublishedUrl ?? null;
+  // A DB-persisted URL is always a real, provisioned subdomain; only a fresh
+  // publish whose alias failed is "not provisioned" (a temporary deploy URL).
+  const liveProvisioned = published.url ? published.subdomainProvisioned : true;
   const persistedUrl = useRef<string | null>(null);
   useEffect(() => {
-    if (!catalogId || !published.url || persistedUrl.current === published.url) return;
+    // Only persist a genuinely provisioned subdomain as the shop's canonical
+    // published URL — never a temporary *.vercel.app fallback (CORR-3).
+    if (!catalogId || !published.url || !published.subdomainProvisioned) return;
+    if (persistedUrl.current === published.url) return;
     persistedUrl.current = published.url;
     void recordShopPublish({
       catalogId,
       publishedUrl: published.url,
       deploymentUrl: published.deploymentUrl,
     });
-  }, [catalogId, published.url, published.deploymentUrl]);
+  }, [
+    catalogId,
+    published.url,
+    published.deploymentUrl,
+    published.subdomainProvisioned,
+  ]);
 
   const send = (text: string) => {
     const value = text.trim();
@@ -380,16 +415,31 @@ export function StudioCodegenPanel({
               </span>
             ) : null}
             {liveUrl ? (
-              <a
-                href={liveUrl}
-                target="_blank"
-                rel="noreferrer"
-                title={liveUrl}
-                className="inline-flex shrink-0 items-center gap-1 truncate rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-600/20"
-              >
-                <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
-                Live · {liveUrl.replace(/^https?:\/\//, "")}
-              </a>
+              liveProvisioned ? (
+                <a
+                  href={liveUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={liveUrl}
+                  className="inline-flex shrink-0 items-center gap-1 truncate rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-600/20"
+                >
+                  <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
+                  Live · {liveUrl.replace(/^https?:\/\//, "")}
+                </a>
+              ) : (
+                <a
+                  href={liveUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Published to a temporary URL — the ${
+                    published.intendedUrl?.replace(/^https?:\/\//, "") ?? "subdomain"
+                  } didn't provision. Click Update to retry.`}
+                  className="inline-flex shrink-0 items-center gap-1 truncate rounded-full border border-amber-600/30 bg-amber-600/10 px-2 py-0.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-600/20"
+                >
+                  <span className="size-1.5 rounded-full bg-amber-500" aria-hidden />
+                  Published · temporary link
+                </a>
+              )
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -432,6 +482,16 @@ export function StudioCodegenPanel({
             </a>
           </div>
         </div>
+
+        {published.error ? (
+          <div className="border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
+            Publish failed:{" "}
+            {published.error.length > 160
+              ? `${published.error.slice(0, 160)}…`
+              : published.error}{" "}
+            — click {liveUrl ? "Update" : "Publish"} to try again.
+          </div>
+        ) : null}
 
         <div className="relative min-h-0 flex-1">
           {previewSrc ? (
