@@ -1,9 +1,22 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
 import type { Currency, Item } from "@krafta/commerce";
+
 import { Price } from "@/components/commerce/price";
+import { useOptionalCart } from "@/components/commerce/cart-provider";
+import { ItemSheet } from "@/components/commerce/item-sheet";
+import { cn } from "@/lib/utils";
 
 // Photo card mirroring the Krafta storefront: a tall product image with an "Add"
 // pill overlaid bottom-right, then name / description / price below. Fully
 // editable presentation; money renders only through <Price> (engine value).
+//
+// Add behaviour: items with a single variation and no modifiers add in one tap;
+// anything configurable (multiple variations or any modifier list) opens the
+// item sheet so the customer can choose first. All cart writes go through
+// @krafta/commerce — the engine prices every line.
 export function ProductCard({
   item,
   currency,
@@ -11,9 +24,53 @@ export function ProductCard({
   item: Item;
   currency: Currency;
 }) {
+  const cart = useOptionalCart();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const needsConfig = useMemo(
+    () => item.variations.length > 1 || item.modifierLists.length > 0,
+    [item.variations.length, item.modifierLists.length],
+  );
+
+  const defaultVariationId = useMemo(
+    () =>
+      item.variations.find((v) => v.isDefault)?.id ??
+      item.variations[0]?.id ??
+      "",
+    [item.variations],
+  );
+
+  const handleAdd = () => {
+    if (!cart) return;
+    if (needsConfig) {
+      setSheetOpen(true);
+      return;
+    }
+    cart.addLine({ itemId: item.id, variationId: defaultVariationId, qty: 1 });
+    cart.open();
+  };
+
   return (
     <article className="group flex flex-col">
-      <div className="relative aspect-[3/4] overflow-hidden rounded-lg border border-border bg-muted">
+      <div
+        className={cn(
+          "relative aspect-[3/4] overflow-hidden rounded-lg border border-border bg-muted",
+          needsConfig && "cursor-pointer",
+        )}
+        {...(needsConfig
+          ? {
+              role: "button",
+              tabIndex: 0,
+              onClick: () => setSheetOpen(true),
+              onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSheetOpen(true);
+                }
+              },
+            }
+          : {})}
+      >
         {item.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- starter keeps deps light; agent can switch to next/image
           <img
@@ -22,15 +79,24 @@ export function ProductCard({
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
           />
         ) : null}
-        {/* Add-to-cart: wire to the @krafta/commerce write API (createCart →
-            setLines) in a client component; the engine prices every line. */}
-        <button
-          type="button"
-          className="absolute right-2 bottom-2 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
-        >
-          Add
-        </button>
+        {cart ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAdd();
+            }}
+            disabled={cart.isHydrating && !needsConfig}
+            aria-label={
+              needsConfig ? `Choose options for ${item.name}` : `Add ${item.name}`
+            }
+            className="absolute bottom-2 right-2 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            Add
+          </button>
+        ) : null}
       </div>
+
       <div className="flex flex-1 flex-col gap-1 pt-3">
         <h3 className="text-sm font-semibold leading-tight">{item.name}</h3>
         {item.description ? (
@@ -44,6 +110,16 @@ export function ProductCard({
           className="mt-1 text-sm font-medium"
         />
       </div>
+
+      {/* Configurable items: the detail sheet for variations + modifiers. */}
+      {needsConfig && cart ? (
+        <ItemSheet
+          item={item}
+          currency={currency}
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
     </article>
   );
 }

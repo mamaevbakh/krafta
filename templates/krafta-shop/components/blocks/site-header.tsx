@@ -1,7 +1,10 @@
 // Shop hero header — mirrors the Krafta storefront look: a small brand badge +
-// the shop title, a short description, a row of tag chips, and theme/language
-// toggles on the right. Pure presentation; the agent rewrites it freely.
+// the shop title, a short description, a row of tag chips, and the cart +
+// theme/language controls on the right. Pure presentation; the agent rewrites
+// it freely.
 import type { ReactNode } from "react";
+
+import { CartButton } from "@/components/commerce/cart-button";
 
 export function SiteHeader({
   shopName,
@@ -24,6 +27,7 @@ export function SiteHeader({
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <CartButton />
           <ToggleButton label="Toggle theme">
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <circle cx="12" cy="12" r="4" />

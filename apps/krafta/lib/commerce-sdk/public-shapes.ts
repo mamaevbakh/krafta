@@ -106,21 +106,27 @@ function mapItem(item: PublicItem): ApiItem {
       isDefault: variation.is_default,
       isSoldOut: variation.is_sold_out,
     })),
-    modifierLists: item.modifier_lists.map((list) => ({
-      id: list.id,
-      name: list.name,
-      type: list.modifier_type,
-      minSelected: list.min_selected,
-      maxSelected: list.max_selected,
-      textRequired: list.text_required,
-      maxLength: list.max_length,
-      modifiers: list.modifiers.map((modifier) => ({
-        id: modifier.id,
-        name: modifier.name,
-        priceCents: modifier.price_cents,
-        onByDefault: modifier.on_by_default,
+    // Hidden lists (e.g. an auto-applied service charge) are applied by the
+    // engine server-side and REJECT any client selection — the storefront's own
+    // picker skips them, so the public API must not leak them either, or a
+    // generated shop would send a selection the cart endpoint 422s on.
+    modifierLists: item.modifier_lists
+      .filter((list) => !list.hidden_from_customer)
+      .map((list) => ({
+        id: list.id,
+        name: list.name,
+        type: list.modifier_type,
+        minSelected: list.min_selected,
+        maxSelected: list.max_selected,
+        textRequired: list.text_required,
+        maxLength: list.max_length,
+        modifiers: list.modifiers.map((modifier) => ({
+          id: modifier.id,
+          name: modifier.name,
+          priceCents: modifier.price_cents,
+          onByDefault: modifier.on_by_default,
+        })),
       })),
-    })),
   };
 }
 

@@ -26,7 +26,16 @@ The shop binds to one catalog via the publishable key; `commerce.getCatalog()` r
 - `app/page.tsx` — landing → shop
 - `app/menu/page.tsx` — the shop (categories → products)
 - `components/blocks/*` — editable presentation (header, hero, product card, menu grid)
-- `components/commerce/*` — the commerce-bound bits (e.g. `<Price>`); restyle freely, keep the engine values
+- `components/commerce/*` — the commerce-bound bits (`<Price>`, cart provider, item sheet, cart drawer, checkout, confirmation); restyle freely, keep the engine values
 - `lib/commerce.ts` — the single `@krafta/commerce` client
+- `lib/cart/*` — cart line signatures + `localStorage` persistence helpers
 
-Cart + checkout components arrive with the commerce write API (Layer 1.5).
+## Cart & checkout
+
+Full **add-to-cart → cart → checkout → order** ships out of the box, wired entirely to `@krafta/commerce` from the browser (publishable key + a cart token persisted in `localStorage`). No server actions, no other backend.
+
+- `CartProvider` (wrap your app, already done in `app/layout.tsx`) holds the cart and runs every mutation through `setLines`; `useCart()` exposes `addLine` / `setLineQty` / `removeLine` / `placeOrder`.
+- The product card one-tap-adds simple items and opens the **item sheet** (variations + modifiers) for configurable ones.
+- The **cart drawer** runs the cart list → checkout (mode picker gated to `catalog.orderModes`, mode-specific fields, tip) → order confirmation.
+
+Everything money-related is server-authoritative: subtotals from `getCart`, the checkout total from `getCartPricing`, the receipt from the placed order. The shop only ever sends ids, quantities, selections, mode, and tip — never prices. Restyle any of it; just keep the cents coming from the engine and rendering through `<Price>`.
