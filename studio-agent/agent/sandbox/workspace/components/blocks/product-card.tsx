@@ -45,7 +45,13 @@ export function ProductCard({
       setSheetOpen(true);
       return;
     }
-    cart.addLine({ itemId: item.id, variationId: defaultVariationId, qty: 1 });
+    const defaultVariation = item.variations.find(
+      (v) => v.id === defaultVariationId,
+    );
+    cart.addLine(
+      { itemId: item.id, variationId: defaultVariationId, qty: 1 },
+      { name: item.name, priceCents: defaultVariation?.priceCents ?? item.priceCents },
+    );
     cart.open();
   };
 

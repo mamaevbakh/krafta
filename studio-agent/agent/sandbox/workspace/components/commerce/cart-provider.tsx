@@ -42,7 +42,16 @@ const FLUSH_DEBOUNCE_MS = 220;
 
 /** A cart line plus its resolved client signature, so the UI's stepper/remove
  *  controls know which selection to resend. */
-export type DisplayLine = CartLine & { sig: string };
+export type DisplayLine = CartLine & { sig: string; isOptimistic?: boolean };
+
+/** Display data the caller already has at add-time, used to render the line
+ *  immediately without waiting for the server round-trip. */
+export type OptimisticHint = {
+  name: string;
+  /** Per-unit price in cents (variation price + modifier deltas). */
+  priceCents: number;
+  modifiers?: { name: string; priceCents: number }[];
+};
 
 export type PlaceOrderResult =
   | { ok: true; order: Order }
@@ -76,7 +85,7 @@ type CartContextValue = {
 
   // Mutations — fire-and-forget; correctness comes from the server cart we
   // store after each write.
-  addLine: (input: CartLineInput) => void;
+  addLine: (input: CartLineInput, hint?: OptimisticHint) => void;
   setLineQty: (line: DisplayLine, qty: number) => void;
   removeLine: (line: DisplayLine) => void;
 
@@ -125,6 +134,11 @@ export function CartProvider({
   // shows the server cart verbatim. A `setLines` response clears the entries
   // it just persisted, so this naturally drains to empty.
   const [desired, setDesired] = useState<Record<string, number>>({});
+  // Optimistic lines shown immediately on add, before the server confirms.
+  // Keyed by signature; removed once the flush settles.
+  const [optimisticBySig, setOptimisticBySig] = useState<
+    Map<string, DisplayLine>
+  >(new Map());
   const [isHydrating, setIsHydrating] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -360,7 +374,7 @@ export function CartProvider({
 
   // ── Public mutations ──────────────────────────────────────────────────
   const addLine = useCallback(
-    (input: CartLineInput) => {
+    (input: CartLineInput, hint?: OptimisticHint) => {
       const selection: LineSelection = {
         itemId: input.itemId,
         variationId: input.variationId,
@@ -371,14 +385,46 @@ export function CartProvider({
 
       // Absolute target = whatever we already intend (or the server has) + the
       // amount being added. Reading the ref means rapid synchronous adds stack.
+      const addQty = Math.max(1, input.qty || 1);
       const current =
         sig in desiredRef.current
           ? desiredRef.current[sig]
           : currentServerQty(sig);
-      queue(sig, current + Math.max(1, input.qty || 1));
+      queue(sig, current + addQty);
+
+      // Show the line immediately while the server round-trip is in flight.
+      if (hint) {
+        setOptimisticBySig((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(sig);
+          const optQty = (existing?.qty ?? 0) + addQty;
+          next.set(sig, {
+            lineId: `opt:${sig}`,
+            itemId: input.itemId,
+            variationId: input.variationId,
+            sig,
+            name: hint.name,
+            qty: optQty,
+            unitPriceCents: hint.priceCents,
+            lineTotalCents: hint.priceCents * optQty,
+            modifiers: hint.modifiers ?? [],
+            isOptimistic: true,
+          } as DisplayLine);
+          return next;
+        });
+      }
+
       // Adds flush right away: each new configuration is its own line, so the
       // insert→line-id mapping stays unambiguous.
-      void flushNow();
+      void flushNow().finally(() => {
+        // Server confirmed (or failed + rolled back) — drop the placeholder.
+        setOptimisticBySig((prev) => {
+          if (!prev.has(sig)) return prev;
+          const next = new Map(prev);
+          next.delete(sig);
+          return next;
+        });
+      });
     },
     // currentServerQty depends only on refs; queue/flushNow are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -416,16 +462,22 @@ export function CartProvider({
   // ── Derived view ──────────────────────────────────────────────────────
   const lines = useMemo<DisplayLine[]>(() => {
     const out: DisplayLine[] = [];
+    const confirmedSigs = new Set<string>();
     for (const line of cart?.lines ?? []) {
       const sig = resolveSig(line);
       const qty = sig in desired ? desired[sig] : line.qty;
       if (qty <= 0) continue; // optimistically removed
+      confirmedSigs.add(sig);
       out.push({ ...line, sig, qty });
+    }
+    // Append optimistic placeholders for sigs not yet confirmed by the server.
+    for (const [sig, optLine] of optimisticBySig) {
+      if (!confirmedSigs.has(sig)) out.push(optLine);
     }
     return out;
     // resolveSig reads refs that move in lockstep with `cart`; desired is state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, desired]);
+  }, [cart, desired, optimisticBySig]);
 
   const itemCount = useMemo(() => {
     const counts = new Map<string, number>();
@@ -433,11 +485,15 @@ export function CartProvider({
       counts.set(resolveSig(line), line.qty);
     }
     for (const [sig, qty] of Object.entries(desired)) counts.set(sig, qty);
+    // Include optimistic lines not yet on the server.
+    for (const [sig, optLine] of optimisticBySig) {
+      if (!counts.has(sig)) counts.set(sig, optLine.qty);
+    }
     let total = 0;
     for (const qty of counts.values()) if (qty > 0) total += qty;
     return total;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, desired]);
+  }, [cart, desired, optimisticBySig]);
 
   // ── Checkout ──────────────────────────────────────────────────────────
   const getPricing = useCallback(
@@ -489,6 +545,7 @@ export function CartProvider({
     desiredRef.current = {};
     cartRef.current = null;
     setDesired({});
+    setOptimisticBySig(new Map());
     setCart(null);
     setError(null);
     clearPersistedCart(PUBLISHABLE_KEY);

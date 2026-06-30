@@ -107,12 +107,21 @@ export function ItemSheet({
 
   const handleAdd = () => {
     if (!canAdd) return;
-    cart.addLine({
-      itemId: item.id,
-      variationId,
-      qty,
-      modifiers: mods.selections,
+    // Build modifier display names for the optimistic hint by looking up each
+    // selected modifier id in the item's modifier lists.
+    const modifierHints = mods.selections.flatMap((sel) => {
+      if (sel.text) return [{ name: sel.text, priceCents: 0 }];
+      const list = item.modifierLists.find((l) => l.id === sel.modifierListId);
+      if (!list || !sel.modifierIds) return [];
+      return sel.modifierIds.flatMap((id) => {
+        const mod = list.modifiers.find((m) => m.id === id);
+        return mod ? [{ name: mod.name, priceCents: mod.priceCents }] : [];
+      });
     });
+    cart.addLine(
+      { itemId: item.id, variationId, qty, modifiers: mods.selections },
+      { name: item.name, priceCents: unitPriceCents, modifiers: modifierHints },
+    );
     onClose();
     cart.open();
   };

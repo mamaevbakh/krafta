@@ -254,20 +254,26 @@ function CartLineRow({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          <QuantityStepper
-            quantity={line.qty}
-            itemName={line.name}
-            onDecrement={() => cart.setLineQty(line, line.qty - 1)}
-            onIncrement={() => cart.setLineQty(line, line.qty + 1)}
-          />
-          <button
-            type="button"
-            onClick={() => cart.removeLine(line)}
-            aria-label={`Remove ${line.name}`}
-            className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <TrashIcon className="size-4" />
-          </button>
+          {line.isOptimistic ? (
+            <span className="text-xs text-muted-foreground">Adding…</span>
+          ) : (
+            <>
+              <QuantityStepper
+                quantity={line.qty}
+                itemName={line.name}
+                onDecrement={() => cart.setLineQty(line, line.qty - 1)}
+                onIncrement={() => cart.setLineQty(line, line.qty + 1)}
+              />
+              <button
+                type="button"
+                onClick={() => cart.removeLine(line)}
+                aria-label={`Remove ${line.name}`}
+                className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <TrashIcon className="size-4" />
+              </button>
+            </>
+          )}
         </div>
       </div>
       <Price
