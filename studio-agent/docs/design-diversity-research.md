@@ -35,8 +35,10 @@ Krafta added three accelerants of its own:
 One pattern dominates: **decouple design from code into two phases.**
 
 - **v0** runs a separate `GenerateDesignInspiration` call that emits a written
-  brief (palette, type, aesthetic) *before* code — *"If you generate a design
-  brief, you MUST follow it."*
+  brief (palette, type, aesthetic) *before* code — its prompt says *"Utilize the
+  GenerateDesignInspiration tool before any design work."* (The "must follow the
+  brief" behavior is modeled in v0's few-shot examples, not a verbatim rule —
+  verification pass, 2026-06-30.)
 - **Orchids** emits a `<design_system_reference>` (or clones a real site's tokens
   via screenshots) and injects it into a separate coding agent.
 - **Lovable** — *"the design system is everything… edit `index.css` and
@@ -44,22 +46,25 @@ One pattern dominates: **decouple design from code into two phases.**
 
 Shared move: **keep the component library for structure; regenerate the *theme
 layer* (tokens) from scratch per project.** Plus hard **negative constraints**
-(v0 literally bans default indigo/blue/violet, caps 3–5 colors and 2 fonts, bans
-gradients-by-default and decorative-blob filler and emoji-as-icons), and
-**multi-variant** generation for variety-on-demand (Replit Agent 4's canvas; the
-`/design-shotgun` skill in this repo).
+(v0 bans default indigo/blue/violet, caps 3–5 colors and 2 fonts, discourages
+gradients *by default* — a soft ban, permitted as subtle analogous accents — and
+bans decorative-blob filler and emoji-as-icons), and **multi-variant** generation
+for variety-on-demand (Replit Agent 4's canvas; the `/design-shotgun` skill in
+this repo).
 
 ## The WebGL question
 
 WebGL / three.js / R3F / canvas are **pure-client, browser-native** — no native
-build step, no server, no database. Bolt (the "install anything" builder) treats
-WebGL as a *sweet spot*, and Bolt is actually *more* constrained than Krafta (it
-runs in a browser WASM sandbox that can't do native binaries; Krafta builds
-server-side on Vercel). "Add a WebGL hero" = `npm i three @react-three/fiber` +
-one client component. The only blockers were soft: the old "keep the stack fixed"
-framing and the preview symlinking the template's `node_modules`. Fix = v0's
-**install-before-import** contract for the *visual* layer + Orchids' rule of
-**walling the backbone** (commerce stays the one untouchable path).
+build step, no server, no database. They render in the *visitor's* browser against
+their GPU; the only thing the build needs is `npm install three @react-three/fiber`
++ a client component, which any Node bundler clears (even Bolt's far-more-constrained
+in-browser WebContainer runs three.js fine). So "Add a WebGL hero" is **table
+stakes, not a moonshot** — and this is a *client-side* capability, so it's not
+about Krafta's server build being more powerful (an earlier over-statement; dropped).
+The only blockers were soft: the old "keep the stack fixed" framing and the preview
+symlinking the template's `node_modules`. Fix = v0's **install-before-import**
+contract for the *visual* layer + Orchids' rule of **walling the backbone**
+(commerce stays the one untouchable path).
 
 ## What changed in `instructions.md`
 
@@ -78,13 +83,42 @@ framing and the preview symlinking the template's `node_modules`. Fix = v0's
   else is the agent's to invent.
 - **Verify-in-browser** before "done" (catalog renders, Add-to-cart wired).
 
-## Not yet done (follow-ups)
+## Verification + Lovable delta (2026-06-30)
 
-- A real `generate_design_brief` **eve tool** (separate model call) instead of the
-  instruction-only two-phase — closer to v0/Orchids.
-- A **named-aesthetic preset library** + merchant "pick a look" UX (design-shotgun).
-- **Deterministic post-fixers** (validate imports, complete `package.json`, repair
-  JSX) for higher first-render success, like v0's autofixers.
-- A **two-tier model** strategy (cheap default for edits, escalate for big builds).
-- Finish the cut-off research: Lovable deep-dive + the adversarial verification
-  pass (workflow hit a session limit mid-run).
+The load-bearing claims above were re-checked against the primary leaked-prompt
+files + both papers: **all confirmed; shipped direction validated.** (Corrections
+already applied above: the v0 "must follow the brief" line was a paraphrase, not a
+verbatim quote; gradients are a *soft* ban; the WebGL win is client-side, not a
+server-power advantage.)
+
+**Lovable is the highest-transfer competitor (also Supabase-backed) — but inverted.**
+Lovable's *app* owns its database, so it auto-generates schema/RLS/edge functions
+(and ships ~1 critical + 5–10 high security findings on first scan, ~half missing
+RLS). **Krafta's engine owns the DB**; shop code only ever reaches it through
+`@krafta/commerce` over a publishable key. So Lovable's RLS/migration machinery
+does **not** transfer — and that's a strength: Krafta eliminated Lovable's worst
+failure mode (agent-authored, frequently-wrong RLS) *by construction*. A point in
+favor of keeping the commerce box locked, exactly as shipped.
+
+## Follow-ups (prioritized)
+
+1. **Pre-publish security scan, hard-gating `publish_shop`** (NEW, top priority —
+   Lovable's `run_security_scan` analogue for Krafta's *client-side trust seam*):
+   block the deploy if the built shop contains (a) any key other than the
+   publishable key, (b) `process.env` reads outside `NEXT_PUBLIC_KRAFTA_*`, (c) a
+   non-`@krafta/commerce` network/DB/auth dependency, or (d) a hardcoded price/total.
+2. **Make the commerce wall structural, not prose** (NEW): a reserved-env guard +
+   lint so generated code physically can't read anything but `NEXT_PUBLIC_KRAFTA_*`
+   (mirrors Lovable reserving `SUPABASE_*`/`LOVABLE_*` and banning `VITE_*` frontend env).
+3. A real **`generate_design_brief` tool** — frame it as the *Plan* half of a
+   Plan/Build split (a no-mutation reasoning turn the merchant approves before any
+   live-shop change): diversity rationale **+** safety rationale.
+4. **Named-aesthetic preset library** + merchant "pick a look" UX (design-shotgun).
+5. **Deterministic post-fixers** (validate imports, complete `package.json`, repair
+   JSX) + a **two-tier model** (cheap router + powerful generator). Lovable's own
+   engineers converged here after **abandoning multi-agent orchestration** — so do
+   NOT build a multi-agent pipeline; lean on deterministic verification.
+6. Wire the Next devtools MCP `get_errors` as the agent's verify signal — Lovable's
+   "let errors bubble, don't try/catch" reliability loop.
+7. Lift verbatim into the reskin path: **customize shadcn via `cva` variants, never
+   inline overrides** (Lovable / Same.dev) — stops the kit from looking like the kit.
