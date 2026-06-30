@@ -167,6 +167,11 @@ export default defineTool({
     const id = sanitizeId(publishableKey || sandbox.id);
     const dir = path.join(PUBLISH_ROOT, id);
 
+    // Publish staging is DISPOSABLE — the live shop runs on Vercel, nothing reads
+    // this dir after the deploy. Wrap the whole job so we always remove it (even
+    // on failure), so .krafta-publishes never accumulates per-shop build dirs and
+    // a half-extracted dir is never left behind (CORR-1 / PROD-4).
+    try {
     // 1. Package the shop's source (no node_modules/.next/.git) from the sandbox.
     const tar = await sandbox.run({
       command:
@@ -246,8 +251,9 @@ export default defineTool({
 
     // 5. Point the shop's own subdomain at this deployment. The project owns the
     //    *.<apex> wildcard, so the alias provisions instantly. If aliasing fails
-    //    (or we have no slug), fall back to the raw deployment URL so publish
-    //    still succeeds with a usable link.
+    //    (or we have no slug), fall back to the raw deployment URL AND flag that
+    //    the subdomain isn't live — so the dashboard never shows a green
+    //    "Live · <slug>.krafta.org" for a host that doesn't resolve (CORR-3/UX-5).
     const label = subdomain ? toSubdomain(subdomain) : "";
     if (label) {
       const aliasHost = `${label}.${SHOP_APEX}`;
@@ -256,11 +262,38 @@ export default defineTool({
         dir,
       );
       if (alias.code === 0) {
-        return { url: `https://${aliasHost}`, deploymentUrl, projectId: VERCEL_PROJECT_ID };
+        return {
+          url: `https://${aliasHost}`,
+          deploymentUrl,
+          subdomainProvisioned: true,
+          projectId: VERCEL_PROJECT_ID,
+        };
       }
-      // Aliasing failed — surface nothing fatal; return the working deploy URL.
+      // Aliasing failed — the deploy is still live at its raw URL, but say so
+      // plainly so the caller can warn instead of claiming the subdomain.
+      return {
+        url: deploymentUrl,
+        deploymentUrl,
+        subdomainProvisioned: false,
+        intendedUrl: `https://${aliasHost}`,
+        aliasError: alias.out.trim().split("\n").slice(-4).join("\n"),
+        projectId: VERCEL_PROJECT_ID,
+      };
     }
 
-    return { url: deploymentUrl, deploymentUrl, projectId: VERCEL_PROJECT_ID };
+    return {
+      url: deploymentUrl,
+      deploymentUrl,
+      subdomainProvisioned: false,
+      projectId: VERCEL_PROJECT_ID,
+    };
+    } finally {
+      // Disposable staging — remove it whether the publish succeeded or threw.
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      } catch {
+        spawnSync("rm", ["-rf", dir], { stdio: "ignore" });
+      }
+    }
   },
 });

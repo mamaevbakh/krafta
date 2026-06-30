@@ -9,6 +9,8 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  statfsSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -296,6 +298,52 @@ function evictIfNeeded(keepId: string): void {
   servers.delete(oldest[0]);
 }
 
+// A preview dir not touched in this long, with no live server, is reapable.
+const PREVIEW_TTL_MS = 48 * 60 * 60 * 1000;
+
+// Bound on-disk growth: remove preview dirs we haven't touched in PREVIEW_TTL_MS
+// that have no live dev server. Each dir keeps a warm .next cache (and sometimes
+// a real node_modules from the fallback install), so stale shops add up and were
+// a direct contributor to the disk-full failures (CORR-1 / PROD-4).
+function reapStalePreviews(keepId: string): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(PREVIEW_ROOT);
+  } catch {
+    return; // root doesn't exist yet — nothing to reap
+  }
+  const now = Date.now();
+  for (const entry of entries) {
+    if (entry === keepId) continue;
+    if (servers.has(entry)) continue; // actively serving this shop
+    const d = path.join(PREVIEW_ROOT, entry);
+    let mtimeMs = 0;
+    try {
+      mtimeMs = statSync(d).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (now - mtimeMs < PREVIEW_TTL_MS) continue;
+    // Stale: take down any orphan dev server still holding the dir, then drop it.
+    const marker = readPortMarker(d);
+    if (marker && pidAlive(marker.pid)) killByPid(marker.pid);
+    rmrf(d);
+  }
+}
+
+// Free megabytes on the volume holding `p`. Returns Infinity if we can't measure,
+// so an unknowable filesystem never blocks a preview.
+function freeMB(p: string): number {
+  try {
+    const s = statfsSync(p);
+    return Math.floor((Number(s.bavail) * Number(s.bsize)) / (1024 * 1024));
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+const MIN_FREE_MB = 600;
+
 export default defineTool({
   description:
     "Build or refresh the merchant's LIVE PREVIEW of their shop. Snapshots the current /workspace shop, runs it, and returns a URL the dashboard shows in an iframe so the merchant sees their real shop. Call this right after you connect the shop to its catalog (so they see their starting point), and again after any change they could see. Returns { url, port }.",
@@ -323,6 +371,16 @@ export default defineTool({
     // the sandbox id only when no key is available.
     const id = sanitizeId(publishableKey || sandbox.id);
     const dir = path.join(PREVIEW_ROOT, id);
+
+    // Reclaim disk from stale previews first, then refuse to build into a nearly
+    // full volume — a clear error beats an ENOSPC partway through next dev.
+    reapStalePreviews(id);
+    const free = freeMB(REPO_ROOT);
+    if (free < MIN_FREE_MB) {
+      throw new Error(
+        `low disk: only ${free}MB free — clear space (old shops live in .krafta-previews) before building the preview`,
+      );
+    }
 
     // 1. Package the shop's source (no node_modules/.next/.git) inside the sandbox.
     const tar = await sandbox.run({
