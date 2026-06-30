@@ -264,6 +264,11 @@ type BuilderPanelProps = {
   studioPublishableKey?: string | null;
   /** The shop's public URL once published (from catalogs.published_url). */
   studioPublishedUrl?: string | null;
+  /** Whether the codegen runtime (the eve studio-agent) is actually mounted in
+   *  this environment. eve runs only in local dev (not on Vercel), so the page
+   *  passes `!process.env.VERCEL` — when false we hide the Studio chat tab rather
+   *  than render a composer whose every turn silently fails (PROD-7/UX-7). */
+  codegenAvailable?: boolean;
 };
 
 export function CatalogBuilderPanel({
@@ -283,6 +288,7 @@ export function CatalogBuilderPanel({
   initialFocus,
   studioPublishableKey,
   studioPublishedUrl,
+  codegenAvailable = true,
 }: BuilderPanelProps) {
   const initialAspectInputs = useMemo(
     () => getAspectInputs(initialLayout.itemCard.aspectRatio, COMMON_ASPECT_RATIOS),
@@ -362,10 +368,12 @@ export function CatalogBuilderPanel({
   const [isUploadingHeaderBannerDark, setIsUploadingHeaderBannerDark] =
     useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  // The Krafta Studio (codegen) tab is only meaningful for coded shops, which
-  // carry a publishable commerce key. Regular catalogs have none, so the agent
-  // would build against an empty NEXT_PUBLIC_KRAFTA_PUBLISHABLE_KEY.
-  const isCodedShop = Boolean(studioPublishableKey);
+  // The Krafta Studio (codegen) tab needs two things: a coded shop (a publishable
+  // commerce key — regular catalogs have none, so the agent would build against an
+  // empty NEXT_PUBLIC_KRAFTA_PUBLISHABLE_KEY) AND the codegen runtime actually
+  // mounted here (eve is local-dev-only). On a Vercel deploy eve is absent, so we
+  // hide the tab instead of showing a chat that silently fails (PROD-7/UX-7).
+  const isCodedShop = Boolean(studioPublishableKey) && codegenAvailable;
   const [builderFocus, setBuilderFocus] = useState<BuilderFocus>(() => {
     const requested = initialFocus ?? "structure";
     // Guard the ?tab=assistant deep link landing on a non-coded catalog.

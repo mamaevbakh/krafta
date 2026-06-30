@@ -145,6 +145,9 @@ export default async function CatalogBuilderPage({
       initialFocus={tab === "assistant" ? "assistant" : undefined}
       studioPublishableKey={studioPublishableKey}
       studioPublishedUrl={studioPublishedUrl}
+      // eve (the codegen runtime) mounts only in local dev — see next.config.ts.
+      // On Vercel the Studio chat would silently fail, so hide its tab there.
+      codegenAvailable={!process.env.VERCEL}
     />
   );
 }
