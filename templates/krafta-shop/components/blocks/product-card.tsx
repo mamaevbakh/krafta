@@ -7,7 +7,6 @@ import type { Currency, Item } from "@krafta/commerce";
 import { Price } from "@/components/commerce/price";
 import { useOptionalCart } from "@/components/commerce/cart-provider";
 import { ItemSheet } from "@/components/commerce/item-sheet";
-import { cn } from "@/lib/utils";
 
 // Photo card mirroring the Krafta storefront: a tall product image with an "Add"
 // pill overlaid bottom-right, then name / description / price below. Fully
@@ -52,25 +51,18 @@ export function ProductCard({
 
   return (
     <article className="group flex flex-col">
-      <div
-        className={cn(
-          "relative aspect-[3/4] overflow-hidden rounded-lg border border-border bg-muted",
-          needsConfig && "cursor-pointer",
-        )}
-        {...(needsConfig
-          ? {
-              role: "button",
-              tabIndex: 0,
-              onClick: () => setSheetOpen(true),
-              onKeyDown: (e: React.KeyboardEvent) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setSheetOpen(true);
-                }
-              },
-            }
-          : {})}
-      >
+      <div className="relative aspect-[3/4] overflow-hidden rounded-lg border border-border bg-muted">
+        {/* Configurable items: the whole image is the single control that opens
+            the configurator (one focusable element per card — no nested
+            interactive content). The "Add" pill below is then decorative. */}
+        {cart && needsConfig ? (
+          <button
+            type="button"
+            onClick={handleAdd}
+            aria-label={`Choose options for ${item.name}`}
+            className="absolute inset-0 z-10 cursor-pointer"
+          />
+        ) : null}
         {item.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- starter keeps deps light; agent can switch to next/image
           <img
@@ -79,18 +71,23 @@ export function ProductCard({
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
           />
         ) : null}
-        {cart ? (
+        {cart && needsConfig ? (
+          // Decorative — the image button above is the real control.
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-2 right-2 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm"
+          >
+            Add
+          </span>
+        ) : null}
+        {cart && !needsConfig ? (
+          // Simple item: the pill is the one-tap add control.
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleAdd();
-            }}
-            disabled={cart.isHydrating && !needsConfig}
-            aria-label={
-              needsConfig ? `Choose options for ${item.name}` : `Add ${item.name}`
-            }
-            className="absolute bottom-2 right-2 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            onClick={handleAdd}
+            disabled={cart.isHydrating}
+            aria-label={`Add ${item.name}`}
+            className="absolute bottom-2 right-2 z-10 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             Add
           </button>

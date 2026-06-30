@@ -115,9 +115,11 @@ export function ModifierPicker({
     setListSel((prev) => {
       const ids = prev[list.id] ?? [];
       const has = ids.includes(modifierId);
-      // Single-select: replace (and never drop below a required min of 1).
+      // Single-select: replace. An OPTIONAL single-select (min 0) can also be
+      // cleared by re-clicking the chosen option; a required one can't drop
+      // below its min of 1.
       if (list.maxSelected === 1) {
-        if (has) return prev;
+        if (has) return list.minSelected === 0 ? { ...prev, [list.id]: [] } : prev;
         return { ...prev, [list.id]: [modifierId] };
       }
       // Multi-select: toggle; block adding past the cap.
@@ -170,7 +172,10 @@ export function ModifierPicker({
                 {list.modifiers.map((mod) => {
                   const ids = listSel[list.id] ?? [];
                   const selected = ids.includes(mod.id);
-                  const single = list.maxSelected === 1;
+                  // Radio only for REQUIRED single-select (it can't be cleared
+                  // anyway). An optional single-select renders as a checkbox so
+                  // re-clicking the chosen option can clear it.
+                  const single = list.maxSelected === 1 && list.minSelected >= 1;
                   return (
                     <li key={mod.id}>
                       <label

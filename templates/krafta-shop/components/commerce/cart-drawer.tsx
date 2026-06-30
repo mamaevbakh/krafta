@@ -12,6 +12,7 @@ import { BagIcon, CloseIcon, TrashIcon } from "./icons";
 import { OrderConfirmation } from "./order-confirmation";
 import { Price } from "./price";
 import { QuantityStepper } from "./quantity-stepper";
+import { useFocusTrap } from "./use-focus-trap";
 
 type Step = "cart" | "checkout" | "placed";
 
@@ -30,11 +31,19 @@ export function CartDrawer() {
   // Mount/exit transition.
   const [rendered, setRendered] = useState(isOpen);
   const [shown, setShown] = useState(false);
+
+  // Modal focus: move focus into the panel once it's actually mounted (the panel
+  // renders a tick after isOpen via `rendered`), trap Tab, restore on close.
+  const panelRef = useFocusTrap<HTMLDivElement>(isOpen && rendered);
   useEffect(() => {
     if (isOpen) {
       setRendered(true);
-      const id = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(id);
+      // A tick after mount so the panel paints at its off-screen start, then
+      // transitions in. setTimeout (not requestAnimationFrame) so the slide
+      // still fires when rAF is throttled in a backgrounded / headless tab —
+      // otherwise the panel could stay parked off-screen and never appear.
+      const id = setTimeout(() => setShown(true), 10);
+      return () => clearTimeout(id);
     }
     setShown(false);
     const t = setTimeout(() => setRendered(false), 200);
@@ -68,10 +77,10 @@ export function CartDrawer() {
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* Scrim */}
-      <button
-        type="button"
-        aria-label="Close cart"
+      {/* Scrim — decorative; the panel has its own labeled Close button, so this
+          stays out of the tab order / a11y tree. */}
+      <div
+        aria-hidden="true"
         onClick={cart.close}
         className={cn(
           "absolute inset-0 bg-black/50 transition-opacity duration-200",
@@ -80,11 +89,13 @@ export function CartDrawer() {
       />
       {/* Panel */}
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Cart"
+        tabIndex={-1}
         className={cn(
-          "absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col bg-background shadow-xl transition-transform duration-200 ease-out",
+          "absolute inset-y-0 right-0 flex h-full w-full max-w-md flex-col bg-background shadow-xl outline-none transition-transform duration-200 ease-out",
           shown ? "translate-x-0" : "translate-x-full",
         )}
       >

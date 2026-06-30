@@ -11,6 +11,7 @@ import { CloseIcon } from "./icons";
 import { ModifierPicker, type ModifierPickerValue } from "./modifier-picker";
 import { Price } from "./price";
 import { QuantityStepper } from "./quantity-stepper";
+import { useFocusTrap } from "./use-focus-trap";
 import { VariationSelector } from "./variation-selector";
 
 /**
@@ -36,8 +37,11 @@ export function ItemSheet({
   const cart = useCart();
 
   const defaultVariationId = useMemo(() => {
-    const fallback = item.variations[0]?.id ?? "";
-    return item.variations.find((v) => v.isDefault)?.id ?? fallback;
+    // Prefer an in-stock variation so the sheet never opens on a disabled
+    // "Sold out" selection while other variations are available.
+    const inStock = item.variations.filter((v) => !v.isSoldOut);
+    const pool = inStock.length > 0 ? inStock : item.variations;
+    return (pool.find((v) => v.isDefault) ?? pool[0])?.id ?? "";
   }, [item.variations]);
 
   const [variationId, setVariationId] = useState(defaultVariationId);
@@ -82,6 +86,9 @@ export function ItemSheet({
     [],
   );
 
+  // Modal focus: move focus into the sheet on open, trap Tab, restore on close.
+  const panelRef = useFocusTrap<HTMLDivElement>(open);
+
   if (!open) return null;
 
   const selectedVariation =
@@ -89,7 +96,14 @@ export function ItemSheet({
   const unitPriceCents =
     (selectedVariation?.priceCents ?? item.priceCents) + mods.priceDeltaCents;
   const totalCents = unitPriceCents * qty;
-  const canAdd = mods.isValid && !!variationId && !selectedVariation?.isSoldOut;
+  // Block adds during the post-reload hydration window: until the persisted
+  // cart finishes restoring, addLine can't compute a correct absolute target
+  // and would clobber a restored line's quantity.
+  const canAdd =
+    mods.isValid &&
+    !!variationId &&
+    !selectedVariation?.isSoldOut &&
+    !cart.isHydrating;
 
   const handleAdd = () => {
     if (!canAdd) return;
@@ -113,7 +127,11 @@ export function ItemSheet({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex h-full w-full flex-col overflow-hidden bg-background sm:h-auto sm:max-h-[88dvh] sm:max-w-md sm:rounded-2xl sm:border sm:border-border">
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className="flex h-full w-full flex-col overflow-hidden bg-background outline-none sm:h-auto sm:max-h-[88dvh] sm:max-w-md sm:rounded-2xl sm:border sm:border-border"
+      >
         {/* Image band + close button */}
         <div className="relative">
           {item.imageUrl ? (

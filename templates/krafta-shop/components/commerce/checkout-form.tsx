@@ -101,7 +101,9 @@ export function CheckoutForm({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [getPricing, mode, tipCents, coords]);
+    // cart.subtotalCents is a dep so a price_changed re-sync (which replaces the
+    // server cart) re-fetches the corrected pricing preview the customer reviews.
+  }, [getPricing, mode, tipCents, coords, cart.subtotalCents]);
 
   const canPlace = useMemo(() => {
     if (mode === "dine_in") return table.trim().length > 0;
@@ -119,6 +121,12 @@ export function CheckoutForm({
     setFormError(null);
     setPlacing(true);
     try {
+      // <input type="datetime-local"> yields a tz-less local wall-clock string
+      // ("2026-06-30T14:30"); convert to a real UTC instant so the engine's
+      // timestamptz column stores the time the customer actually picked.
+      const scheduledForIso = scheduledFor
+        ? new Date(scheduledFor).toISOString()
+        : undefined;
       const fields: CheckoutFields =
         mode === "dine_in"
           ? { table: table.trim() }
@@ -126,7 +134,7 @@ export function CheckoutForm({
             ? {
                 name: name.trim() || undefined,
                 phone: phone.trim() || undefined,
-                scheduledFor: scheduledFor || undefined,
+                scheduledFor: scheduledForIso,
                 note: note.trim() || undefined,
               }
             : {
@@ -137,7 +145,7 @@ export function CheckoutForm({
                   .join(", "),
                 apartment: apartment.trim() || undefined,
                 coords: coords ?? undefined,
-                scheduledFor: scheduledFor || undefined,
+                scheduledFor: scheduledForIso,
                 note: note.trim() || undefined,
               };
       const result = await cart.placeOrder({ mode, fields, tipCents });
@@ -318,7 +326,12 @@ export function CheckoutForm({
           <div className="flex flex-wrap gap-2">
             {TIP_PRESETS.map((pct) => {
               const value = Math.round(cart.subtotalCents * pct);
-              const active = tipCents === value;
+              // Guard against a 0 subtotal making every preset (all == 0) read
+              // as active, and against a stale highlight after the subtotal moves.
+              const active =
+                pct === 0
+                  ? tipCents === 0
+                  : cart.subtotalCents > 0 && tipCents === value;
               return (
                 <button
                   key={pct}

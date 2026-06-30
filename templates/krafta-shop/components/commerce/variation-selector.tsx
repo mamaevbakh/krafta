@@ -45,7 +45,7 @@ export function VariationSelector({
               onClick={() => !disabled && onChange(variation.id)}
               className={cn(
                 "inline-flex min-h-11 flex-col items-start gap-0.5 rounded-md border px-3 py-1.5 text-left transition-colors",
-                selected
+                selected && !disabled
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-border bg-background text-foreground hover:bg-accent",
                 disabled && "cursor-not-allowed opacity-50 hover:bg-background",
