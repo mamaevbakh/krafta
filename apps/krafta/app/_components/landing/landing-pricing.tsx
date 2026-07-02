@@ -1,7 +1,8 @@
 /**
- * landing-pricing.tsx — Free plan (real, with the primary CTA) beside a Pro
- * plan marked "coming soon". No fabricated numbers: Krafta is free to start and
- * paid tiers (Krafta Pay + growth tools) are not priced yet.
+ * landing-pricing.tsx — three tiers: Free (live), Pro (live, $20, highlighted),
+ * and Business ($39) whose marquee features (Krafta Pay, AI) are marked "soon".
+ * Free and Pro start via the onboarding CTA; Business is sales-led (founding
+ * offer in the note), so it carries a note instead of a self-serve CTA.
  */
 
 import Link from "next/link";
@@ -22,6 +23,8 @@ export function LandingPricing({
   content: LandingContent;
 }) {
   const { pricing } = content;
+  const startHref = authed ? DASHBOARD_HREF : ONBOARDING_HREF;
+  const startLabel = authed ? content.actions.dashboard : pricing.free.cta;
   return (
     <section id="pricing" className="scroll-mt-16 border-t border-border">
       <div className="mx-auto max-w-[1248px] px-6 py-20">
@@ -31,8 +34,8 @@ export function LandingPricing({
           subtitle={pricing.subheading}
         />
 
-        <div className="mt-12 grid gap-6 lg:grid-cols-2">
-          {/* Free — the live, default plan */}
+        <div className="mt-12 grid items-stretch gap-6 lg:grid-cols-3">
+          {/* Free — live, entry plan */}
           <div className="flex flex-col rounded-xl border border-border bg-card p-8">
             <p className="text-sm font-medium text-muted-foreground">
               {pricing.free.name}
@@ -50,31 +53,66 @@ export function LandingPricing({
                 <PlanRow key={feature}>{feature}</PlanRow>
               ))}
             </ul>
-            <Button asChild size="lg" className="mt-8 w-full">
-              <Link href={authed ? DASHBOARD_HREF : ONBOARDING_HREF}>
-                {authed ? content.actions.dashboard : pricing.free.cta}
-              </Link>
+            <Button asChild size="lg" variant="outline" className="mt-8 w-full">
+              <Link href={startHref}>{startLabel}</Link>
             </Button>
           </div>
 
-          {/* Pro — coming soon */}
-          <div className="flex flex-col rounded-xl border border-dashed border-border bg-background p-8">
+          {/* Pro — live, highlighted */}
+          <div className="flex flex-col rounded-xl border-2 border-foreground bg-card p-8">
             <div className="flex items-center gap-3">
-              <p className="text-sm font-medium text-muted-foreground">
+              <p className="text-sm font-medium text-foreground">
                 {pricing.pro.name}
               </p>
               <Badge variant="secondary">{pricing.pro.badge}</Badge>
             </div>
-            <p className="mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
-              {pricing.pro.note}
+            <div className="mt-3 flex items-baseline gap-2">
+              <span className="font-mono text-5xl font-semibold tabular-nums tracking-tight text-foreground">
+                {pricing.pro.price}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {pricing.pro.period}
+              </span>
+            </div>
+            <p className="mt-4 text-sm text-muted-foreground">
+              {pricing.pro.includes}
             </p>
-            <ul className="mt-6 flex-1 space-y-3">
+            <ul className="mt-3 flex-1 space-y-3">
               {pricing.pro.features.map((feature) => (
+                <PlanRow key={feature}>{feature}</PlanRow>
+              ))}
+            </ul>
+            <Button asChild size="lg" className="mt-8 w-full">
+              <Link href={startHref}>{startLabel}</Link>
+            </Button>
+          </div>
+
+          {/* Business — priced, marquee features forthcoming, sales-led */}
+          <div className="flex flex-col rounded-xl border border-border bg-card p-8">
+            <p className="text-sm font-medium text-muted-foreground">
+              {pricing.business.name}
+            </p>
+            <div className="mt-3 flex items-baseline gap-2">
+              <span className="font-mono text-5xl font-semibold tabular-nums tracking-tight text-foreground">
+                {pricing.business.price}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {pricing.business.period}
+              </span>
+            </div>
+            <p className="mt-4 text-sm text-muted-foreground">
+              {pricing.business.includes}
+            </p>
+            <ul className="mt-3 flex-1 space-y-3">
+              {pricing.business.features.map((feature) => (
                 <PlanRow key={feature} muted>
                   {feature}
                 </PlanRow>
               ))}
             </ul>
+            <p className="mt-8 text-sm leading-relaxed text-muted-foreground">
+              {pricing.business.note}
+            </p>
           </div>
         </div>
       </div>

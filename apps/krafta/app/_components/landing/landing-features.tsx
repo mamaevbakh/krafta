@@ -1,9 +1,9 @@
 /**
- * landing-features.tsx — asymmetric bento that breaks the old uniform-grid
- * rhythm: a large cell holds the real MERCHANT order list (token-built, the
- * surface the merchant actually buys), beside a hairline grid of plain-icon
- * feature cells. Borders + size do the hierarchy — no colored-circle icons
- * (Anti-Slop #2), no shadows (Anti-Slop #9), no pastel fills.
+ * landing-features.tsx — a full-width hairline grid of the six capabilities. The
+ * old bento held a mock order list beside the grid; that's retired now that the
+ * real merchant dashboard is shown in its own section right below — the fake
+ * couldn't sit above the real. Borders + size do the hierarchy, plain muted
+ * icons only (no colored-circle icons, Anti-Slop #2; no shadows, #9).
  */
 
 import {
@@ -17,16 +17,15 @@ import {
 } from "lucide-react";
 
 import { SectionHeading } from "./section-heading";
-import { MerchantOrders } from "./merchant-orders";
 import type { LandingContent } from "./content";
 
 const FEATURE_ICONS: LucideIcon[] = [
-  BookOpen, // digital menu
+  BookOpen, // menu & catalog
   LayoutList, // every order, one screen
   Truck, // delivery built in
-  Languages, // three languages
-  Smartphone, // all from your phone
-  Zap, // free / ready in minutes
+  Languages, // any language
+  Smartphone, // run it from your phone
+  Zap, // QR as a sales channel
 ];
 
 export function LandingFeatures({ content }: { content: LandingContent }) {
@@ -43,28 +42,21 @@ export function LandingFeatures({ content }: { content: LandingContent }) {
           subtitle={features.subheading}
         />
 
-        <div className="mt-12 grid items-stretch gap-6 lg:grid-cols-2">
-          <MerchantOrders content={content} className="min-h-[20rem]" />
-
-          <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2">
-            {features.items.map((item, i) => {
-              const Icon = FEATURE_ICONS[i] ?? BookOpen;
-              return (
-                <div key={item.title} className="bg-card p-5">
-                  <Icon
-                    className="size-5 text-muted-foreground"
-                    aria-hidden
-                  />
-                  <h3 className="mt-3 text-sm font-medium text-foreground">
-                    {item.title}
-                  </h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                    {item.body}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+        <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
+          {features.items.map((item, i) => {
+            const Icon = FEATURE_ICONS[i] ?? BookOpen;
+            return (
+              <div key={item.title} className="flex flex-col bg-card p-6">
+                <Icon className="size-5 text-muted-foreground" aria-hidden />
+                <h3 className="mt-4 text-base font-medium text-foreground">
+                  {item.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {item.body}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

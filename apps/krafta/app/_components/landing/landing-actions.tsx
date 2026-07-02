@@ -12,7 +12,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import type { LandingContent } from "./content";
 
-export const DEMO_HREF = "/vintage-shop";
+export const DEMO_HREF = "/vintage-coffee";
 export const ONBOARDING_HREF = "/onboarding";
 export const DASHBOARD_HREF = "/dashboard";
 export const SIGN_IN_HREF = {
@@ -25,6 +25,9 @@ type LandingActionsProps = {
   content: LandingContent;
   size?: "default" | "lg";
   className?: string;
+  /** Show the secondary "view demo" button. Off in the hero, where the demo
+   *  switcher carries its own per-shop "open full shop" button. */
+  showDemo?: boolean;
 };
 
 export function LandingActions({
@@ -32,6 +35,7 @@ export function LandingActions({
   content,
   size = "lg",
   className,
+  showDemo = true,
 }: LandingActionsProps) {
   const { actions } = content;
   return (
@@ -41,9 +45,11 @@ export function LandingActions({
           {authed ? actions.dashboard : actions.createShop}
         </Link>
       </Button>
-      <Button asChild size={size} variant="outline">
-        <Link href={DEMO_HREF}>{actions.viewDemo}</Link>
-      </Button>
+      {showDemo ? (
+        <Button asChild size={size} variant="outline">
+          <Link href={DEMO_HREF}>{actions.viewDemo}</Link>
+        </Button>
+      ) : null}
     </div>
   );
 }

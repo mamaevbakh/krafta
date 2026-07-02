@@ -14,6 +14,7 @@ import { LandingHero } from "./_components/landing/landing-hero";
 import { LandingProof } from "./_components/landing/landing-proof";
 import { LandingProblem } from "./_components/landing/landing-problem";
 import { LandingFeatures } from "./_components/landing/landing-features";
+import { LandingDashboard } from "./_components/landing/landing-dashboard";
 import { LandingChannels } from "./_components/landing/landing-channels";
 import { LandingPayments } from "./_components/landing/landing-payments";
 import { LandingAi } from "./_components/landing/landing-ai";
@@ -87,6 +88,7 @@ async function LandingPage({ searchParams }: { searchParams: SearchParams }) {
         <LandingProof content={content} />
         <LandingProblem content={content} />
         <LandingFeatures content={content} />
+        <LandingDashboard content={content} />
         <LandingChannels content={content} />
         <LandingPayments content={content} />
         <LandingAi content={content} />

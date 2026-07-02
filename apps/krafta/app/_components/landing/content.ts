@@ -66,11 +66,11 @@ const en = {
   },
   hero: {
     eyebrow: "Storefront · Orders · QR · Payments · AI",
-    titleLead: "One menu.",
-    titlePayoff: "Every order, yours.",
+    titleLead: "Your storefront. Your brand.",
+    titlePayoff: "Your customers.",
     subtitle:
-      "Your own storefront and order-taking for cafes, restaurants, and shops. Dine-in, pickup, delivery, QR, and payments — all from your phone.",
-    spec: ["Free to start", "No signup", "RU · UZ · EN"],
+      "Sell direct — don't hand your customer and a cut to a marketplace. Menu, payments, and delivery in one link. Build it in an evening, no commission.",
+    spec: ["Free to start", "No signup", "Any language"],
   },
   demo: {
     shopName: "Vintage Coffee",
@@ -102,7 +102,7 @@ const en = {
       { label: "Card soon", soon: true },
       { label: "Yandex courier", soon: false },
       { label: "Orders in Telegram", soon: false },
-      { label: "RU · UZ · EN", soon: false },
+      { label: "Menu in any language", soon: false },
     ],
   },
   problem: {
@@ -134,7 +134,7 @@ const en = {
       },
       {
         title: "Translations in one click",
-        body: "The whole catalog in RU, UZ, and EN — ready for more than one market.",
+        body: "Your whole menu in any language — RU, UZ, EN and beyond. A guest from anywhere reads it in theirs.",
       },
       {
         title: "Run it from your phone",
@@ -157,7 +157,7 @@ const en = {
       },
       {
         title: "Build your menu",
-        body: "Add items, photos, and prices. In Russian, Uzbek, and English.",
+        body: "Add items, photos, and prices — translated into any language.",
       },
       {
         title: "Share your link",
@@ -186,7 +186,8 @@ const en = {
   payments: {
     eyebrow: "04 / Payments",
     heading: "Payments without integration pain",
-    subheading: "Local providers today. Global payments next.",
+    soonLabel: "Soon",
+    subheading: "Local providers first, then global.",
     providers: ["Payme", "Click", "Uzum", "Stripe"],
     storefrontLabel: "Storefront",
     flowNote:
@@ -210,6 +211,16 @@ const en = {
     personalNote:
       "Preferences, allergies, diet, order history — Krafta remembers for the guest and suggests what they'll order.",
   },
+  dashboard: {
+    eyebrow: "Your side",
+    heading: "Everything under control — on one screen",
+    subheading:
+      "A guest orders in the storefront — it lands with you instantly. Dine-in, pickup, and delivery, totals and statuses, Telegram alerts. Nothing slips through.",
+    ordersUrl: "krafta.org/orders",
+    ordersAlt: "Krafta orders dashboard — the live queue",
+    libraryUrl: "krafta.org/items",
+    libraryAlt: "Krafta menu editor",
+  },
   pricing: {
     eyebrow: "07 / Pricing",
     heading: "Infrastructure, not commission",
@@ -219,22 +230,40 @@ const en = {
       price: "0",
       period: "to start",
       features: [
-        "Digital menu in RU / UZ / EN",
-        "Web catalog + Telegram ordering",
-        "Dine-in, pickup & delivery",
-        "Phone dashboard",
+        "Menu in any language",
+        "Orders straight to Telegram",
+        "Pickup & browsable catalog",
+        "Run it from your phone",
       ],
       cta: "Create your shop",
     },
     pro: {
       name: "Pro",
-      badge: "Coming soon",
+      price: "250,000",
+      period: "UZS / mo",
+      badge: "Popular",
+      includes: "Everything in Free, plus",
       features: [
-        "Krafta Pay — cards in person & online",
-        "Advanced analytics & reporting",
-        "Team roles & multiple venues",
+        "Dine-in — QR on tables → kitchen",
+        "Delivery — zones, fees & Yandex courier",
+        "Every order on one screen",
+        "Basic analytics",
       ],
-      note: "Card payments and growth tools are on the way — a flat fee, never a percentage of your sales.",
+      cta: "Create your shop",
+    },
+    business: {
+      name: "Business",
+      price: "490,000",
+      period: "UZS / mo",
+      includes: "Everything in Pro, plus",
+      features: [
+        "Krafta Pay — cards in person & online (soon)",
+        "AI ordering assistant (soon)",
+        "Multiple venues & team roles",
+        "Advanced analytics & reporting",
+        "Priority support",
+      ],
+      note: "Founding shops get Business features at the Pro price — locked.",
     },
   },
   faq: {
@@ -251,7 +280,7 @@ const en = {
       },
       {
         q: "Which languages are supported?",
-        a: "Russian, Uzbek (Latin), and English. Your storefront shows each guest their own language.",
+        a: "Your menu can be translated into any language — so a guest from anywhere reads it in theirs. The dashboard and storefront interface are in Russian, Uzbek (Latin), and English.",
       },
       {
         q: "How do I take payment?",
@@ -298,11 +327,11 @@ const ru: LandingContent = {
   },
   hero: {
     eyebrow: "Витрина · Заказы · QR · Оплата · AI",
-    titleLead: "Одно меню.",
-    titlePayoff: "Каждый заказ — у вас.",
+    titleLead: "Своя витрина. Свой бренд.",
+    titlePayoff: "Свои клиенты.",
     subtitle:
-      "Своя витрина и приём заказов для кафе, ресторанов и магазинов. Зал, самовывоз, доставка, QR и оплата — всё с телефона.",
-    spec: ["Бесплатный старт", "Без регистрации", "RU · UZ · EN"],
+      "Продавайте напрямую — не отдавайте клиента и процент маркетплейсу. Меню, оплата и доставка в одной ссылке. Соберите за вечер, без комиссии.",
+    spec: ["Бесплатный старт", "Без регистрации", "Любой язык"],
   },
   demo: {
     shopName: "Vintage Coffee",
@@ -334,7 +363,7 @@ const ru: LandingContent = {
       { label: "Карта — скоро", soon: true },
       { label: "Курьер Яндекс", soon: false },
       { label: "Заказы в Telegram", soon: false },
-      { label: "RU · UZ · EN", soon: false },
+      { label: "Меню на любом языке", soon: false },
     ],
   },
   problem: {
@@ -366,7 +395,7 @@ const ru: LandingContent = {
       },
       {
         title: "Переводы в один клик",
-        body: "Весь каталог на RU, UZ и EN — готово к выходу за пределы одного рынка.",
+        body: "Весь каталог на любом языке — RU, UZ, EN и дальше. Гость из любой страны читает меню на своём.",
       },
       {
         title: "Управление с телефона",
@@ -389,7 +418,7 @@ const ru: LandingContent = {
       },
       {
         title: "Соберите меню",
-        body: "Добавьте позиции, фото и цены. На русском, узбекском и английском.",
+        body: "Добавьте позиции, фото и цены — с переводом на любой язык.",
       },
       {
         title: "Поделитесь ссылкой",
@@ -418,7 +447,8 @@ const ru: LandingContent = {
   payments: {
     eyebrow: "04 / Платежи",
     heading: "Платежи без боли интеграций",
-    subheading: "Локальные провайдеры — сейчас. Глобальные платежи — дальше.",
+    soonLabel: "Скоро",
+    subheading: "Сначала — локальные провайдеры, затем глобальные.",
     providers: ["Payme", "Click", "Uzum", "Stripe"],
     storefrontLabel: "Витрина",
     flowNote:
@@ -442,6 +472,16 @@ const ru: LandingContent = {
     personalNote:
       "Предпочтения, аллергии, диета, история заказов — Krafta помнит за гостя и подбирает то, что он закажет.",
   },
+  dashboard: {
+    eyebrow: "Ваша сторона",
+    heading: "Всё под контролем — на одном экране",
+    subheading:
+      "Гость заказывает в витрине — заказ тут же у вас. Зал, самовывоз и доставка, суммы и статусы, уведомления в Telegram. Ничего не теряется.",
+    ordersUrl: "krafta.org/orders",
+    ordersAlt: "Панель заказов Krafta — живая очередь",
+    libraryUrl: "krafta.org/items",
+    libraryAlt: "Редактор меню Krafta",
+  },
   pricing: {
     eyebrow: "07 / Цены",
     heading: "Инфраструктура, а не комиссия",
@@ -451,22 +491,40 @@ const ru: LandingContent = {
       price: "0",
       period: "для старта",
       features: [
-        "Цифровое меню на RU / UZ / EN",
-        "Веб-каталог + заказы в Telegram",
-        "Зал, самовывоз и доставка",
-        "Панель управления на телефоне",
+        "Меню на любом языке",
+        "Заказы сразу в Telegram",
+        "Самовывоз и каталог для просмотра",
+        "Управление с телефона",
       ],
       cta: "Создать магазин",
     },
     pro: {
       name: "Pro",
-      badge: "Скоро",
+      price: "250,000",
+      period: "сум / мес",
+      badge: "Популярный",
+      includes: "Всё из Free, плюс",
       features: [
-        "Krafta Pay — приём карт в зале и онлайн",
-        "Расширенная аналитика и отчёты",
-        "Роли команды и несколько точек",
+        "Зал — QR на столах → на кухню",
+        "Доставка — зоны, тарифы и курьер Яндекса",
+        "Все заказы на одном экране",
+        "Базовая аналитика",
       ],
-      note: "Приём карт и инструменты для роста уже в пути — фиксированная плата, а не процент с продаж.",
+      cta: "Создать магазин",
+    },
+    business: {
+      name: "Business",
+      price: "490,000",
+      period: "сум / мес",
+      includes: "Всё из Pro, плюс",
+      features: [
+        "Krafta Pay — оплата картой в зале и онлайн (скоро)",
+        "AI-ассистент заказов (скоро)",
+        "Несколько точек и роли команды",
+        "Расширенная аналитика и отчёты",
+        "Приоритетная поддержка",
+      ],
+      note: "Для первых заведений функции Business — по цене Pro, навсегда.",
     },
   },
   faq: {
@@ -483,7 +541,7 @@ const ru: LandingContent = {
       },
       {
         q: "Какие языки поддерживаются?",
-        a: "Русский, узбекский (латиница) и английский. Витрина показывает каждому гостю его язык.",
+        a: "Меню можно перевести на любой язык — и гость из любой страны прочитает его на своём. Интерфейс панели и витрины — на русском, узбекском (латиница) и английском.",
       },
       {
         q: "Как принимать оплату?",
@@ -528,11 +586,11 @@ const uz: LandingContent = {
   },
   hero: {
     eyebrow: "Vitrina · Buyurtmalar · QR · Toʻlov · AI",
-    titleLead: "Bitta menyu.",
-    titlePayoff: "Har bir buyurtma — sizniki.",
+    titleLead: "Oʻz vitrinangiz. Oʻz brendingiz.",
+    titlePayoff: "Oʻz mijozlaringiz.",
     subtitle:
-      "Oʻzingizning vitringiz va buyurtma qabul qilish — kafe, restoran va doʻkonlar uchun. Zal, olib ketish, yetkazib berish, QR va toʻlov — hammasi telefondan.",
-    spec: ["Bepul boshlash", "Roʻyxatsiz", "RU · UZ · EN"],
+      "Toʻgʻridan-toʻgʻri soting — mijoz va foizni marketpleysga bermang. Menyu, toʻlov va yetkazib berish bitta havolada. Bir kechada yigʻing, komissiyasiz.",
+    spec: ["Bepul boshlash", "Roʻyxatsiz", "Istalgan til"],
   },
   demo: {
     shopName: "Vintage Coffee",
@@ -564,7 +622,7 @@ const uz: LandingContent = {
       { label: "Karta — tez orada", soon: true },
       { label: "Yandex kuryeri", soon: false },
       { label: "Telegram’da buyurtmalar", soon: false },
-      { label: "RU · UZ · EN", soon: false },
+      { label: "Menyu istalgan tilda", soon: false },
     ],
   },
   problem: {
@@ -596,7 +654,7 @@ const uz: LandingContent = {
       },
       {
         title: "Bir bosishda tarjimalar",
-        body: "Butun katalog RU, UZ va EN’da — bittadan ortiq bozorga tayyor.",
+        body: "Butun menyu istalgan tilda — RU, UZ, EN va undan keyin. Istalgan davlatdan kelgan mehmon oʻz tilida oʻqiydi.",
       },
       {
         title: "Telefondan boshqaring",
@@ -619,7 +677,7 @@ const uz: LandingContent = {
       },
       {
         title: "Menyu yigʻing",
-        body: "Mahsulotlar, rasmlar va narxlarni qoʻshing. Rus, oʻzbek va ingliz tillarida.",
+        body: "Mahsulotlar, rasmlar va narxlarni qoʻshing — istalgan tilga tarjima bilan.",
       },
       {
         title: "Havola ulashing",
@@ -648,7 +706,8 @@ const uz: LandingContent = {
   payments: {
     eyebrow: "04 / Toʻlovlar",
     heading: "Toʻlovlar — integratsiya azobisiz",
-    subheading: "Lokal provayderlar — hozir. Global toʻlovlar — keyin.",
+    soonLabel: "Tez orada",
+    subheading: "Avval lokal provayderlar, keyin global.",
     providers: ["Payme", "Click", "Uzum", "Stripe"],
     storefrontLabel: "Vitrina",
     flowNote:
@@ -672,6 +731,16 @@ const uz: LandingContent = {
     personalNote:
       "Afzalliklar, allergiya, parhez, buyurtmalar tarixi — Krafta mehmon oʻrniga eslab qoladi va u buyurtma qiladigan narsani taklif qiladi.",
   },
+  dashboard: {
+    eyebrow: "Sizning tomoningiz",
+    heading: "Hammasi nazorat ostida — bitta ekranda",
+    subheading:
+      "Mehmon vitrinada buyurtma beradi — u darhol sizga tushadi. Zal, olib ketish va yetkazib berish, summalar va holatlar, Telegram bildirishnomalari. Hech narsa yoʻqolmaydi.",
+    ordersUrl: "krafta.org/orders",
+    ordersAlt: "Krafta buyurtmalar paneli — jonli navbat",
+    libraryUrl: "krafta.org/items",
+    libraryAlt: "Krafta menyu muharriri",
+  },
   pricing: {
     eyebrow: "07 / Narxlar",
     heading: "Infratuzilma, komissiya emas",
@@ -681,22 +750,40 @@ const uz: LandingContent = {
       price: "0",
       period: "boshlash uchun",
       features: [
-        "RU / UZ / EN’dagi raqamli menyu",
-        "Web katalog + Telegram buyurtmalari",
-        "Zal, olib ketish va yetkazib berish",
-        "Telefondagi boshqaruv paneli",
+        "Menyu istalgan tilda",
+        "Buyurtmalar toʻgʻridan-toʻgʻri Telegramda",
+        "Olib ketish va koʻrish uchun katalog",
+        "Telefondan boshqaruv",
       ],
       cta: "Doʻkon yaratish",
     },
     pro: {
       name: "Pro",
-      badge: "Tez orada",
+      price: "250,000",
+      period: "soʻm / oy",
+      badge: "Ommabop",
+      includes: "Free’dagi hammasi, ustiga",
       features: [
-        "Krafta Pay — zalda va onlayn kartalar",
-        "Kengaytirilgan tahlil va hisobotlar",
-        "Jamoa rollari va bir nechta filial",
+        "Zal — stollarda QR → oshxonaga",
+        "Yetkazib berish — hududlar, tariflar va Yandex kuryeri",
+        "Barcha buyurtmalar bitta ekranda",
+        "Asosiy tahlil",
       ],
-      note: "Karta toʻlovlari va oʻsish vositalari yoʻlda — qatʼiy toʻlov, sotuvlaringizdan foiz emas.",
+      cta: "Doʻkon yaratish",
+    },
+    business: {
+      name: "Business",
+      price: "490,000",
+      period: "soʻm / oy",
+      includes: "Pro’dagi hammasi, ustiga",
+      features: [
+        "Krafta Pay — zalda va onlayn karta (tez orada)",
+        "AI buyurtma yordamchisi (tez orada)",
+        "Bir nechta filial va jamoa rollari",
+        "Kengaytirilgan tahlil va hisobotlar",
+        "Ustuvor qoʻllab-quvvatlash",
+      ],
+      note: "Birinchi doʻkonlar uchun Business imkoniyatlari — Pro narxida, abadiy.",
     },
   },
   faq: {
@@ -713,7 +800,7 @@ const uz: LandingContent = {
       },
       {
         q: "Qaysi tillar qoʻllab-quvvatlanadi?",
-        a: "Rus, oʻzbek (lotin) va ingliz. Vitrina har bir mehmonga oʻz tilini koʻrsatadi.",
+        a: "Menyuni istalgan tilga tarjima qilish mumkin — istalgan davlatdan kelgan mehmon oʻz tilida oʻqiydi. Panel va vitrina interfeysi — rus, oʻzbek (lotin) va ingliz tillarida.",
       },
       {
         q: "Toʻlovni qanday qabul qilaman?",
