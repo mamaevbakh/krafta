@@ -4,6 +4,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { connect, createServer } from "node:net";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
@@ -247,37 +248,83 @@ function depNames(pkgPath: string): string[] {
   }
 }
 
-// Make node_modules available without installing when we can. If the preview's
-// deps are a subset of the shared install (the common case — same stack as the
-// template), symlink the shared node_modules. Only when the agent added a dep
-// the shared install lacks do we fall back to a real per-shop install.
-function ensureDeps(dir: string): void {
-  // The launch artifact is node_modules/.bin/next — gate on that exact path,
-  // not the package dir, so a half-set-up node_modules is treated as missing.
-  if (existsSync(path.join(dir, "node_modules", ".bin", "next"))) return;
+// Is this dir's node_modules the symlink we created to the shared template
+// install (vs. a real per-shop npm install, vs. absent)?
+function nodeModulesIsSharedSymlink(dir: string): boolean {
+  const nm = path.join(dir, "node_modules");
+  try {
+    return lstatSync(nm).isSymbolicLink();
+  } catch {
+    return false; // absent
+  }
+}
 
+// Do all of the shop's non-template deps already exist in its real
+// node_modules? Lets a refresh reuse a prior real install instead of
+// reinstalling every time.
+function extrasPresent(dir: string, extras: string[]): boolean {
+  return extras.every((name) =>
+    existsSync(path.join(dir, "node_modules", name, "package.json")),
+  );
+}
+
+// Make node_modules available for the preview. Two paths:
+//
+//   • Common case — the shop's deps are a subset of the template's shared
+//     install: symlink the shared node_modules. Zero install, zero disk.
+//
+//   • The shop added a dep the template lacks (a coded shop pulling in
+//     three / framer-motion / etc.): a real per-shop `npm install`. The
+//     symlink can't be extended (writing into it would pollute the shared
+//     template install), so this case owns a real node_modules.
+//
+// The critical refresh case: a shop's FIRST preview may symlink (no extras
+// yet), then the agent adds `three` and re-previews. The old code gated on
+// `node_modules/.bin/next` existing and returned early — but that path exists
+// via the symlink, so the new dep was never installed and the preview broke.
+// We now detect "symlinked but now needs extras" and convert to a real install.
+function ensureDeps(dir: string): void {
   const sharedHasNext =
     SHARED_DEPS && existsSync(path.join(SHARED_DEPS, ".bin", "next"));
-  if (sharedHasNext) {
-    const shared = new Set(
-      depNames(path.join(SHARED_DEPS, "..", "package.json")),
-    );
-    const needed = depNames(path.join(dir, "package.json"));
-    const coveredByShared = needed.every(
-      (name) => name.startsWith("@krafta/") || shared.has(name),
-    );
-    if (coveredByShared) {
-      rmSync(path.join(dir, "node_modules"), { recursive: true, force: true });
-      symlinkSync(SHARED_DEPS, path.join(dir, "node_modules"), "dir");
-      return;
-    }
+  const shared = sharedHasNext
+    ? new Set(depNames(path.join(SHARED_DEPS, "..", "package.json")))
+    : new Set<string>();
+  const needed = depNames(path.join(dir, "package.json"));
+  // @krafta/* is vendored in the seed (lib/commerce-client), never installed.
+  const extras = needed.filter(
+    (name) => !name.startsWith("@krafta/") && !shared.has(name),
+  );
+  const coveredByShared = sharedHasNext && extras.length === 0;
+
+  if (coveredByShared) {
+    // (Re)point node_modules at the shared install unless it already is.
+    if (nodeModulesIsSharedSymlink(dir)) return;
+    rmSync(path.join(dir, "node_modules"), { recursive: true, force: true });
+    symlinkSync(SHARED_DEPS, path.join(dir, "node_modules"), "dir");
+    return;
   }
 
-  // Fallback: real install for a shop that added a dependency. Capture output
-  // so a failure surfaces the real npm error instead of an opaque message.
+  // Extras needed → real install. Reuse a prior real install only if it's a
+  // real dir (not the shared symlink) that already carries next + every extra.
+  if (
+    !nodeModulesIsSharedSymlink(dir) &&
+    existsSync(path.join(dir, "node_modules", ".bin", "next")) &&
+    extrasPresent(dir, extras)
+  ) {
+    return;
+  }
+
+  // Tear down a stale shared symlink (or a partial real install) before a
+  // clean install — never mutate the shared template node_modules.
+  rmSync(path.join(dir, "node_modules"), { recursive: true, force: true });
+
+  // `--legacy-peer-deps` so a peer-range mismatch doesn't hard-fail the whole
+  // install: coded shops routinely add animation/3D libs whose declared React
+  // peer lags the template's React 19 (framer-motion@10, older three tooling),
+  // and a strict resolver would abort the entire preview over an advisory peer.
   const res = spawnSync(
     "npm",
-    ["install", "--no-audit", "--no-fund", "--prefer-offline"],
+    ["install", "--no-audit", "--no-fund", "--prefer-offline", "--legacy-peer-deps"],
     { cwd: dir, encoding: "utf8", env: process.env },
   );
   if (res.status !== 0) {

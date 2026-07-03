@@ -1,9 +1,15 @@
-import { Spinner } from "@/components/ui/spinner"
+import {
+  DashboardHeaderSkeleton,
+  DataTableSkeleton,
+} from "@/components/dashboard/skeletons";
 
 export default function CategoriesLoading() {
   return (
-    <div className="mx-auto flex w-full max-w-[1248px] items-center justify-center px-6 py-20">
-      <Spinner className="size-5 text-muted-foreground" />
-    </div>
-  )
+    <main className="w-full">
+      <DashboardHeaderSkeleton subtitle={false} action />
+      <div className="mx-auto max-w-[1248px] px-6 py-8">
+        <DataTableSkeleton columns={["flex-1", "w-24", "w-16", "w-10"]} />
+      </div>
+    </main>
+  );
 }

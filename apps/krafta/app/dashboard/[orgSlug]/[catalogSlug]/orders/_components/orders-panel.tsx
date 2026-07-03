@@ -1,27 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
-import { pinRealtimeAuth } from "@/lib/supabase/realtime";
+import { useChimeMute } from "@/lib/hooks/use-chime-mute";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
 
 import { DataTable } from "../../items/_components/data-table";
 import { createOrdersColumns } from "./columns";
 import { OrderDetailSheet } from "./order-detail-sheet";
-
-// Path is served from apps/krafta/public/sounds/notif.mp3
-const NEW_ORDER_SOUND_SRC = "/sounds/notif.mp3";
-
-// localStorage key for the per-browser chime mute preference. Scoped to the
-// catalog so multi-venue merchants can mute one and not the other.
-function muteStorageKey(catalogId: string) {
-  return `krafta:orders:chime-muted:${catalogId}`;
-}
 
 export type OrderLineItem = {
   id: string;
@@ -143,95 +132,22 @@ export function OrdersPanel({
   rows,
   currencySettings,
 }: OrdersPanelProps) {
-  const router = useRouter();
   const [tab, setTab] = useState<StatusTab>("open");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [muted, setMuted] = useState(false);
-  // Hydrate mute state from localStorage on mount; keep a ref so the
-  // realtime callback sees the latest value without re-subscribing.
-  const mutedRef = useRef(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = window.localStorage.getItem(muteStorageKey(catalogId));
-    const value = raw === "1";
-    setMuted(value);
-    mutedRef.current = value;
-  }, [catalogId]);
-  const toggleMute = useCallback(() => {
-    setMuted((current) => {
-      const next = !current;
-      mutedRef.current = next;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(muteStorageKey(catalogId), next ? "1" : "0");
-      }
-      return next;
-    });
-  }, [catalogId]);
+  // The new-order chime + live refresh are owned by <OrderAlerts> in the
+  // dashboard layout (rings on every page). This toggle stays in sync with it
+  // via the shared per-catalog mute key.
+  const { muted, toggle: toggleMute } = useChimeMute(catalogId);
 
-  // Keep the sheet's content live: when realtime fires router.refresh(), the
-  // server re-renders with fresh data, and the selected row is found again
+  // Keep the sheet's content live: when the layout's realtime refresh fires,
+  // the server re-renders with fresh data, and the selected row is found again
   // by id on the next render. If the selected order vanishes (canceled
   // elsewhere, etc.), the sheet falls back to a "no longer available" state.
   const selectedOrder = useMemo(
     () => rows.find((row) => row.id === selectedOrderId) ?? null,
     [rows, selectedOrderId],
   );
-
-  // Live updates: any insert/update/delete on commerce.orders or
-  // commerce.fulfillments that touches this catalog triggers a refresh.
-  // A new fulfillment INSERT (= a customer placed an order) also rings
-  // the chime — that's the cash-flow-critical signal for staff.
-  useEffect(() => {
-    const supabase = createClient();
-    let cancelled = false;
-    let channelRef: ReturnType<typeof supabase.channel> | null = null;
-
-    (async () => {
-      // Pin the merchant's JWT on realtime before subscribing — otherwise
-      // RLS evaluates as anon and we never see commerce.orders events.
-      await pinRealtimeAuth(supabase);
-      if (cancelled) return;
-
-      channelRef = supabase
-        .channel(`orders:catalog:${catalogId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "commerce",
-            table: "orders",
-            filter: `catalog_id=eq.${catalogId}`,
-          },
-          () => router.refresh(),
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "commerce",
-            table: "fulfillments",
-          },
-          (payload) => {
-            if (payload.eventType === "INSERT" && !mutedRef.current) {
-              const audio = audioRef.current;
-              if (audio) {
-                audio.currentTime = 0;
-                void audio.play().catch(() => {});
-              }
-            }
-            router.refresh();
-          },
-        )
-        .subscribe();
-    })();
-
-    return () => {
-      cancelled = true;
-      if (channelRef) void supabase.removeChannel(channelRef);
-    };
-  }, [catalogId, router]);
 
   const counts = useMemo(() => {
     const acc = { all: rows.length, open: 0, completed: 0, canceled: 0 };
@@ -250,12 +166,6 @@ export function OrdersPanel({
 
   return (
     <main className="w-full">
-      <audio
-        ref={audioRef}
-        src={NEW_ORDER_SOUND_SRC}
-        preload="auto"
-        aria-hidden
-      />
       <div className="w-full border-b">
         <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
           <div className="space-y-1">
