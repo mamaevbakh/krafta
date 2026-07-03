@@ -31,19 +31,19 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 const META: Record<LandingLocale, { title: string; description: string }> = {
   ru: {
-    title: "Krafta — операционная система локальной торговли",
+    title: "Krafta — витрина, заказы и QR-меню для кафе и магазинов",
     description:
-      "Витрина, заказы, QR и платежи в одной системе для кафе, ресторанов и магазинов Узбекистана. Зал, самовывоз и доставка — управление с телефона. Инфраструктура, а не комиссия.",
+      "Витрина, приём заказов и QR-меню для кафе, ресторанов и магазинов Узбекистана. Зал, самовывоз и доставка — управление с телефона. Без комиссии с продаж.",
   },
   uz: {
-    title: "Krafta — lokal savdoning operatsion tizimi",
+    title: "Krafta — kafe va doʻkonlar uchun vitrina, buyurtma va QR-menyu",
     description:
-      "Oʻzbekistondagi kafe, restoran va doʻkonlar uchun vitrina, buyurtmalar, QR va toʻlovlar — yagona tizimda. Zal, olib ketish va yetkazib berish — telefondan boshqaring. Infratuzilma, komissiya emas.",
+      "Oʻzbekistondagi kafe, restoran va doʻkonlar uchun vitrina, buyurtmalar va QR-menyu — yagona tizimda. Zal, olib ketish va yetkazib berish — telefondan boshqaring. Sotuvdan komissiyasiz.",
   },
   en: {
-    title: "Krafta — the operating system for local commerce",
+    title: "Krafta — online storefront, orders & QR menu for local shops",
     description:
-      "Storefront, orders, QR, and payments in one system for cafes, restaurants, and shops in Uzbekistan. Dine-in, pickup, and delivery — run from your phone. Infrastructure, not commission.",
+      "Storefront, orders, and QR menu in one system for cafes, restaurants, and shops in Uzbekistan. Dine-in, pickup, and delivery — run from your phone. No commission on sales.",
   },
 };
 

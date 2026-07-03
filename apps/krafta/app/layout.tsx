@@ -18,7 +18,8 @@ const KraftaBrandFont = localFont({
 
 export const metadata: Metadata = {
   title: "Krafta",
-  description: "Create Digital Catalogs Seamlessly",
+  description:
+    "Online storefront, orders, and QR menu for cafes, restaurants, and shops — no commission on sales.",
 };
 
 export default function RootLayout({

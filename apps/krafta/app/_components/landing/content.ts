@@ -5,12 +5,16 @@
  * dictionary.
  *
  * Voice (locked after the Square/Stripe/Supabase/Vercel/ElevenLabs review, then
- * repositioned to the "Commerce OS" direction — Variant A / "The Counter OS"):
- * RU-first, one Tashkent operator talking to another — confident, direct,
- * outcome-led, never translated. The framing is infrastructure ("операционная
- * система торговли"), not "a small tool". Emphasis comes from typography
- * (foreground vs muted two-tone) and Geist Mono UPPERCASE micro-labels read as
- * POS/receipt grammar — never a color accent (DESIGN.md).
+ * repositioned to the "Commerce OS" direction — Variant A / "The Counter OS",
+ * then de-jargoned for the real ICP): RU-first, one Tashkent operator talking
+ * to another — confident, direct, outcome-led, never translated. The real
+ * buyer is a 30-50 y/o cafe/shop owner, not a SaaS buyer — so "infrastructure"
+ * / "operating system" / "interface" / "integration" are banned from visible
+ * copy (they don't parse as a benefit to this reader). Say the concrete thing
+ * instead: not "infrastructure, not commission" but "we don't take 20% of
+ * every order". Emphasis comes from typography (foreground vs muted two-tone)
+ * and Geist Mono UPPERCASE micro-labels read as POS/receipt grammar — never a
+ * color accent (DESIGN.md).
  *
  * Numbered mono eyebrows (`01 / …`) are the Variant A spec-sheet motif: the
  * scroll reads like the modules of one system.
@@ -105,7 +109,6 @@ export const DEMO_DELIVERY_FEE = 15000;
 
 const en = {
   nav: {
-    tagline: "Commerce OS for local business",
     features: "System",
     how: "Get started",
     channels: "Channels",
@@ -161,7 +164,7 @@ const en = {
   },
   problem: {
     eyebrow: "01 / Problem",
-    heading: "Local commerce still runs on chaos",
+    heading: "Your business still runs on chaos",
     messages: [
       { channel: "telegram", label: "Telegram", text: "hey, are you open? want to order 2 lattes for pickup", time: "12:14" },
       { channel: "instagram", label: "Instagram", text: "do u guys deliver to Chilonzor today?", time: "12:19" },
@@ -174,7 +177,7 @@ const en = {
       "A marketplace takes your customer and a cut of every sale. Your storefront leaves you both.",
   },
   features: {
-    eyebrow: "02 / Operating system",
+    eyebrow: "02 / One system",
     heading: "One system instead of ten apps",
     subheading:
       "Menu, orders, QR, delivery, and translations — in one place, at hand.",
@@ -245,18 +248,17 @@ const en = {
   },
   payments: {
     eyebrow: "04 / Payments",
-    heading: "Payments without integration pain",
+    heading: "Every payment method, one place",
     soonLabel: "Soon",
-    subheading: "Local providers first, then global.",
+    subheading: "Uzbekistan first, then everywhere else.",
     providers: ["Payme", "Click", "Uzum", "Stripe"],
     storefrontLabel: "Storefront",
-    flowNote:
-      "Payments are part of the infrastructure — not a plugin you wire up yourself.",
+    flowNote: "Whatever your guest pays with, it lands in your Krafta account.",
   },
   ai: {
     eyebrow: "05 / AI",
     soonLabel: "Soon",
-    heading: "The next interface is conversation",
+    heading: "The next way to order is just talking",
     subheading: "Customers ask. Krafta builds the order.",
     searchPlaceholder: "Ask Vintage Coffee…",
     queriesLabel: "Guests ask",
@@ -283,8 +285,8 @@ const en = {
   },
   pricing: {
     eyebrow: "07 / Pricing",
-    heading: "Infrastructure, not commission",
-    subheading: "We don't take a cut of every sale.",
+    heading: "We don't take 20% of every order",
+    subheading: "One flat price a month — no matter how much you sell.",
     internationalNote: "We don't bill outside Uzbekistan yet — free until we do.",
     free: {
       name: "Free",
@@ -335,7 +337,7 @@ const en = {
     items: [
       {
         q: "What is Krafta?",
-        a: "An operating system for local commerce — storefront, orders, QR, and (soon) payments for cafes, restaurants, and shops in Uzbekistan. Build a menu, take orders across channels, and run it all from your phone.",
+        a: "Everything you need to sell without a marketplace: an online storefront, a QR menu, order management, and (soon) card payments — for cafes, restaurants, and shops in Uzbekistan. Build a menu, take orders from any channel, and run it all from your phone.",
       },
       {
         q: "Do my guests need to install an app?",
@@ -343,7 +345,7 @@ const en = {
       },
       {
         q: "Which languages are supported?",
-        a: "Your menu can be translated into any language — so a guest from anywhere reads it in theirs. The dashboard and storefront interface are in Russian, Uzbek (Latin), and English.",
+        a: "Your menu can be translated into any language — so a guest from anywhere reads it in theirs. Krafta itself — the dashboard and storefront — works in Russian, Uzbek (Latin), and English.",
       },
       {
         q: "How do I take payment?",
@@ -355,16 +357,16 @@ const en = {
       },
       {
         q: "How much does it cost?",
-        a: "Free to start, no card required. Paid plans arrive as your shop grows — infrastructure pricing, not commission.",
+        a: "Free to start, no card required. Paid plans arrive as your shop grows — a flat monthly price, never a percentage of your sales.",
       },
     ],
   },
   closing: {
     headingLead: "Krafta starts as a storefront.",
-    headingPayoff: "Then becomes commerce OS.",
+    headingPayoff: "Then runs your whole shop.",
   },
   footer: {
-    tagline: "The operating system for local commerce.",
+    tagline: "Storefront, orders, and QR menu — no commission.",
     productHeading: "Product",
     accountHeading: "Account",
     rights: "All rights reserved.",
@@ -375,7 +377,6 @@ export type LandingContent = typeof en;
 
 const ru: LandingContent = {
   nav: {
-    tagline: "Операционная система торговли",
     features: "Система",
     how: "Запуск",
     channels: "Каналы",
@@ -431,7 +432,7 @@ const ru: LandingContent = {
   },
   problem: {
     eyebrow: "01 / Проблема",
-    heading: "Локальная торговля всё ещё держится на хаосе",
+    heading: "Ваш бизнес всё ещё держится на хаосе",
     messages: [
       { channel: "telegram", label: "Telegram", text: "здравствуйте, а можно 2 капучино навынос?", time: "12:14" },
       { channel: "instagram", label: "Instagram", text: "а доставка в Чиланзар сегодня работает?", time: "12:19" },
@@ -444,7 +445,7 @@ const ru: LandingContent = {
       "Маркетплейс заберёт клиента и процент с каждой продажи. Витрина оставляет и то, и другое вам.",
   },
   features: {
-    eyebrow: "02 / Операционная система",
+    eyebrow: "02 / Одна система",
     heading: "Одна система вместо десятка приложений",
     subheading:
       "Меню, заказы, QR, доставка и переводы — в одном месте, под рукой.",
@@ -515,18 +516,17 @@ const ru: LandingContent = {
   },
   payments: {
     eyebrow: "04 / Платежи",
-    heading: "Платежи без боли интеграций",
+    heading: "Любой способ оплаты — в одном месте",
     soonLabel: "Скоро",
-    subheading: "Сначала — локальные провайдеры, затем глобальные.",
+    subheading: "Сначала — внутри Узбекистана, потом — весь мир.",
     providers: ["Payme", "Click", "Uzum", "Stripe"],
     storefrontLabel: "Витрина",
-    flowNote:
-      "Платежи — часть инфраструктуры, а не плагин, который вы настраиваете сами.",
+    flowNote: "Чем бы гость ни оплатил, деньги приходят в ваш аккаунт Krafta.",
   },
   ai: {
     eyebrow: "05 / AI",
     soonLabel: "Скоро",
-    heading: "Следующий интерфейс — это разговор",
+    heading: "Следующий способ заказа — просто разговор",
     subheading: "Гость спрашивает — Krafta собирает заказ.",
     searchPlaceholder: "Спросите Vintage Coffee…",
     queriesLabel: "Гости спрашивают",
@@ -553,8 +553,8 @@ const ru: LandingContent = {
   },
   pricing: {
     eyebrow: "07 / Цены",
-    heading: "Инфраструктура, а не комиссия",
-    subheading: "Мы не берём процент с каждой продажи.",
+    heading: "Мы не берём 20% с каждого заказа",
+    subheading: "Фиксированная цена в месяц — сколько бы вы ни продавали.",
     internationalNote:
       "Мы пока не принимаем оплату за пределами Узбекистана — бесплатно, пока не начнём.",
     free: {
@@ -606,7 +606,7 @@ const ru: LandingContent = {
     items: [
       {
         q: "Что такое Krafta?",
-        a: "Операционная система локальной торговли — витрина, заказы, QR и (скоро) платежи для кафе, ресторанов и магазинов Узбекистана. Соберите меню, принимайте заказы по всем каналам и управляйте всем с телефона.",
+        a: "Всё, что нужно, чтобы продавать напрямую, без маркетплейса: витрина, QR-меню, приём заказов и (скоро) оплата картой — для кафе, ресторанов и магазинов Узбекистана. Соберите меню, принимайте заказы по всем каналам и управляйте всем с телефона.",
       },
       {
         q: "Нужно ли гостям устанавливать приложение?",
@@ -614,7 +614,7 @@ const ru: LandingContent = {
       },
       {
         q: "Какие языки поддерживаются?",
-        a: "Меню можно перевести на любой язык — и гость из любой страны прочитает его на своём. Интерфейс панели и витрины — на русском, узбекском (латиница) и английском.",
+        a: "Меню можно перевести на любой язык — и гость из любой страны прочитает его на своём. Сама Krafta — панель и витрина — работает на русском, узбекском (латиница) и английском.",
       },
       {
         q: "Как принимать оплату?",
@@ -626,16 +626,16 @@ const ru: LandingContent = {
       },
       {
         q: "Сколько это стоит?",
-        a: "Бесплатно для старта, без карты. Платные тарифы появятся по мере роста — цена за инфраструктуру, а не комиссия.",
+        a: "Бесплатно для старта, без карты. Платные тарифы появятся по мере роста — фиксированная плата в месяц, а не процент с продаж.",
       },
     ],
   },
   closing: {
     headingLead: "Krafta начинается с витрины.",
-    headingPayoff: "Дальше — операционная система торговли.",
+    headingPayoff: "Дальше — ведёт весь бизнес.",
   },
   footer: {
-    tagline: "Операционная система для локальной торговли.",
+    tagline: "Витрина, заказы и QR-меню — без комиссии.",
     productHeading: "Продукт",
     accountHeading: "Аккаунт",
     rights: "Все права защищены.",
@@ -644,7 +644,6 @@ const ru: LandingContent = {
 
 const uz: LandingContent = {
   nav: {
-    tagline: "Savdo operatsion tizimi",
     features: "Tizim",
     how: "Boshlash",
     channels: "Kanallar",
@@ -700,7 +699,7 @@ const uz: LandingContent = {
   },
   problem: {
     eyebrow: "01 / Muammo",
-    heading: "Lokal savdo hamon chalkashlikka tayanadi",
+    heading: "Sizning biznesingiz hamon chalkashlikka tayanadi",
     messages: [
       { channel: "telegram", label: "Telegram", text: "salom, 2 ta kapuchino olib ketishga boʻladimi?", time: "12:14" },
       { channel: "instagram", label: "Instagram", text: "Chilonzorga yetkazib berasizmi bugun?", time: "12:19" },
@@ -713,7 +712,7 @@ const uz: LandingContent = {
       "Marketpleys mijozni va har bir sotuvdan foizni oladi. Vitrina ikkalasini ham sizga qoldiradi.",
   },
   features: {
-    eyebrow: "02 / Operatsion tizim",
+    eyebrow: "02 / Bitta tizim",
     heading: "Oʻnta ilova oʻrniga bitta tizim",
     subheading:
       "Menyu, buyurtmalar, QR, yetkazib berish va tarjimalar — bir joyda, qoʻl ostida.",
@@ -784,18 +783,17 @@ const uz: LandingContent = {
   },
   payments: {
     eyebrow: "04 / Toʻlovlar",
-    heading: "Toʻlovlar — integratsiya azobisiz",
+    heading: "Har qanday toʻlov usuli — bir joyda",
     soonLabel: "Tez orada",
-    subheading: "Avval lokal provayderlar, keyin global.",
+    subheading: "Avval Oʻzbekiston ichida, keyin butun dunyoda.",
     providers: ["Payme", "Click", "Uzum", "Stripe"],
     storefrontLabel: "Vitrina",
-    flowNote:
-      "Toʻlovlar — infratuzilmaning bir qismi, oʻzingiz ulaydigan plagin emas.",
+    flowNote: "Mehmon nima bilan toʻlamasin, pul Krafta hisobingizga tushadi.",
   },
   ai: {
     eyebrow: "05 / AI",
     soonLabel: "Tez orada",
-    heading: "Keyingi interfeys — bu suhbat",
+    heading: "Buyurtma berishning keyingi usuli — suhbat",
     subheading: "Mehmon soʻraydi — Krafta buyurtmani yigʻadi.",
     searchPlaceholder: "Vintage Coffee’dan soʻrang…",
     queriesLabel: "Mehmonlar soʻraydi",
@@ -822,8 +820,8 @@ const uz: LandingContent = {
   },
   pricing: {
     eyebrow: "07 / Narxlar",
-    heading: "Infratuzilma, komissiya emas",
-    subheading: "Biz har bir sotuvdan ulush olmaymiz.",
+    heading: "Biz har bir buyurtmadan 20% olmaymiz",
+    subheading: "Oyiga belgilangan narx — qancha sotmang ham.",
     internationalNote:
       "Hozircha Oʻzbekistondan tashqarida toʻlov qabul qilmaymiz — ishga tushgunimizcha bepul.",
     free: {
@@ -875,7 +873,7 @@ const uz: LandingContent = {
     items: [
       {
         q: "Krafta nima?",
-        a: "Lokal savdoning operatsion tizimi — Oʻzbekistondagi kafe, restoran va doʻkonlar uchun vitrina, buyurtmalar, QR va (tez orada) toʻlovlar. Menyu yarating, barcha kanallar boʻyicha buyurtma qabul qiling va hammasini telefondan boshqaring.",
+        a: "Marketpleyssiz toʻgʻridan-toʻgʻri sotish uchun kerak boʻlgan hammasi: vitrina, QR-menyu, buyurtmalarni boshqarish va (tez orada) karta toʻlovlari — Oʻzbekistondagi kafe, restoran va doʻkonlar uchun. Menyu yarating, barcha kanallar boʻyicha buyurtma qabul qiling va hammasini telefondan boshqaring.",
       },
       {
         q: "Mehmonlarim ilova oʻrnatishi kerakmi?",
@@ -883,7 +881,7 @@ const uz: LandingContent = {
       },
       {
         q: "Qaysi tillar qoʻllab-quvvatlanadi?",
-        a: "Menyuni istalgan tilga tarjima qilish mumkin — istalgan davlatdan kelgan mehmon oʻz tilida oʻqiydi. Panel va vitrina interfeysi — rus, oʻzbek (lotin) va ingliz tillarida.",
+        a: "Menyuni istalgan tilga tarjima qilish mumkin — istalgan davlatdan kelgan mehmon oʻz tilida oʻqiydi. Kraftaning oʻzi — panel va vitrina — rus, oʻzbek (lotin) va ingliz tillarida ishlaydi.",
       },
       {
         q: "Toʻlovni qanday qabul qilaman?",
@@ -895,16 +893,16 @@ const uz: LandingContent = {
       },
       {
         q: "Bu qancha turadi?",
-        a: "Boshlash bepul, kartasiz. Pulli tariflar oʻsish bilan paydo boʻladi — infratuzilma uchun narx, komissiya emas.",
+        a: "Boshlash bepul, kartasiz. Pulli tariflar oʻsish bilan paydo boʻladi — oyiga belgilangan narx, sotuvdan foiz emas.",
       },
     ],
   },
   closing: {
     headingLead: "Krafta vitrinadan boshlanadi.",
-    headingPayoff: "Keyin — savdo operatsion tizimi.",
+    headingPayoff: "Keyin — butun biznesingizni yuritadi.",
   },
   footer: {
-    tagline: "Lokal savdo uchun operatsion tizim.",
+    tagline: "Vitrina, buyurtmalar va QR-menyu — komissiyasiz.",
     productHeading: "Mahsulot",
     accountHeading: "Hisob",
     rights: "Barcha huquqlar himoyalangan.",

@@ -67,12 +67,6 @@ export function LandingNav({ authed, content, activeLocale }: LandingNavProps) {
           >
             <BrandWordmark className="text-2xl" />
           </Link>
-          <span
-            aria-hidden
-            className="hidden border-l border-border pl-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground lg:inline"
-          >
-            {content.nav.tagline}
-          </span>
         </div>
 
         <nav className="hidden items-center gap-1 md:flex">
