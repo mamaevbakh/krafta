@@ -3,6 +3,12 @@
  * and Business ($39) whose marquee features (Krafta Pay, AI) are marked "soon".
  * Free and Pro start via the onboarding CTA; Business is sales-led (founding
  * offer in the note), so it carries a note instead of a self-serve CTA.
+ *
+ * We only bill inside Uzbekistan today (no international card rails yet), so
+ * a visitor detected outside UZ (`isUzbekistan`, derived from the Vercel geo
+ * header — see resolveDefaultLandingLocale's sibling `isUzbekistanVisitor` in
+ * content.ts) sees the USD-equivalent price struck through and "Free" in its
+ * place: we can't charge them yet, so we don't gate them out over it.
  */
 
 import Link from "next/link";
@@ -18,9 +24,11 @@ import type { LandingContent } from "./content";
 export function LandingPricing({
   authed,
   content,
+  isUzbekistan,
 }: {
   authed: boolean;
   content: LandingContent;
+  isUzbekistan: boolean;
 }) {
   const { pricing } = content;
   const startHref = authed ? DASHBOARD_HREF : ONBOARDING_HREF;
@@ -33,6 +41,11 @@ export function LandingPricing({
           title={pricing.heading}
           subtitle={pricing.subheading}
         />
+        {!isUzbekistan && (
+          <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            {pricing.internationalNote}
+          </p>
+        )}
 
         <div className="mt-12 grid items-stretch gap-6 lg:grid-cols-3">
           {/* Free — live, entry plan */}
@@ -66,14 +79,13 @@ export function LandingPricing({
               </p>
               <Badge variant="secondary">{pricing.pro.badge}</Badge>
             </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="font-mono text-5xl font-semibold tabular-nums tracking-tight text-foreground">
-                {pricing.pro.price}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {pricing.pro.period}
-              </span>
-            </div>
+            <PriceBlock
+              price={pricing.pro.price}
+              period={pricing.pro.period}
+              priceUsd={pricing.pro.priceUsd}
+              freeLabel={pricing.free.name}
+              isUzbekistan={isUzbekistan}
+            />
             <p className="mt-4 text-sm text-muted-foreground">
               {pricing.pro.includes}
             </p>
@@ -92,14 +104,13 @@ export function LandingPricing({
             <p className="text-sm font-medium text-muted-foreground">
               {pricing.business.name}
             </p>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="font-mono text-5xl font-semibold tabular-nums tracking-tight text-foreground">
-                {pricing.business.price}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {pricing.business.period}
-              </span>
-            </div>
+            <PriceBlock
+              price={pricing.business.price}
+              period={pricing.business.period}
+              priceUsd={pricing.business.priceUsd}
+              freeLabel={pricing.free.name}
+              isUzbekistan={isUzbekistan}
+            />
             <p className="mt-4 text-sm text-muted-foreground">
               {pricing.business.includes}
             </p>
@@ -117,6 +128,43 @@ export function LandingPricing({
         </div>
       </div>
     </section>
+  );
+}
+
+function PriceBlock({
+  price,
+  period,
+  priceUsd,
+  freeLabel,
+  isUzbekistan,
+}: {
+  price: string;
+  period: string;
+  priceUsd: string;
+  freeLabel: string;
+  isUzbekistan: boolean;
+}) {
+  if (isUzbekistan) {
+    return (
+      <div className="mt-3 flex items-baseline gap-2">
+        <span className="font-mono text-5xl font-semibold tabular-nums tracking-tight text-foreground">
+          {price}
+        </span>
+        <span className="text-sm text-muted-foreground">{period}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3">
+      <span className="font-mono text-sm tabular-nums text-muted-foreground line-through decoration-1">
+        {priceUsd}
+      </span>
+      <div className="mt-1 flex items-baseline gap-2">
+        <span className="font-mono text-5xl font-semibold tabular-nums tracking-tight text-foreground">
+          {freeLabel}
+        </span>
+      </div>
+    </div>
   );
 }
 

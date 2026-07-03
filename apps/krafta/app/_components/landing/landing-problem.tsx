@@ -1,12 +1,43 @@
 /**
  * landing-problem.tsx — the "01 / Problem" beat of the Commerce OS direction.
- * The old, broken way is named as dashed mono chips (the same "not-yet / not-
- * real" dashed signal used for soon-items in proof + pricing), then dismissed by
- * a single foreground line. No icons, no cards — type and rules carry it.
+ * The old, broken way is SHOWN, not named: a scattered collage of the actual
+ * messages a merchant gets today — a Telegram DM, an Instagram DM, a missed
+ * call, a handwritten table note, a WhatsApp follow-up — each styled like a
+ * real notification. Desktop scatters them with a light rotate/offset per
+ * card; mobile stacks them flat and readable. Then a single foreground line
+ * cuts through the noise.
  */
 
+import {
+  Instagram,
+  MessageCircle,
+  NotebookPen,
+  PhoneMissed,
+  Send,
+  type LucideIcon,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
 import { SectionEyebrow } from "./section-heading";
 import type { LandingContent } from "./content";
+
+const CHANNEL_ICON: Record<string, LucideIcon> = {
+  telegram: Send,
+  instagram: Instagram,
+  whatsapp: MessageCircle,
+  call: PhoneMissed,
+  notebook: NotebookPen,
+};
+
+// Deterministic scatter per index — five messages, five offsets. Desktop only
+// (sm:), so the "coming in from everywhere" feel doesn't fight mobile's stack.
+const SCATTER = [
+  "sm:-rotate-2 sm:translate-y-1",
+  "sm:rotate-1 sm:-translate-y-2",
+  "sm:rotate-2 sm:translate-y-3",
+  "sm:-rotate-1 sm:-translate-y-3",
+  "sm:rotate-2 sm:translate-y-0",
+];
 
 export function LandingProblem({ content }: { content: LandingContent }) {
   const { problem } = content;
@@ -18,18 +49,33 @@ export function LandingProblem({ content }: { content: LandingContent }) {
           {problem.heading}
         </h2>
 
-        <ul className="mt-8 flex flex-wrap gap-2.5">
-          {problem.fragments.map((fragment) => (
-            <li
-              key={fragment}
-              className="rounded-md border border-dashed border-border px-3 py-1.5 font-mono text-xs uppercase tracking-wide text-muted-foreground"
-            >
-              {fragment}
-            </li>
-          ))}
+        <ul className="mt-10 flex flex-wrap gap-3 sm:gap-4">
+          {problem.messages.map((m, i) => {
+            const Icon = CHANNEL_ICON[m.channel] ?? Send;
+            return (
+              <li
+                key={m.time}
+                className={cn(
+                  "w-full rounded-xl border border-border bg-card px-4 py-3 sm:w-[260px]",
+                  SCATTER[i % SCATTER.length],
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="truncate font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {m.label}
+                  </span>
+                  <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                    {m.time}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-sm leading-snug text-foreground">{m.text}</p>
+              </li>
+            );
+          })}
         </ul>
 
-        <p className="mt-8 max-w-xl text-base leading-relaxed text-foreground sm:text-lg">
+        <p className="mt-10 max-w-xl text-base leading-relaxed text-foreground sm:text-lg">
           {problem.note}
         </p>
         <p className="mt-4 max-w-xl text-base leading-relaxed text-foreground sm:text-lg">

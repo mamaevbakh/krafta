@@ -40,9 +40,63 @@ export function isLandingLocale(value: unknown): value is LandingLocale {
 
 export function resolveLandingLocale(
   raw: string | string[] | undefined | null,
+  fallback: LandingLocale = DEFAULT_LANDING_LOCALE,
 ): LandingLocale {
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return isLandingLocale(value) ? value : DEFAULT_LANDING_LOCALE;
+  return isLandingLocale(value) ? value : fallback;
+}
+
+/**
+ * Post-Soviet / "CIS-region" countries — colloquial, not the strict current
+ * CIS membership (includes UA, GE, which formally left, since the audience —
+ * Russian-speaking Central Asia/Caucasus — still matches). Visitors here
+ * default to RU unless their device explicitly says otherwise.
+ */
+const CIS_REGION_COUNTRIES = new Set([
+  "RU", "UZ", "KZ", "KG", "TJ", "TM", "AZ", "AM", "BY", "MD", "UA", "GE",
+]);
+
+function primaryAcceptLanguage(header: string | null): string | null {
+  const first = header?.split(",")[0]?.trim().split(";")[0]?.trim();
+  return first ? (first.split("-")[0]?.toLowerCase() ?? null) : null;
+}
+
+/**
+ * Picks the default locale for a first-time visitor with no `?lang=` in the
+ * URL — device language wins when it's one we ship, otherwise we fall back to
+ * geo: CIS-region IPs get RU (the primary market language), everyone else
+ * (Europe, US, elsewhere) gets EN. Vercel sets `x-vercel-ip-country` at the
+ * edge in production; it's absent locally, where we fall through to `accept-
+ * language` and finally the RU default.
+ */
+export function resolveDefaultLandingLocale(headersList: {
+  get(name: string): string | null;
+}): LandingLocale {
+  const deviceLang = primaryAcceptLanguage(headersList.get("accept-language"));
+  if (isLandingLocale(deviceLang)) return deviceLang;
+
+  const country = headersList.get("x-vercel-ip-country");
+  if (country && CIS_REGION_COUNTRIES.has(country.toUpperCase())) {
+    return "ru";
+  }
+  if (country) return "en";
+
+  return DEFAULT_LANDING_LOCALE;
+}
+
+/**
+ * We only take payment inside Uzbekistan today (cash; card rails are still
+ * "soon"). A visitor from anywhere else structurally can't pay us, so the
+ * pricing section shows their tier as free rather than gating a signup behind
+ * a price we can't collect. No geo signal (local dev, or a header Vercel
+ * didn't set) defaults to "domestic" so pricing never silently gives paid
+ * tiers away for free.
+ */
+export function isUzbekistanVisitor(headersList: {
+  get(name: string): string | null;
+}): boolean {
+  const country = headersList.get("x-vercel-ip-country");
+  return !country || country.toUpperCase() === "UZ";
 }
 
 /** Locale-independent demo constants (numbers stay out of the copy tables). */
@@ -108,7 +162,13 @@ const en = {
   problem: {
     eyebrow: "01 / Problem",
     heading: "Local commerce still runs on chaos",
-    fragments: ["Chats", "Calls", "Notebooks", "Lost orders"],
+    messages: [
+      { channel: "telegram", label: "Telegram", text: "hey, are you open? want to order 2 lattes for pickup", time: "12:14" },
+      { channel: "instagram", label: "Instagram", text: "do u guys deliver to Chilonzor today?", time: "12:19" },
+      { channel: "call", label: "Missed call", text: "+998 90 · 0:00", time: "12:21" },
+      { channel: "notebook", label: "Notebook", text: "Table 4 — plov ×2, no onion", time: "12:24" },
+      { channel: "whatsapp", label: "WhatsApp", text: "can I change my order from before? forgot the drink", time: "12:31" },
+    ],
     note: "The problem was never a missing website. It was a missing system.",
     contrast:
       "A marketplace takes your customer and a cut of every sale. Your storefront leaves you both.",
@@ -225,6 +285,7 @@ const en = {
     eyebrow: "07 / Pricing",
     heading: "Infrastructure, not commission",
     subheading: "We don't take a cut of every sale.",
+    internationalNote: "We don't bill outside Uzbekistan yet — free until we do.",
     free: {
       name: "Free",
       price: "0",
@@ -241,6 +302,7 @@ const en = {
       name: "Pro",
       price: "250,000",
       period: "UZS / mo",
+      priceUsd: "$20/mo",
       badge: "Popular",
       includes: "Everything in Free, plus",
       features: [
@@ -255,6 +317,7 @@ const en = {
       name: "Business",
       price: "490,000",
       period: "UZS / mo",
+      priceUsd: "$39/mo",
       includes: "Everything in Pro, plus",
       features: [
         "Krafta Pay — cards in person & online (soon)",
@@ -369,7 +432,13 @@ const ru: LandingContent = {
   problem: {
     eyebrow: "01 / Проблема",
     heading: "Локальная торговля всё ещё держится на хаосе",
-    fragments: ["Переписки", "Звонки", "Блокнот", "Потерянные заказы"],
+    messages: [
+      { channel: "telegram", label: "Telegram", text: "здравствуйте, а можно 2 капучино навынос?", time: "12:14" },
+      { channel: "instagram", label: "Instagram", text: "а доставка в Чиланзар сегодня работает?", time: "12:19" },
+      { channel: "call", label: "Пропущенный звонок", text: "+998 90 · 0:00", time: "12:21" },
+      { channel: "notebook", label: "Блокнот", text: "Стол 4 — плов ×2, без лука", time: "12:24" },
+      { channel: "whatsapp", label: "WhatsApp", text: "можно поменять заказ? забыла добавить напиток", time: "12:31" },
+    ],
     note: "Дело не в отсутствии сайта. Дело в отсутствии системы.",
     contrast:
       "Маркетплейс заберёт клиента и процент с каждой продажи. Витрина оставляет и то, и другое вам.",
@@ -486,6 +555,8 @@ const ru: LandingContent = {
     eyebrow: "07 / Цены",
     heading: "Инфраструктура, а не комиссия",
     subheading: "Мы не берём процент с каждой продажи.",
+    internationalNote:
+      "Мы пока не принимаем оплату за пределами Узбекистана — бесплатно, пока не начнём.",
     free: {
       name: "Бесплатно",
       price: "0",
@@ -502,6 +573,7 @@ const ru: LandingContent = {
       name: "Pro",
       price: "250,000",
       period: "сум / мес",
+      priceUsd: "$20/мес",
       badge: "Популярный",
       includes: "Всё из Free, плюс",
       features: [
@@ -516,6 +588,7 @@ const ru: LandingContent = {
       name: "Business",
       price: "490,000",
       period: "сум / мес",
+      priceUsd: "$39/мес",
       includes: "Всё из Pro, плюс",
       features: [
         "Krafta Pay — оплата картой в зале и онлайн (скоро)",
@@ -628,7 +701,13 @@ const uz: LandingContent = {
   problem: {
     eyebrow: "01 / Muammo",
     heading: "Lokal savdo hamon chalkashlikka tayanadi",
-    fragments: ["Yozishmalar", "Qoʻngʻiroqlar", "Bloknot", "Yoʻqolgan buyurtmalar"],
+    messages: [
+      { channel: "telegram", label: "Telegram", text: "salom, 2 ta kapuchino olib ketishga boʻladimi?", time: "12:14" },
+      { channel: "instagram", label: "Instagram", text: "Chilonzorga yetkazib berasizmi bugun?", time: "12:19" },
+      { channel: "call", label: "Javobsiz qoʻngʻiroq", text: "+998 90 · 0:00", time: "12:21" },
+      { channel: "notebook", label: "Bloknot", text: "4-stol — osh ×2, piyozsiz", time: "12:24" },
+      { channel: "whatsapp", label: "WhatsApp", text: "buyurtmani oʻzgartirsam boʻladimi? ichimlikni qoʻshishni unutibman", time: "12:31" },
+    ],
     note: "Gap sayt yoʻqligida emas. Gap tizim yoʻqligida.",
     contrast:
       "Marketpleys mijozni va har bir sotuvdan foizni oladi. Vitrina ikkalasini ham sizga qoldiradi.",
@@ -745,6 +824,8 @@ const uz: LandingContent = {
     eyebrow: "07 / Narxlar",
     heading: "Infratuzilma, komissiya emas",
     subheading: "Biz har bir sotuvdan ulush olmaymiz.",
+    internationalNote:
+      "Hozircha Oʻzbekistondan tashqarida toʻlov qabul qilmaymiz — ishga tushgunimizcha bepul.",
     free: {
       name: "Bepul",
       price: "0",
@@ -761,6 +842,7 @@ const uz: LandingContent = {
       name: "Pro",
       price: "250,000",
       period: "soʻm / oy",
+      priceUsd: "$20/oy",
       badge: "Ommabop",
       includes: "Free’dagi hammasi, ustiga",
       features: [
@@ -775,6 +857,7 @@ const uz: LandingContent = {
       name: "Business",
       price: "490,000",
       period: "soʻm / oy",
+      priceUsd: "$39/oy",
       includes: "Pro’dagi hammasi, ustiga",
       features: [
         "Krafta Pay — zalda va onlayn karta (tez orada)",

@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 
 import {
   getLandingContent,
+  isUzbekistanVisitor,
+  resolveDefaultLandingLocale,
   resolveLandingLocale,
   type LandingLocale,
 } from "./_components/landing/content";
@@ -50,7 +53,11 @@ export async function generateMetadata({
   searchParams: SearchParams;
 }): Promise<Metadata> {
   const params = await searchParams;
-  const locale = resolveLandingLocale(params.lang);
+  const headersList = await headers();
+  const locale = resolveLandingLocale(
+    params.lang,
+    resolveDefaultLandingLocale(headersList),
+  );
   return META[locale];
 }
 
@@ -72,8 +79,13 @@ function LandingShell() {
 
 async function LandingPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  const locale = resolveLandingLocale(params.lang);
+  const headersList = await headers();
+  const locale = resolveLandingLocale(
+    params.lang,
+    resolveDefaultLandingLocale(headersList),
+  );
   const content = getLandingContent(locale);
+  const isUzbekistan = isUzbekistanVisitor(headersList);
 
   const supabase = await createClient();
   const { user } = await getUserSafely(supabase);
@@ -93,7 +105,11 @@ async function LandingPage({ searchParams }: { searchParams: SearchParams }) {
         <LandingPayments content={content} />
         <LandingAi content={content} />
         <LandingHow content={content} />
-        <LandingPricing authed={authed} content={content} />
+        <LandingPricing
+          authed={authed}
+          content={content}
+          isUzbekistan={isUzbekistan}
+        />
         <LandingFaq content={content} />
         <LandingClosing authed={authed} content={content} />
       </main>
