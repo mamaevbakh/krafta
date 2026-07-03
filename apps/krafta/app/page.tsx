@@ -29,6 +29,16 @@ import { LandingFooter } from "./_components/landing/landing-footer";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
+// Canonical public host — OG/Twitter cards only matter on the shared prod
+// link (Telegram/WhatsApp unfurls), so the image + URLs resolve against prod
+// regardless of which environment renders the tag.
+const SITE_URL = "https://www.krafta.org";
+const OG_LOCALE: Record<LandingLocale, string> = {
+  ru: "ru_RU",
+  uz: "uz_UZ",
+  en: "en_US",
+};
+
 const META: Record<LandingLocale, { title: string; description: string }> = {
   ru: {
     title: "Krafta — витрина, заказы и QR-меню для кафе и магазинов",
@@ -58,7 +68,31 @@ export async function generateMetadata({
     params.lang,
     resolveDefaultLandingLocale(headersList),
   );
-  return META[locale];
+  const meta = META[locale];
+
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: meta.title,
+    description: meta.description,
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      siteName: "Krafta",
+      url: SITE_URL,
+      title: meta.title,
+      description: meta.description,
+      locale: OG_LOCALE[locale],
+      images: [
+        { url: "/og-image", width: 1200, height: 630, alt: "Krafta" },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: meta.title,
+      description: meta.description,
+      images: ["/og-image"],
+    },
+  };
 }
 
 export default function Home({ searchParams }: { searchParams: SearchParams }) {
