@@ -5,7 +5,7 @@
  * faithful mirror of the real storefront assistant
  * (components/catalogs/assistant/storefront-assistant.tsx): Sparkles "Ассистент"
  * header, guest = dark bubble right / assistant = muted bubble left, a product
- * suggestion CARD with the item photo + сум price + dark "Добавить" pill, an
+ * suggestion CARD with the item photo + price + dark "Добавить" pill, an
  * "Added" chip, and a decorative composer. A scripted conversation loops through
  * three turns — one in English (the any-language wedge, shown not told). Clearly
  * framed as roadmap by the section's СКОРО marker. Honors prefers-reduced-motion.
@@ -18,10 +18,11 @@ import { ArrowUp, Check, Plus, Sparkles } from "lucide-react";
 import { getItemImageUrl } from "@/lib/catalogs/media";
 import { cn } from "@/lib/utils";
 
-const CID = "c0ffee00-0000-4000-8000-000000000001";
-const img = (item: string, media: string, file: string) =>
-  `org/c03f8bd1-f6b1-4ef0-84bf-b13b0d9314a5/catalog/${CID}/item/${item}/media/${media}/${file}`;
-
+// Vintage Shop — a real, published Krafta demo catalog (also behind the
+// hero's Магазин tab), present in both dev and prod, with real photographed
+// items. Not the old vintage-coffee/Salom Coffee seed, which only existed in
+// dev and rendered as broken images once this section shipped to production.
+// Prices are USD (this catalog's real currency), not сум.
 type Turn = {
   q: string;
   a: string;
@@ -31,30 +32,34 @@ type Turn = {
   image: string;
 };
 
+const CATALOG_ID = "c7c17254-f189-44d8-9f05-db9e54be5d9b";
+const img = (item: string, media: string, file: string) =>
+  `org/c03f8bd1-f6b1-4ef0-84bf-b13b0d9314a5/catalog/${CATALOG_ID}/item/${item}/media/${media}/${file}`;
+
 const SCRIPT: Turn[] = [
   {
-    q: "Что-нибудь без лактозы?",
-    a: "Есть — овсяный латте на овсяном молоке.",
-    name: "Овсяный латте",
-    desc: "Латте на овсяном молоке — мягкий и без лактозы.",
-    price: 32000,
-    image: img("c0ffee00-0000-4000-8000-000000010002", "c0ffee00-0000-4000-8000-000000030002", "oat-latte.jpg"),
+    q: "Есть что-то в минималистичном стиле?",
+    a: "Полосатая рубашка Ann Demeulemeester — то что нужно.",
+    name: "Ann Demeulemeester Striped Shirt",
+    desc: "Тонкая полоска, лаконичный крой — сдержанная роскошь.",
+    price: 105,
+    image: img("a8f12f19-e770-4338-b8e8-bdfac18aa1e6", "70a5e3cf-b272-49f2-8de1-dba9888cb890", "ANN53056_1_enlarged.jpg"),
   },
   {
-    q: "Что взять к кофе?",
-    a: "Возьмите круассан — печём каждое утро.",
-    name: "Круассан",
-    desc: "Слоёный масляный круассан.",
-    price: 22000,
-    image: img("c0ffee00-0000-4000-8000-000000010006", "c0ffee00-0000-4000-8000-000000030006", "croissant.jpg"),
+    q: "А что-то на выход?",
+    a: "Босоножки Saint Laurent — лаконичные и элегантные.",
+    name: "Saint Laurent Patent Sandals",
+    desc: "Лаковая кожа, минималистичные ремешки — сдержанная роскошь.",
+    price: 285,
+    image: img("da157986-912e-4b4f-a228-755d38daf5dd", "0d05e348-609e-4966-8018-1844f37f528f", "SNT445691_1_enlarged.jpg"),
   },
   {
-    q: "What do you recommend?",
-    a: "Our cappuccino — a local favourite.",
-    name: "Капучино",
-    desc: "Классический капучино на эспрессо-бленде.",
-    price: 28000,
-    image: img("c0ffee00-0000-4000-8000-000000010001", "c0ffee00-0000-4000-8000-000000030001", "cappuccino.jpg"),
+    q: "What's something different?",
+    a: "This Off-White × Rimowa carry-on — clear PVC, pure statement.",
+    name: "Off-White × Rimowa Carry-On",
+    desc: "Transparent PVC carry-on — streetwear meets luxury travel.",
+    price: 1425,
+    image: img("89e0c8c9-aaef-4b96-8b6e-193b15492d19", "ecf5598a-5c17-48cb-9016-358f3836b42c", "OFWRI20125_1_enlarged.jpg"),
   },
 ];
 
@@ -64,7 +69,8 @@ type Msg =
   | { type: "product"; turn: Turn }
   | { type: "added"; name: string };
 
-const fmt = (n: number) => n.toLocaleString("en-US");
+const fmt = (n: number) =>
+  n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const anim = "animate-in fade-in slide-in-from-bottom-1 duration-300";
 
 export function LandingAiConversation() {
@@ -121,7 +127,7 @@ export function LandingAiConversation() {
         <Sparkles className="size-4 text-foreground" aria-hidden />
         <span className="text-sm font-semibold">Ассистент</span>
         <span className="ml-auto font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-          Salom Coffee
+          Vintage Shop
         </span>
       </div>
 
@@ -179,7 +185,7 @@ export function LandingAiConversation() {
                   {t.desc}
                 </p>
                 <div className="font-mono text-sm font-semibold tabular-nums">
-                  {fmt(t.price)} сум
+                  ${fmt(t.price)}
                 </div>
               </div>
               <div className="mt-2 px-1 pb-1">
