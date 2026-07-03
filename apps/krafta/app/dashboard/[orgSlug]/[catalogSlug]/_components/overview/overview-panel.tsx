@@ -1,13 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { ExternalLink, Volume2, VolumeX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
-import { pinRealtimeAuth } from "@/lib/supabase/realtime";
+import { useChimeMute } from "@/lib/hooks/use-chime-mute";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import {
   aggregateDay,
@@ -28,10 +25,6 @@ import { FirstOrderCard } from "./first-order-card";
 import { SalesBars, type DayBar } from "./sales-bars";
 import { TopItems } from "./top-items";
 import type { OverviewOrder, PriorOrder } from "./types";
-
-const NEW_ORDER_SOUND_SRC = "/sounds/notif.mp3";
-// Shared with the Orders page: mute once, muted on both surfaces.
-const muteKey = (catalogId: string) => `krafta:orders:chime-muted:${catalogId}`;
 
 type OverviewPanelProps = {
   catalogId: string;
@@ -73,93 +66,16 @@ export function OverviewPanel(props: OverviewPanelProps) {
     nowIso,
   } = props;
 
-  const router = useRouter();
   const ordersHref = `/dashboard/${orgSlug}/${catalogSlug}/orders`;
   const qrHref = `/dashboard/${orgSlug}/${catalogSlug}/qr-codes`;
   const catalogPath = `/dashboard/${orgSlug}/${catalogSlug}`;
   const paused = venueStatus === "paused";
   const isBrandNew = lifetimeOrders === 0;
 
-  // ---- realtime: chime + coalesced refresh + visibility refetch ------------
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [muted, setMuted] = useState(false);
-  const mutedRef = useRef(false);
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const value = window.localStorage.getItem(muteKey(catalogId)) === "1";
-    setMuted(value);
-    mutedRef.current = value;
-  }, [catalogId]);
-
-  const toggleMute = useCallback(() => {
-    setMuted((current) => {
-      const next = !current;
-      mutedRef.current = next;
-      window.localStorage.setItem(muteKey(catalogId), next ? "1" : "0");
-      return next;
-    });
-  }, [catalogId]);
-
-  const scheduleRefresh = useCallback(() => {
-    if (refreshTimer.current) return; // coalesce a burst into one refresh
-    refreshTimer.current = setTimeout(() => {
-      refreshTimer.current = null;
-      router.refresh();
-    }, 2000);
-  }, [router]);
-
-  useEffect(() => {
-    const supabase = createClient();
-    let cancelled = false;
-    let channelRef: ReturnType<typeof supabase.channel> | null = null;
-
-    (async () => {
-      await pinRealtimeAuth(supabase);
-      if (cancelled) return;
-      channelRef = supabase
-        .channel(`overview:catalog:${catalogId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "commerce",
-            table: "orders",
-            filter: `catalog_id=eq.${catalogId}`,
-          },
-          () => scheduleRefresh(),
-        )
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "commerce", table: "fulfillments" },
-          (payload) => {
-            if (payload.eventType === "INSERT" && !mutedRef.current) {
-              const audio = audioRef.current;
-              if (audio) {
-                audio.currentTime = 0;
-                void audio.play().catch(() => {});
-              }
-            }
-            scheduleRefresh();
-          },
-        )
-        .subscribe();
-    })();
-
-    // A dropped channel self-heals: refetch whenever the tab regains focus.
-    const onVisible = () => {
-      if (document.visibilityState === "visible") router.refresh();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", onVisible);
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
-      if (channelRef) void supabase.removeChannel(channelRef);
-    };
-  }, [catalogId, router, scheduleRefresh]);
+  // The chime + live refresh live in <OrderAlerts> at the layout level (rings
+  // on every dashboard page). This header toggle stays in sync via the shared
+  // per-catalog mute key.
+  const { muted, toggle: toggleMute } = useChimeMute(catalogId);
 
   // ---- derived metrics (one source: today + prior orders) ------------------
   const metrics = useMemo(() => {
@@ -257,8 +173,6 @@ export function OverviewPanel(props: OverviewPanelProps) {
 
   return (
     <main className="w-full">
-      <audio ref={audioRef} src={NEW_ORDER_SOUND_SRC} preload="auto" aria-hidden />
-
       {/* Header band — matches the Orders page convention exactly */}
       <div className="w-full border-b">
         <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between gap-4 px-6">

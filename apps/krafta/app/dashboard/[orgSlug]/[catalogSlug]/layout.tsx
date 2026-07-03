@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { DashboardNavbar } from "@/components/dashboard/dashboard-navbar";
+import { OrderAlerts } from "@/components/dashboard/order-alerts";
 import {
   getOrgCatalogSummaries,
   type CatalogSummary,
@@ -148,6 +149,10 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
           isAnonymousUser={isAnonymousUser}
         />
       )}
+      <OrderAlerts
+        catalogId={catalogRecord.id}
+        ordersHref={`/dashboard/${orgSlug}/${catalogSlug}/orders`}
+      />
       <main className="flex-1 bg-secondary-background">{children}</main>
       {checklistEntries.length > 0 && (
         <ActivationChecklist
