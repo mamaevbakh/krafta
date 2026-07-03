@@ -105,15 +105,16 @@ const nextConfig: NextConfig = {
 // the eve runtime. The agent's heavy deps (AI SDK v7, sandbox, workflow) live in
 // studio-agent, not this bundle.
 //
-// NOT on Vercel for now: eve 0.17.0's Vercel multi-service build is broken — its
-// `eve build` emits the service function under `.eve/nitro-output/flow/…` without
-// the `.vc-config.json` the Vercel build runner expects at
-// `studio-agent/.vercel/output/functions/__server.func/.vc-config.json`, so the
-// deploy fails at output assembly (eve is preview-stage; 0.17.0 is latest). Until
-// that's fixed upstream we mount eve ONLY in local dev — everything else (commerce
-// API, new-shop flow, storefront, dashboard) ships to Vercel; the in-dashboard
-// codegen chat stays dev-only. Re-enable by dropping the VERCEL guard once eve's
-// Vercel build is fixed.
+// NOT on Vercel: eve's Vercel multi-service build is STILL broken as of eve
+// 0.19.0 (retested 2026-07-03, deploy dpl_59yS3G…). eve builds its service to
+// `studio-agent/.eve/nitro-output/flow/functions/__server.func/` but the Vercel
+// multi-service runner expects it at `studio-agent/.vercel/output/functions/
+// __server.func/.vc-config.json` and fails `ENOENT` at output assembly. This is
+// an upstream eve×Vercel-`experimentalServices` integration bug (both are
+// preview/beta). Until it's fixed upstream we mount eve ONLY in local dev —
+// everything else (commerce API, new-shop flow, storefront, dashboard) ships to
+// Vercel; the in-dashboard codegen chat stays dev-only. Re-enable by dropping
+// the VERCEL guard once eve's Vercel build is fixed.
 export default process.env.VERCEL
   ? nextConfig
   : withEve(nextConfig, { eveRoot: "../../studio-agent" });

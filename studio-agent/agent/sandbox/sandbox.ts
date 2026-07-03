@@ -7,7 +7,9 @@ import { defineSandbox, defaultBackend } from "eve/sandbox";
 // so each session opens a ready-to-edit, ready-to-run shop.
 export default defineSandbox({
   backend: defaultBackend({
-    vercel: { runtime: "node24", resources: { vcpus: 2 } },
+    // eve 0.18.0 dropped the Vercel-sandbox `runtime` option — hosted sandboxes
+    // now always boot from the published eve image. Only `resources` remains.
+    vercel: { resources: { vcpus: 2 } },
   }),
   revalidationKey: () => "krafta-shop-v1",
   async bootstrap({ use }) {
