@@ -58,6 +58,19 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // The marketing landing serves different language content at the same `/`
+  // based on Accept-Language (and geo). Announce that so downstream caches and
+  // crawlers treat the language variants as distinct — the hreflang cluster in
+  // app/page.tsx does the real per-language indexing, this is the honest cache
+  // signal alongside it.
+  async headers() {
+    return [
+      {
+        source: "/",
+        headers: [{ key: "Vary", value: "Accept-Language" }],
+      },
+    ];
+  },
   images: {
     // Custom loader routes <Image> requests through Supabase's image
     // transformation endpoint (Pro plan feature). Single-hop CDN delivery,

@@ -7,7 +7,9 @@ import { getUserSafely } from "@krafta/supabase/auth";
 
 import {
   getLandingContent,
+  isLandingLocale,
   isUzbekistanVisitor,
+  LANDING_LOCALES,
   resolveDefaultLandingLocale,
   resolveLandingLocale,
   type LandingLocale,
@@ -64,24 +66,40 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const params = await searchParams;
   const headersList = await headers();
+  const rawLang = Array.isArray(params.lang) ? params.lang[0] : params.lang;
+  // Did the request carry an explicit, valid ?lang=? That distinction drives
+  // the canonical: an explicit language URL self-canonicalizes; the bare `/`
+  // (which auto-detects per visitor) is the x-default and canonicalizes to
+  // itself. This gives search engines three stable, indexable language URLs
+  // instead of one geo-varying page they can only ever see in English.
+  const explicitLocale = isLandingLocale(rawLang) ? rawLang : null;
   const locale = resolveLandingLocale(
     params.lang,
     resolveDefaultLandingLocale(headersList),
   );
   const meta = META[locale];
 
+  const canonical = explicitLocale ? `/?lang=${explicitLocale}` : "/";
+  // hreflang cluster: every language version + an x-default. Next resolves
+  // these against metadataBase into absolute alternate links.
+  const languages: Record<string, string> = { "x-default": "/" };
+  for (const l of LANDING_LOCALES) languages[l] = `/?lang=${l}`;
+
   return {
     metadataBase: new URL(SITE_URL),
     title: meta.title,
     description: meta.description,
-    alternates: { canonical: "/" },
+    alternates: { canonical, languages },
     openGraph: {
       type: "website",
       siteName: "Krafta",
-      url: SITE_URL,
+      url: `${SITE_URL}${canonical}`,
       title: meta.title,
       description: meta.description,
       locale: OG_LOCALE[locale],
+      alternateLocale: LANDING_LOCALES.filter((l) => l !== locale).map(
+        (l) => OG_LOCALE[l],
+      ),
       images: [
         { url: "/og-image", width: 1200, height: 630, alt: "Krafta" },
       ],
