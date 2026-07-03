@@ -1,5 +1,5 @@
 import { PickerPageSkeleton } from "@/components/dashboard/skeletons";
 
-export default function DashboardLoading() {
+export default function OrgDashboardLoading() {
   return <PickerPageSkeleton />;
 }
