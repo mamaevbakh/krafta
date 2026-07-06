@@ -20,14 +20,17 @@ export const metadata: Metadata = {
   title: "Krafta",
   description:
     "Online storefront, orders, and QR menu for cafes, restaurants, and shops — no commission on sales.",
-  // Search-console ownership verification. Set on the root layout so the tags
-  // render site-wide (the console checks the property's homepage). Google +
-  // Yandex — Yandex matters for the UZ/CIS market.
-  verification: {
-    google: "zMYynJIPuONjvxBSD2pMTY8xS7sRYR8rH1eQztrG4Bg",
-    yandex: "9e592216b654ce12",
-  },
 };
+
+// Search-console ownership verification. Rendered as LITERAL <meta> in the
+// root <head> below — NOT via the Metadata API — because the landing's
+// metadata is request-dynamic (geo/lang) under Suspense + cacheComponents,
+// which streams Metadata-API tags into the <body> where only JS-rendering
+// crawlers hoist them. Yandex's verification robot doesn't run JS, so the tag
+// must be in the static <head> shell that flushes first. Static + site-wide,
+// so a literal is the correct home for it.
+const GOOGLE_SITE_VERIFICATION = "zMYynJIPuONjvxBSD2pMTY8xS7sRYR8rH1eQztrG4Bg";
+const YANDEX_VERIFICATION = "9e592216b654ce12";
 
 export default function RootLayout({
   children,
@@ -37,6 +40,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Literal in the static <head> so non-JS crawlers (Yandex's
+            verification robot) see them — see the note by the constants. */}
+        <meta
+          name="google-site-verification"
+          content={GOOGLE_SITE_VERIFICATION}
+        />
+        <meta name="yandex-verification" content={YANDEX_VERIFICATION} />
       </head>
       <body
         className={`${GeistSans.variable} ${GeistMono.variable} ${KraftaBrandFont.variable} font-sans antialiased`}
