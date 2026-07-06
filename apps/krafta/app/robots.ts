@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
 
-// Canonical public host. The site also answers on krafta.uz / krafta.company,
-// but every page canonicalizes to www.krafta.org, and the Yandex `Host`
-// directive below names it as the primary mirror for the RU/UZ market.
-const SITE_URL = "https://www.krafta.org";
+// Canonical public host. The site also answers on krafta.org / krafta.company
+// (both 301-redirect here in proxy.ts), but every page canonicalizes to
+// www.krafta.uz — the .uz ccTLD is the primary for the Uzbekistan market, and
+// the Yandex `Host` directive below names it as the canonical mirror.
+const SITE_URL = "https://www.krafta.uz";
 
 /**
  * /robots.txt — tells crawlers what to crawl and where the sitemap is.

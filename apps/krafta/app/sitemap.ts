@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL = "https://www.krafta.org";
+const SITE_URL = "https://www.krafta.uz";
 
 // Fixed lastmod (updated deliberately, not on every build) — a per-build
 // `new Date()` would churn the timestamp and train crawlers to distrust it.

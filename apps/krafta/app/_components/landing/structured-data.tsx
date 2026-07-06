@@ -1,6 +1,6 @@
 import type { LandingLocale } from "./content";
 
-const SITE_URL = "https://www.krafta.org";
+const SITE_URL = "https://www.krafta.uz";
 
 /**
  * JSON-LD structured data for the marketing landing. Two entities in one graph:

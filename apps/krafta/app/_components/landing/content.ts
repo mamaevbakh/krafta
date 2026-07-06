@@ -278,9 +278,9 @@ const en = {
     heading: "Everything under control — on one screen",
     subheading:
       "A guest orders in the storefront — it lands with you instantly. Dine-in, pickup, and delivery, totals and statuses, Telegram alerts. Nothing slips through.",
-    ordersUrl: "krafta.org/orders",
+    ordersUrl: "krafta.uz/orders",
     ordersAlt: "Krafta orders dashboard — the live queue",
-    libraryUrl: "krafta.org/items",
+    libraryUrl: "krafta.uz/items",
     libraryAlt: "Krafta menu editor",
   },
   pricing: {
@@ -546,9 +546,9 @@ const ru: LandingContent = {
     heading: "Всё под контролем — на одном экране",
     subheading:
       "Гость заказывает в витрине — заказ тут же у вас. Зал, самовывоз и доставка, суммы и статусы, уведомления в Telegram. Ничего не теряется.",
-    ordersUrl: "krafta.org/orders",
+    ordersUrl: "krafta.uz/orders",
     ordersAlt: "Панель заказов Krafta — живая очередь",
-    libraryUrl: "krafta.org/items",
+    libraryUrl: "krafta.uz/items",
     libraryAlt: "Редактор меню Krafta",
   },
   pricing: {
@@ -813,9 +813,9 @@ const uz: LandingContent = {
     heading: "Hammasi nazorat ostida — bitta ekranda",
     subheading:
       "Mehmon vitrinada buyurtma beradi — u darhol sizga tushadi. Zal, olib ketish va yetkazib berish, summalar va holatlar, Telegram bildirishnomalari. Hech narsa yoʻqolmaydi.",
-    ordersUrl: "krafta.org/orders",
+    ordersUrl: "krafta.uz/orders",
     ordersAlt: "Krafta buyurtmalar paneli — jonli navbat",
-    libraryUrl: "krafta.org/items",
+    libraryUrl: "krafta.uz/items",
     libraryAlt: "Krafta menyu muharriri",
   },
   pricing: {

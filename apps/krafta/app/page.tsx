@@ -36,7 +36,7 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 // Canonical public host — OG/Twitter cards only matter on the shared prod
 // link (Telegram/WhatsApp unfurls), so the image + URLs resolve against prod
 // regardless of which environment renders the tag.
-const SITE_URL = "https://www.krafta.org";
+const SITE_URL = "https://www.krafta.uz";
 const OG_LOCALE: Record<LandingLocale, string> = {
   ru: "ru_RU",
   uz: "uz_UZ",

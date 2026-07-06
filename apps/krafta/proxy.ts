@@ -10,17 +10,42 @@ import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
  * 1. Refreshes the Supabase auth session on every request
  * 2. Protects /dashboard routes from unauthenticated users
  */
+// Retired primary domains — every request 301s to the .uz canonical, path
+// preserved. krafta.uz is the primary for the Uzbekistan market; .org and
+// .company stay registered forever (brand + QR safety net) but consolidate
+// all authority to one domain. dev.krafta.org is deliberately NOT here — it
+// keeps serving (for QA), just noindexed below.
+const RETIRED_HOSTS = new Set([
+  "krafta.org",
+  "www.krafta.org",
+  "krafta.company",
+  "www.krafta.company",
+]);
+
+const CANONICAL_HOST = "www.krafta.uz";
+
 export async function proxy(request: NextRequest) {
+  const host = request.headers.get("host") ?? "";
+
+  // Domain consolidation first — before any session work, so a redirected
+  // request never pays for a Supabase round-trip.
+  if (RETIRED_HOSTS.has(host)) {
+    const url = request.nextUrl.clone();
+    url.protocol = "https:";
+    url.host = CANONICAL_HOST;
+    url.port = "";
+    return NextResponse.redirect(url, 301);
+  }
+
   const { response: sessionResponse, user } = await updateSession(request);
 
   // Keep non-production hosts out of search indexes. dev.krafta.org (staging)
   // and the raw *.vercel.app deployment URLs serve the same code as prod, so
   // without this they get crawled + indexed as duplicate/stale content (Yandex
   // had indexed dev.krafta.org). This is host-based, not build-based, so the
-  // SAME prod deployment is indexable on www.krafta.org but noindex on its
+  // SAME prod deployment is indexable on www.krafta.uz but noindex on its
   // krafta-git-*.vercel.app alias. X-Robots-Tag (not robots.txt disallow) so
   // crawlers can still fetch the page, see the noindex, and drop it.
-  const host = request.headers.get("host") ?? "";
   const isNonProdHost =
     host.startsWith("dev.") || host.endsWith(".vercel.app");
   const applyIndexingPolicy = (target: NextResponse) => {
