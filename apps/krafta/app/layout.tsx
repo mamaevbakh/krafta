@@ -29,7 +29,13 @@ export const metadata: Metadata = {
 // crawlers hoist them. Yandex's verification robot doesn't run JS, so the tag
 // must be in the static <head> shell that flushes first. Static + site-wide,
 // so a literal is the correct home for it.
-const GOOGLE_SITE_VERIFICATION = "zMYynJIPuONjvxBSD2pMTY8xS7sRYR8rH1eQztrG4Bg";
+// One code per verified Google Search Console property (Google supports
+// several google-site-verification tags on a page): krafta.uz is the primary,
+// krafta.org is the retired-but-historically-verified domain.
+const GOOGLE_SITE_VERIFICATIONS = [
+  "NpBoxpr9Koj0qWBS80EbyAdAlsGGBb_FfoLntVUIVL4", // krafta.uz (primary)
+  "zMYynJIPuONjvxBSD2pMTY8xS7sRYR8rH1eQztrG4Bg", // krafta.org (legacy)
+];
 const YANDEX_VERIFICATION = "9e592216b654ce12";
 
 export default function RootLayout({
@@ -42,10 +48,9 @@ export default function RootLayout({
       <head>
         {/* Literal in the static <head> so non-JS crawlers (Yandex's
             verification robot) see them — see the note by the constants. */}
-        <meta
-          name="google-site-verification"
-          content={GOOGLE_SITE_VERIFICATION}
-        />
+        {GOOGLE_SITE_VERIFICATIONS.map((code) => (
+          <meta key={code} name="google-site-verification" content={code} />
+        ))}
         <meta name="yandex-verification" content={YANDEX_VERIFICATION} />
       </head>
       <body
