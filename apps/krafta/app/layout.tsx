@@ -20,6 +20,13 @@ export const metadata: Metadata = {
   title: "Krafta",
   description:
     "Online storefront, orders, and QR menu for cafes, restaurants, and shops — no commission on sales.",
+  // Search-console ownership verification. Set on the root layout so the tags
+  // render site-wide (the console checks the property's homepage). Google +
+  // Yandex — Yandex matters for the UZ/CIS market.
+  verification: {
+    google: "zMYynJIPuONjvxBSD2pMTY8xS7sRYR8rH1eQztrG4Bg",
+    yandex: "9e592216b654ce12",
+  },
 };
 
 export default function RootLayout({
