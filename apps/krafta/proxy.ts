@@ -12,11 +12,29 @@ import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
  */
 export async function proxy(request: NextRequest) {
   const { response: sessionResponse, user } = await updateSession(request);
+
+  // Keep non-production hosts out of search indexes. dev.krafta.org (staging)
+  // and the raw *.vercel.app deployment URLs serve the same code as prod, so
+  // without this they get crawled + indexed as duplicate/stale content (Yandex
+  // had indexed dev.krafta.org). This is host-based, not build-based, so the
+  // SAME prod deployment is indexable on www.krafta.org but noindex on its
+  // krafta-git-*.vercel.app alias. X-Robots-Tag (not robots.txt disallow) so
+  // crawlers can still fetch the page, see the noindex, and drop it.
+  const host = request.headers.get("host") ?? "";
+  const isNonProdHost =
+    host.startsWith("dev.") || host.endsWith(".vercel.app");
+  const applyIndexingPolicy = (target: NextResponse) => {
+    if (isNonProdHost) {
+      target.headers.set("X-Robots-Tag", "noindex, nofollow");
+    }
+    return target;
+  };
+
   const applySessionCookies = (target: NextResponse) => {
     for (const cookie of sessionResponse.cookies.getAll()) {
       target.cookies.set(cookie);
     }
-    return target;
+    return applyIndexingPolicy(target);
   };
 
   const { pathname } = request.nextUrl;
@@ -58,7 +76,7 @@ export async function proxy(request: NextRequest) {
     return applySessionCookies(NextResponse.redirect(target));
   }
 
-  return sessionResponse;
+  return applyIndexingPolicy(sessionResponse);
 }
 
 export const config = {
