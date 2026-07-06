@@ -68,9 +68,11 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public folder
+     * - public folder (static assets by extension — incl. .html so
+     *   search-console verification files like yandex_*.html are served as
+     *   pure static assets, no session/Supabase side-effects on the crawler)
      * - api routes (for webhooks etc)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2)$|api).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2|html)$|api).*)",
   ],
 };
