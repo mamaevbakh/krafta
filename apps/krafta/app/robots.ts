@@ -10,9 +10,13 @@ const SITE_URL = "https://www.krafta.org";
  *
  * Allow the public surface (marketing landing + customer storefronts) and
  * keep crawlers out of the merchant admin and machinery: the dashboard, auth,
- * onboarding, API, QR-redirect shortlinks, the Telegram Mini App entry, and
- * dev/preview routes have no search value and shouldn't burn crawl budget or
- * surface in results.
+ * API, QR-redirect shortlinks, the Telegram Mini App entry, and dev/preview
+ * routes have no search value and shouldn't burn crawl budget.
+ *
+ * NOTE: /login and /onboarding are deliberately NOT disallowed here — they
+ * carry a `noindex` meta tag instead. A disallowed page can't be crawled, so
+ * Google never sees its noindex and may keep a URL-only listing; letting them
+ * be crawled lets the noindex fully drop them from the index.
  */
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -24,8 +28,6 @@ export default function robots(): MetadataRoute.Robots {
           "/dashboard/",
           "/api/",
           "/auth/",
-          "/login",
-          "/onboarding",
           "/preview/",
           "/tma",
           "/lab/",
