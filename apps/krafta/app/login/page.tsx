@@ -8,6 +8,11 @@ import { getUserSafely } from "@krafta/supabase/auth";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+// Crawlable + noindex (not robots.txt-disallowed) so Google fully drops the
+// login page rather than leaving a URL-only listing. No search value.
+export const metadata: Metadata = { robots: { index: false } };
 
 export default async function LoginPage({
   searchParams,

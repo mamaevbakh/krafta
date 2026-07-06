@@ -10,7 +10,13 @@ import { findOwnedShop } from "@/lib/auth/merchant-shop";
 
 import { OnboardingWizard } from "./_components/onboarding-wizard";
 
-export const metadata = { title: "Create your shop — Krafta" };
+// Crawlable (not robots.txt-disallowed) so Google actually sees the noindex
+// and fully drops it — vs a robots.txt block, which can still leave a URL-only
+// listing. A signup wizard has no search value.
+export const metadata = {
+  title: "Create your shop — Krafta",
+  robots: { index: false },
+};
 
 export default async function OnboardingPage() {
   // The resume redirect must NOT fire during a server-action POST: the
