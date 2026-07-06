@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 
 import {
+  DEFAULT_LANDING_LOCALE,
   getLandingContent,
-  isLandingLocale,
   isUzbekistanVisitor,
   LANDING_LOCALES,
   resolveDefaultLandingLocale,
@@ -61,29 +61,24 @@ const META: Record<LandingLocale, { title: string; description: string }> = {
   },
 };
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}): Promise<Metadata> {
-  const params = await searchParams;
-  const headersList = await headers();
-  const rawLang = Array.isArray(params.lang) ? params.lang[0] : params.lang;
-  // Did the request carry an explicit, valid ?lang=? That distinction drives
-  // the canonical: an explicit language URL self-canonicalizes; the bare `/`
-  // (which auto-detects per visitor) is the x-default and canonicalizes to
-  // itself. This gives search engines three stable, indexable language URLs
-  // instead of one geo-varying page they can only ever see in English.
-  const explicitLocale = isLandingLocale(rawLang) ? rawLang : null;
-  const locale = resolveLandingLocale(
-    params.lang,
-    resolveDefaultLandingLocale(headersList),
-  );
+// STATIC on purpose. The landing renders a per-request locale in the BODY
+// (geo/device/?lang — see LandingPage), but the metadata must NOT read request
+// data: under cacheComponents (PPR), any headers()/searchParams access in
+// generateMetadata forces the whole <head> to stream into <body>, where only
+// JS-rendering crawlers hoist it. Non-JS consumers — Telegram/WhatsApp link
+// unfurls, Yandex, strict social scrapers — then miss the OG card, canonical,
+// and hreflang entirely.
+//
+// So we fix the head-level metadata to the primary market locale (RU) — correct
+// for a UZ-first brand and for what actually gets shared/crawled — which lets
+// Next prerender it into the static <head> shell. The hreflang cluster still
+// advertises all three languages; the ?lang= variants share this canonical
+// (the bare primary URL), which is the clean single-canonical setup for a
+// query-param-localized single page.
+export function generateMetadata(): Metadata {
+  const locale = DEFAULT_LANDING_LOCALE;
   const meta = META[locale];
 
-  const canonical = explicitLocale ? `/?lang=${explicitLocale}` : "/";
-  // hreflang cluster: every language version + an x-default. Next resolves
-  // these against metadataBase into absolute alternate links.
   const languages: Record<string, string> = { "x-default": "/" };
   for (const l of LANDING_LOCALES) languages[l] = `/?lang=${l}`;
 
@@ -91,20 +86,18 @@ export async function generateMetadata({
     metadataBase: new URL(SITE_URL),
     title: meta.title,
     description: meta.description,
-    alternates: { canonical, languages },
+    alternates: { canonical: "/", languages },
     openGraph: {
       type: "website",
       siteName: "Krafta",
-      url: `${SITE_URL}${canonical}`,
+      url: SITE_URL,
       title: meta.title,
       description: meta.description,
       locale: OG_LOCALE[locale],
       alternateLocale: LANDING_LOCALES.filter((l) => l !== locale).map(
         (l) => OG_LOCALE[l],
       ),
-      images: [
-        { url: "/og-image", width: 1200, height: 630, alt: "Krafta" },
-      ],
+      images: [{ url: "/og-image", width: 1200, height: 630, alt: "Krafta" }],
     },
     twitter: {
       card: "summary_large_image",
