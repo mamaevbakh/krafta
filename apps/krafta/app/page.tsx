@@ -14,6 +14,7 @@ import {
   resolveLandingLocale,
   type LandingLocale,
 } from "./_components/landing/content";
+import { LandingJsonLd } from "./_components/landing/structured-data";
 import { LandingNav } from "./_components/landing/landing-nav";
 import { LandingHero } from "./_components/landing/landing-hero";
 import { LandingProof } from "./_components/landing/landing-proof";
@@ -145,6 +146,7 @@ async function LandingPage({ searchParams }: { searchParams: SearchParams }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background font-sans">
+      <LandingJsonLd locale={locale} description={META[locale].description} />
       <LandingNav authed={authed} content={content} activeLocale={locale} />
 
       <main className="flex-1">
