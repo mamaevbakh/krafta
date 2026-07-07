@@ -34,7 +34,8 @@ export function LandingFooter({
     ? [{ href: DASHBOARD_HREF, label: content.actions.dashboard }]
     : [
         { href: ONBOARDING_HREF, label: content.actions.createShop },
-        { href: SIGN_IN_HREF, label: content.actions.signIn },
+        // Sign-in redirects to the external IdP — never speculatively prefetch it.
+        { href: SIGN_IN_HREF, label: content.actions.signIn, prefetch: false },
       ];
 
   return (
@@ -68,7 +69,11 @@ function FooterColumn({
   links,
 }: {
   heading: string;
-  links: { href: React.ComponentProps<typeof Link>["href"]; label: string }[];
+  links: {
+    href: React.ComponentProps<typeof Link>["href"];
+    label: string;
+    prefetch?: boolean;
+  }[];
 }) {
   return (
     <div>
@@ -80,6 +85,7 @@ function FooterColumn({
           <li key={link.label}>
             <Link
               href={link.href}
+              prefetch={link.prefetch}
               className="text-sm text-foreground transition-colors hover:text-muted-foreground"
             >
               {link.label}
