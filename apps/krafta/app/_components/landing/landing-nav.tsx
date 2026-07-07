@@ -90,7 +90,7 @@ export function LandingNav({ authed, content, activeLocale }: LandingNavProps) {
           <div className="hidden items-center gap-2 md:flex">
             {!authed && (
               <Button asChild variant="ghost" size="sm">
-                <Link href={SIGN_IN_HREF}>{content.actions.signIn}</Link>
+                <Link href={SIGN_IN_HREF} prefetch={false}>{content.actions.signIn}</Link>
               </Button>
             )}
             <Button asChild size="sm">
@@ -163,7 +163,7 @@ function MobileMenu({
           {!authed && (
             <SheetClose asChild>
               <Button asChild variant="outline" className="w-full">
-                <Link href={SIGN_IN_HREF}>{content.actions.signIn}</Link>
+                <Link href={SIGN_IN_HREF} prefetch={false}>{content.actions.signIn}</Link>
               </Button>
             </SheetClose>
           )}

@@ -42,7 +42,7 @@ function MarketingHeader() {
             <Link href="/pricing">Цены</Link>
           </Button>
           <Button asChild variant="ghost" size="sm">
-            <Link href={SIGN_IN_HREF}>Войти</Link>
+            <Link href={SIGN_IN_HREF} prefetch={false}>Войти</Link>
           </Button>
           <Button asChild size="sm">
             <Link href={ONBOARDING_HREF}>Создать магазин</Link>
