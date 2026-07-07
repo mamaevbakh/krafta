@@ -17,6 +17,10 @@ const KraftaBrandFont = localFont({
 
 
 export const metadata: Metadata = {
+  // Base URL for resolving every relative canonical / OG URL in child pages'
+  // metadata (e.g. `alternates.canonical: "/pricing"` → absolute). The landing
+  // sets its own metadataBase too; this covers all other routes.
+  metadataBase: new URL("https://www.krafta.uz"),
   title: "Krafta",
   description:
     "Online storefront, orders, and QR menu for cafes, restaurants, and shops — no commission on sales.",
