@@ -126,6 +126,12 @@ export type StorefrontMessageKey =
   | "checkout.summary.heading"
   | "checkout.chip.required"
   | "checkout.chip.optional"
+  // Online (card) payment — shown when the merchant has connected Krafta Pay.
+  | "checkout.payment.heading"
+  | "checkout.payment.cash"
+  | "checkout.payment.card"
+  | "checkout.payment.card_hint"
+  | "checkout.card_unavailable_cash"
   // Delivery address book — dedicated map + list screens
   | "address.title"
   | "address.use_location"
@@ -308,6 +314,11 @@ const EN: MessageTable = {
   "checkout.section.contact": "Contact details",
   "checkout.contact": "Contact",
   "checkout.summary.heading": "Order summary",
+  "checkout.payment.heading": "Payment method",
+  "checkout.payment.cash": "Cash",
+  "checkout.payment.card": "Card",
+  "checkout.payment.card_hint": "You'll pay by card on a secure page, then come right back.",
+  "checkout.card_unavailable_cash": "Online payment is unavailable right now — your order was placed with cash on delivery.",
   "checkout.chip.required": "Required",
   "checkout.chip.optional": "Optional",
   "address.title": "Delivery address",
@@ -477,6 +488,11 @@ const RU: MessageTable = {
   "checkout.section.contact": "Контактные данные",
   "checkout.contact": "Контакт",
   "checkout.summary.heading": "Ваш заказ",
+  "checkout.payment.heading": "Способ оплаты",
+  "checkout.payment.cash": "Наличными",
+  "checkout.payment.card": "Картой",
+  "checkout.payment.card_hint": "Оплатите картой на защищённой странице и вернётесь обратно.",
+  "checkout.card_unavailable_cash": "Онлайн-оплата сейчас недоступна — заказ оформлен с оплатой при получении.",
   "checkout.chip.required": "Обязательно",
   "checkout.chip.optional": "Необязательно",
   "address.title": "Адрес доставки",
@@ -648,6 +664,11 @@ const UZ_LATN: MessageTable = {
   "checkout.section.contact": "Aloqa ma’lumotlari",
   "checkout.contact": "Aloqa",
   "checkout.summary.heading": "Buyurtma tafsilotlari",
+  "checkout.payment.heading": "To'lov usuli",
+  "checkout.payment.cash": "Naqd pul",
+  "checkout.payment.card": "Karta",
+  "checkout.payment.card_hint": "Karta bilan xavfsiz sahifada to'laysiz va qaytib kelasiz.",
+  "checkout.card_unavailable_cash": "Onlayn to'lov hozir mavjud emas — buyurtma yetkazib berilganda naqd to'lov bilan rasmiylashtirildi.",
   "checkout.chip.required": "Majburiy",
   "checkout.chip.optional": "Ixtiyoriy",
   "address.title": "Yetkazib berish manzili",

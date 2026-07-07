@@ -25,7 +25,7 @@ export default async function PayPage({
     .schema("payments")
     .from("checkout_sessions")
     .select(
-      "id, status, org_id, public_token, payment_intent_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at)"
+      "id, status, org_id, public_token, payment_intent_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at, order_id)"
     )
     .eq("public_token", public_token)
     .maybeSingle();
@@ -62,6 +62,11 @@ export default async function PayPage({
   const otherProviders = providers.filter((p) => p.id !== "atmos");
   const amountMinor = intent?.amount_minor ?? 0;
   const currency = intent?.currency ?? "UZS";
+  // Storefront one-off order payments link an order_id → "Payment complete"
+  // copy; subscription billing has none → "Your subscription is active".
+  const payMode: "subscription" | "payment" = (intent as any)?.order_id
+    ? "payment"
+    : "subscription";
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
@@ -101,6 +106,7 @@ export default async function PayPage({
                 publicToken={public_token}
                 amountMinor={amountMinor}
                 currency={currency}
+                mode={payMode}
               />
               {otherProviders.length > 0 ? (
                 <div className="mt-8 border-t pt-6">

@@ -36,6 +36,7 @@ import { PricingBreakdown } from "./pricing-breakdown";
 type CartDrawerProps = {
   currencySettings?: CurrencySettings;
   deliverySettings?: DeliverySettings;
+  cardPaymentEnabled?: boolean;
 };
 
 // Step order drives the directional cross-slide: advancing (cart → checkout →
@@ -45,6 +46,7 @@ const STEP_ORDER: Record<CartStep, number> = { cart: 0, checkout: 1, placed: 2 }
 export function CartDrawer({
   currencySettings = defaultCurrencySettings,
   deliverySettings = defaultDeliverySettings,
+  cardPaymentEnabled = false,
 }: CartDrawerProps) {
   const { isOpen, setOpen, step, setStep, close } = useCart();
   // Slide direction, derived from the previous step held in state (lint-safe —
@@ -113,6 +115,7 @@ export function CartDrawer({
             <CartCheckoutStep
               currencySettings={currencySettings}
               deliverySettings={deliverySettings}
+              cardPaymentEnabled={cardPaymentEnabled}
             />
           ) : null}
           {step === "placed" ? (

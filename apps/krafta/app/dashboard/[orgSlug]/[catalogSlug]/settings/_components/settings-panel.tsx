@@ -30,6 +30,7 @@ import {
   DeliveryCourierForm,
   type DeliveryCourierInitial,
 } from "./delivery-courier-form";
+import { PaymentsForm, type PaymentsInitial } from "./payments-form";
 import { AssistantForm } from "./assistant-form";
 
 type VenueRow = {
@@ -59,6 +60,7 @@ type SettingsPanelProps = {
   currency: CurrencySettings;
   deliveryModeEnabled: boolean;
   courier: DeliveryCourierInitial;
+  payments: PaymentsInitial;
   assistantEnabled: boolean;
 };
 
@@ -99,6 +101,7 @@ export function SettingsPanel({
   currency,
   deliveryModeEnabled,
   courier,
+  payments,
   assistantEnabled,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = React.useState("venue");
@@ -253,6 +256,7 @@ export function SettingsPanel({
               {[
                 { id: "venue", label: "Venue" },
                 { id: "delivery", label: "Delivery" },
+                { id: "payments", label: "Payments" },
                 { id: "catalog", label: "Catalog" },
                 { id: "miniapp", label: "Mini App" },
                 { id: "notifications", label: "Notifications" },
@@ -301,6 +305,8 @@ export function SettingsPanel({
                   />
                   <DeliveryCourierForm orgId={orgId} initial={courier} />
                 </div>
+              ) : activeTab === "payments" ? (
+                <PaymentsForm orgId={orgId} initial={payments} />
               ) : activeTab === "miniapp" ? (
                 <MiniAppForm venueId={venueId} initial={miniApp} />
               ) : activeTab === "notifications" ? (

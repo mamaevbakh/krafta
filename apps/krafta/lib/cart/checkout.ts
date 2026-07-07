@@ -15,6 +15,9 @@ import {
   isWithinDeliveryZone,
   normalizeDeliverySettings,
 } from "@/lib/catalogs/settings/delivery";
+import { headers } from "next/headers";
+import { getRequestOrigin } from "@/lib/auth/redirect";
+import { createOrderCheckoutSession } from "@/lib/payments/pay-internal";
 
 export type DineInFields = {
   tableLabel: string;
@@ -47,6 +50,15 @@ export type DeliveryFields = {
 // computed from percentage / fixed; server doesn't re-derive).
 type CommonFields = {
   tipCents?: number;
+  /** How the customer pays. 'cash' = cash/COD (the historical default, merchant
+   *  collects + flips the row). 'card' = Krafta Pay online (Atmos inline) — we
+   *  create a checkout session and return its payUrl for the client to hand off
+   *  to. Defaults to 'cash'; only the storefront sets 'card', and only when the
+   *  merchant org has an active Krafta Pay connection (re-checked server-side). */
+  paymentMethod?: "cash" | "card";
+  /** Storefront path the customer returns to after paying (relative, e.g.
+   *  "/my-shop"). Used to build the card-payment return URL. */
+  catalogPath?: string;
   /** Injected client + pre-resolved identity (headless commerce API). Storefront
    *  omits both → cookie-authed client + ensureCartIdentity (path unchanged). */
   supabase?: SupabaseServerClient;
@@ -61,6 +73,16 @@ export type PlaceOrderInput =
 export type PlaceOrderResult = {
   orderId: string;
   state: "open";
+  /** How the payment row was created. 'card' means the customer must be handed
+   *  off to `payUrl` to complete an online payment; 'cash' is collected on
+   *  delivery/pickup as before. */
+  paymentMethod: "cash" | "card";
+  /** Present only when paymentMethod === 'card' AND the Krafta Pay checkout
+   *  session was created — the hosted pay page to redirect the customer to. */
+  payUrl?: string;
+  /** True when card was requested but Krafta Pay was unavailable, so the order
+   *  was placed as cash/COD instead. The client surfaces this to the customer. */
+  cardFallbackToCash?: boolean;
 };
 
 /**
@@ -583,6 +605,95 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   // place-order; the order's snapshot is the source of truth (KRA-80).
   const amountCents =
     subtotalCents + pricing.additiveFeesCents + pricing.deliveryFeeCents;
+  const totalCents = amountCents + tipCents;
+
+  // ── Card (Krafta Pay / Atmos online) branch ─────────────────────────────
+  // Only the storefront sets paymentMethod='card', and only when the merchant
+  // org has an active Krafta Pay connection. Atmos settles in UZS (major×100 ==
+  // tiyin), so a non-UZS order can't be charged online — it falls back to cash.
+  // We create the Krafta Pay checkout session FIRST (so the payment row carries
+  // its intent id) then hand the customer to payUrl. If Krafta Pay is
+  // unavailable (unconfigured / outage) we place the order as cash instead of
+  // stranding it — the client tells the customer.
+  if (input.paymentMethod === "card" && order.currency === "UZS") {
+    const origin = getRequestOrigin(await headers());
+    const returnTo =
+      input.catalogPath && input.catalogPath.startsWith("/")
+        ? input.catalogPath
+        : "/";
+    // The return route confirms the charge server-side (by the order's intent
+    // id) then flips the payment row — so no secret needs to ride in the URL.
+    const successUrl = `${origin}/pay/return?order=${encodeURIComponent(order.id)}&to=${encodeURIComponent(returnTo)}`;
+    const cancelUrl = `${origin}${returnTo}`;
+    const phone = extractCustomerPhone(input);
+
+    const session = await createOrderCheckoutSession({
+      orgId: input.orgId,
+      amountMinor: totalCents,
+      currency: order.currency,
+      orderId: order.id,
+      description: `Order ${order.id}`,
+      successUrl,
+      cancelUrl,
+      returnUrl: successUrl,
+      customer: phone ? { phone } : undefined,
+      metadata: { order_id: order.id, venue_id: input.venueId },
+    }).catch(() => ({ ok: false as const, error: "unknown" as const }));
+
+    if (session.ok) {
+      const { error: cardPaymentError } = await supabase
+        .schema("commerce")
+        .from("order_payments")
+        .insert({
+          // org_id set by order_payments_sync_org_id trigger.
+          org_id: input.orgId,
+          order_id: order.id,
+          amount_cents: amountCents,
+          tip_cents: tipCents,
+          total_cents: totalCents,
+          currency: order.currency,
+          status: "pending",
+          source_type: "krafta_pay",
+          // Do NOT auto-complete: the row flips to 'completed' only once the
+          // charge settles (return-route confirm or dashboard reconcile).
+          autocomplete: false,
+          krafta_pay_payment_intent_id: session.paymentIntentId,
+        });
+      if (cardPaymentError) throw new Error(cardPaymentError.message);
+
+      return {
+        orderId: order.id,
+        state: "open",
+        paymentMethod: "card",
+        payUrl: session.payUrl,
+      };
+    }
+    // Krafta Pay unavailable → fall through to a cash row so the order still
+    // lands, and tell the client it was placed as cash.
+    const { error: fallbackError } = await supabase
+      .schema("commerce")
+      .from("order_payments")
+      .insert({
+        org_id: input.orgId,
+        order_id: order.id,
+        amount_cents: amountCents,
+        tip_cents: tipCents,
+        total_cents: totalCents,
+        currency: order.currency,
+        status: "pending",
+        source_type: "cash",
+        autocomplete: true,
+      });
+    if (fallbackError) throw new Error(fallbackError.message);
+    return {
+      orderId: order.id,
+      state: "open",
+      paymentMethod: "cash",
+      cardFallbackToCash: true,
+    };
+  }
+
+  // Payments row: cash/COD default, status='pending', customer's tip captured.
   const { error: paymentError } = await supabase
     .schema("commerce")
     .from("order_payments")
@@ -592,7 +703,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       order_id: order.id,
       amount_cents: amountCents,
       tip_cents: tipCents,
-      total_cents: amountCents + tipCents,
+      total_cents: totalCents,
       currency: order.currency,
       status: "pending",
       source_type: "cash",
@@ -600,5 +711,20 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     });
   if (paymentError) throw new Error(paymentError.message);
 
-  return { orderId: order.id, state: "open" };
+  return { orderId: order.id, state: "open", paymentMethod: "cash" };
+}
+
+/** Best-effort customer phone for the Krafta Pay customer record (informational). */
+function extractCustomerPhone(input: PlaceOrderInput): string | null {
+  if (input.mode === "pickup") {
+    return input.fields.recipientPhone
+      ? normalizeUzPhone(input.fields.recipientPhone)
+      : null;
+  }
+  if (input.mode === "delivery") {
+    return input.fields.recipientPhone
+      ? normalizeUzPhone(input.fields.recipientPhone)
+      : null;
+  }
+  return null;
 }

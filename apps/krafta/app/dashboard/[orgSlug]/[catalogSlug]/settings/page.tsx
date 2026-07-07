@@ -98,6 +98,22 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       !courierConnected && Boolean(process.env.YANDEX_DELIVERY_TOKEN),
   };
 
+  // Org-level Krafta Pay (Atmos) connection state. This is a non-secret mirror
+  // (the encrypted credentials live in Krafta Pay), so it's safe to read + send.
+  const { data: paymentsRow } = await supabase
+    .schema("commerce")
+    .from("org_payment_settings")
+    .select("account_label, store_id, is_active, verified")
+    .eq("org_id", catalog.org_id)
+    .maybeSingle();
+  const payments = {
+    connected: Boolean(paymentsRow),
+    isActive: paymentsRow?.is_active ?? false,
+    accountLabel: paymentsRow?.account_label ?? null,
+    storeId: paymentsRow?.store_id ?? null,
+    verified: paymentsRow?.verified ?? false,
+  };
+
   return (
     <SettingsPanel
       catalogId={catalog.id}
@@ -113,6 +129,7 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
       currency={currency}
       deliveryModeEnabled={deliveryModeEnabled}
       courier={courier}
+      payments={payments}
       assistantEnabled={behavior.enableAssistant}
       telegram={
         telegram

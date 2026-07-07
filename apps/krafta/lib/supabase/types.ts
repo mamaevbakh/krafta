@@ -1069,6 +1069,45 @@ export type Database = {
         }
         Relationships: []
       }
+      org_payment_settings: {
+        Row: {
+          account_label: string | null
+          connected_at: string
+          created_at: string
+          environment: string
+          is_active: boolean
+          org_id: string
+          provider: string
+          store_id: string | null
+          updated_at: string
+          verified: boolean
+        }
+        Insert: {
+          account_label?: string | null
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          is_active?: boolean
+          org_id: string
+          provider?: string
+          store_id?: string | null
+          updated_at?: string
+          verified?: boolean
+        }
+        Update: {
+          account_label?: string | null
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          is_active?: boolean
+          org_id?: string
+          provider?: string
+          store_id?: string | null
+          updated_at?: string
+          verified?: boolean
+        }
+        Relationships: []
+      }
       processed_actions: {
         Row: {
           created_at: string

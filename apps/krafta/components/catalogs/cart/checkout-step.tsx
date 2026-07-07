@@ -5,11 +5,13 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  CreditCard,
   Loader2,
   Package,
   Plus,
   Truck,
   Utensils,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -89,11 +91,15 @@ type FieldPillState = "neutral" | "attention" | "satisfied" | "optional";
 type CartCheckoutStepProps = {
   currencySettings?: CurrencySettings;
   deliverySettings?: DeliverySettings;
+  /** True when the merchant org has an active Krafta Pay (Atmos) connection, so
+   *  the customer can choose to pay by card online instead of cash. */
+  cardPaymentEnabled?: boolean;
 };
 
 export function CartCheckoutStep({
   currencySettings = defaultCurrencySettings,
   deliverySettings = defaultDeliverySettings,
+  cardPaymentEnabled = false,
 }: CartCheckoutStepProps = {}) {
   const {
     modes,
@@ -193,6 +199,10 @@ export function CartCheckoutStep({
   // Flips true on a tap while the form is incomplete, so the first unsatisfied
   // field surfaces its inline error and the form scrolls to it.
   const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  // How the customer pays. Cash/COD is the default; when the merchant has
+  // connected Krafta Pay, they can switch to paying by card online.
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
 
   // Out-of-zone: the delivery pin falls outside the cafe's delivery radius.
   // Blocks placement (with an inline «Вне зоны доставки») rather than letting
@@ -374,10 +384,12 @@ export function CartCheckoutStep({
     // it's already " · "-joined, so it stays scannable on receipts / dashboard.
     // placeOrder toasts on failure (cart-provider), so the footer never echoes
     // an error — it stays just the total and the CTA.
+    const chosenPayment = cardPaymentEnabled ? paymentMethod : "cash";
     void (mode === "dine_in"
         ? await placeOrder({
             mode: "dine_in",
             fields: { tableLabel: tableLabel.trim() },
+            paymentMethod: chosenPayment,
           })
         : mode === "pickup"
           ? await placeOrder({
@@ -389,6 +401,7 @@ export function CartCheckoutStep({
                 recipientPhone: pickupPhone.trim() || null,
                 note: pickupNote.trim() || null,
               },
+              paymentMethod: chosenPayment,
             })
           : await placeOrder({
               mode: "delivery",
@@ -407,6 +420,7 @@ export function CartCheckoutStep({
                   deliverySchedule === "scheduled" ? deliveryAt : null,
                 note: deliveryNote.trim() || null,
               },
+              paymentMethod: chosenPayment,
             }));
   };
 
@@ -770,6 +784,48 @@ export function CartCheckoutStep({
               </FieldRow>
             </FieldGroup>
           </FieldSet>
+        ) : null}
+
+        {/* Payment method — only when the merchant has connected Krafta Pay.
+            Cash/COD stays the default; card hands off to the hosted pay page. */}
+        {cardPaymentEnabled ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">
+              {t("checkout.payment.heading")}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { value: "cash", label: t("checkout.payment.cash"), Icon: Wallet },
+                  { value: "card", label: t("checkout.payment.card"), Icon: CreditCard },
+                ] as const
+              ).map(({ value, label, Icon }) => {
+                const active = paymentMethod === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setPaymentMethod(value)}
+                    className={cn(
+                      "flex h-11 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors",
+                      active
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border bg-background text-foreground hover:bg-muted",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {paymentMethod === "card" ? (
+              <p className="text-xs text-muted-foreground">
+                {t("checkout.payment.card_hint")}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {/* key={mode}: remount on mode switch so `defaultOpen` re-applies —

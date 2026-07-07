@@ -4,17 +4,8 @@ import {
   getAuthenticatedUserOrThrow,
   requireOrgMembership,
 } from "@/lib/dashboard-auth";
-import {
-  decryptSecretJsonMaybe,
-  encryptSecretJson,
-  resolveSecretDecryptionKey,
-} from "@krafta/payments-core";
-import type { Json } from "@krafta/supabase/database.types";
-
-// Atmos is INLINE + synchronous: a merchant connects it with just OAuth2
-// credentials (consumer key/secret) + their store id. No terminal id, content
-// language, webhook secret, or fiscalization (unlike Uzum).
-const DEFAULT_API_BASE_URL = "https://apigw.atmos.uz";
+import { decryptSecretJsonMaybe } from "@krafta/payments-core";
+import { upsertAtmosProviderAccount } from "@/lib/providers/atmos-connect";
 
 type UpsertBody = {
   orgId: string;
@@ -108,123 +99,18 @@ async function upsertProvider(req: Request, method: "POST" | "PATCH") {
   await requireOrgMembership({ supabase, userId: user.id, orgId, minRole: "admin" });
 
   const environment = body.environment ?? "live";
-  const status = body.status ?? "active";
   const admin = createAdminSupabase();
 
-  const { data: existing, error: existingErr } = await admin
-    .schema("payments")
-    .from("org_provider_accounts")
-    .select("id")
-    .eq("org_id", orgId)
-    .eq("provider_id", "atmos")
-    .eq("environment", environment)
-    .maybeSingle();
-  if (existingErr) throw existingErr;
-
-  // Merge with existing creds so the consumer key/secret can be left blank on an
-  // update (only re-typed when rotating).
-  let existingCreds: Record<string, unknown> = {};
-  if (existing?.id) {
-    const { data: existingSecrets, error: existingSecretsErr } = await admin
-      .schema("payments")
-      .from("org_provider_account_secrets")
-      .select("credentials_encrypted")
-      .eq("org_provider_account_id", existing.id)
-      .maybeSingle();
-    if (existingSecretsErr) throw existingSecretsErr;
-    const decrypted = decryptSecretJsonMaybe(existingSecrets?.credentials_encrypted ?? {});
-    if (decrypted && typeof decrypted === "object") {
-      existingCreds = decrypted as Record<string, unknown>;
-    }
-  }
-
-  const consumerKey =
-    parseOptionalString(body.consumerKey) ??
-    (typeof existingCreds.consumerKey === "string" ? existingCreds.consumerKey : null);
-  if (!consumerKey) throw new Error("consumerKey_required");
-
-  const consumerSecret =
-    parseOptionalString(body.consumerSecret) ??
-    (typeof existingCreds.consumerSecret === "string" ? existingCreds.consumerSecret : null);
-  if (!consumerSecret) throw new Error("consumerSecret_required");
-
-  const storeId =
-    parseOptionalString(body.storeId) ??
-    (existingCreds.storeId != null ? String(existingCreds.storeId) : null);
-  if (!storeId) throw new Error("storeId_required");
-
-  const apiBaseUrl =
-    parseOptionalString(body.apiBaseUrl) ??
-    (typeof existingCreds.apiBaseUrl === "string" ? existingCreds.apiBaseUrl : null) ??
-    DEFAULT_API_BASE_URL;
-
-  const credentials = { apiBaseUrl, consumerKey, consumerSecret, storeId };
-
-  const secretKey = resolveSecretDecryptionKey(process.env);
-  const encryptedCredentialsJson = (
-    secretKey ? encryptSecretJson(credentials, secretKey) : credentials
-  ) as Json;
-
-  let orgProviderAccountId = existing?.id ?? null;
-  if (!orgProviderAccountId) {
-    const { data: created, error: createErr } = await admin
-      .schema("payments")
-      .from("org_provider_accounts")
-      .insert({
-        org_id: orgId,
-        provider_id: "atmos",
-        environment,
-        status,
-        display_label: body.displayLabel ?? "Atmos",
-        metadata: {},
-      })
-      .select("id")
-      .single();
-    if (createErr) throw createErr;
-    orgProviderAccountId = created.id;
-  } else {
-    const { error: updateErr } = await admin
-      .schema("payments")
-      .from("org_provider_accounts")
-      .update({
-        status,
-        display_label: body.displayLabel ?? "Atmos",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orgProviderAccountId);
-    if (updateErr) throw updateErr;
-  }
-
-  const { data: existingSecrets, error: existingSecretsErr } = await admin
-    .schema("payments")
-    .from("org_provider_account_secrets")
-    .select("org_provider_account_id")
-    .eq("org_provider_account_id", orgProviderAccountId)
-    .maybeSingle();
-  if (existingSecretsErr) throw existingSecretsErr;
-
-  if (existingSecrets) {
-    const { error: secretsUpdateErr } = await admin
-      .schema("payments")
-      .from("org_provider_account_secrets")
-      .update({
-        credentials_encrypted: encryptedCredentialsJson,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("org_provider_account_id", orgProviderAccountId);
-    if (secretsUpdateErr) throw secretsUpdateErr;
-  } else {
-    const { error: secretsInsertErr } = await admin
-      .schema("payments")
-      .from("org_provider_account_secrets")
-      .insert([
-        {
-          org_provider_account_id: orgProviderAccountId,
-          credentials_encrypted: encryptedCredentialsJson,
-        },
-      ]);
-    if (secretsInsertErr) throw secretsInsertErr;
-  }
+  const { orgProviderAccountId } = await upsertAtmosProviderAccount(admin, {
+    orgId,
+    environment,
+    consumerKey: parseOptionalString(body.consumerKey),
+    consumerSecret: parseOptionalString(body.consumerSecret),
+    storeId: parseOptionalString(body.storeId),
+    apiBaseUrl: parseOptionalString(body.apiBaseUrl),
+    displayLabel: body.displayLabel ?? null,
+    status: body.status ?? "active",
+  });
 
   return NextResponse.json({ ok: true, method, orgProviderAccountId });
 }

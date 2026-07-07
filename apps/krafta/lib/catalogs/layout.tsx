@@ -31,6 +31,7 @@ import {
 import { TableCheck } from "@/components/catalogs/cart/table-check";
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
+import { getOrgCardPaymentEnabled } from "@/lib/payments/settings";
 import { TelegramFrame } from "@/components/telegram/telegram-frame";
 import { TelegramThemeSync } from "@/components/telegram/telegram-theme-sync";
 import { TelegramSafeAreaBlur } from "@/components/telegram/telegram-safe-area-blur";
@@ -392,6 +393,11 @@ export async function CatalogLayout({
     initialSummary = undefined;
   }
 
+  // Card checkout is available only when the merchant org has connected Krafta
+  // Pay (Atmos). This branch is already dynamic (cookies() above), so reading it
+  // here is safe — no stale cache. Fails closed to cash-only on any error.
+  const cardPaymentEnabled = await getOrgCardPaymentEnabled(venue.org_id);
+
   return (
     <CartProvider
       orgId={venue.org_id}
@@ -405,6 +411,7 @@ export async function CatalogLayout({
       <CartDrawer
         currencySettings={resolvedCurrency}
         deliverySettings={delivery}
+        cardPaymentEnabled={cardPaymentEnabled}
       />
       {/* Dine-in running check (ADR 0004 / KRA-116): persistent table-tab bar
           + Table Check sheet. No-ops outside an active dine-in session. */}

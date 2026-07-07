@@ -69,6 +69,7 @@ export function AtmosCardForm({
   client,
   initialStep = "card",
   initialMaskedPhone = null,
+  mode = "subscription",
 }: {
   publicToken: string;
   amountMinor: number;
@@ -78,6 +79,10 @@ export function AtmosCardForm({
   // render each state. Defaults to the card-entry step.
   initialStep?: Step;
   initialMaskedPhone?: string | null;
+  // Tailors the success + save-card copy: "payment" for a one-off order,
+  // "subscription" for recurring billing. Defaults to subscription so existing
+  // mounts are unchanged.
+  mode?: "subscription" | "payment";
 }) {
   const amountLabel = useMemo(
     () => formatMinorAmount(amountMinor, currency),
@@ -176,7 +181,9 @@ export function AtmosCardForm({
         <div className="space-y-1">
           <div className="text-base font-semibold">Payment successful</div>
           <p className="text-sm text-muted-foreground">
-            Your subscription is active. Taking you back…
+            {mode === "subscription"
+              ? "Your subscription is active. Taking you back…"
+              : "Payment complete. Taking you back…"}
           </p>
         </div>
         <Spinner className="text-muted-foreground" />
@@ -285,8 +292,9 @@ export function AtmosCardForm({
       </Field>
 
       <p className="text-xs text-muted-foreground">
-        You&apos;ll get one SMS code to confirm. Your card is securely saved for
-        future renewals.
+        {mode === "subscription"
+          ? "You’ll get one SMS code to confirm. Your card is securely saved for future renewals."
+          : "You’ll get one SMS code to confirm your payment."}
       </p>
 
       {error ? <FieldError>{error}</FieldError> : null}
