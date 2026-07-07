@@ -198,7 +198,11 @@ type CartContextValue = {
   flush: () => Promise<void>;
   placeOrder: (
     input:
-      | { mode: "dine_in"; fields: { tableLabel: string } }
+      | {
+          mode: "dine_in";
+          fields: { tableLabel: string };
+          paymentMethod?: "cash" | "card";
+        }
       | {
           mode: "pickup";
           fields: {
@@ -208,6 +212,7 @@ type CartContextValue = {
             recipientPhone: string | null;
             note: string | null;
           };
+          paymentMethod?: "cash" | "card";
         }
       | {
           mode: "delivery";
@@ -223,6 +228,7 @@ type CartContextValue = {
             scheduledFor: string | null;
             note: string | null;
           };
+          paymentMethod?: "cash" | "card";
         },
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Reset cart-session guards (`placedRef`, drawer state) so the
@@ -1214,6 +1220,20 @@ export function CartProvider({
           tipCents,
           ...input,
         } as Parameters<typeof placeOrderAction>[0]);
+
+        // Card (Krafta Pay): the order is placed with a pending online payment.
+        // Hand the customer to the hosted pay page; on success it redirects back
+        // to /pay/return, which confirms + settles. Skip the placed step.
+        if (result.payUrl) {
+          if (typeof window !== "undefined") {
+            window.location.assign(result.payUrl);
+          }
+          return { ok: true } as const;
+        }
+        // Card was requested but Krafta Pay was unavailable → placed as cash.
+        if (result.cardFallbackToCash) {
+          toast.message(tRef.current("checkout.card_unavailable_cash"));
+        }
 
         const snapshotBase = {
           orderId: result.orderId,

@@ -187,7 +187,7 @@ export function PayResultRedirect({
   const helperText =
     mode === "success"
       ? isSucceeded
-        ? "Your subscription is active. We’ll take you back automatically."
+        ? "Payment complete. We’ll take you back automatically."
         : isFailed
           ? "We couldn’t complete the charge yet. You can retry, or go back to checkout."
           : "We’re confirming your payment — this only takes a moment."

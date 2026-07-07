@@ -99,6 +99,55 @@ async function getAtmosAccessToken(creds: AtmosCredentials): Promise<string> {
   return token;
 }
 
+export type AtmosVerifyResult =
+  | { ok: true }
+  | { ok: false; reason: "auth_failed" | "unreachable" };
+
+/**
+ * Best-effort credential probe used at connect time. Hits the OAuth token
+ * endpoint and classifies the outcome:
+ *  - ok           → Atmos issued a token; the key/secret are valid.
+ *  - auth_failed  → a well-formed HTTP response with no token; Atmos rejected
+ *                   the credentials (wrong key/secret/store).
+ *  - unreachable  → DNS/connect/timeout/abort. The Atmos gateway is IP/geo-
+ *                   fenced (`apigw.atmos.uz` is only reachable from whitelisted
+ *                   UZ networks), so a merchant on a valid contract can still be
+ *                   connected from a non-whitelisted deploy — the caller decides
+ *                   whether to persist a `verified: false` connection.
+ * Never throws; never logs card data (there is none here).
+ */
+export async function verifyAtmosCredentials(
+  creds: AtmosCredentials,
+  opts?: { timeoutMs?: number },
+): Promise<AtmosVerifyResult> {
+  const basic = Buffer.from(
+    `${creds.consumerKey}:${creds.consumerSecret}`,
+  ).toString("base64");
+  const url = `${normalizeBaseUrl(creds.apiBaseUrl)}/token?grant_type=client_credentials`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 8000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+      signal: controller.signal,
+    });
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.ok && typeof json.access_token === "string" && json.access_token !== "") {
+      return { ok: true };
+    }
+    return { ok: false, reason: "auth_failed" };
+  } catch {
+    return { ok: false, reason: "unreachable" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function atmosPost(
   creds: AtmosCredentials,
   path: string,

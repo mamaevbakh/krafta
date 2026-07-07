@@ -17,5 +17,7 @@ export {
   atmosGet,
   loadAtmosCredentials,
   parseAtmosCredentials,
+  verifyAtmosCredentials,
   AtmosError,
 } from "./providers/atmos";
+export type { AtmosVerifyResult, AtmosCredentials } from "./providers/atmos";
