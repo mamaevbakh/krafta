@@ -115,7 +115,8 @@ export const config = {
      *   search-console verification files like yandex_*.html are served as
      *   pure static assets, no session/Supabase side-effects on the crawler)
      * - api routes (for webhooks etc)
+     * - ingest (PostHog analytics reverse proxy — hot path, skip session work)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2|html)$|api).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2|html)$|api|ingest).*)",
   ],
 };
