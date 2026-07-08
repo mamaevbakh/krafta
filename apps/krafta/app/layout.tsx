@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
 import { HapticsProvider } from "@/components/krafta/haptics-provider";
+import { PostHogProvider } from "@/components/analytics/posthog-provider";
 
 const KraftaBrandFont = localFont({
   src: "../public/fonts/helveticaneue-bold.woff2",
@@ -68,14 +69,16 @@ export default function RootLayout({
             unknown storefront slug became a soft-404. Routes that stream
             own their boundary below the status decision (loading.tsx or an
             explicit <Suspense> in the page). */}
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-        >
-          <HapticsProvider />
-          {children}
-        </ThemeProvider>
+        <PostHogProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+          >
+            <HapticsProvider />
+            {children}
+          </ThemeProvider>
+        </PostHogProvider>
         <Toaster position="top-center" />
       </body>
     </html>

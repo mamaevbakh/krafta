@@ -3,6 +3,10 @@ import { withEve } from "eve/next";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // PostHog's ingest API relies on trailing slashes (e.g. `/e/`, `/decide/`);
+  // without this Next.js 308-redirects them and breaks event capture through
+  // the /ingest reverse proxy (see rewrites below).
+  skipTrailingSlashRedirect: true,
   // Allow the dev server to accept HMR / RSC requests from devices on the
   // local Wi-Fi (phone testing against the Mac's LAN IP, e.g. when scanning
   // a QR code from a real handset). Next.js 16 blocks cross-origin dev
@@ -48,6 +52,22 @@ const nextConfig: NextConfig = {
   // path-insert forms to the discovery route. See app/api/tma/oidc/route.ts.
   async rewrites() {
     return [
+      // PostHog analytics reverse proxy — keeps ingestion first-party so
+      // ad-blockers that block *.posthog.com can't silently drop events.
+      // `/ingest/static/*` serves the SDK assets; `/ingest/*` is the catch-all
+      // for capture/decide/flags. EU cloud — flip eu→us in BOTH destinations
+      // (and in instrumentation-client.ts + NEXT_PUBLIC_POSTHOG_HOST) for a US
+      // project. `/ingest` resolves before the storefront [...slug] catch-all,
+      // so treat it as a reserved path; it's also excluded from proxy.ts's
+      // matcher so this hot traffic skips the Supabase session refresh.
+      {
+        source: "/ingest/static/:path*",
+        destination: "https://eu-assets.i.posthog.com/static/:path*",
+      },
+      {
+        source: "/ingest/:path*",
+        destination: "https://eu.i.posthog.com/:path*",
+      },
       {
         source: "/api/tma/.well-known/openid-configuration",
         destination: "/api/tma/oidc",
