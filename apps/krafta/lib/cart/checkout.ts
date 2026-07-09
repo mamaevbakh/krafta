@@ -18,7 +18,7 @@ import {
 import { headers } from "next/headers";
 import { getRequestOrigin } from "@/lib/auth/redirect";
 import { createOrderCheckoutSession } from "@/lib/payments/pay-internal";
-import { orgCan } from "@/lib/billing/gate";
+import { catalogCan } from "@/lib/billing/gate";
 
 export type DineInFields = {
   tableLabel: string;
@@ -219,7 +219,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     // Dine-in is a Business-tier feature. The storefront strips it from the
     // offered modes for non-entitled orgs; this is the authoritative server
     // gate against a stale client or a direct request.
-    if (!(await orgCan(input.orgId, "dine_in"))) {
+    if (!(await catalogCan(input.orgId, venue.catalog_id, "dine_in"))) {
       throw new Error("dine_in_not_entitled");
     }
     const tableLabel = input.fields.tableLabel.trim();

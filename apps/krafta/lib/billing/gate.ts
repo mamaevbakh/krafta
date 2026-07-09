@@ -1,6 +1,9 @@
 import "server-only";
 
-import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
+import {
+  getCatalogBillingEntitlement,
+  getOrgBillingEntitlement,
+} from "@/lib/billing/entitlement";
 import {
   type GatedFeature,
   type PlanTier,
@@ -58,6 +61,52 @@ export async function assertOrgFeature(
   feature: GatedFeature,
 ): Promise<void> {
   if (!(await orgCan(orgId, feature))) {
+    throw new Error(`feature_locked:${feature}`);
+  }
+}
+
+// ── Per-catalog gates ────────────────────────────────────────────────────────
+// One org account holds one subscription per catalog. These resolve the tier for
+// a SPECIFIC catalog (its own sub, falling back to a legacy org-wide sub) so Shop A
+// on Business unlocks dine-in while sibling Shop B on Free stays gated.
+
+export async function getCatalogTier(
+  orgId: string,
+  catalogId: string,
+): Promise<PlanTier> {
+  const entitlement = await getCatalogBillingEntitlement(orgId, catalogId);
+  return entitlement.tier;
+}
+
+export async function catalogCan(
+  orgId: string,
+  catalogId: string,
+  feature: GatedFeature,
+): Promise<boolean> {
+  const tier = await getCatalogTier(orgId, catalogId);
+  return can(tier, feature);
+}
+
+export async function checkCatalogFeature(
+  orgId: string,
+  catalogId: string,
+  feature: GatedFeature,
+): Promise<FeatureGate> {
+  const tier = await getCatalogTier(orgId, catalogId);
+  return {
+    allowed: can(tier, feature),
+    tier,
+    minTier: minTierFor(feature),
+    feature,
+  };
+}
+
+export async function assertCatalogFeature(
+  orgId: string,
+  catalogId: string,
+  feature: GatedFeature,
+): Promise<void> {
+  if (!(await catalogCan(orgId, catalogId, feature))) {
     throw new Error(`feature_locked:${feature}`);
   }
 }

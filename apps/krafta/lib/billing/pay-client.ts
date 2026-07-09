@@ -13,6 +13,8 @@ function getApiKey() {
 export type CreatePaySubscriptionCheckoutInput = {
   customerOrgId: string;
   planId: string;
+  /** The catalog this subscription is for — persisted on the sub for per-catalog billing. */
+  catalogId?: string;
   successUrl: string;
   cancelUrl: string;
   returnUrl: string;

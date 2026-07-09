@@ -601,6 +601,11 @@ export async function createSubscriptionCheckout(
         billing_anchor: periodStart.toISOString(),
         trial_days: plan.trial_days ?? 0,
         customer_org_id: input.customerOrgId,
+        // Per-catalog scope: one org account holds one sub per catalog. Carried
+        // from the caller's metadata.catalog_id. Absent = legacy org-wide sub.
+        ...(typeof metadata.catalog_id === "string" && metadata.catalog_id
+          ? { catalog_id: metadata.catalog_id }
+          : {}),
       },
     })
     .select("id, customer_id")
