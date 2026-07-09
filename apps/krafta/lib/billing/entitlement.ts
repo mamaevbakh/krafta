@@ -30,6 +30,11 @@ export type BillingEntitlement = {
   planId: string | null;
   planCode: string | null;
   cancelAtPeriodEnd: boolean;
+  /**
+   * The catalog this subscription is scoped to, or null for a legacy org-wide sub
+   * (covers every catalog under the org). Set on new per-catalog subscriptions.
+   */
+  catalogId: string | null;
 };
 
 const FREE_ENTITLEMENT: BillingEntitlement = {
@@ -42,56 +47,48 @@ const FREE_ENTITLEMENT: BillingEntitlement = {
   planId: null,
   planCode: null,
   cancelAtPeriodEnd: false,
+  catalogId: null,
 };
 
-/**
- * getOrgBillingEntitlement — authoritative, service-role read of a merchant
- * org's subscription entitlement. Reads the latest subscription for the org,
- * resolves its plan code → tier, and fails CLOSED to Free (never throws to the
- * caller; a broken read must not silently grant paid features).
- *
- * Callers must have already authorized the requesting user for `orgId`
- * (dashboard routes resolve org by slug under an authed layout).
- */
-export const getOrgBillingEntitlement = cache(
-  _getOrgBillingEntitlement,
-);
+type ServiceClient = ReturnType<typeof createServiceClient>;
 
-async function _getOrgBillingEntitlement(
-  orgId: string,
+// Minimal subscription shape used for tier resolution.
+type SubRow = {
+  id: string | null;
+  status: string | null;
+  plan_id: string | null;
+  cancel_at_period_end: boolean | null;
+  current_period_end: string | null;
+  created_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+const SUB_SELECT =
+  "id, status, plan_id, cancel_at_period_end, current_period_end, created_at, metadata, customers!inner(customer_org_id)";
+
+/** The catalog a subscription is scoped to (metadata.catalog_id), or null = org-wide/legacy. */
+function subCatalogId(sub: { metadata?: Record<string, unknown> | null } | null): string | null {
+  const meta = sub?.metadata;
+  if (!meta || typeof meta !== "object") return null;
+  const raw = (meta as Record<string, unknown>).catalog_id;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
+/** Turn a chosen subscription row (or null) into an entitlement. Fails closed to Free. */
+async function resolveEntitlement(
+  supabase: ServiceClient,
+  sub: SubRow | null,
 ): Promise<BillingEntitlement> {
-  if (!orgId) return FREE_ENTITLEMENT;
+  if (!sub) return FREE_ENTITLEMENT;
 
-  let supabase: ReturnType<typeof createServiceClient>;
-  try {
-    supabase = createServiceClient();
-  } catch {
-    // No service credentials in this environment — fail closed to Free.
-    return FREE_ENTITLEMENT;
-  }
+  const subStatus = (sub.status as string | null) ?? null;
+  const periodEnd = (sub.current_period_end as string | null) ?? null;
+  const subscriptionId = (sub.id as string | null) ?? null;
+  const planId = (sub.plan_id as string | null) ?? null;
+  const cancelAtPeriodEnd = Boolean(sub.cancel_at_period_end);
+  const catalogId = subCatalogId(sub);
 
-  const { data: subscription, error } = await supabase
-    .schema("payments")
-    .from("subscriptions")
-    .select(
-      "id, status, plan_id, cancel_at_period_end, current_period_end, created_at, customers!inner(customer_org_id)",
-    )
-    .eq("customers.customer_org_id", orgId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !subscription) {
-    return FREE_ENTITLEMENT;
-  }
-
-  const subStatus = (subscription.status as string | null) ?? null;
-  const periodEnd = (subscription.current_period_end as string | null) ?? null;
-  const subscriptionId = (subscription.id as string | null) ?? null;
-  const planId = (subscription.plan_id as string | null) ?? null;
-  const cancelAtPeriodEnd = Boolean(subscription.cancel_at_period_end);
-
-  // Resolve the plan code (→ tier) with a direct lookup. Kept separate from the
+  // Resolve the plan code (→ tier) with a direct lookup — kept separate from the
   // subscription select so an embed-relationship quirk can't silently null the tier.
   let planCode: string | null = null;
   if (planId) {
@@ -119,6 +116,7 @@ async function _getOrgBillingEntitlement(
       planId,
       planCode,
       cancelAtPeriodEnd,
+      catalogId,
     };
   }
 
@@ -134,6 +132,7 @@ async function _getOrgBillingEntitlement(
       planId,
       planCode,
       cancelAtPeriodEnd,
+      catalogId,
     };
   }
 
@@ -149,5 +148,80 @@ async function _getOrgBillingEntitlement(
     planId,
     planCode,
     cancelAtPeriodEnd,
+    catalogId,
   };
 }
+
+/**
+ * getOrgBillingEntitlement — org-level entitlement (the org's latest subscription,
+ * any catalog). Kept for callers without a catalog context. Under the per-catalog
+ * model this reflects "does the org have ANY paid sub"; prefer
+ * getCatalogBillingEntitlement wherever a catalog is in scope.
+ *
+ * Fails CLOSED to Free (never throws; a broken read must not grant paid features).
+ */
+async function _getOrgBillingEntitlement(orgId: string): Promise<BillingEntitlement> {
+  if (!orgId) return FREE_ENTITLEMENT;
+
+  let supabase: ServiceClient;
+  try {
+    supabase = createServiceClient();
+  } catch {
+    return FREE_ENTITLEMENT;
+  }
+
+  const { data: sub, error } = await supabase
+    .schema("payments")
+    .from("subscriptions")
+    .select(SUB_SELECT)
+    .eq("customers.customer_org_id", orgId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return FREE_ENTITLEMENT;
+  return resolveEntitlement(supabase, (sub as SubRow | null) ?? null);
+}
+
+/**
+ * getCatalogBillingEntitlement — per-catalog entitlement. One org account (customer)
+ * holds one subscription per catalog. Resolution order:
+ *   1. the org's latest sub scoped to THIS catalog (metadata.catalog_id === catalogId)
+ *   2. else the org's latest LEGACY org-wide sub (no catalog_id — covers all catalogs;
+ *      this is what every pre-per-catalog sub, incl. grandfathered comps, resolves as)
+ *   3. else Free
+ *
+ * Fails CLOSED to Free.
+ */
+async function _getCatalogBillingEntitlement(
+  orgId: string,
+  catalogId: string,
+): Promise<BillingEntitlement> {
+  if (!orgId || !catalogId) return FREE_ENTITLEMENT;
+
+  let supabase: ServiceClient;
+  try {
+    supabase = createServiceClient();
+  } catch {
+    return FREE_ENTITLEMENT;
+  }
+
+  const { data: subs, error } = await supabase
+    .schema("payments")
+    .from("subscriptions")
+    .select(SUB_SELECT)
+    .eq("customers.customer_org_id", orgId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error || !subs || subs.length === 0) return FREE_ENTITLEMENT;
+
+  const rows = subs as SubRow[];
+  const catalogSub = rows.find((s) => subCatalogId(s) === catalogId) ?? null;
+  const legacySub = rows.find((s) => subCatalogId(s) === null) ?? null;
+
+  return resolveEntitlement(supabase, catalogSub ?? legacySub);
+}
+
+export const getOrgBillingEntitlement = cache(_getOrgBillingEntitlement);
+export const getCatalogBillingEntitlement = cache(_getCatalogBillingEntitlement);

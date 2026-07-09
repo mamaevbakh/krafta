@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getDashboardT } from "@/lib/locales/dashboard/server";
-import { orgCan } from "@/lib/billing/gate";
+import { catalogCan } from "@/lib/billing/gate";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
 import {
   type DeliverySettings,
@@ -149,7 +149,7 @@ export async function updateVenueSettings(params: {
       .select("org_id")
       .eq("id", params.catalogId)
       .maybeSingle();
-    if (catalogRow?.org_id && !(await orgCan(catalogRow.org_id, "dine_in"))) {
+    if (catalogRow?.org_id && !(await catalogCan(catalogRow.org_id, params.catalogId, "dine_in"))) {
       modesEnabled = modesEnabled.filter((mode) => mode !== "dine_in");
       if (modesEnabled.length === 0) {
         return {

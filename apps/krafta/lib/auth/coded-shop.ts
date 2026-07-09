@@ -3,7 +3,6 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { getCommerceAdminClient } from "@/lib/commerce-sdk";
 import { issueCommerceKey } from "@/lib/commerce-sdk/issue-key";
-import { assertOrgFeature } from "@/lib/billing/gate";
 
 // Krafta Studio — create a NEW coded shop inside an org the caller already owns.
 // Sibling to merchant-shop.ts (which only mints the merchant's FIRST shop). This
@@ -46,15 +45,9 @@ export async function createCodedShop(options: {
     .maybeSingle();
   if (!org) throw new Error("Organization not found.");
 
-  // Multiple venues is a Business-tier feature. The first shop for an org is
-  // always allowed (any tier can have one storefront); a 2nd+ requires Business.
-  const { count: existingCatalogs } = await supabase
-    .from("catalogs")
-    .select("id", { count: "exact", head: true })
-    .eq("org_id", options.orgId);
-  if ((existingCatalogs ?? 0) >= 1) {
-    await assertOrgFeature(options.orgId, "multi_venue");
-  }
+  // Per-catalog billing: an org may create as many catalogs as it likes — each
+  // one subscribes (and pays) independently. Creating a shop is never tier-gated;
+  // paid features are gated per catalog at the point of use.
 
   // Provision the catalog + venue. The RPC re-checks owner/admin membership, so
   // a forged orgId is rejected at the DB. Retry on creation-slug collision.

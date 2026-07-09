@@ -31,8 +31,8 @@ import {
 import { TableCheck } from "@/components/catalogs/cart/table-check";
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
-import { getOrgCardPaymentEnabled } from "@/lib/payments/settings";
-import { orgCan } from "@/lib/billing/gate";
+import { getCatalogCardPaymentEnabled } from "@/lib/payments/settings";
+import { catalogCan } from "@/lib/billing/gate";
 import { TelegramFrame } from "@/components/telegram/telegram-frame";
 import { TelegramThemeSync } from "@/components/telegram/telegram-theme-sync";
 import { TelegramSafeAreaBlur } from "@/components/telegram/telegram-safe-area-blur";
@@ -382,7 +382,7 @@ export async function CatalogLayout({
   // dine-in is actually configured, to avoid the lookup on shops that don't use it.
   const dineInAllowed =
     configuredModes.includes("dine_in") &&
-    (await orgCan(venue.org_id, "dine_in"));
+    (await catalogCan(venue.org_id, catalog.id, "dine_in"));
   const venueModes = dineInAllowed
     ? configuredModes
     : configuredModes.filter((mode) => mode !== "dine_in");
@@ -416,7 +416,7 @@ export async function CatalogLayout({
   // Card checkout is available only when the merchant org has connected Krafta
   // Pay (Atmos). This branch is already dynamic (cookies() above), so reading it
   // here is safe — no stale cache. Fails closed to cash-only on any error.
-  const cardPaymentEnabled = await getOrgCardPaymentEnabled(venue.org_id);
+  const cardPaymentEnabled = await getCatalogCardPaymentEnabled(venue.org_id, catalog.id);
 
   return (
     <CartProvider

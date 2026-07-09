@@ -8,7 +8,7 @@ import { getRequestOrigin } from "@/lib/auth/redirect";
 import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
 import { changeKraftaSubscriptionPlan } from "@/lib/payments/pay-internal";
-import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
+import { getCatalogBillingEntitlement } from "@/lib/billing/entitlement";
 import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { SubscriptionManager } from "./_components/subscription-manager";
 import {
@@ -138,7 +138,17 @@ async function startUpgradeAction(formData: FormData) {
     );
   }
 
-  const entitlement = await getOrgBillingEntitlement(customerOrgId);
+  // Per-catalog billing: resolve which catalog this billing page is for so the
+  // subscription is scoped to it (one org account, one sub per catalog).
+  const { data: catalogRow } = await supabase
+    .from("catalogs")
+    .select("id")
+    .eq("org_id", customerOrgId)
+    .eq("slug", catalogSlug)
+    .maybeSingle();
+  const catalogId = catalogRow?.id ?? "";
+
+  const entitlement = await getCatalogBillingEntitlement(customerOrgId, catalogId);
   const backTo = `/dashboard/${orgSlug}/${catalogSlug}/billing`;
   if (
     (entitlement.status === "active" || entitlement.status === "grace") &&
@@ -198,6 +208,7 @@ async function startUpgradeAction(formData: FormData) {
     checkout = await createPaySubscriptionCheckout({
       customerOrgId,
       planId,
+      catalogId: catalogId || undefined,
       successUrl,
       cancelUrl,
       returnUrl: successUrl,
@@ -241,7 +252,16 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
     );
   }
 
-  const entitlement = await getOrgBillingEntitlement(orgRecord.id);
+  const { data: billingCatalog } = await supabase
+    .from("catalogs")
+    .select("id")
+    .eq("org_id", orgRecord.id)
+    .eq("slug", catalogSlug)
+    .maybeSingle();
+  const entitlement = await getCatalogBillingEntitlement(
+    orgRecord.id,
+    billingCatalog?.id ?? "",
+  );
   let plans: Awaited<ReturnType<typeof listKraftaPayPlans>> = [];
   let plansErr: string | null = null;
   try {

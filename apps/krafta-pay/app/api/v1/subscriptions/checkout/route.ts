@@ -6,6 +6,8 @@ import { createSubscriptionCheckout } from "@krafta/payments-core";
 type CheckoutBody = {
   customerOrgId: string;
   planId: string;
+  /** The catalog this subscription is for (per-catalog billing). Stored on the sub. */
+  catalogId?: string;
   successUrl?: string;
   cancelUrl?: string;
   returnUrl?: string;
@@ -60,6 +62,9 @@ export async function POST(req: Request) {
         source: "merchant_api",
         api_key_id: auth.keyId,
         api_key_name: auth.name,
+        ...(typeof body.catalogId === "string" && body.catalogId
+          ? { catalog_id: body.catalogId }
+          : {}),
         ...(body.metadata ?? {}),
       },
     });

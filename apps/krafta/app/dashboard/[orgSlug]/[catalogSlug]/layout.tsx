@@ -19,7 +19,7 @@ import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { CatalogSwitcherSkeleton } from "@/components/dashboard/catalog-switcher";
 import type { OrgOption } from "@/components/dashboard/org-switcher";
 import { OrgSwitcherSkeleton } from "@/components/dashboard/org-switcher";
-import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
+import { getCatalogBillingEntitlement } from "@/lib/billing/entitlement";
 import { PublishBanner } from "./_components/publish-banner";
 import { ActivationChecklist } from "./_components/activation-checklist";
 import { getChecklistEntries } from "./_components/checklist-data";
@@ -81,7 +81,7 @@ async function CatalogLayoutContent({ children, params }: CatalogLayoutProps) {
   }));
 
   const entitlement = orgRecord
-    ? await getOrgBillingEntitlement(orgRecord.id)
+    ? await getCatalogBillingEntitlement(orgRecord.id, catalogRecord.id)
     : null;
 
   // ADR 0005 §4: a paused venue shows the draft banner + Publish entry point.

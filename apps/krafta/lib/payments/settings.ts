@@ -3,7 +3,7 @@ import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { getPaymentIntentStatuses } from "./pay-internal";
-import { orgCan } from "@/lib/billing/gate";
+import { catalogCan, orgCan } from "@/lib/billing/gate";
 
 /**
  * settings.ts — server-only access to commerce.org_payment_settings, the
@@ -77,6 +77,26 @@ export async function getOrgCardPaymentEnabled(orgId: string): Promise<boolean> 
     // Card acceptance is a Pro-tier feature. A connected-but-downgraded org
     // falls back to cash-only until they upgrade.
     return await orgCan(orgId, "card_payments");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Per-catalog storefront card gate. The Atmos account is connected once per org
+ * (org_payment_settings), but whether a given catalog may OFFER card is a
+ * per-catalog Pro+ entitlement — so Shop A (Pro) shows card while sibling Shop B
+ * (Free) stays cash-only, even though they share the org's connected account.
+ * Fails closed (false) on any error.
+ */
+export async function getCatalogCardPaymentEnabled(
+  orgId: string,
+  catalogId: string,
+): Promise<boolean> {
+  try {
+    const settings = await getOrgPaymentSettings(orgId);
+    if (!settings?.isActive) return false;
+    return await catalogCan(orgId, catalogId, "card_payments");
   } catch {
     return false;
   }
