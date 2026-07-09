@@ -30,6 +30,8 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 type ModeToggleProps = {
@@ -40,6 +42,9 @@ type ModeToggleProps = {
 
 export function ModeToggle({ className }: ModeToggleProps) {
   const { theme, setTheme } = useTheme();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const label = (key: Parameters<typeof getStorefrontMessage>[0]) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
 
   // Avoid hydration mismatch: theme is undefined on the server and on
   // the first client render before next-themes reads the cookie.
@@ -58,7 +63,7 @@ export function ModeToggle({ className }: ModeToggleProps) {
           type="button"
           size="icon"
           variant="outline"
-          aria-label="Toggle theme"
+          aria-label={label("theme.toggle_aria")}
           // Inside the Mini App the theme follows Telegram automatically
           // (TelegramThemeSync), so this manual control is redundant — hide
           // it in-app via .tg-app [data-tg-hide]. Stays visible on the web.
@@ -72,7 +77,7 @@ export function ModeToggle({ className }: ModeToggleProps) {
         >
           <Sun className="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
           <Moon className="absolute size-4 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
-          <span className="sr-only">Toggle theme</span>
+          <span className="sr-only">{label("theme.toggle_aria")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[8rem]">
@@ -81,13 +86,13 @@ export function ModeToggle({ className }: ModeToggleProps) {
           onValueChange={setTheme}
         >
           <DropdownMenuRadioItem value="light" className="text-sm">
-            Light
+            {label("theme.light")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark" className="text-sm">
-            Dark
+            {label("theme.dark")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="system" className="text-sm">
-            System
+            {label("theme.system")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>

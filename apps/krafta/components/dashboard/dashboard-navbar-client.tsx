@@ -11,8 +11,11 @@ import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { CatalogSwitcher } from "@/components/dashboard/catalog-switcher";
 import { OrgSwitcher } from "@/components/dashboard/org-switcher";
 import { DashboardUserMenu } from "@/components/dashboard/dashboard-user-menu";
+import { DashboardLanguageSwitcher } from "@/components/dashboard/dashboard-language-switcher";
 import type { CatalogOption } from "@/components/dashboard/catalog-switcher";
 import type { OrgOption } from "@/components/dashboard/org-switcher";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 import { cn } from "@/lib/utils";
 
 // Top-nav links. Categories migrates under Items per ADR 0002 §4.2 — the
@@ -22,21 +25,21 @@ import { cn } from "@/lib/utils";
 //
 // KRA-92 adds Translations as a sibling of Items. Same temporary-top-nav
 // pattern; the future sub-nav refactor (KRA-76) will tuck both under Items.
-const DASHBOARD_LINKS = [
-  { segment: "", label: "Overview" },
-  { segment: "orders", label: "Orders" },
-  { segment: "items", label: "Items" },
-  { segment: "items/categories", label: "Categories" },
+const DASHBOARD_LINKS: { segment: string; labelKey: DashboardMessageKey }[] = [
+  { segment: "", labelKey: "nav.overview" },
+  { segment: "orders", labelKey: "nav.orders" },
+  { segment: "items", labelKey: "nav.items" },
+  { segment: "items/categories", labelKey: "nav.categories" },
   // KRA-85 adds Modifiers under the Items tree per ADR 0002 §2. Same
   // temporary-top-nav pattern as Categories; collapses into the proper
   // Items sub-nav when KRA-76 lands.
-  { segment: "items/modifiers", label: "Modifiers" },
-  { segment: "translations", label: "Translations" },
-  { segment: "qr-codes", label: "QR codes" },
-  { segment: "builder", label: "Studio" },
-  { segment: "billing", label: "Billing" },
-  { segment: "settings", label: "Settings" },
-] as const;
+  { segment: "items/modifiers", labelKey: "nav.modifiers" },
+  { segment: "translations", labelKey: "nav.translations" },
+  { segment: "qr-codes", labelKey: "nav.qr_codes" },
+  { segment: "builder", labelKey: "nav.studio" },
+  { segment: "billing", labelKey: "nav.billing" },
+  { segment: "settings", labelKey: "nav.settings" },
+];
 
 export function DashboardNavbarClient({
   orgSlug,
@@ -54,6 +57,7 @@ export function DashboardNavbarClient({
   showUpgradeCta?: boolean;
 }) {
   const pathname = usePathname();
+  const t = useT();
   const basePath = useMemo(
     () => `/dashboard/${orgSlug}/${catalogSlug}`,
     [orgSlug, catalogSlug],
@@ -84,7 +88,8 @@ export function DashboardNavbarClient({
             </div>
           </div>
 
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center gap-1">
+            <DashboardLanguageSwitcher />
             <DashboardUserMenu
               user={user}
               orgSlug={orgSlug}
@@ -101,12 +106,12 @@ export function DashboardNavbarClient({
         <div className="overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <LayoutGroup id="dashboard-nav">
             <NavigationMenu className={cn("w-max max-w-none flex-none justify-start")}>
-              {DASHBOARD_LINKS.map(({ segment, label }) => {
+              {DASHBOARD_LINKS.map(({ segment, labelKey }) => {
                 const href = segment ? `${basePath}/${segment}` : basePath;
                 const isActive = segment ? pathname.startsWith(href) : pathname === href;
                 return (
                   <DashboardNavLink key={href} asChild isActive={isActive}>
-                    <Link href={href}>{label}</Link>
+                    <Link href={href}>{t(labelKey)}</Link>
                   </DashboardNavLink>
                 );
               })}

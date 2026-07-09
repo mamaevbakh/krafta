@@ -197,6 +197,10 @@ export function ItemDetailFullscreen({
     : null;
   const ratio = itemAspectRatio ?? 4 / 5;
   const cart = useOptionalCart();
+  const t = (
+    key: Parameters<typeof getStorefrontMessage>[0],
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
   // Variation selection — multi-variation items show a chip group above
   // the modifier picker; single-variation items use the default silently
@@ -322,8 +326,8 @@ export function ItemDetailFullscreen({
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(url);
-        toast("Link copied", {
-          description: "Paste it anywhere to share this item.",
+        toast(t("share.link_copied"), {
+          description: t("share.copy_fallback"),
         });
         return;
       } catch {
@@ -341,11 +345,11 @@ export function ItemDetailFullscreen({
       input.select();
       document.execCommand("copy");
       document.body.removeChild(input);
-      toast("Link copied", {
-        description: "Paste it anywhere to share this item.",
+      toast(t("share.link_copied"), {
+        description: t("share.copy_fallback"),
       });
     } catch {
-      toast.error("Unable to copy link");
+      toast.error(t("share.unable_to_copy"));
     }
   };
 
@@ -378,7 +382,7 @@ export function ItemDetailFullscreen({
             size="icon"
             onClick={handleShare}
             className="h-10 w-10 rounded-full border border-white/15 bg-black/50 text-white shadow-md backdrop-blur-md hover:bg-black/65 hover:text-white"
-            aria-label="Share"
+            aria-label={t("aria.share")}
           >
             <Share2 className="size-4" />
           </Button>

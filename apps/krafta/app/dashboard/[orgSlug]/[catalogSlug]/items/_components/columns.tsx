@@ -17,12 +17,14 @@ import { getItemImageUrl } from "@/lib/catalogs/media"
 import { formatPriceCents } from "@/lib/catalogs/pricing"
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency"
 import type { Item } from "@/lib/catalogs/types"
+import type { TranslateFn } from "@/lib/locales/dashboard/messages"
 
 function formatPrice(
   value: number | null,
+  t: TranslateFn,
   currencySettings?: CurrencySettings
 ) {
-  if (typeof value !== "number") return "N/A"
+  if (typeof value !== "number") return t("items.not_available")
   return formatPriceCents(value, currencySettings)
 }
 
@@ -40,12 +42,14 @@ function formatCreatedAt(value: string) {
 
 function ItemActions({
   item,
+  t,
   onEdit,
   onDelete,
   align = "end",
   size = "icon-sm",
 }: {
   item: Item
+  t: TranslateFn
   onEdit?: (item: Item) => void
   onDelete?: (item: Item) => void
   align?: "start" | "center" | "end"
@@ -54,20 +58,20 @@ function ItemActions({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size={size} aria-label="Open menu">
-          <span className="sr-only">Open menu</span>
+        <Button variant="ghost" size={size} aria-label={t("items.open_menu")}>
+          <span className="sr-only">{t("items.open_menu")}</span>
           <span aria-hidden>⋯</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align}>
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("items.actions")}</DropdownMenuLabel>
         <DropdownMenuItem
           disabled
           onSelect={(e) => {
             e.preventDefault()
           }}
         >
-          View
+          {t("items.action_view")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -76,7 +80,7 @@ function ItemActions({
             onEdit?.(item)
           }}
         >
-          Edit
+          {t("common.edit")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={(e) => {
@@ -84,7 +88,7 @@ function ItemActions({
             onDelete?.(item)
           }}
         >
-          Delete
+          {t("common.delete")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -93,7 +97,7 @@ function ItemActions({
             void navigator.clipboard?.writeText(item.id)
           }}
         >
-          Copy ID
+          {t("items.copy_id")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -101,6 +105,7 @@ function ItemActions({
 }
 
 export function createColumns(
+  t: TranslateFn,
   currencySettings?: CurrencySettings,
   {
     onEdit,
@@ -120,14 +125,14 @@ export function createColumns(
           (table.getIsSomePageRowsSelected() && "indeterminate")
         }
         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
+        aria-label={t("items.select_all")}
       />
     ),
     cell: ({ row }) => (
       <Checkbox
         checked={row.getIsSelected()}
         onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
+        aria-label={t("items.select_row")}
       />
     ),
     enableSorting: false,
@@ -139,7 +144,7 @@ export function createColumns(
   },
   {
     accessorKey: "name",
-    header: "Item",
+    header: t("items.col_item"),
     meta: {
       cellClassName: "whitespace-normal",
     },
@@ -154,7 +159,7 @@ export function createColumns(
             {imageUrl ? (
               <Image
                 src={imageUrl}
-                alt={item.image_alt || item.name || "Item image"}
+                alt={item.image_alt || item.name || t("items.item_image_alt")}
                 fill
                 className="object-cover"
                 sizes="40px"
@@ -168,22 +173,22 @@ export function createColumns(
           <div className="relative min-w-0 flex-1">
             <div className="lg:hidden">
               <div className="pr-10 text-sm font-medium text-foreground break-words whitespace-normal">
-                {item.name || "Untitled item"}
+                {item.name || t("items.untitled_item")}
               </div>
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Pricing</span>
+                <span>{t("items.pricing_label")}</span>
                 <span className="text-xs font-medium text-foreground">
-                  {formatPrice(item.price_cents, currencySettings)}
+                  {formatPrice(item.price_cents, t, currencySettings)}
                 </span>
               </div>
               <div className="absolute right-0 top-0">
-                <ItemActions item={item} onEdit={onEdit} onDelete={onDelete} />
+                <ItemActions item={item} t={t} onEdit={onEdit} onDelete={onDelete} />
               </div>
             </div>
 
             <div className="hidden lg:block">
               <div className="text-sm font-medium text-foreground break-words whitespace-normal">
-                {item.name || "Untitled item"}
+                {item.name || t("items.untitled_item")}
               </div>
             </div>
           </div>
@@ -193,12 +198,12 @@ export function createColumns(
   },
   {
     accessorKey: "price_cents",
-    header: "Price",
+    header: t("items.price"),
     cell: ({ getValue }) => {
       const value = getValue<number | null>()
       return (
         <span className="text-sm font-medium">
-          {formatPrice(value, currencySettings)}
+          {formatPrice(value, t, currencySettings)}
         </span>
       )
     },
@@ -225,7 +230,7 @@ export function createColumns(
   },
   {
     accessorKey: "created_at",
-    header: "Created",
+    header: t("items.col_created"),
     cell: ({ getValue }) => {
       const raw = getValue<string>()
       return formatCreatedAt(raw)
@@ -248,6 +253,7 @@ export function createColumns(
       return (
         <ItemActions
           item={item}
+          t={t}
           size="icon"
           onEdit={onEdit}
           onDelete={onDelete}

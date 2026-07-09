@@ -62,12 +62,6 @@ type ToolResultItem = {
   category: string | null;
 };
 
-const SUGGESTIONS = [
-  "What do you recommend?",
-  "Show me something popular",
-  "I'm looking for a gift",
-];
-
 type ClientToolCall = { toolCallId: string; toolName: string; input?: unknown };
 type ClientToolDeps = {
   cart: ReturnType<typeof useOptionalCart>;
@@ -203,9 +197,19 @@ export function StorefrontAssistant({
   // back to the catalog default then English. The model's prose replies still
   // follow the shopper's message language (handled server-side).
   const t = React.useCallback(
-    (key: StorefrontMessageKey) =>
-      getStorefrontMessage(key, { activeLocale, defaultLocale }),
+    (key: StorefrontMessageKey, vars?: Record<string, string | number>) =>
+      getStorefrontMessage(key, { activeLocale, defaultLocale, vars }),
     [activeLocale, defaultLocale],
+  );
+  // Localized quick-start prompts. The chip label doubles as the text sent to
+  // the model, so a shopper's tap sends the prompt in the storefront's locale.
+  const suggestions = React.useMemo(
+    () => [
+      t("assistant.suggestion_recommend"),
+      t("assistant.suggestion_popular"),
+      t("assistant.suggestion_gift"),
+    ],
+    [t],
   );
   // Concrete currency for the shared PricingBreakdown (which requires it).
   const currency = React.useMemo(
@@ -425,7 +429,7 @@ export function StorefrontAssistant({
       <button
         type="button"
         onClick={onDec}
-        aria-label="Decrease"
+        aria-label={t("aria.decrease_quantity")}
         className="grid size-7 place-items-center rounded-full text-foreground transition hover:bg-muted"
       >
         {decIcon ?? <Minus className="size-3.5" />}
@@ -436,7 +440,7 @@ export function StorefrontAssistant({
       <button
         type="button"
         onClick={onInc}
-        aria-label="Increase"
+        aria-label={t("aria.increase_quantity")}
         className="grid size-7 place-items-center rounded-full text-foreground transition hover:bg-muted"
       >
         <Plus className="size-3.5" />
@@ -632,7 +636,11 @@ export function StorefrontAssistant({
                       <div className="flex w-full items-center justify-between rounded-full border border-border p-1">
                         <button
                           type="button"
-                          aria-label={line.quantity <= 1 ? "Remove" : "Decrease"}
+                          aria-label={
+                            line.quantity <= 1
+                              ? t("aria.remove_from_cart")
+                              : t("aria.decrease_quantity")
+                          }
                           onClick={() =>
                             line.quantity <= 1
                               ? void cart?.removeItem(line.id)
@@ -651,7 +659,7 @@ export function StorefrontAssistant({
                         </span>
                         <button
                           type="button"
-                          aria-label="Increase"
+                          aria-label={t("aria.increase_quantity")}
                           onClick={() => cart?.bumpQuantity(line.id, 1)}
                           className="grid size-9 place-items-center rounded-full text-foreground transition hover:bg-muted"
                         >
@@ -719,19 +727,19 @@ export function StorefrontAssistant({
           "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
         )}
       >
-        <DialogTitle className="sr-only">Shopping assistant</DialogTitle>
+        <DialogTitle className="sr-only">{t("assistant.title")}</DialogTitle>
 
         <div className="relative mx-auto flex h-full w-full min-w-0 max-w-2xl min-h-0 flex-col">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex items-center gap-2">
               <Sparkles className="size-4 text-foreground" aria-hidden />
-              <span className="text-sm font-semibold">Assistant</span>
+              <span className="text-sm font-semibold">{t("assistant.title")}</span>
             </div>
             <DialogClose asChild>
               <Button
                 type="button"
-                aria-label="Close assistant"
+                aria-label={t("assistant.close_aria")}
                 variant="outline"
                 size="icon"
                 className="rounded-full"
@@ -753,14 +761,14 @@ export function StorefrontAssistant({
                     <Sparkles className="size-5" aria-hidden />
                   </div>
                   <p className="text-base font-semibold">
-                    What are you looking for?
+                    {t("assistant.empty_title")}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Ask in any language — I&apos;ll find it for you.
+                    {t("assistant.empty_hint")}
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {SUGGESTIONS.map((s) => (
+                  {suggestions.map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -834,7 +842,7 @@ export function StorefrontAssistant({
                     ) : null}
                     {searching && !text ? (
                       <div className="rounded-2xl bg-muted px-3.5 py-2 text-sm text-muted-foreground">
-                        Searching…
+                        {t("assistant.searching")}
                       </div>
                     ) : null}
                     {toolResults.length > 0 ? (
@@ -848,17 +856,19 @@ export function StorefrontAssistant({
                             name?: string;
                             quantity?: number;
                           };
+                          const qtyPrefix =
+                            added.quantity && added.quantity > 1
+                              ? `${added.quantity}× `
+                              : "";
                           return (
                             <div
                               key={`ca-${i}`}
                               className="mt-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm"
                             >
                               <Check className="size-4" aria-hidden />
-                              Added{" "}
-                              {added.quantity && added.quantity > 1
-                                ? `${added.quantity}× `
-                                : ""}
-                              {added.name} to cart
+                              {t("assistant.added_to_cart", {
+                                name: `${qtyPrefix}${added.name ?? ""}`,
+                              })}
                             </div>
                           );
                         }
@@ -868,8 +878,9 @@ export function StorefrontAssistant({
                               key={`ca-${i}`}
                               className="mt-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground"
                             >
-                              Opened {String(o.name ?? "the item")} — choose
-                              options to add
+                              {t("assistant.opened_choose_options", {
+                                name: String(o.name ?? ""),
+                              })}
                             </div>
                           );
                         }
@@ -884,7 +895,7 @@ export function StorefrontAssistant({
 
             {error ? (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                Something went wrong. Please try again.
+                {t("assistant.error")}
               </div>
             ) : null}
 
@@ -938,7 +949,7 @@ export function StorefrontAssistant({
                   }
                 }}
                 rows={1}
-                placeholder="Ask anything…"
+                placeholder={t("assistant.input_placeholder")}
                 className={cn(
                   "max-h-32 min-h-11 flex-1 resize-none rounded-2xl border border-border bg-background px-4 py-2.5 text-base",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
@@ -949,7 +960,7 @@ export function StorefrontAssistant({
                 size="icon"
                 className="size-11 shrink-0 rounded-full"
                 disabled={!input.trim() || busy}
-                aria-label="Send"
+                aria-label={t("assistant.send_aria")}
               >
                 <ArrowUp className="size-5" />
               </Button>

@@ -4,11 +4,13 @@ import { useActionState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/lib/locales/dashboard/context";
 import { createCodedShopAction, type NewShopState } from "./actions";
 
 const initialState: NewShopState = { error: null };
 
 export function NewShopForm({ orgSlug }: { orgSlug: string }) {
+  const t = useT();
   const [state, formAction, pending] = useActionState(
     createCodedShopAction,
     initialState,
@@ -19,26 +21,25 @@ export function NewShopForm({ orgSlug }: { orgSlug: string }) {
       <input type="hidden" name="orgSlug" value={orgSlug} />
       <div className="space-y-2">
         <label htmlFor="name" className="text-sm font-medium">
-          Shop name
+          {t("home.shop_name_label")}
         </label>
         <Input
           id="name"
           name="name"
-          placeholder="e.g. Aziz Coffee"
+          placeholder={t("home.shop_name_placeholder")}
           maxLength={80}
           autoFocus
           required
         />
         <p className="text-xs text-muted-foreground">
-          You can rename it later. The agent builds the shop in real code; you
-          shape the look and pages by chatting with it.
+          {t("home.shop_name_hint")}
         </p>
       </div>
       {state?.error ? (
         <p className="text-sm text-destructive">{state.error}</p>
       ) : null}
       <Button type="submit" disabled={pending}>
-        {pending ? "Creating…" : "Create shop"}
+        {pending ? t("common.creating") : t("home.create_shop")}
       </Button>
     </form>
   );

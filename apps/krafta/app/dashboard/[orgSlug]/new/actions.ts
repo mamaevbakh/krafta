@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { createCodedShop } from "@/lib/auth/coded-shop";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 export type NewShopState = { error: string | null };
 
@@ -14,9 +15,10 @@ export async function createCodedShopAction(
   _prev: NewShopState,
   formData: FormData,
 ): Promise<NewShopState> {
+  const t = await getDashboardT();
   const orgSlug = String(formData.get("orgSlug") ?? "");
   const name = String(formData.get("name") ?? "").trim();
-  if (!orgSlug) return { error: "Missing organization." };
+  if (!orgSlug) return { error: t("home.error_missing_org") };
 
   let target: string;
   try {
@@ -26,7 +28,7 @@ export async function createCodedShopAction(
       .select("id")
       .eq("slug", orgSlug)
       .maybeSingle();
-    if (!org) return { error: "Organization not found." };
+    if (!org) return { error: t("home.error_org_not_found") };
 
     const shop = await createCodedShop({
       orgId: org.id,
@@ -34,7 +36,7 @@ export async function createCodedShopAction(
     });
     target = `/dashboard/${shop.orgSlug}/${shop.catalogSlug}/builder?tab=assistant`;
   } catch (error) {
-    return { error: (error as Error)?.message || "Could not create the shop." };
+    return { error: (error as Error)?.message || t("home.error_create_failed") };
   }
 
   // redirect throws NEXT_REDIRECT — must run outside the try/catch.

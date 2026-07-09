@@ -27,6 +27,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import type { CatalogCategory } from "@/lib/catalogs/types";
+import { useT } from "@/lib/locales/dashboard/context";
 
 export type CategoryRailProps = {
   categories: CatalogCategory[];
@@ -36,6 +37,7 @@ export type CategoryRailProps = {
 };
 
 export function CategoryRail({ categories, hasOrphans }: CategoryRailProps) {
+  const t = useT();
   const sortedCategories = React.useMemo(
     () => [...categories].sort((a, b) => a.position - b.position),
     [categories],
@@ -117,7 +119,7 @@ export function CategoryRail({ categories, hasOrphans }: CategoryRailProps) {
       className="sticky top-[80px] hidden h-fit w-[180px] shrink-0 flex-col gap-0.5 self-start xl:flex"
     >
       <h3 className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Categories
+        {t("items.categories")}
       </h3>
 
       {sortedCategories.map((category) => (
@@ -147,7 +149,7 @@ export function CategoryRail({ categories, hasOrphans }: CategoryRailProps) {
             activeId === "__orphans__" && "bg-accent text-foreground",
           )}
         >
-          <span className="block truncate italic">Uncategorized</span>
+          <span className="block truncate italic">{t("items.uncategorized")}</span>
         </button>
       )}
     </aside>

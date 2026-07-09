@@ -35,6 +35,8 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Suggestion } from "@/components/ai-elements/suggestion";
 import { Loader } from "@/components/ai-elements/loader";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 
 // The Krafta Studio CODEGEN agent — the v0/Lovable-for-commerce engine. Talks to
 // the eve agent (studio-agent/) mounted same-origin via withEve, so there's no
@@ -42,21 +44,29 @@ import { Loader } from "@/components/ai-elements/loader";
 // commerce stays on Krafta's engine via @krafta/commerce. The agent's
 // `preview_shop` tool runs the shop on a local port and returns a URL we render
 // in the live-preview pane beside the chat.
-const SUGGESTIONS = [
-  "Make the shop dark and minimal",
-  "Add a hero with a bold headline",
-  "Use larger product cards",
-  "Add an About page",
+const SUGGESTION_KEYS: DashboardMessageKey[] = [
+  "studio.codegen_suggestion_dark_minimal",
+  "studio.codegen_suggestion_hero",
+  "studio.codegen_suggestion_larger_cards",
+  "studio.codegen_suggestion_about_page",
 ];
 
+// Sentinel stored by readLatestPublish when a publish errors without any
+// errorText — the render maps it to a translated generic message.
+const GENERIC_PUBLISH_ERROR = "studio:generic-publish-error";
+
 // Map eve's built-in sandbox tools (and our preview tool) to a friendly label.
-function toolLabel(name: string): { label: string; icon: typeof FilePen } | null {
-  if (name === "write_file") return { label: "Edited a file", icon: FilePen };
+function toolLabel(
+  name: string,
+): { labelKey: DashboardMessageKey; icon: typeof FilePen } | null {
+  if (name === "write_file")
+    return { labelKey: "studio.tool_edited_file", icon: FilePen };
   if (name === "read_file" || name === "glob" || name === "grep")
-    return { label: "Read your shop", icon: FilePen };
-  if (name === "bash") return { label: "Ran a command", icon: Terminal };
+    return { labelKey: "studio.tool_read_shop", icon: FilePen };
+  if (name === "bash")
+    return { labelKey: "studio.tool_ran_command", icon: Terminal };
   if (name === "preview_shop")
-    return { label: "Refreshed the preview", icon: Monitor };
+    return { labelKey: "studio.tool_refreshed_preview", icon: Monitor };
   return null;
 }
 
@@ -152,7 +162,7 @@ function readLatestPublish(messages: ReadonlyArray<{ parts?: readonly unknown[] 
         error =
           typeof raw.errorText === "string" && raw.errorText
             ? raw.errorText
-            : "Publishing failed. Please try again.";
+            : GENERIC_PUBLISH_ERROR;
       }
     }
   }
@@ -172,6 +182,7 @@ export function StudioCodegenPanel({
   publishableKey?: string | null;
   initialPublishedUrl?: string | null;
 }) {
+  const t = useT();
   // Tell the agent which shop it's building for. clientContext rides every turn
   // (per eve's prepareSend) as ephemeral context — the agent writes the sandbox's
   // .env.local from it (NEXT_PUBLIC_KRAFTA_API_URL + NEXT_PUBLIC_KRAFTA_PUBLISHABLE_KEY)
@@ -255,8 +266,17 @@ export function StudioCodegenPanel({
   const publish = () => {
     if (busy) return;
     setPublishing(true);
-    send("Publish my shop to the web and give me the public link.");
+    send(t("studio.publish_command"));
   };
+
+  const publishErrorSource =
+    published.error === GENERIC_PUBLISH_ERROR
+      ? t("studio.publish_generic_error")
+      : published.error;
+  const publishErrorText =
+    publishErrorSource && publishErrorSource.length > 160
+      ? `${publishErrorSource.slice(0, 160)}…`
+      : publishErrorSource;
 
   return (
     <section className="flex h-[78vh] min-h-[580px] w-full flex-col overflow-hidden rounded-xl border border-border bg-background lg:flex-row">
@@ -271,11 +291,11 @@ export function StudioCodegenPanel({
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-medium">Krafta Studio</h2>
                 <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Beta
+                  {t("studio.beta")}
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Build {shopName} by describing it — the AI writes the code
+                {t("studio.codegen_subtitle", { name: shopName })}
               </p>
             </div>
           </div>
@@ -289,18 +309,16 @@ export function StudioCodegenPanel({
                   <Sparkles className="size-5 text-muted-foreground" aria-hidden />
                 </span>
                 <div className="space-y-1">
-                  <h3 className="text-base font-medium">Describe your shop</h3>
+                  <h3 className="text-base font-medium">{t("studio.codegen_empty_title")}</h3>
                   <p className="text-sm text-muted-foreground">
-                    Tell me how it should look and what pages it needs. I build it
-                    in real code on Krafta&apos;s commerce engine, and you&apos;ll
-                    see it live on the right.
+                    {t("studio.codegen_empty_desc")}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                  {SUGGESTIONS.map((suggestion) => (
+                  {SUGGESTION_KEYS.map((key) => (
                     <Suggestion
-                      key={suggestion}
-                      suggestion={suggestion}
+                      key={key}
+                      suggestion={t(key)}
                       onClick={send}
                     />
                   ))}
@@ -338,7 +356,7 @@ export function StudioCodegenPanel({
                               className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground"
                             >
                               <Icon className="size-3" aria-hidden />
-                              {tool.label}
+                              {t(tool.labelKey)}
                             </span>
                           );
                         })}
@@ -362,7 +380,7 @@ export function StudioCodegenPanel({
               <Message from="assistant">
                 <MessageContent>
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader size={14} /> Working on your shop…
+                    <Loader size={14} /> {t("studio.working_on_shop")}
                   </span>
                 </MessageContent>
               </Message>
@@ -374,16 +392,16 @@ export function StudioCodegenPanel({
         <div className="border-t border-border p-3">
           {agent.error ? (
             <p className="mb-2 px-1 text-xs text-destructive">
-              Something went wrong. Please try again.
+              {t("common.error_generic")}
             </p>
           ) : null}
           <PromptInput onSubmit={handleSubmit}>
             <PromptInputBody>
-              <PromptInputTextarea placeholder="Describe a change to your shop…" />
+              <PromptInputTextarea placeholder={t("studio.codegen_input_placeholder")} />
             </PromptInputBody>
             <PromptInputFooter>
               <span className="px-1 text-xs text-muted-foreground">
-                Beta · the AI edits real code.
+                {t("studio.codegen_footer_note")}
               </span>
               {/* While streaming the button shows a stop square — clicking it
                   aborts the turn instead of submitting. Only "submitted"
@@ -408,7 +426,7 @@ export function StudioCodegenPanel({
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Monitor className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="text-sm font-medium">Live preview</span>
+            <span className="text-sm font-medium">{t("studio.live_preview")}</span>
             {previewSrc ? (
               <span className="truncate text-xs text-muted-foreground">
                 {previewSrc.replace(/^https?:\/\//, "")}
@@ -424,20 +442,22 @@ export function StudioCodegenPanel({
                   className="inline-flex shrink-0 items-center gap-1 truncate rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-600/20"
                 >
                   <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
-                  Live · {liveUrl.replace(/^https?:\/\//, "")}
+                  {t("studio.live_badge")} · {liveUrl.replace(/^https?:\/\//, "")}
                 </a>
               ) : (
                 <a
                   href={liveUrl}
                   target="_blank"
                   rel="noreferrer"
-                  title={`Published to a temporary URL — the ${
-                    published.intendedUrl?.replace(/^https?:\/\//, "") ?? "subdomain"
-                  } didn't provision. Click Update to retry.`}
+                  title={t("studio.published_temp_title", {
+                    target:
+                      published.intendedUrl?.replace(/^https?:\/\//, "") ??
+                      t("studio.subdomain_fallback"),
+                  })}
                   className="inline-flex shrink-0 items-center gap-1 truncate rounded-full border border-amber-600/30 bg-amber-600/10 px-2 py-0.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-600/20"
                 >
                   <span className="size-1.5 rounded-full bg-amber-500" aria-hidden />
-                  Published · temporary link
+                  {t("studio.published_temp_badge")}
                 </a>
               )
             ) : null}
@@ -448,22 +468,26 @@ export function StudioCodegenPanel({
               onClick={publish}
               disabled={busy || !catalogId}
               className="mr-1 inline-flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              title={liveUrl ? "Re-publish the latest version" : "Publish your shop to the web"}
+              title={liveUrl ? t("studio.republish_title") : t("studio.publish_title")}
             >
               {publishing ? (
                 <Loader2 className="size-3.5 animate-spin" aria-hidden />
               ) : (
                 <Globe className="size-3.5" aria-hidden />
               )}
-              {publishing ? "Publishing…" : liveUrl ? "Update" : "Publish"}
+              {publishing
+                ? t("studio.publishing")
+                : liveUrl
+                  ? t("studio.update")
+                  : t("studio.publish")}
             </button>
             <button
               type="button"
               onClick={() => setRefreshNonce((n) => n + 1)}
               disabled={!previewSrc}
               className="inline-flex size-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-              title="Refresh preview"
-              aria-label="Refresh preview"
+              title={t("studio.refresh_preview")}
+              aria-label={t("studio.refresh_preview")}
             >
               <RefreshCw className="size-3.5" aria-hidden />
             </button>
@@ -475,8 +499,8 @@ export function StudioCodegenPanel({
               className={`inline-flex size-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:text-foreground ${
                 previewSrc ? "" : "pointer-events-none opacity-40"
               }`}
-              title="Open in a new tab"
-              aria-label="Open preview in a new tab"
+              title={t("studio.open_new_tab")}
+              aria-label={t("studio.open_preview_new_tab")}
             >
               <ExternalLink className="size-3.5" aria-hidden />
             </a>
@@ -485,11 +509,10 @@ export function StudioCodegenPanel({
 
         {published.error ? (
           <div className="border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
-            Publish failed:{" "}
-            {published.error.length > 160
-              ? `${published.error.slice(0, 160)}…`
-              : published.error}{" "}
-            — click {liveUrl ? "Update" : "Publish"} to try again.
+            {t("studio.publish_failed_banner", {
+              error: publishErrorText ?? "",
+              action: liveUrl ? t("studio.update") : t("studio.publish"),
+            })}
           </div>
         ) : null}
 
@@ -498,7 +521,7 @@ export function StudioCodegenPanel({
             <iframe
               key={`${previewSrc}:${preview.version}:${refreshNonce}`}
               src={previewSrc}
-              title={`Live preview of ${shopName}`}
+              title={t("studio.codegen_preview_iframe_title", { name: shopName })}
               className="size-full border-0 bg-white"
             />
           ) : (
@@ -507,11 +530,11 @@ export function StudioCodegenPanel({
                 <Monitor className="size-5 text-muted-foreground" aria-hidden />
               </span>
               <div className="space-y-1">
-                <p className="text-sm font-medium">Your shop will appear here</p>
+                <p className="text-sm font-medium">{t("studio.shop_will_appear")}</p>
                 <p className="max-w-xs text-xs text-muted-foreground">
                   {busy
-                    ? "Building your shop…"
-                    : "Describe a change in the chat and the AI builds it — the live preview shows up here."}
+                    ? t("studio.building_shop")
+                    : t("studio.codegen_preview_hint")}
                 </p>
               </div>
             </div>

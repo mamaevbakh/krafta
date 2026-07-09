@@ -49,6 +49,9 @@ export function CartDrawer({
   cardPaymentEnabled = false,
 }: CartDrawerProps) {
   const { isOpen, setOpen, step, setStep, close } = useCart();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (key: Parameters<typeof getStorefrontMessage>[0]) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
   // Slide direction, derived from the previous step held in state (lint-safe —
   // no ref read during render). The keyed wrapper below re-mounts on every step
   // change, so the slide replays; direction just picks left vs right. Kept out
@@ -92,7 +95,7 @@ export function CartDrawer({
         <DialogClose asChild>
           <Button
             type="button"
-            aria-label="Close"
+            aria-label={t("aria.close_drawer")}
             variant="outline"
             size="icon"
             className="absolute right-4 top-4 z-20 size-11 rounded-full"

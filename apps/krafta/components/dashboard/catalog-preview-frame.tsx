@@ -3,19 +3,21 @@
 import { useMemo, useState } from "react";
 import type { CatalogLayoutOverride } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 import { cn } from "@/lib/utils";
 
 type PreviewPreset = {
   id: string;
-  label: string;
+  labelKey: DashboardMessageKey;
   width: number | "100%";
   height: number;
 };
 
 const PREVIEW_PRESETS: PreviewPreset[] = [
-  { id: "desktop", label: "Desktop", width: "100%", height: 780 },
-  { id: "tablet", label: "Tablet", width: 820, height: 1180 },
-  { id: "mobile", label: "Mobile", width: 390, height: 844 },
+  { id: "desktop", labelKey: "studio.device_desktop", width: "100%", height: 780 },
+  { id: "tablet", labelKey: "studio.device_tablet", width: 820, height: 1180 },
+  { id: "mobile", labelKey: "studio.device_mobile", width: 390, height: 844 },
 ];
 
 export function CatalogPreviewFrame({
@@ -29,6 +31,7 @@ export function CatalogPreviewFrame({
   currencyOverrides?: CurrencySettings;
   className?: string;
 }) {
+  const t = useT();
   const [presetId, setPresetId] = useState<string>("mobile");
   const preset = useMemo(
     () => PREVIEW_PRESETS.find((item) => item.id === presetId),
@@ -129,9 +132,11 @@ export function CatalogPreviewFrame({
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-[26px] font-semibold tracking-tight">Live preview</h2>
+          <h2 className="text-[26px] font-semibold tracking-tight">
+            {t("studio.live_preview")}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            The inspector on the left updates this preview immediately.
+            {t("studio.live_preview_desc")}
           </p>
         </div>
 
@@ -148,7 +153,7 @@ export function CatalogPreviewFrame({
                   : "border-border bg-background/85 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
               )}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
         </div>
@@ -161,7 +166,7 @@ export function CatalogPreviewFrame({
             style={frameStyle}
           >
             <iframe
-              title="Catalog preview"
+              title={t("studio.preview_iframe_title")}
               src={iframeSrc}
               className="h-full w-full"
               loading="lazy"

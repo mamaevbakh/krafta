@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { addCatalogLocale } from "@/lib/translation/actions";
 import { getLocaleDefinition } from "@/lib/locales/registry";
@@ -53,6 +54,7 @@ export function AddLocaleDialog({
   hasDefault,
   onCreated,
 }: AddLocaleDialogProps) {
+  const t = useT();
   const [selectedCode, setSelectedCode] = React.useState<string | null>(null);
   const [isDefault, setIsDefault] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -86,7 +88,7 @@ export function AddLocaleDialog({
       toast.error(result.error);
       return;
     }
-    toast.success(`Added ${selected.nativeName}`);
+    toast.success(t("translations.locale_added", { name: selected.nativeName }));
     onCreated();
   };
 
@@ -95,17 +97,17 @@ export function AddLocaleDialog({
       <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-md">
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
           <DialogHeader className="border-b px-6 pb-4 pt-6">
-            <DialogTitle>Add a language</DialogTitle>
+            <DialogTitle>{t("translations.add_language")}</DialogTitle>
             <DialogDescription>
-              Pick a language to translate this catalog into. Once added, AI
-              translates item names and descriptions automatically.
+              {t("translations.add_dialog_desc")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="no-scrollbar flex min-h-0 flex-col gap-4 overflow-y-auto px-6 py-5">
             <div className="flex flex-col gap-2">
               <Label htmlFor="locale-picker" className="text-sm font-medium">
-                Language <span className="text-destructive">*</span>
+                {t("translations.language_label")}{" "}
+                <span className="text-destructive">*</span>
               </Label>
               <LocalePicker
                 id="locale-picker"
@@ -115,8 +117,7 @@ export function AddLocaleDialog({
               />
               {selected?.direction === "rtl" && (
                 <p className="text-xs text-muted-foreground">
-                  Right-to-left script — storefront direction support ships
-                  in Phase 2.
+                  {t("translations.rtl_note")}
                 </p>
               )}
             </div>
@@ -128,11 +129,10 @@ export function AddLocaleDialog({
                     htmlFor="locale-default"
                     className="text-sm font-medium"
                   >
-                    Set as default language
+                    {t("translations.set_default_label")}
                   </Label>
                   <span className="text-xs text-muted-foreground">
-                    Customers see this language by default. You can change it
-                    later from the catalog&apos;s i18n settings.
+                    {t("translations.set_default_desc")}
                   </span>
                 </div>
                 <Switch
@@ -151,16 +151,16 @@ export function AddLocaleDialog({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
               {submitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  Adding…
+                  {t("translations.adding")}
                 </>
               ) : (
-                "Add language"
+                t("translations.add_language")
               )}
             </Button>
           </DialogFooter>

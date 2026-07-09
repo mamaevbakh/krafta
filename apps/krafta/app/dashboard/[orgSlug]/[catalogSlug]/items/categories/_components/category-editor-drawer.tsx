@@ -55,6 +55,7 @@ import {
 import { cn } from "@/lib/utils";
 import { slugify } from "@/lib/catalogs/slug";
 import type { CatalogCategory } from "@/lib/catalogs/types";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { createCategory, deleteCategory, updateCategory } from "./actions";
 
@@ -106,6 +107,7 @@ export function CategoryEditorDrawer({
   existingSlugs = [],
   onDeleted,
 }: CategoryEditorDrawerProps) {
+  const t = useT();
   // Lift the close handler into a ref so backdrop / ESC / swipe-down all
   // route through the form's dirty-aware path. The form re-registers on
   // every render.
@@ -166,11 +168,13 @@ export function CategoryEditorDrawer({
         >
           <DrawerPrimitive.Title className="sr-only">
             {mode === "edit"
-              ? `Edit category: ${category?.name || "Untitled category"}`
-              : "New category"}
+              ? t("categories.editor.sr_title_edit", {
+                  name: category?.name || t("categories.editor.untitled"),
+                })
+              : t("categories.editor.new")}
           </DrawerPrimitive.Title>
           <DrawerPrimitive.Description className="sr-only">
-            Add translations and metadata for this catalog category.
+            {t("categories.editor.sr_description")}
           </DrawerPrimitive.Description>
           <EditorForm
             key={mode === "edit" ? `edit-${category?.id ?? ""}` : "create"}
@@ -217,6 +221,7 @@ function EditorForm({
   onDeleted,
 }: EditorFormProps) {
   const router = useRouter();
+  const t = useT();
   const isEdit = mode === "edit" && !!category;
 
   const enabledLocales = React.useMemo(
@@ -284,15 +289,15 @@ function EditorForm({
     const canValidate =
       slugTouched || defaultName.trim().length > 0 || isEdit;
     if (!normalized) {
-      return canValidate ? "Category slug could not be generated." : null;
+      return canValidate ? t("categories.error.slug_invalid") : null;
     }
     const collides = existingSlugs.some(
       (existing) =>
         existing.toLowerCase() === normalized &&
         existing.toLowerCase() !== (category?.slug ?? "").toLowerCase(),
     );
-    return collides ? "This slug is already used in this catalog." : null;
-  }, [category?.slug, defaultName, existingSlugs, isEdit, slug, slugTouched]);
+    return collides ? t("categories.error.slug_taken") : null;
+  }, [category?.slug, defaultName, existingSlugs, isEdit, slug, slugTouched, t]);
 
   // ---------------------------------------------------------------------
   // Dirty tracking
@@ -337,7 +342,7 @@ function EditorForm({
 
   const handleSave = React.useCallback(async () => {
     if (!defaultName.trim()) {
-      toast.error("Category name is required.");
+      toast.error(t("categories.error.name_required"));
       return;
     }
     if (slugError) {
@@ -345,7 +350,7 @@ function EditorForm({
       return;
     }
     if (!slug.trim()) {
-      toast.error("Category slug could not be generated.");
+      toast.error(t("categories.error.slug_invalid"));
       return;
     }
 
@@ -378,7 +383,7 @@ function EditorForm({
 
     if (!result.ok) {
       setSaveStatus("error");
-      const message = result.error ?? "Failed to save category.";
+      const message = result.error ?? t("categories.error.save_failed");
       setSaveError(message);
       toast.error(message);
       return;
@@ -386,7 +391,9 @@ function EditorForm({
 
     setSaveStatus("idle");
     router.refresh();
-    toast.success(isEdit ? "Category saved." : "Category created.");
+    toast.success(
+      isEdit ? t("categories.toast.saved") : t("categories.toast.created"),
+    );
     onRequestClose();
   }, [
     catalogId,
@@ -400,6 +407,7 @@ function EditorForm({
     slug,
     slugError,
     translations,
+    t,
   ]);
 
   // ---------------------------------------------------------------------
@@ -440,15 +448,15 @@ function EditorForm({
         categoryId: category.id,
       });
       if (!result.ok) {
-        toast.error(result.error ?? "Failed to delete category.");
+        toast.error(result.error ?? t("categories.error.delete_failed"));
         return;
       }
       toast.success(
         result.deletedItems
-          ? `Category and ${result.deletedItems} item${
-              result.deletedItems === 1 ? "" : "s"
-            } deleted.`
-          : "Category deleted.",
+          ? t("categories.toast.deleted_with_items", {
+              count: result.deletedItems,
+            })
+          : t("categories.toast.deleted"),
       );
       setDeletePromptOpen(false);
       onDeleted?.(category);
@@ -456,7 +464,9 @@ function EditorForm({
       router.refresh();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to delete category.";
+        err instanceof Error
+          ? err.message
+          : t("categories.error.delete_failed");
       toast.error(message);
     } finally {
       setIsDeleting(false);
@@ -468,6 +478,7 @@ function EditorForm({
     onDeleted,
     onRequestClose,
     router,
+    t,
   ]);
 
   // ---------------------------------------------------------------------
@@ -478,13 +489,15 @@ function EditorForm({
       return (
         <Button disabled>
           <Loader2 className="size-4 animate-spin" />
-          Saving…
+          {t("common.saving")}
         </Button>
       );
     }
     if (saveStatus === "error") {
       return (
-        <Button onClick={handleSave}>Save failed — Retry</Button>
+        <Button onClick={handleSave}>
+          {t("categories.editor.save_failed_retry")}
+        </Button>
       );
     }
     return (
@@ -492,15 +505,19 @@ function EditorForm({
         onClick={handleSave}
         disabled={(!isDirty && isEdit) || !!slugError}
       >
-        Save
+        {t("common.save")}
       </Button>
     );
   };
 
   const titleLabel = isEdit
-    ? defaultName.trim() || category?.name || "Untitled category"
-    : defaultName.trim() || "New category";
-  const titleEyebrow = isEdit ? "Editing" : "New category";
+    ? defaultName.trim() ||
+      category?.name ||
+      t("categories.editor.untitled")
+    : defaultName.trim() || t("categories.editor.new");
+  const titleEyebrow = isEdit
+    ? t("categories.editor.editing")
+    : t("categories.editor.new");
 
   const showLocaleLabels = enabledLocales.length > 1;
   const slugPreview = slug.trim() || "category-slug";
@@ -515,7 +532,7 @@ function EditorForm({
           size="icon"
           className="size-11 md:size-9"
           onClick={handleClose}
-          aria-label="Close editor"
+          aria-label={t("categories.editor.close_aria")}
         >
           <X className="size-4" />
         </Button>
@@ -536,9 +553,9 @@ function EditorForm({
                 <Button
                   variant="outline"
                   size="sm"
-                  aria-label="More actions"
+                  aria-label={t("categories.editor.more_actions_aria")}
                 >
-                  Actions
+                  {t("categories.actions.label")}
                   <MoreHorizontal className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -551,7 +568,7 @@ function EditorForm({
                   className="text-destructive focus:text-destructive"
                 >
                   <Trash2 className="size-4" />
-                  Delete…
+                  {t("categories.editor.delete_ellipsis")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -563,21 +580,24 @@ function EditorForm({
           >
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete this category?</AlertDialogTitle>
+                <AlertDialogTitle>
+                  {t("categories.delete_confirm.title")}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  &ldquo;{titleLabel}&rdquo; and all of its items will be
-                  removed permanently. This cannot be undone.
+                  {t("categories.delete_confirm.description", {
+                    name: titleLabel,
+                  })}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={isDeleting}>
-                  Cancel
+                  {t("common.cancel")}
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDelete}
                   disabled={isDeleting}
                 >
-                  Delete category
+                  {t("categories.delete_confirm.action")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -600,11 +620,13 @@ function EditorForm({
             <div className="flex min-w-0 flex-1 flex-col gap-5">
               <section className="flex flex-col gap-5 rounded-md border bg-card p-4 md:p-5">
                 <div className="flex flex-col gap-1">
-                  <Label className="text-sm font-semibold">Details</Label>
+                  <Label className="text-sm font-semibold">
+                    {t("categories.editor.details_label")}
+                  </Label>
                   <span className="text-xs text-muted-foreground">
                     {showLocaleLabels
-                      ? "Add translations for every enabled locale. The default locale name is the category's primary label."
-                      : "The category's primary label and an optional customer-facing description."}
+                      ? t("categories.editor.details_hint_multi")
+                      : t("categories.editor.details_hint_single")}
                   </span>
                 </div>
 
@@ -628,7 +650,7 @@ function EditorForm({
                             </span>
                             {isDefault ? (
                               <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                Default
+                                {t("categories.editor.default_locale")}
                               </span>
                             ) : null}
                           </div>
@@ -639,14 +661,14 @@ function EditorForm({
                             htmlFor={`category-name-${locale.id}`}
                             className="text-sm font-medium"
                           >
-                            Name{" "}
+                            {t("categories.editor.name_label")}{" "}
                             {isDefault ? (
                               <span className="text-destructive">*</span>
                             ) : null}
                           </Label>
                           <Input
                             id={`category-name-${locale.id}`}
-                            placeholder="Category name"
+                            placeholder={t("categories.editor.name_placeholder")}
                             value={state.name}
                             onChange={(event) =>
                               updateTranslation(
@@ -665,11 +687,13 @@ function EditorForm({
                             htmlFor={`category-description-${locale.id}`}
                             className="text-sm font-medium"
                           >
-                            Description
+                            {t("categories.editor.description_label")}
                           </Label>
                           <Textarea
                             id={`category-description-${locale.id}`}
-                            placeholder="Optional description shown on the storefront"
+                            placeholder={t(
+                              "categories.editor.description_placeholder",
+                            )}
                             value={state.description}
                             onChange={(event) =>
                               updateTranslation(
@@ -691,13 +715,13 @@ function EditorForm({
 
             {/* Right column — URL / metadata */}
             <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
-              <MetadataCard title="URL">
+              <MetadataCard title={t("categories.editor.url_label")}>
                 <Field data-invalid={!!slugError}>
                   <FieldLabel
                     htmlFor="category-slug"
                     className="sr-only"
                   >
-                    Slug
+                    {t("categories.editor.slug_label")}
                   </FieldLabel>
                   <Input
                     id="category-slug"
@@ -722,7 +746,10 @@ function EditorForm({
 
           {saveStatus === "error" && saveError ? (
             <div className="border-t bg-destructive/5 px-4 py-3 text-sm text-destructive md:px-6">
-              <span className="font-medium">Save failed:</span> {saveError}
+              <span className="font-medium">
+                {t("categories.editor.save_failed_label")}
+              </span>{" "}
+              {saveError}
             </div>
           ) : null}
         </ScrollArea>
@@ -734,15 +761,17 @@ function EditorForm({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+            <AlertDialogTitle>{t("categories.discard.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Your edits will be lost. This cannot be undone.
+              {t("categories.discard.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("categories.discard.keep_editing")}
+            </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDiscard}>
-              Discard
+              {t("common.discard")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

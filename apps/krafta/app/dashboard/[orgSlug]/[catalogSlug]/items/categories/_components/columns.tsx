@@ -13,6 +13,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { CatalogCategory } from "@/lib/catalogs/types"
+import { useT } from "@/lib/locales/dashboard/context"
+import type { TranslateFn } from "@/lib/locales/dashboard/messages"
 
 function formatCreatedAt(value: string) {
   const dt = value ? new Date(value) : null
@@ -39,23 +41,28 @@ function CategoryActions({
   align?: "start" | "center" | "end"
   size?: "icon" | "icon-sm" | "icon-lg"
 }) {
+  const t = useT()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size={size} aria-label="Open menu">
-          <span className="sr-only">Open menu</span>
+        <Button
+          variant="ghost"
+          size={size}
+          aria-label={t("categories.actions.open_menu")}
+        >
+          <span className="sr-only">{t("categories.actions.open_menu")}</span>
           <span aria-hidden>⋯</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align}>
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("categories.actions.label")}</DropdownMenuLabel>
         <DropdownMenuItem
           disabled
           onSelect={(e) => {
             e.preventDefault()
           }}
         >
-          View
+          {t("categories.actions.view")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -64,7 +71,7 @@ function CategoryActions({
             onEdit?.(category)
           }}
         >
-          Edit
+          {t("common.edit")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={(e) => {
@@ -72,7 +79,7 @@ function CategoryActions({
             onDelete?.(category)
           }}
         >
-          Delete
+          {t("common.delete")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -81,14 +88,15 @@ function CategoryActions({
             void navigator.clipboard?.writeText(category.id)
           }}
         >
-          Copy ID
+          {t("categories.actions.copy_id")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
 
-export const columns: ColumnDef<CatalogCategory>[] = [
+function buildColumns(t: TranslateFn): ColumnDef<CatalogCategory>[] {
+  return [
   {
     id: "select",
     header: ({ table }) => (
@@ -98,14 +106,14 @@ export const columns: ColumnDef<CatalogCategory>[] = [
           (table.getIsSomePageRowsSelected() && "indeterminate")
         }
         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
+        aria-label={t("categories.column.select_all")}
       />
     ),
     cell: ({ row }) => (
       <Checkbox
         checked={row.getIsSelected()}
         onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
+        aria-label={t("categories.column.select_row")}
       />
     ),
     enableSorting: false,
@@ -117,7 +125,7 @@ export const columns: ColumnDef<CatalogCategory>[] = [
   },
   {
     accessorKey: "name",
-    header: "Category",
+    header: t("categories.column.name"),
     meta: {
       cellClassName: "whitespace-normal",
     },
@@ -127,7 +135,7 @@ export const columns: ColumnDef<CatalogCategory>[] = [
         <div className="relative min-w-0">
           <div className="lg:hidden">
             <div className="pr-10 text-sm font-medium text-foreground break-words whitespace-normal">
-              {category.name || "Untitled category"}
+              {category.name || t("categories.editor.untitled")}
             </div>
             <div className="absolute right-0 top-0">
               <CategoryActions category={category} />
@@ -135,7 +143,7 @@ export const columns: ColumnDef<CatalogCategory>[] = [
           </div>
           <div className="hidden lg:block">
             <div className="text-sm font-medium text-foreground break-words whitespace-normal">
-              {category.name || "Untitled category"}
+              {category.name || t("categories.editor.untitled")}
             </div>
           </div>
         </div>
@@ -160,7 +168,7 @@ export const columns: ColumnDef<CatalogCategory>[] = [
   },
   {
     accessorKey: "created_at",
-    header: "Created",
+    header: t("categories.column.created"),
     cell: ({ getValue }) => {
       const raw = getValue<string>()
       return formatCreatedAt(raw)
@@ -183,16 +191,19 @@ export const columns: ColumnDef<CatalogCategory>[] = [
       return <CategoryActions category={category} size="icon" />
     },
   },
-]
+  ]
+}
 
 export function createColumns({
+  t,
   onEdit,
   onDelete,
 }: {
+  t: TranslateFn
   onEdit?: (category: CatalogCategory) => void
   onDelete?: (category: CatalogCategory) => void
 }): ColumnDef<CatalogCategory>[] {
-  return columns.map((column) => {
+  return buildColumns(t).map((column) => {
     if (column.id === "actions") {
       return {
         ...column,
@@ -219,7 +230,7 @@ export function createColumns({
             <div className="relative min-w-0">
               <div className="lg:hidden">
                 <div className="pr-10 text-sm font-medium text-foreground break-words whitespace-normal">
-                  {category.name || "Untitled category"}
+                  {category.name || t("categories.editor.untitled")}
                 </div>
                 <div className="absolute right-0 top-0">
                   <CategoryActions
@@ -231,7 +242,7 @@ export function createColumns({
               </div>
               <div className="hidden lg:block">
                 <div className="text-sm font-medium text-foreground break-words whitespace-normal">
-                  {category.name || "Untitled category"}
+                  {category.name || t("categories.editor.untitled")}
                 </div>
               </div>
             </div>

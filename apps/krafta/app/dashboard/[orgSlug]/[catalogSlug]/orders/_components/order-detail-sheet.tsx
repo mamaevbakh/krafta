@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/sheet";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 
 import {
   markCashPaymentReceived,
@@ -63,17 +65,20 @@ export function OrderDetailSheet({
   order,
   currencySettings,
 }: OrderDetailSheetProps) {
+  const t = useT();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
         <SheetHeader className="border-b border-border/60 px-6 pb-4 pt-6">
           <SheetTitle>
-            {order ? `Order ${order.reference}` : "Order"}
+            {order
+              ? t("orders.detail_title", { reference: order.reference })
+              : t("orders.detail_title_empty")}
           </SheetTitle>
           <SheetDescription>
             {order
               ? formatLongDateTime(order.createdAt)
-              : "Pick an order from the list to see its details."}
+              : t("orders.detail_empty_hint")}
           </SheetDescription>
         </SheetHeader>
 
@@ -81,7 +86,7 @@ export function OrderDetailSheet({
           <div className="space-y-6 px-6 py-5">
             {!order ? (
               <p className="text-sm text-muted-foreground">
-                This order is no longer available.
+                {t("orders.detail_unavailable")}
               </p>
             ) : (
               <>
@@ -136,6 +141,7 @@ function StatusRow({ order }: { order: OrderRow }) {
 }
 
 function ActionsBlock({ order }: { order: OrderRow }) {
+  const t = useT();
   const params = useParams<{ orgSlug: string; catalogSlug: string }>();
   const catalogPath = `/${params.catalogSlug}`;
   const [isPending, startTransition] = useTransition();
@@ -180,15 +186,15 @@ function ActionsBlock({ order }: { order: OrderRow }) {
 
   const completeLabel =
     order.mode === "delivery"
-      ? "Mark delivered"
+      ? t("orders.action_mark_delivered")
       : order.mode === "pickup"
-        ? "Mark picked up"
-        : "Close bill";
+        ? t("orders.action_mark_picked_up")
+        : t("orders.action_close_bill");
 
   return (
     <div className="space-y-3 rounded-xl border border-border bg-background p-3">
       <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        Actions
+        {t("orders.actions_label")}
       </div>
       <div className="flex flex-wrap gap-2">
         {canAccept ? (
@@ -198,7 +204,7 @@ function ActionsBlock({ order }: { order: OrderRow }) {
             disabled={isPending}
             onClick={() => fire("accept")}
           >
-            Accept
+            {t("orders.action_accept")}
           </Button>
         ) : null}
         {canMarkReady ? (
@@ -209,7 +215,7 @@ function ActionsBlock({ order }: { order: OrderRow }) {
             disabled={isPending}
             onClick={() => fire("mark_ready")}
           >
-            Mark ready
+            {t("orders.action_mark_ready")}
           </Button>
         ) : null}
         {canMarkCompleted ? (
@@ -230,7 +236,7 @@ function ActionsBlock({ order }: { order: OrderRow }) {
           disabled={isPending}
           onClick={() => setCancelOpen(true)}
         >
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
 
@@ -258,23 +264,23 @@ function CancelDialog({
   isPending: boolean;
   onConfirm: (reason: string) => void;
 }) {
+  const t = useT();
   const [reason, setReason] = useState("");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Cancel this order?</DialogTitle>
+          <DialogTitle>{t("orders.cancel_title")}</DialogTitle>
           <DialogDescription>
-            The customer will see the order as canceled. Optionally tell them
-            why.
+            {t("orders.cancel_description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Input
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Reason (optional)"
+            placeholder={t("orders.cancel_reason_placeholder")}
             autoFocus
           />
         </div>
@@ -284,7 +290,7 @@ function CancelDialog({
             variant="ghost"
             onClick={() => onOpenChange(false)}
           >
-            Keep order
+            {t("orders.cancel_keep")}
           </Button>
           <Button
             type="button"
@@ -292,7 +298,7 @@ function CancelDialog({
             disabled={isPending}
             onClick={() => onConfirm(reason.trim())}
           >
-            Cancel order
+            {t("orders.cancel_confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -301,46 +307,63 @@ function CancelDialog({
 }
 
 function DineInDetails({ details }: { details: OrderDineInDetails }) {
+  const t = useT();
   return (
-    <SectionCard title="Dine-in" icon={Utensils}>
-      <DetailLine label="Table" value={`Table ${details.table_label}`} />
+    <SectionCard title={t("orders.mode_dine_in")} icon={Utensils}>
+      <DetailLine
+        label={t("orders.detail_table")}
+        value={t("orders.detail_table_value", { label: details.table_label })}
+      />
       {details.party_size ? (
-        <DetailLine label="Party size" value={String(details.party_size)} />
+        <DetailLine
+          label={t("orders.detail_party_size")}
+          value={String(details.party_size)}
+        />
       ) : null}
       {details.course_number ? (
-        <DetailLine label="Course" value={String(details.course_number)} />
+        <DetailLine
+          label={t("orders.detail_course")}
+          value={String(details.course_number)}
+        />
       ) : null}
     </SectionCard>
   );
 }
 
 function PickupDetails({ details }: { details: OrderPickupDetails }) {
+  const t = useT();
   const when =
     details.schedule_type === "scheduled" && details.pickup_at
       ? formatLongDateTime(details.pickup_at)
-      : "As soon as ready";
+      : t("orders.pickup_asap");
   return (
-    <SectionCard title="Pickup" icon={Package}>
-      <DetailLine label="When" value={when} />
+    <SectionCard title={t("orders.mode_pickup")} icon={Package}>
+      <DetailLine label={t("orders.detail_when")} value={when} />
       {details.recipient_name ? (
-        <DetailLine label="Name" value={details.recipient_name} />
+        <DetailLine
+          label={t("orders.detail_name")}
+          value={details.recipient_name}
+        />
       ) : null}
       {details.recipient_phone ? (
-        <DetailLine label="Phone" value={details.recipient_phone} />
+        <DetailLine
+          label={t("orders.detail_phone")}
+          value={details.recipient_phone}
+        />
       ) : null}
       {details.note ? (
-        <DetailLine label="Note" value={details.note} multiline />
+        <DetailLine label={t("orders.detail_note")} value={details.note} multiline />
       ) : null}
       {details.is_curbside ? (
-        <DetailLine label="Curbside" value="Yes" />
+        <DetailLine label={t("orders.detail_curbside")} value={t("common.yes")} />
       ) : null}
       <TimestampLadder
         entries={[
-          ["Placed", details.placed_at],
-          ["Accepted", details.accepted_at],
-          ["Ready", details.ready_at],
-          ["Picked up", details.picked_up_at],
-          ["Canceled", details.canceled_at],
+          [t("orders.ts_placed"), details.placed_at],
+          [t("orders.ts_accepted"), details.accepted_at],
+          [t("orders.ts_ready"), details.ready_at],
+          [t("orders.ts_picked_up"), details.picked_up_at],
+          [t("orders.ts_canceled"), details.canceled_at],
         ]}
       />
     </SectionCard>
@@ -348,30 +371,37 @@ function PickupDetails({ details }: { details: OrderPickupDetails }) {
 }
 
 function DeliveryDetails({ details }: { details: OrderDeliveryDetails }) {
+  const t = useT();
   const addressLine = formatAddress(details.address);
   const when = details.scheduled_for
     ? formatLongDateTime(details.scheduled_for)
-    : "As soon as possible";
+    : t("orders.delivery_asap");
   return (
-    <SectionCard title="Delivery" icon={Truck}>
-      <DetailLine label="When" value={when} />
-      <DetailLine label="Address" value={addressLine} multiline />
-      <DetailLine label="Recipient" value={details.recipient_name} />
-      <DetailLine label="Phone" value={details.recipient_phone} />
+    <SectionCard title={t("orders.mode_delivery")} icon={Truck}>
+      <DetailLine label={t("orders.detail_when")} value={when} />
+      <DetailLine label={t("orders.detail_address")} value={addressLine} multiline />
+      <DetailLine
+        label={t("orders.detail_recipient")}
+        value={details.recipient_name}
+      />
+      <DetailLine label={t("orders.detail_phone")} value={details.recipient_phone} />
       {details.delivery_provider ? (
-        <DetailLine label="Provider" value={details.delivery_provider} />
+        <DetailLine
+          label={t("orders.detail_provider")}
+          value={details.delivery_provider}
+        />
       ) : null}
       {details.note ? (
-        <DetailLine label="Note" value={details.note} multiline />
+        <DetailLine label={t("orders.detail_note")} value={details.note} multiline />
       ) : null}
       <TimestampLadder
         entries={[
-          ["Placed", details.placed_at],
-          ["Accepted", details.accepted_at],
-          ["Courier assigned", details.courier_assigned_at],
-          ["Picked up", details.picked_up_at],
-          ["Delivered", details.delivered_at],
-          ["Canceled", details.canceled_at],
+          [t("orders.ts_placed"), details.placed_at],
+          [t("orders.ts_accepted"), details.accepted_at],
+          [t("orders.ts_courier_assigned"), details.courier_assigned_at],
+          [t("orders.ts_picked_up"), details.picked_up_at],
+          [t("orders.ts_delivered"), details.delivered_at],
+          [t("orders.ts_canceled"), details.canceled_at],
         ]}
       />
     </SectionCard>
@@ -379,17 +409,21 @@ function DeliveryDetails({ details }: { details: OrderDeliveryDetails }) {
 }
 
 function CustomerBlock({ order }: { order: OrderRow }) {
+  const t = useT();
   return (
-    <SectionCard title="Customer" icon={Receipt}>
-      <DetailLine label="Name" value={order.customerLabel} />
+    <SectionCard title={t("orders.section_customer")} icon={Receipt}>
+      <DetailLine label={t("orders.detail_name")} value={order.customerLabel} />
       {order.customer?.email ? (
-        <DetailLine label="Email" value={order.customer.email} />
+        <DetailLine label={t("orders.detail_email")} value={order.customer.email} />
       ) : null}
       {order.customer?.phone &&
       order.customer.phone !== order.customerLabel ? (
-        <DetailLine label="Phone" value={order.customer.phone} />
+        <DetailLine label={t("orders.detail_phone")} value={order.customer.phone} />
       ) : null}
-      <DetailLine label="Source" value={SOURCE_LABEL[order.source]} />
+      <DetailLine
+        label={t("orders.detail_source")}
+        value={t(SOURCE_LABEL_KEY[order.source])}
+      />
     </SectionCard>
   );
 }
@@ -401,6 +435,7 @@ function PaymentBlock({
   order: OrderRow;
   currencySettings: CurrencySettings;
 }) {
+  const t = useT();
   const params = useParams<{ catalogSlug: string }>();
   const catalogPath = `/${params.catalogSlug}`;
   const [isPending, startTransition] = useTransition();
@@ -415,7 +450,7 @@ function PaymentBlock({
     completedCash?.currency ??
     (currencySettings.defaultCurrency || "UZS");
 
-  const payAt = PAY_AT_LABEL[order.mode ?? "pickup"];
+  const payAt = t(PAY_AT_LABEL_KEY[order.mode ?? "pickup"]);
 
   const onMarkReceived = () =>
     startTransition(async () => {
@@ -429,24 +464,29 @@ function PaymentBlock({
     });
 
   return (
-    <SectionCard title="Payment" icon={CircleDollarSign}>
+    <SectionCard title={t("orders.section_payment")} icon={CircleDollarSign}>
       <DetailLine
-        label="Method"
-        value={completedCash ? "Cash collected" : `Cash — pay at ${payAt}`}
+        label={t("orders.detail_method")}
+        value={
+          completedCash
+            ? t("orders.payment_cash_collected")
+            : t("orders.payment_cash_pay_at", { location: payAt })
+        }
       />
       <DetailLine
-        label="Amount"
+        label={t("orders.detail_amount")}
         value={formatPriceCents(totalCents, currencySettings)}
       />
       {completedCash?.completedAt ? (
         <DetailLine
-          label="Collected"
+          label={t("orders.detail_collected")}
           value={formatLongDateTime(completedCash.completedAt)}
         />
       ) : null}
       {completedCash ? (
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
-          <CheckCircle2 className="h-3 w-3" aria-hidden /> Cash recorded
+          <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
+          {t("orders.payment_cash_recorded")}
         </div>
       ) : (
         <Button
@@ -456,18 +496,21 @@ function PaymentBlock({
           disabled={isPending}
           onClick={onMarkReceived}
         >
-          Mark cash collected
+          {t("orders.payment_mark_collected")}
         </Button>
       )}
     </SectionCard>
   );
 }
 
-const PAY_AT_LABEL: Record<NonNullable<OrderRow["mode"]> | "pickup", string> = {
-  dine_in: "the table",
-  pickup: "the counter",
-  delivery: "delivery",
-  digital: "the counter",
+const PAY_AT_LABEL_KEY: Record<
+  NonNullable<OrderRow["mode"]> | "pickup",
+  DashboardMessageKey
+> = {
+  dine_in: "orders.pay_at_table",
+  pickup: "orders.pay_at_counter",
+  delivery: "orders.pay_at_delivery",
+  digital: "orders.pay_at_counter",
 };
 
 function ItemsBlock({
@@ -477,10 +520,11 @@ function ItemsBlock({
   order: OrderRow;
   currencySettings: CurrencySettings;
 }) {
+  const t = useT();
   return (
     <div className="rounded-xl border border-border bg-background">
       <div className="px-4 pb-2 pt-3 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        Items
+        {t("orders.section_items")}
       </div>
       <ul className="divide-y divide-border/60 px-4">
         {order.lineItems.map((line) => (
@@ -505,7 +549,7 @@ function ItemsBlock({
       </ul>
       <Separator />
       <div className="flex items-center justify-between px-4 py-3 text-sm">
-        <span className="text-muted-foreground">Subtotal</span>
+        <span className="text-muted-foreground">{t("orders.subtotal")}</span>
         <span className="text-base font-semibold tabular-nums text-foreground">
           {formatPriceCents(order.totalCents, currencySettings)}
         </span>
@@ -589,11 +633,11 @@ function TimestampLadder({
 
 // ---- shared bits -----------------------------------------------------------
 
-const MODE_LABEL: Record<NonNullable<OrderRow["mode"]>, string> = {
-  dine_in: "Dine-in",
-  pickup: "Pickup",
-  delivery: "Delivery",
-  digital: "Digital",
+const MODE_LABEL_KEY: Record<NonNullable<OrderRow["mode"]>, DashboardMessageKey> = {
+  dine_in: "orders.mode_dine_in",
+  pickup: "orders.mode_pickup",
+  delivery: "orders.mode_delivery",
+  digital: "orders.mode_digital",
 };
 
 const MODE_ICON: Record<NonNullable<OrderRow["mode"]>, LucideIcon> = {
@@ -603,43 +647,49 @@ const MODE_ICON: Record<NonNullable<OrderRow["mode"]>, LucideIcon> = {
   digital: Package,
 };
 
-const SOURCE_LABEL: Record<OrderRow["source"], string> = {
-  web: "Web",
-  tma: "Telegram",
-  qr_scan: "QR scan",
-  dashboard: "Dashboard",
+const SOURCE_LABEL_KEY: Record<OrderRow["source"], DashboardMessageKey> = {
+  web: "orders.source_web",
+  tma: "orders.source_tma",
+  qr_scan: "orders.source_qr_scan",
+  dashboard: "orders.source_dashboard",
 };
 
 function ModeBadge({ mode }: { mode: OrderRow["mode"] }) {
+  const t = useT();
   if (!mode) return null;
   const Icon = MODE_ICON[mode];
   return (
     <Badge variant="secondary" className="gap-1.5">
       <Icon className="h-3 w-3" aria-hidden />
-      {MODE_LABEL[mode]}
+      {t(MODE_LABEL_KEY[mode])}
     </Badge>
   );
 }
 
 function StateBadge({ order }: { order: OrderRow }) {
-  if (order.state === "completed") return <Badge>Completed</Badge>;
+  const t = useT();
+  if (order.state === "completed") return <Badge>{t("orders.status_completed")}</Badge>;
   if (order.state === "canceled")
-    return <Badge variant="outline">Canceled</Badge>;
-  if (order.state === "draft") return <Badge variant="outline">Draft</Badge>;
+    return <Badge variant="outline">{t("orders.status_canceled")}</Badge>;
+  if (order.state === "draft")
+    return <Badge variant="outline">{t("orders.status_draft")}</Badge>;
   // open: surface fulfillment.state
   const label = order.fulfillmentState
-    ? FULFILLMENT_LABEL[order.fulfillmentState]
-    : "Open";
+    ? t(FULFILLMENT_LABEL_KEY[order.fulfillmentState])
+    : t("orders.status_open");
   return <Badge>{label}</Badge>;
 }
 
-const FULFILLMENT_LABEL: Record<NonNullable<OrderRow["fulfillmentState"]>, string> = {
-  proposed: "New",
-  reserved: "Accepted",
-  prepared: "Ready",
-  completed: "Completed",
-  canceled: "Canceled",
-  failed: "Failed",
+const FULFILLMENT_LABEL_KEY: Record<
+  NonNullable<OrderRow["fulfillmentState"]>,
+  DashboardMessageKey
+> = {
+  proposed: "orders.status_new",
+  reserved: "orders.status_accepted",
+  prepared: "orders.status_ready",
+  completed: "orders.status_completed",
+  canceled: "orders.status_canceled",
+  failed: "orders.status_failed",
 };
 
 // ---- helpers ---------------------------------------------------------------

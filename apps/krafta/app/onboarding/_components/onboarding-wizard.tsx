@@ -39,6 +39,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Iphone, IphoneStatusBar } from "@/components/ui/iphone";
@@ -66,15 +67,17 @@ import {
 import { extractMenuAction, type ExtractMenuResult } from "./menu-actions";
 import type { ExtractedMenu } from "@/lib/menu-extraction/schema";
 import { trackWizard } from "./analytics";
-import { CITY_CHIPS, fmt, wizardCopy } from "./copy";
+import { CITY_CHIPS, fmt, getWizardCopy } from "./copy";
 import { ConfettiSideCannons } from "./confetti-side-cannons";
 import {
   VERTICALS,
   VERTICAL_KEYS,
+  getVerticalCopy,
   isShopVertical,
   type ShopVertical,
   type VenueMode,
 } from "./verticals";
+import { useDashboardLocale } from "@/lib/locales/dashboard/context";
 
 type ItemDraft = {
   key: string;
@@ -310,6 +313,12 @@ function delay(ms: number): Promise<void> {
 }
 
 export function OnboardingWizard() {
+  // Merchant UI locale (cookie → Accept-Language → ru), provided by the
+  // DashboardLocaleProvider wrapped around /onboarding in page.tsx. All wizard
+  // copy + vertical display strings resolve through it.
+  const locale = useDashboardLocale();
+  const copy = getWizardCopy(locale);
+  const verticalCopy = getVerticalCopy(locale);
   const [hydrated, setHydrated] = React.useState(false);
   const [cursor, setCursor] = React.useState(0);
   const [vertical, setVertical] = React.useState<ShopVertical | null>(null);
@@ -544,11 +553,11 @@ export function OnboardingWizard() {
       const next = [...prev];
       for (const file of incoming) {
         if (next.length >= 20) {
-          setError(wizardCopy.menuUpload.tooMany);
+          setError(copy.menuUpload.tooMany);
           break;
         }
         if (file.size > 12 * 1024 * 1024) {
-          setError(wizardCopy.menuUpload.tooLarge);
+          setError(copy.menuUpload.tooLarge);
           continue;
         }
         next.push(file);
@@ -562,7 +571,7 @@ export function OnboardingWizard() {
 
   const runExtraction = async () => {
     if (menuFiles.length === 0) {
-      setError(wizardCopy.menuUpload.empty);
+      setError(copy.menuUpload.empty);
       return;
     }
     setExtracting(true);
@@ -577,7 +586,7 @@ export function OnboardingWizard() {
     const totalBytes = compressed.reduce((n, f) => n + f.size, 0);
     if (totalBytes > 30 * 1024 * 1024) {
       setExtracting(false);
-      setError(wizardCopy.menuUpload.tooLargeTotal);
+      setError(copy.menuUpload.tooLargeTotal);
       return;
     }
     const fd = new FormData();
@@ -701,7 +710,7 @@ export function OnboardingWizard() {
     <>
       <div
         role="progressbar"
-        aria-label={wizardCopy.common.progressLabel}
+        aria-label={copy.common.progressLabel}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progressPct}
@@ -722,7 +731,7 @@ export function OnboardingWizard() {
           disabled={busy}
         >
           <ArrowLeft className="size-4" />
-          {wizardCopy.common.back}
+          {copy.common.back}
         </Button>
       ) : null}
       <h1
@@ -737,7 +746,7 @@ export function OnboardingWizard() {
     </>
   );
 
-  const continueButton = (onClick: () => void, label = wizardCopy.common.continue, disabled = false) => (
+  const continueButton = (onClick: () => void, label = copy.common.continue, disabled = false) => (
     <Button type="button" className="mt-6 w-full" onClick={onClick} disabled={busy || disabled}>
       {busy ? <Loader2 className="animate-spin" /> : null}
       {label}
@@ -746,9 +755,9 @@ export function OnboardingWizard() {
 
   // ── building / reveal phases override the step machine ───────────────────
   if (phase === "building") {
-    const stages = wizardCopy.building.stages.filter(
+    const stages = copy.building.stages.filter(
       (_, i) =>
-        i !== wizardCopy.building.tablesStageIndex ||
+        i !== copy.building.tablesStageIndex ||
         (modes.includes("dine_in") && tableCount > 0),
     );
     return <BuildingScreen stages={stages} />;
@@ -761,7 +770,7 @@ export function OnboardingWizard() {
         <ConfettiSideCannons />
         <div
           role="progressbar"
-          aria-label={wizardCopy.common.progressLabel}
+          aria-label={copy.common.progressLabel}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={100}
@@ -770,10 +779,10 @@ export function OnboardingWizard() {
           <div className="h-full w-full rounded-full bg-primary" />
         </div>
         <h1 className="mt-8 text-2xl font-semibold tracking-tight">
-          {fmt(wizardCopy.reveal.title, { name: name.trim() })}
+          {fmt(copy.reveal.title, { name: name.trim() })}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {wizardCopy.reveal.subtitle}
+          {copy.reveal.subtitle}
         </p>
         {/* The REAL storefront, rendered by the preview route from the shop
             we just created (owner-session draft fallback). Same-origin iframe
@@ -808,7 +817,7 @@ export function OnboardingWizard() {
               href={`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/settings`}
               onClick={() => trackWizard("reveal_cta", { target: "alerts" })}
             >
-              {wizardCopy.reveal.alertsCta}
+              {copy.reveal.alertsCta}
             </Link>
           </Button>
         ) : null}
@@ -821,7 +830,7 @@ export function OnboardingWizard() {
             href={`/dashboard/${shop.orgSlug}/${shop.catalogSlug}/items`}
             onClick={() => trackWizard("reveal_cta", { target: "dashboard" })}
           >
-            {wizardCopy.reveal.cta}
+            {copy.reveal.cta}
           </Link>
         </Button>
       </section>
@@ -832,10 +841,11 @@ export function OnboardingWizard() {
   if (current.kind === "type") {
     return (
       <section key="type" aria-labelledby="onboarding-heading">
-        {header(wizardCopy.type.title, wizardCopy.type.subtitle, false)}
+        {header(copy.type.title, copy.type.subtitle, false)}
         <div className="mt-6 flex flex-col gap-2">
           {VERTICAL_KEYS.map((key) => {
-            const { label, description, icon: Icon } = VERTICALS[key];
+            const { icon: Icon } = VERTICALS[key];
+            const { label, description } = verticalCopy[key];
             return (
               <button
                 key={key}
@@ -858,6 +868,19 @@ export function OnboardingWizard() {
             );
           })}
         </div>
+        {/* Sign-out escape hatch — mirrors the one on the 404 page. A visitor
+            who arrived here on a carried-over anonymous session (e.g. from the
+            storefront) can drop it and sign in as themselves before setting up
+            a shop. Only shown on the first step. */}
+        <div className="mt-8 flex justify-center">
+          <SignOutButton
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+          >
+            {copy.common.logout}
+          </SignOutButton>
+        </div>
       </section>
     );
   }
@@ -866,7 +889,7 @@ export function OnboardingWizard() {
   if (current.kind === "name") {
     return (
       <section key="name">
-        {header(wizardCopy.name.title, wizardCopy.name.subtitle)}
+        {header(copy.name.title, copy.name.subtitle)}
         <form
           className="mt-6 flex flex-col gap-2"
           onSubmit={(e) => {
@@ -874,12 +897,12 @@ export function OnboardingWizard() {
             if (name.trim()) goNext();
           }}
         >
-          <Label htmlFor="wizard-name">{wizardCopy.name.label}</Label>
+          <Label htmlFor="wizard-name">{copy.name.label}</Label>
           <Input
             id="wizard-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={wizardCopy.name.placeholder}
+            placeholder={copy.name.placeholder}
             maxLength={80}
             required
             autoFocus
@@ -895,7 +918,7 @@ export function OnboardingWizard() {
   if (current.kind === "logo") {
     return (
       <section key="logo">
-        {header(wizardCopy.logo.title, wizardCopy.logo.subtitle)}
+        {header(copy.logo.title, copy.logo.subtitle)}
         <input
           ref={logoInputRef}
           type="file"
@@ -905,7 +928,7 @@ export function OnboardingWizard() {
             const file = e.target.files?.[0] ?? null;
             // Keep logos reasonable — a few hundred KB is plenty for a mark.
             if (file && file.size > 5 * 1024 * 1024) {
-              setError(wizardCopy.logo.tooLarge);
+              setError(copy.logo.tooLarge);
               e.target.value = "";
               return;
             }
@@ -924,7 +947,7 @@ export function OnboardingWizard() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={logoPreview}
-                  alt={wizardCopy.logo.previewAria}
+                  alt={copy.logo.previewAria}
                   className="size-full object-cover"
                 />
               </div>
@@ -935,7 +958,7 @@ export function OnboardingWizard() {
                   size="sm"
                   onClick={() => logoInputRef.current?.click()}
                 >
-                  {wizardCopy.logo.replace}
+                  {copy.logo.replace}
                 </Button>
                 <Button
                   type="button"
@@ -944,7 +967,7 @@ export function OnboardingWizard() {
                   className="text-muted-foreground"
                   onClick={() => pickLogo(null)}
                 >
-                  {wizardCopy.logo.remove}
+                  {copy.logo.remove}
                 </Button>
               </div>
             </div>
@@ -955,8 +978,8 @@ export function OnboardingWizard() {
               className="flex min-h-28 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-card px-4 py-6 text-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ImagePlus className="size-6" />
-              <span className="text-sm font-medium">{wizardCopy.logo.pick}</span>
-              <span className="text-xs">{wizardCopy.logo.hint}</span>
+              <span className="text-sm font-medium">{copy.logo.pick}</span>
+              <span className="text-xs">{copy.logo.hint}</span>
             </button>
           )}
         </div>
@@ -975,10 +998,10 @@ export function OnboardingWizard() {
     const options: MenuMethod[] = ["upload", "manual"];
     return (
       <section key="menu_method">
-        {header(wizardCopy.menuMethod.title, wizardCopy.menuMethod.subtitle)}
+        {header(copy.menuMethod.title, copy.menuMethod.subtitle)}
         <div className="mt-6 flex flex-col gap-2">
           {options.map((opt) => {
-            const meta = wizardCopy.menuMethod.options[opt];
+            const meta = copy.menuMethod.options[opt];
             const Icon = opt === "upload" ? Sparkles : PencilLine;
             return (
               <button
@@ -1009,14 +1032,14 @@ export function OnboardingWizard() {
     if (extracting) {
       return (
         <section key="menu_upload" role="status" aria-live="polite">
-          {header(wizardCopy.menuUpload.title, wizardCopy.menuUpload.subtitle)}
+          {header(copy.menuUpload.title, copy.menuUpload.subtitle)}
           <div className="mt-12 flex flex-col items-center justify-center gap-3 text-center">
             <Loader2 className="size-8 animate-spin text-primary" />
             <p className="text-sm font-medium">
-              {wizardCopy.menuUpload.extracting}
+              {copy.menuUpload.extracting}
             </p>
             <p className="text-xs text-muted-foreground">
-              {wizardCopy.menuUpload.extractingHint}
+              {copy.menuUpload.extractingHint}
             </p>
           </div>
         </section>
@@ -1025,7 +1048,7 @@ export function OnboardingWizard() {
     const fileCount = menuFiles.length;
     return (
       <section key="menu_upload">
-        {header(wizardCopy.menuUpload.title, wizardCopy.menuUpload.subtitle)}
+        {header(copy.menuUpload.title, copy.menuUpload.subtitle)}
         <input
           ref={menuInputRef}
           type="file"
@@ -1059,7 +1082,7 @@ export function OnboardingWizard() {
                 size="icon"
                 className="size-8 shrink-0 text-muted-foreground"
                 onClick={() => removeMenuFile(i)}
-                aria-label={fmt(wizardCopy.menuUpload.removeAria, {
+                aria-label={fmt(copy.menuUpload.removeAria, {
                   name: file.name,
                 })}
               >
@@ -1074,8 +1097,8 @@ export function OnboardingWizard() {
               className="flex min-h-28 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-card px-4 py-6 text-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Upload className="size-6" />
-              <span className="text-sm font-medium">{wizardCopy.menuUpload.pick}</span>
-              <span className="text-xs">{wizardCopy.menuUpload.hint}</span>
+              <span className="text-sm font-medium">{copy.menuUpload.pick}</span>
+              <span className="text-xs">{copy.menuUpload.hint}</span>
             </button>
           ) : (
             <button
@@ -1084,7 +1107,7 @@ export function OnboardingWizard() {
               className="flex min-h-12 w-full items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="size-4 shrink-0" />
-              {wizardCopy.menuUpload.addMore}
+              {copy.menuUpload.addMore}
             </button>
           )}
         </div>
@@ -1100,7 +1123,7 @@ export function OnboardingWizard() {
           disabled={busy || fileCount === 0}
         >
           <Sparkles className="size-4" />
-          {wizardCopy.menuUpload.extract}
+          {copy.menuUpload.extract}
         </Button>
         <Button
           type="button"
@@ -1114,7 +1137,7 @@ export function OnboardingWizard() {
             setMenuMethod("manual");
           }}
         >
-          {wizardCopy.menuUpload.manualFallback}
+          {copy.menuUpload.manualFallback}
         </Button>
       </section>
     );
@@ -1135,12 +1158,12 @@ export function OnboardingWizard() {
     return (
       <section key="sections">
         {header(
-          wizardCopy.sections.title,
+          copy.sections.title,
           vertical
-            ? fmt(wizardCopy.sections.subtitleVertical, {
-                vertical: VERTICALS[vertical].label.toLowerCase(),
+            ? fmt(copy.sections.subtitleVertical, {
+                vertical: verticalCopy[vertical].label.toLowerCase(),
               })
-            : wizardCopy.sections.subtitleBare,
+            : copy.sections.subtitleBare,
         )}
         <div className="mt-6 flex flex-col gap-2">
           {sections.map((s) => (
@@ -1155,12 +1178,12 @@ export function OnboardingWizard() {
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{s.name}</span>
               {s.items.length > 0 ? (
                 <span className="text-xs text-muted-foreground">
-                  {fmt(wizardCopy.sections.suggestedCount, { n: s.items.length })}
+                  {fmt(copy.sections.suggestedCount, { n: s.items.length })}
                 </span>
               ) : null}
             </label>
           ))}
-          <AddRow placeholder={wizardCopy.sections.addPlaceholder} onAdd={addSection} />
+          <AddRow placeholder={copy.sections.addPlaceholder} onAdd={addSection} />
         </div>
         {continueButton(goNext)}
       </section>
@@ -1201,7 +1224,7 @@ export function OnboardingWizard() {
       );
     return (
       <section key="items">
-        {header(wizardCopy.items.title, wizardCopy.items.subtitle)}
+        {header(copy.items.title, copy.items.subtitle)}
         <div className="mt-6 flex flex-col gap-6">
           {checkedSections.map((section) => (
             <div key={section.key}>
@@ -1223,7 +1246,7 @@ export function OnboardingWizard() {
                         onCheckedChange={() =>
                           patchItem(section.key, i.key, { checked: !i.checked })
                         }
-                        aria-label={fmt(wizardCopy.items.includeAria, {
+                        aria-label={fmt(copy.items.includeAria, {
                           name: i.name,
                         })}
                       />
@@ -1233,7 +1256,7 @@ export function OnboardingWizard() {
                           patchItem(section.key, i.key, { name: e.target.value })
                         }
                         maxLength={80}
-                        aria-label={wizardCopy.items.nameAria}
+                        aria-label={copy.items.nameAria}
                         className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none focus-visible:border-input"
                       />
                       <div className="flex shrink-0 items-center gap-1">
@@ -1245,7 +1268,7 @@ export function OnboardingWizard() {
                             })
                           }
                           inputMode="numeric"
-                          aria-label={wizardCopy.items.priceAria}
+                          aria-label={copy.items.priceAria}
                           className="h-8 w-24 border-transparent px-2 text-right font-mono tabular-nums shadow-none focus-visible:border-input"
                         />
                         <span className="text-xs text-muted-foreground">
@@ -1262,12 +1285,12 @@ export function OnboardingWizard() {
                       <p className="px-3 pb-2 pl-9 text-[11px] leading-snug text-muted-foreground/80">
                         {[
                           i.variations?.length
-                            ? `${wizardCopy.items.sizesLabel}: ${i.variations
+                            ? `${copy.items.sizesLabel}: ${i.variations
                                 .map((v) => v.name)
                                 .join(", ")}`
                             : null,
                           i.modifiers?.length
-                            ? `${wizardCopy.items.addOnsLabel}: ${i.modifiers
+                            ? `${copy.items.addOnsLabel}: ${i.modifiers
                                 .map((m) => m.name)
                                 .join(", ")}`
                             : null,
@@ -1279,7 +1302,7 @@ export function OnboardingWizard() {
                   </div>
                 ))}
                 <AddRow
-                  placeholder={wizardCopy.items.addPlaceholder}
+                  placeholder={copy.items.addPlaceholder}
                   withPrice
                   currencySuffix={currency.label}
                   onAddWithPrice={(n, p) => addItem(section.key, n, p)}
@@ -1297,11 +1320,11 @@ export function OnboardingWizard() {
   if (current.kind === "country") {
     return (
       <section key="country">
-        {header(wizardCopy.country.title, wizardCopy.country.subtitle)}
+        {header(copy.country.title, copy.country.subtitle)}
         <div className="mt-6 flex flex-col gap-3">
           <CountryPicker value={country} onChange={chooseCountry} />
           <p className="text-sm text-muted-foreground">
-            {fmt(wizardCopy.country.currencyHint, {
+            {fmt(copy.country.currencyHint, {
               currency: getCurrencyForCountry(country),
             })}
           </p>
@@ -1317,7 +1340,7 @@ export function OnboardingWizard() {
       setCurrency((prev) => ({ ...prev, ...patch }));
     return (
       <section key="currency">
-        {header(wizardCopy.currency.title, wizardCopy.currency.subtitle)}
+        {header(copy.currency.title, copy.currency.subtitle)}
         <div className="mt-6 flex flex-col gap-3">
           <CurrencyPicker
             value={currency.defaultCurrency}
@@ -1325,7 +1348,7 @@ export function OnboardingWizard() {
           />
           <div className="rounded-lg border bg-card px-4 py-4 text-center">
             <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              {wizardCopy.currency.sampleLabel}
+              {copy.currency.sampleLabel}
             </div>
             <div className="mt-2 font-mono text-2xl font-semibold tracking-tight">
               {formatPriceCents(123456700, currency)}
@@ -1334,38 +1357,38 @@ export function OnboardingWizard() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="mb-1.5 text-xs text-muted-foreground">
-                {wizardCopy.currency.symbol}
+                {copy.currency.symbol}
               </div>
               <Input
                 value={currency.label}
                 onChange={(e) => setField({ label: e.target.value.slice(0, 12) })}
-                aria-label={wizardCopy.currency.symbol}
+                aria-label={copy.currency.symbol}
                 className="h-9"
               />
             </div>
             <CurrencyToggle
-              label={wizardCopy.currency.position}
+              label={copy.currency.position}
               value={currency.labelPosition}
               options={[
-                { v: "prefix", l: wizardCopy.currency.before },
-                { v: "suffix", l: wizardCopy.currency.after },
+                { v: "prefix", l: copy.currency.before },
+                { v: "suffix", l: copy.currency.after },
               ]}
               onChange={(v) => setField({ labelPosition: v as CurrencyLabelPosition })}
             />
             <CurrencyToggle
-              label={wizardCopy.currency.decimals}
+              label={copy.currency.decimals}
               value={currency.showDecimals ? "on" : "off"}
               options={[
-                { v: "on", l: wizardCopy.currency.on },
-                { v: "off", l: wizardCopy.currency.off },
+                { v: "on", l: copy.currency.on },
+                { v: "off", l: copy.currency.off },
               ]}
               onChange={(v) => setField({ showDecimals: v === "on" })}
             />
             <CurrencyToggle
-              label={wizardCopy.currency.thousands}
+              label={copy.currency.thousands}
               value={currency.thousandSeparator}
               options={[
-                { v: " ", l: wizardCopy.currency.space },
+                { v: " ", l: copy.currency.space },
                 { v: ",", l: "," },
                 { v: ".", l: "." },
               ]}
@@ -1393,11 +1416,11 @@ export function OnboardingWizard() {
     };
     const availableModes = vertical
       ? VERTICALS[vertical].allowedModes
-      : (Object.keys(wizardCopy.modes.labels) as VenueMode[]);
+      : (Object.keys(copy.modes.labels) as VenueMode[]);
     const canContinue = browseOnly || modes.length > 0;
     return (
       <section key="modes">
-        {header(wizardCopy.modes.title, wizardCopy.modes.subtitle)}
+        {header(copy.modes.title, copy.modes.subtitle)}
         <div className="mt-6 flex flex-col gap-2">
           {availableModes.map((m) => {
             const checked = !browseOnly && modes.includes(m);
@@ -1417,9 +1440,9 @@ export function OnboardingWizard() {
                 onCheckedChange={() => toggleMode(m)}
               />
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm font-medium">{wizardCopy.modes.labels[m].label}</span>
+                <span className="text-sm font-medium">{copy.modes.labels[m].label}</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {wizardCopy.modes.labels[m].hint}
+                  {copy.modes.labels[m].hint}
                 </span>
               </span>
             </label>
@@ -1430,7 +1453,7 @@ export function OnboardingWizard() {
         <div className="my-4 flex items-center gap-3">
           <span className="h-px flex-1 bg-border" />
           <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            {wizardCopy.modes.or}
+            {copy.modes.or}
           </span>
           <span className="h-px flex-1 bg-border" />
         </div>
@@ -1447,9 +1470,9 @@ export function OnboardingWizard() {
             <BookOpen className="size-4" />
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-sm font-medium">{wizardCopy.modes.browseOnly.label}</span>
+            <span className="text-sm font-medium">{copy.modes.browseOnly.label}</span>
             <span className="truncate text-xs text-muted-foreground">
-              {wizardCopy.modes.browseOnly.hint}
+              {copy.modes.browseOnly.hint}
             </span>
           </span>
           <span
@@ -1462,10 +1485,10 @@ export function OnboardingWizard() {
           </span>
         </button>
 
-        {continueButton(goNext, wizardCopy.common.continue, !canContinue)}
+        {continueButton(goNext, copy.common.continue, !canContinue)}
         {!canContinue ? (
           <p className="mt-2 text-center text-xs text-destructive">
-            {wizardCopy.modes.atLeastOne}
+            {copy.modes.atLeastOne}
           </p>
         ) : null}
       </section>
@@ -1476,11 +1499,11 @@ export function OnboardingWizard() {
   if (current.kind === "tables") {
     return (
       <section key="tables">
-        {header(wizardCopy.tables.title, wizardCopy.tables.subtitle)}
+        {header(copy.tables.title, copy.tables.subtitle)}
         <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium">{wizardCopy.tables.cardTitle}</p>
-            <p className="text-xs text-muted-foreground">{wizardCopy.tables.cardHint}</p>
+            <p className="text-sm font-medium">{copy.tables.cardTitle}</p>
+            <p className="text-xs text-muted-foreground">{copy.tables.cardHint}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button
@@ -1489,7 +1512,7 @@ export function OnboardingWizard() {
               size="icon"
               className="size-9"
               onClick={() => setTableCount((n) => Math.max(0, n - 1))}
-              aria-label={wizardCopy.tables.fewerAria}
+              aria-label={copy.tables.fewerAria}
             >
               <Minus className="size-4" />
             </Button>
@@ -1500,7 +1523,7 @@ export function OnboardingWizard() {
               size="icon"
               className="size-9"
               onClick={() => setTableCount((n) => Math.min(50, n + 1))}
-              aria-label={wizardCopy.tables.moreAria}
+              aria-label={copy.tables.moreAria}
             >
               <Plus className="size-4" />
             </Button>
@@ -1525,7 +1548,7 @@ export function OnboardingWizard() {
       );
     return (
       <section key="languages">
-        {header(wizardCopy.languages.title, wizardCopy.languages.subtitle)}
+        {header(copy.languages.title, copy.languages.subtitle)}
         <div className="mt-6 flex flex-col gap-2">
           {locales.map((l) => {
             const def = getLocaleDefinition(l.code);
@@ -1545,7 +1568,7 @@ export function OnboardingWizard() {
                 {l.isDefault ? (
                   <Badge variant="outline" className="mr-2 shrink-0">
                     <Check className="size-3" />
-                    {wizardCopy.languages.defaultBadge}
+                    {copy.languages.defaultBadge}
                   </Badge>
                 ) : (
                   <>
@@ -1556,7 +1579,7 @@ export function OnboardingWizard() {
                       className="shrink-0 text-muted-foreground"
                       onClick={() => makeDefault(l.code)}
                     >
-                      {wizardCopy.languages.makeDefault}
+                      {copy.languages.makeDefault}
                     </Button>
                     <Button
                       type="button"
@@ -1564,7 +1587,7 @@ export function OnboardingWizard() {
                       size="icon"
                       className="size-8 shrink-0 text-muted-foreground"
                       onClick={() => removeLocale(l.code)}
-                      aria-label={fmt(wizardCopy.languages.removeAria, {
+                      aria-label={fmt(copy.languages.removeAria, {
                         name: def?.englishName ?? l.code,
                       })}
                     >
@@ -1591,10 +1614,10 @@ export function OnboardingWizard() {
     const options: AlertsIntent[] = ["telegram", "dashboard"];
     return (
       <section key="alerts">
-        {header(wizardCopy.alerts.title, wizardCopy.alerts.subtitle)}
+        {header(copy.alerts.title, copy.alerts.subtitle)}
         <div className="mt-6 flex flex-col gap-2">
           {options.map((opt) => {
-            const meta = wizardCopy.alerts.options[opt];
+            const meta = copy.alerts.options[opt];
             const selected = alertsIntent === opt;
             return (
               <button
@@ -1636,7 +1659,7 @@ export function OnboardingWizard() {
   if (current.kind === "phone") {
     return (
       <section key="phone">
-        {header(wizardCopy.phone.title, wizardCopy.phone.subtitle)}
+        {header(copy.phone.title, copy.phone.subtitle)}
         <form
           className="mt-6 flex flex-col gap-2"
           onSubmit={(e) => {
@@ -1644,13 +1667,13 @@ export function OnboardingWizard() {
             goNext();
           }}
         >
-          <Label htmlFor="wizard-phone">{wizardCopy.phone.label}</Label>
+          <Label htmlFor="wizard-phone">{copy.phone.label}</Label>
           <Input
             id="wizard-phone"
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder={wizardCopy.phone.placeholder}
+            placeholder={copy.phone.placeholder}
             maxLength={32}
             autoComplete="tel"
             autoFocus
@@ -1666,7 +1689,7 @@ export function OnboardingWizard() {
               goNext();
             }}
           >
-            {wizardCopy.phone.skip}
+            {copy.phone.skip}
           </Button>
         </form>
       </section>
@@ -1680,7 +1703,7 @@ export function OnboardingWizard() {
   };
   return (
     <section key="city">
-      {header(wizardCopy.city.title, wizardCopy.city.subtitle)}
+      {header(copy.city.title, copy.city.subtitle)}
       <form
         className="mt-6 flex flex-col gap-4"
         onSubmit={(e) => {
@@ -1714,17 +1737,17 @@ export function OnboardingWizard() {
               });
             }}
           >
-            {wizardCopy.city.otherChip}
+            {copy.city.otherChip}
           </Button>
         </div>
         {customCity ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="wizard-city">{wizardCopy.city.customLabel}</Label>
+            <Label htmlFor="wizard-city">{copy.city.customLabel}</Label>
             <Input
               id="wizard-city"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              placeholder={wizardCopy.city.customPlaceholder}
+              placeholder={copy.city.customPlaceholder}
               maxLength={64}
               autoComplete="address-level2"
               autoFocus
@@ -1741,10 +1764,10 @@ export function OnboardingWizard() {
           {busy && submitVia === "create" ? (
             <>
               <Loader2 className="animate-spin" />
-              {wizardCopy.city.creating}
+              {copy.city.creating}
             </>
           ) : (
-            wizardCopy.city.create
+            copy.city.create
           )}
         </Button>
         <Button
@@ -1757,10 +1780,10 @@ export function OnboardingWizard() {
           {busy && submitVia === "skip" ? (
             <>
               <Loader2 className="animate-spin" />
-              {wizardCopy.city.creating}
+              {copy.city.creating}
             </>
           ) : (
-            wizardCopy.city.skip
+            copy.city.skip
           )}
         </Button>
       </form>
@@ -1774,6 +1797,7 @@ function BuildingScreen({ stages }: { stages: readonly string[] }) {
   // Honest theater: every label names a write the submit really performs.
   // The timer paces the labels; the reveal is gated on BOTH the timer's
   // minimum and the actual RPC completing (see submit()).
+  const copy = getWizardCopy(useDashboardLocale());
   const [stageIdx, setStageIdx] = React.useState(0);
   React.useEffect(() => {
     const t = setInterval(
@@ -1789,10 +1813,10 @@ function BuildingScreen({ stages }: { stages: readonly string[] }) {
         <div className="h-full w-full animate-pulse rounded-full bg-primary" />
       </div>
       <h1 className="mt-8 text-2xl font-semibold tracking-tight">
-        {wizardCopy.building.title}
+        {copy.building.title}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {wizardCopy.building.subtitle}
+        {copy.building.subtitle}
       </p>
       <ul className="mt-6 flex flex-col gap-3">
         {stages.map((stage, i) => (
@@ -1861,7 +1885,7 @@ function CurrencyToggle({
 function AddRow({
   placeholder,
   withPrice = false,
-  currencySuffix = wizardCopy.items.currencySuffix,
+  currencySuffix,
   onAdd,
   onAddWithPrice,
 }: {
@@ -1871,6 +1895,10 @@ function AddRow({
   onAdd?: (name: string) => void;
   onAddWithPrice?: (name: string, priceSum: string) => void;
 }) {
+  const copy = getWizardCopy(useDashboardLocale());
+  // Fallback to the locale's default suffix when the caller omits one (the
+  // default was previously baked into the param — moved here so it localizes).
+  const suffix = currencySuffix ?? copy.items.currencySuffix;
   // Progressive disclosure: idle = an explicit "+ Add" button; tapping it
   // reveals a real, visibly-bordered input. An always-on borderless input
   // read as decorative text, not as a field.
@@ -1930,10 +1958,10 @@ function AddRow({
             onKeyDown={keyHandler}
             inputMode="numeric"
             placeholder="0"
-            aria-label={wizardCopy.items.priceAria}
+            aria-label={copy.items.priceAria}
             className="h-8 w-24 text-right font-mono tabular-nums"
           />
-          <span className="text-xs text-muted-foreground">{currencySuffix}</span>
+          <span className="text-xs text-muted-foreground">{suffix}</span>
         </div>
       ) : null}
       <Button
@@ -1943,7 +1971,7 @@ function AddRow({
         onClick={commit}
         disabled={!value.trim()}
       >
-        {wizardCopy.common.add}
+        {copy.common.add}
       </Button>
       <Button
         type="button"
@@ -1951,7 +1979,7 @@ function AddRow({
         size="icon"
         className="size-8 shrink-0 text-muted-foreground"
         onClick={reset}
-        aria-label={wizardCopy.common.cancelAdd}
+        aria-label={copy.common.cancelAdd}
       >
         <X className="size-4" />
       </Button>

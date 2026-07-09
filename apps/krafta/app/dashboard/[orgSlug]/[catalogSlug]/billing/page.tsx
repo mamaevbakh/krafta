@@ -7,7 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { getRequestOrigin } from "@/lib/auth/redirect";
 import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
+import { changeKraftaSubscriptionPlan } from "@/lib/payments/pay-internal";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
+import { SubscriptionManager } from "./_components/subscription-manager";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -48,54 +51,66 @@ function formatMoney(amountMinor: number, currency: string) {
   }
 }
 
-function formatPlanInterval(intervalCount: number) {
-  return intervalCount === 1 ? "monthly" : `every ${intervalCount} months`;
+type DashboardT = Awaited<ReturnType<typeof getDashboardT>>;
+
+function formatPlanInterval(t: DashboardT, intervalCount: number) {
+  return intervalCount === 1
+    ? t("billing.interval.monthly")
+    : t("billing.interval.every_months", { count: intervalCount });
 }
 
-function getEntitlementLabel(status: "active" | "grace" | "locked") {
-  if (status === "active") return "Active";
-  if (status === "grace") return "Ending Soon";
-  return "No Active Subscription";
+function getEntitlementLabel(t: DashboardT, status: "active" | "grace" | "locked") {
+  if (status === "active") return t("billing.entitlement.active");
+  if (status === "grace") return t("billing.entitlement.ending_soon");
+  return t("billing.entitlement.none");
 }
 
-function getEntitlementDescription(input: {
-  status: "active" | "grace" | "locked";
-  subscriptionStatus: string | null;
-  currentPeriodEnd: string | null;
-  cancelAtPeriodEnd: boolean;
-}) {
+function getEntitlementDescription(
+  t: DashboardT,
+  input: {
+    status: "active" | "grace" | "locked";
+    subscriptionStatus: string | null;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+  },
+) {
   if (input.status === "active") {
     if (input.cancelAtPeriodEnd && input.currentPeriodEnd) {
-      return `Subscription is set to cancel at period end (${formatDateTime(input.currentPeriodEnd)}).`;
+      return t("billing.desc.cancel_at_period_end", {
+        date: formatDateTime(input.currentPeriodEnd),
+      });
     }
     if (input.currentPeriodEnd) {
-      return `Your access renews on ${formatDateTime(input.currentPeriodEnd)}.`;
+      return t("billing.desc.renews_on", { date: formatDateTime(input.currentPeriodEnd) });
     }
-    return "Subscription is active.";
+    return t("billing.desc.active");
   }
 
   if (input.status === "grace") {
     if (input.currentPeriodEnd) {
-      return `Access remains available until ${formatDateTime(input.currentPeriodEnd)}.`;
+      return t("billing.desc.grace_until", { date: formatDateTime(input.currentPeriodEnd) });
     }
-    return "Subscription is canceled but may still be within an access window.";
+    return t("billing.desc.grace_no_date");
   }
 
   if (input.subscriptionStatus) {
-    return `No active access. Latest subscription status: ${input.subscriptionStatus}.`;
+    return t("billing.desc.locked_status", { status: input.subscriptionStatus });
   }
-  return "Choose a plan to activate builder and catalog publishing features.";
+  return t("billing.desc.locked_none");
 }
 
 async function startUpgradeAction(formData: FormData) {
   "use server";
+  const t = await getDashboardT();
   const customerOrgId = String(formData.get("customerOrgId") ?? "");
   const orgSlug = String(formData.get("orgSlug") ?? "");
   const catalogSlug = String(formData.get("catalogSlug") ?? "");
   const planId = String(formData.get("planId") ?? "");
 
   if (!customerOrgId || !orgSlug || !catalogSlug || !planId) {
-    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=Missing+required+fields`);
+    redirect(
+      `/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(t("billing.error.missing_fields"))}`,
+    );
   }
 
   const supabase = await createClient();
@@ -118,28 +133,58 @@ async function startUpgradeAction(formData: FormData) {
     redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(membershipErr.message)}`);
   }
   if (!membership) {
-    redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=Forbidden`);
+    redirect(
+      `/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(t("billing.error.forbidden"))}`,
+    );
   }
 
   const entitlement = await getOrgBillingEntitlement(customerOrgId);
+  const backTo = `/dashboard/${orgSlug}/${catalogSlug}/billing`;
   if (
     (entitlement.status === "active" || entitlement.status === "grace") &&
     entitlement.planId &&
     entitlement.planId === planId
   ) {
-    redirect(
-      `/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(
-        "You are already on this plan. Use Manage Billing for payment method or cancellation changes.",
-      )}`,
-    );
+    redirect(`${backTo}?error=${encodeURIComponent(t("billing.error.already_on_plan"))}`);
+  }
+
+  // Already subscribed to a DIFFERENT plan → change the same subscription in
+  // place. This replaces the old behavior that spun up a second parallel
+  // subscription (a duplicate-billing bug). Upgrades apply now; downgrades
+  // (target cheaper than current) defer to period end.
+  if (
+    entitlement.subscriptionId &&
+    (entitlement.status === "active" || entitlement.status === "grace")
+  ) {
+    const allPlans = await listKraftaPayPlans().catch(() => []);
+    const current = allPlans.find((p) => p.id === entitlement.planId) ?? null;
+    const target = allPlans.find((p) => p.id === planId) ?? null;
+    const prorationBehavior =
+      current && target && target.amount_minor < current.amount_minor
+        ? "defer_to_period_end"
+        : "none";
+    const res = await changeKraftaSubscriptionPlan({
+      customerOrgId,
+      subscriptionId: entitlement.subscriptionId,
+      planId,
+      prorationBehavior,
+      initiatedByUserId: authUser.id,
+    });
+    if (!res.ok) {
+      redirect(`${backTo}?error=${encodeURIComponent(res.error ?? "change_failed")}`);
+    }
+    redirect(`${backTo}?checkout=success`);
   }
 
   const origin = getRequestOrigin(await headers());
   const appBaseUrl = resolveAppBaseUrl(origin).replace(/\/+$/, "");
-  if (!appBaseUrl.startsWith("https://")) {
+  // Card checkout normally requires an https return URL, but allow http on
+  // localhost so the full flow can be exercised against a local Krafta Pay.
+  const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(appBaseUrl);
+  if (!appBaseUrl.startsWith("https://") && !isLocalhost) {
     redirect(
       `/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(
-        "Uzum requires HTTPS return URLs. Set KRAFTA_APP_URL to an https:// domain (e.g. tunnel or production URL).",
+        t("billing.error.https_required"),
       )}`,
     );
   }
@@ -167,7 +212,7 @@ async function startUpgradeAction(formData: FormData) {
       initiatedByUserId: authUser.id,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create checkout session";
+    const message = error instanceof Error ? error.message : t("billing.error.checkout_failed");
     redirect(`/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(message)}`);
   }
 
@@ -177,6 +222,7 @@ async function startUpgradeAction(formData: FormData) {
 export default async function BillingPage({ params, searchParams }: BillingPageProps) {
   const { orgSlug, catalogSlug } = await params;
   const sp = await searchParams;
+  const t = await getDashboardT();
 
   const supabase = await createClient();
   const { data: orgRecord, error: orgErr } = await supabase
@@ -189,7 +235,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
     return (
       <div className="mx-auto w-full max-w-3xl px-6 py-8">
         <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Organization not found.
+          {t("billing.org_not_found")}
         </div>
       </div>
     );
@@ -201,7 +247,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
   try {
     plans = await listKraftaPayPlans();
   } catch (error) {
-    plansErr = error instanceof Error ? error.message : "failed_to_load_plans";
+    plansErr = error instanceof Error ? error.message : t("billing.error.plans_load_failed");
   }
 
   const sortedPlans = [...(plans ?? [])].sort((a, b) => {
@@ -215,8 +261,8 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
   });
   const currentPlan = sortedPlans.find((plan) => plan.id === entitlement.planId) ?? null;
   const canOpenBillingPortal = Boolean(entitlement.subscriptionId || entitlement.subscriptionStatus);
-  const entitlementLabel = getEntitlementLabel(entitlement.status);
-  const entitlementDescription = getEntitlementDescription(entitlement);
+  const entitlementLabel = getEntitlementLabel(t, entitlement.status);
+  const entitlementDescription = getEntitlementDescription(t, entitlement);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
@@ -227,7 +273,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="rounded-full px-3 py-1">
-                  Billing
+                  {t("billing.badge")}
                 </Badge>
                 <Badge
                   variant={entitlement.status === "active" ? "default" : entitlement.status === "grace" ? "secondary" : "outline"}
@@ -238,10 +284,10 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
               </div>
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                  Subscription & plan management
+                  {t("billing.heading")}
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {orgRecord.name} · Catalog {catalogSlug}
+                  {orgRecord.name} · {t("billing.catalog_label", { slug: catalogSlug })}
                 </p>
               </div>
               <p className="max-w-3xl text-sm text-muted-foreground">
@@ -249,47 +295,56 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              {canOpenBillingPortal ? (
-                <form method="post" action="/api/billing/customer-portal">
-                  <input type="hidden" name="customerOrgId" value={orgRecord.id} />
-                  <input type="hidden" name="orgSlug" value={orgSlug} />
-                  <input type="hidden" name="catalogSlug" value={catalogSlug} />
-                  <Button type="submit" variant="outline" className="w-full sm:w-auto">
-                    <CreditCard className="size-4" />
-                    Manage Billing
-                  </Button>
-                </form>
-              ) : null}
-              <Button asChild variant="outline" className="w-full sm:w-auto">
-                <a href="#plans">
-                  View Plans
-                  <ArrowUpRight className="size-4" />
-                </a>
-              </Button>
+            <div className="flex flex-col gap-2">
+              <SubscriptionManager
+                orgId={orgRecord.id}
+                orgSlug={orgSlug}
+                catalogSlug={catalogSlug}
+                subscriptionId={entitlement.subscriptionId}
+                cancelAtPeriodEnd={entitlement.cancelAtPeriodEnd}
+              />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {canOpenBillingPortal ? (
+                  <form method="post" action="/api/billing/customer-portal">
+                    <input type="hidden" name="customerOrgId" value={orgRecord.id} />
+                    <input type="hidden" name="orgSlug" value={orgSlug} />
+                    <input type="hidden" name="catalogSlug" value={catalogSlug} />
+                    <Button type="submit" variant="outline" className="w-full sm:w-auto">
+                      <CreditCard className="size-4" />
+                      {t("billing.manage_billing")}
+                    </Button>
+                  </form>
+                ) : null}
+                <Button asChild variant="outline" className="w-full sm:w-auto">
+                  <a href="#plans">
+                    {t("billing.view_plans")}
+                    <ArrowUpRight className="size-4" />
+                  </a>
+                </Button>
+              </div>
             </div>
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard
-              label="Access"
+              label={t("billing.metric.access")}
               value={entitlementLabel}
               icon={entitlement.status === "active" ? CheckCircle2 : entitlement.status === "grace" ? Clock3 : AlertCircle}
             />
             <MetricCard
-              label="Current Plan"
-              value={currentPlan?.name ?? "Not subscribed"}
-              subValue={currentPlan ? `${formatMoney(currentPlan.amount_minor, currentPlan.currency)} · ${formatPlanInterval(currentPlan.interval_count)}` : undefined}
+              label={t("billing.metric.current_plan")}
+              value={currentPlan?.name ?? t("billing.not_subscribed")}
+              subValue={currentPlan ? `${formatMoney(currentPlan.amount_minor, currentPlan.currency)} · ${formatPlanInterval(t, currentPlan.interval_count)}` : undefined}
               icon={Sparkles}
             />
             <MetricCard
-              label="Subscription Status"
-              value={entitlement.subscriptionStatus ?? "none"}
+              label={t("billing.metric.subscription_status")}
+              value={entitlement.subscriptionStatus ?? t("billing.status_none")}
               icon={CreditCard}
             />
             <MetricCard
-              label={entitlement.status === "grace" ? "Access Ends" : "Next Billing Date"}
-              value={entitlement.currentPeriodEnd ? formatDateTime(entitlement.currentPeriodEnd) : "n/a"}
+              label={entitlement.status === "grace" ? t("billing.metric.access_ends") : t("billing.metric.next_billing")}
+              value={entitlement.currentPeriodEnd ? formatDateTime(entitlement.currentPeriodEnd) : t("billing.not_available")}
               icon={Clock3}
             />
           </div>
@@ -300,23 +355,23 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
         <StatusBanner
           className="mt-4 border-emerald-300 bg-emerald-50 text-emerald-700"
           icon={CheckCircle2}
-          title="Checkout completed"
-          description="Your subscription status will refresh automatically after webhook confirmation."
+          title={t("billing.banner.success_title")}
+          description={t("billing.banner.success_desc")}
         />
       ) : null}
       {sp.checkout === "cancel" ? (
         <StatusBanner
           className="mt-4 border-border bg-muted/40 text-muted-foreground"
           icon={Clock3}
-          title="Checkout canceled"
-          description="No changes were made to your subscription."
+          title={t("billing.banner.cancel_title")}
+          description={t("billing.banner.cancel_desc")}
         />
       ) : null}
       {sp.error ? (
         <StatusBanner
           className="mt-4 border-destructive/30 bg-destructive/10 text-destructive"
           icon={AlertCircle}
-          title="Billing action failed"
+          title={t("billing.banner.error_title")}
           description={sp.error}
         />
       ) : null}
@@ -324,14 +379,14 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
       <section id="plans" className="mt-8 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">Plans</h2>
+            <h2 className="text-lg font-semibold tracking-tight">{t("billing.plans_heading")}</h2>
             <p className="text-sm text-muted-foreground">
-              Choose a plan for this organization. Current plan is clearly marked and cannot be re-purchased.
+              {t("billing.plans_subtitle")}
             </p>
           </div>
           {currentPlan ? (
             <Badge variant="outline" className="rounded-full px-3 py-1">
-              Current: {currentPlan.name}
+              {t("billing.current_badge", { name: currentPlan.name })}
             </Badge>
           ) : null}
         </div>
@@ -341,7 +396,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
           </div>
         ) : sortedPlans.length === 0 ? (
           <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No active plans available right now.
+            {t("billing.no_plans")}
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
@@ -353,10 +408,10 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
               );
               const actionLabel =
                 isCurrentPlan
-                  ? "Current plan"
+                  ? t("billing.action.current")
                   : entitlement.status === "locked"
-                    ? `Choose ${plan.name}`
-                    : `Switch to ${plan.name}`;
+                    ? t("billing.action.choose", { name: plan.name })
+                    : t("billing.action.switch", { name: plan.name });
 
               return (
                 <div
@@ -377,7 +432,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
                           <p className="font-semibold tracking-tight">{plan.name}</p>
                           {isCurrentPlan ? (
                             <Badge variant="secondary" className="rounded-full">
-                              Current
+                              {t("billing.current")}
                             </Badge>
                           ) : null}
                         </div>
@@ -390,28 +445,27 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
                           {formatMoney(plan.amount_minor, plan.currency)}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {formatPlanInterval(plan.interval_count)}
+                          {formatPlanInterval(t, plan.interval_count)}
                         </p>
                       </div>
                     </div>
 
                     <div className="grid gap-2 text-sm">
                       <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-                        <span className="text-muted-foreground">Billing cadence</span>
-                        <span className="font-medium">{plan.interval_count} month(s)</span>
+                        <span className="text-muted-foreground">{t("billing.cadence")}</span>
+                        <span className="font-medium">{t("billing.months_count", { count: plan.interval_count })}</span>
                       </div>
                       <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-                        <span className="text-muted-foreground">Trial</span>
+                        <span className="text-muted-foreground">{t("billing.trial")}</span>
                         <span className="font-medium">
-                          {plan.trial_days > 0 ? `${plan.trial_days} days` : "No trial"}
+                          {plan.trial_days > 0 ? t("billing.trial_days", { days: plan.trial_days }) : t("billing.no_trial")}
                         </span>
                       </div>
                     </div>
 
                     {isCurrentPlan && entitlement.cancelAtPeriodEnd ? (
                       <div className="rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-700">
-                        This subscription is scheduled to cancel at period end.
-                        Use <span className="font-medium">Manage Billing</span> to resume or change it.
+                        {t("billing.cancel_note")}
                       </div>
                     ) : null}
 

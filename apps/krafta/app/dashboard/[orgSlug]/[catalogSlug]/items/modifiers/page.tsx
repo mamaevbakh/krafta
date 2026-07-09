@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 import { ModifiersPanel } from "./_components/modifiers-panel";
 import type {
@@ -40,10 +41,13 @@ export default async function DashboardModifiersPage({ params }: PageProps) {
     .maybeSingle();
 
   if (!catalog?.id) {
+    const t = await getDashboardT();
     return (
       <main className="w-full">
         <div className="mx-auto max-w-[1248px] px-6 py-8">
-          <p className="text-sm text-muted-foreground">Catalog not found.</p>
+          <p className="text-sm text-muted-foreground">
+            {t("modifiers.catalog_not_found")}
+          </p>
         </div>
       </main>
     );

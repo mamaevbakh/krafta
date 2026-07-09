@@ -72,6 +72,7 @@ import {
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { ItemVariation } from "@/lib/catalogs/types";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import type { ItemVariationChange } from "./actions";
 
@@ -436,11 +437,11 @@ export function VariationsEditor({
   currencySettings,
   isLocaleEditable,
 }: VariationsEditorProps) {
+  const t = useT();
   if (!isLocaleEditable) {
     return (
       <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-        Switch to the default locale to edit variations. Variation names are
-        not yet translatable.
+        {t("items.variations_locale_locked")}
       </div>
     );
   }
@@ -477,12 +478,12 @@ export function VariationsEditor({
         onClick={handleAdd}
       >
         <Plus className="size-4" />
-        Add variation
+        {t("items.add_variation")}
       </Button>
 
       {state.errors.some((e) => e.kind === "no_rows") && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          Add at least one variation.
+          {t("items.add_at_least_one_variation")}
         </div>
       )}
     </div>
@@ -504,6 +505,7 @@ function VariationsTable({
   dispatch,
   currencySettings,
 }: VariationsTableProps) {
+  const t = useT();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
@@ -535,9 +537,9 @@ function VariationsTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-10" />
-              <TableHead>Variation</TableHead>
-              <TableHead className="text-right">Price</TableHead>
-              <TableHead className="text-center w-32">Status</TableHead>
+              <TableHead>{t("items.variation")}</TableHead>
+              <TableHead className="text-right">{t("items.price")}</TableHead>
+              <TableHead className="text-center w-32">{t("items.status")}</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -591,6 +593,7 @@ function VariationRow({
   onToggleSoldOut,
   onDelete,
 }: VariationRowProps) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: row.localId });
 
@@ -614,7 +617,9 @@ function VariationRow({
           type="button"
           {...attributes}
           {...listeners}
-          aria-label={`Drag ${row.name || "variation"} to reorder`}
+          aria-label={t("items.drag_reorder", {
+            name: row.name || t("items.variation"),
+          })}
           className={cn(
             "flex size-8 items-center justify-center rounded-md",
             "transition-colors hover:bg-accent hover:text-foreground",
@@ -631,7 +636,7 @@ function VariationRow({
         <Input
           value={row.name}
           onChange={(e) => onNameChange(e.target.value)}
-          placeholder="Variation name"
+          placeholder={t("items.variation_name_placeholder")}
           className={cn(
             "h-9",
             hasError && "border-destructive/60 focus-visible:border-destructive",
@@ -664,7 +669,7 @@ function VariationRow({
                   : "bg-emerald-100 text-emerald-900 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-100 dark:hover:bg-emerald-900",
               )}
             >
-              {row.is_sold_out ? "Sold out" : "Available"}
+              {row.is_sold_out ? t("items.sold_out") : t("items.available")}
               <ChevronDown className="size-3" />
             </button>
           </DropdownMenuTrigger>
@@ -674,14 +679,14 @@ function VariationRow({
                 if (row.is_sold_out) onToggleSoldOut();
               }}
             >
-              Available
+              {t("items.available")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {
                 if (!row.is_sold_out) onToggleSoldOut();
               }}
             >
-              Sold out
+              {t("items.sold_out")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -695,7 +700,9 @@ function VariationRow({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={`Actions for ${row.name || "variation"}`}
+              aria-label={t("items.variation_actions_aria", {
+                name: row.name || t("items.variation"),
+              })}
               className="size-8"
             >
               <MoreVertical className="size-4" />
@@ -707,7 +714,7 @@ function VariationRow({
               className="text-destructive focus:text-destructive"
             >
               <Trash2 className="size-4" />
-              Delete
+              {t("common.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

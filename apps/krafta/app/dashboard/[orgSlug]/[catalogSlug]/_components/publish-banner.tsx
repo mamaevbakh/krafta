@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Megaphone } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { completeDraftClaim } from "./publish-actions";
 import {
@@ -33,6 +34,7 @@ export function PublishBanner({
   catalogSlug: string;
   isAnonymousUser: boolean;
 }) {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const resumeSlug = searchParams.get("publish") ?? undefined;
@@ -57,15 +59,17 @@ export function PublishBanner({
     <>
       <div className="flex items-center justify-between gap-3 border-b bg-background px-6 py-2.5">
         <p className="min-w-0 truncate text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Draft</span>
+          <span className="font-medium text-foreground">
+            {t("activation.banner.draft")}
+          </span>
           <span className="hidden sm:inline">
             {" "}
-            — only you can see your shop.
+            {t("activation.banner.draft_hint")}
           </span>
         </p>
         <Button type="button" size="sm" onClick={() => setOpen(true)}>
           <Megaphone className="size-4" />
-          Publish
+          {t("activation.publish")}
         </Button>
       </div>
       <PublishDialog

@@ -96,6 +96,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { TranslateFn } from "@/lib/locales/dashboard/messages";
 
 // ---------------------------------------------------------------------------
 // Validation constants
@@ -136,7 +138,10 @@ function humanizeMB(bytes: number) {
  * list of rejection reasons. Rejections fire as individual toasts so
  * the merchant knows exactly which file failed and why.
  */
-function validateFiles(input: File[]): {
+function validateFiles(
+  input: File[],
+  t: TranslateFn,
+): {
   accepted: File[];
   rejections: Array<{ file: File; reason: string }>;
 } {
@@ -147,14 +152,19 @@ function validateFiles(input: File[]): {
     if (!ACCEPTED_MIME_TYPES.has(file.type)) {
       rejections.push({
         file,
-        reason: file.type ? `${file.type} isn't supported` : "Unknown file type",
+        reason: file.type
+          ? t("items.file_type_unsupported", { type: file.type })
+          : t("items.file_type_unknown"),
       });
       continue;
     }
     if (file.size > MAX_BYTES) {
       rejections.push({
         file,
-        reason: `Too large (${humanizeMB(file.size)} > ${humanizeMB(MAX_BYTES)})`,
+        reason: t("items.file_too_large", {
+          size: humanizeMB(file.size),
+          max: humanizeMB(MAX_BYTES),
+        }),
       });
       continue;
     }
@@ -206,6 +216,7 @@ export function PhotoUploader({
   media,
   onLocalMediaChange,
 }: PhotoUploaderProps) {
+  const t = useT();
   const isCreateMode = Boolean(onLocalMediaChange);
   const router = useRouter();
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -239,7 +250,7 @@ export function PhotoUploader({
       if (incoming.length === 0) return;
 
       // 1. Client-side validation (saves a roundtrip on obvious rejects).
-      const { accepted, rejections } = validateFiles(incoming);
+      const { accepted, rejections } = validateFiles(incoming, t);
       rejections.forEach((r) =>
         toast.error(`${r.file.name}: ${r.reason}`),
       );
@@ -249,7 +260,7 @@ export function PhotoUploader({
       const files = accepted.slice(0, MAX_FILES_PER_BATCH);
       if (accepted.length > MAX_FILES_PER_BATCH) {
         toast.error(
-          `Only the first ${MAX_FILES_PER_BATCH} files were uploaded. Try a smaller batch.`,
+          t("items.batch_limit", { count: MAX_FILES_PER_BATCH }),
         );
       }
 
@@ -273,7 +284,7 @@ export function PhotoUploader({
 
         if (!urlResp.ok) {
           const body = await urlResp.json().catch(() => null);
-          throw new Error(body?.error ?? "Failed to prepare upload.");
+          throw new Error(body?.error ?? t("items.upload_prepare_failed"));
         }
 
         const { uploads } = (await urlResp.json()) as {
@@ -306,12 +317,14 @@ export function PhotoUploader({
                 body: file,
               });
               if (!putResp.ok) {
-                throw new Error(`Upload failed (${putResp.status})`);
+                throw new Error(
+                  t("items.upload_failed_status", { status: putResp.status }),
+                );
               }
               return { ok: true as const, upload };
             } catch (err) {
               const message =
-                err instanceof Error ? err.message : "Upload failed.";
+                err instanceof Error ? err.message : t("items.upload_failed");
               toast.error(`${files[idx].name}: ${message}`);
               return { ok: false as const };
             }
@@ -352,8 +365,8 @@ export function PhotoUploader({
           onLocalMediaChange([...media, ...newEntries]);
           toast.success(
             newEntries.length === 1
-              ? "Photo added"
-              : `${newEntries.length} photos added`,
+              ? t("items.photo_added")
+              : t("items.photos_added", { count: newEntries.length }),
           );
         } else {
           const registerResp = await fetch("/api/items/media", {
@@ -364,25 +377,25 @@ export function PhotoUploader({
 
           if (!registerResp.ok) {
             const body = await registerResp.json().catch(() => null);
-            throw new Error(body?.error ?? "Failed to save photos.");
+            throw new Error(body?.error ?? t("items.photos_save_failed"));
           }
 
           toast.success(
             successful.length === 1
-              ? "Photo added"
-              : `${successful.length} photos added`,
+              ? t("items.photo_added")
+              : t("items.photos_added", { count: successful.length }),
           );
           router.refresh();
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Upload failed.";
+        const message = err instanceof Error ? err.message : t("items.upload_failed");
         toast.error(message);
       } finally {
         setUploadingCount((n) => Math.max(0, n - files.length));
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [itemId, orgId, catalogId, router],
+    [itemId, orgId, catalogId, router, t],
   );
 
   const handleDelete = React.useCallback(
@@ -406,16 +419,16 @@ export function PhotoUploader({
         });
         if (!resp.ok) {
           const body = await resp.json().catch(() => null);
-          throw new Error(body?.error ?? "Failed to delete photo.");
+          throw new Error(body?.error ?? t("items.photo_delete_failed"));
         }
-        toast.success("Photo removed");
+        toast.success(t("items.photo_removed"));
         router.refresh();
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Delete failed.";
+        const message = err instanceof Error ? err.message : t("items.photo_delete_failed");
         toast.error(message);
       }
     },
-    [itemId, router, isCreateMode, onLocalMediaChange, media],
+    [itemId, router, isCreateMode, onLocalMediaChange, media, t],
   );
 
   const handleSetPrimary = React.useCallback(
@@ -435,17 +448,17 @@ export function PhotoUploader({
         });
         if (!resp.ok) {
           const body = await resp.json().catch(() => null);
-          throw new Error(body?.error ?? "Failed to set primary photo.");
+          throw new Error(body?.error ?? t("items.primary_set_failed"));
         }
-        toast.success("Primary photo updated");
+        toast.success(t("items.primary_updated"));
         router.refresh();
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Failed to set primary photo.";
+          err instanceof Error ? err.message : t("items.primary_set_failed");
         toast.error(message);
       }
     },
-    [itemId, router, isCreateMode, onLocalMediaChange, media],
+    [itemId, router, isCreateMode, onLocalMediaChange, media, t],
   );
 
   /** Local optimistic order — set on dragEnd so the grid doesn't snap
@@ -488,19 +501,19 @@ export function PhotoUploader({
         });
         if (!resp.ok) {
           const body = await resp.json().catch(() => null);
-          throw new Error(body?.error ?? "Failed to reorder photos.");
+          throw new Error(body?.error ?? t("items.photos_reorder_failed"));
         }
         router.refresh();
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Failed to reorder photos.";
+          err instanceof Error ? err.message : t("items.photos_reorder_failed");
         toast.error(message);
         // On failure, drop the optimistic order so the UI snaps back
         // to the server's truth.
         setOptimisticOrder(null);
       }
     },
-    [itemId, router],
+    [itemId, router, t],
   );
 
   // -----------------------------------------------------------------------
@@ -620,11 +633,14 @@ export function PhotoUploader({
             <EmptyMedia variant="icon">
               <ImagePlus />
             </EmptyMedia>
-            <EmptyTitle>No photos yet</EmptyTitle>
+            <EmptyTitle>{t("items.no_photos")}</EmptyTitle>
             <EmptyDescription>
               {dragging
-                ? "Drop to upload"
-                : "Drag photos here, or click to upload. Max 10 files, 10 MB each."}
+                ? t("items.drop_to_upload")
+                : t("items.photos_dropzone_hint", {
+                    maxFiles: MAX_FILES_PER_BATCH,
+                    maxMb: MAX_BYTES / (1024 * 1024),
+                  })}
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
@@ -634,7 +650,7 @@ export function PhotoUploader({
               size="sm"
               onClick={openPicker}
             >
-              Upload photos
+              {t("items.upload_photos")}
             </Button>
           </EmptyContent>
         </Empty>
@@ -693,7 +709,7 @@ export function PhotoUploader({
           <button
             type="button"
             onClick={openPicker}
-            aria-label="Add photo"
+            aria-label={t("items.add_photo")}
             className={cn(
               "flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-sm",
               "border border-dashed bg-muted/30 text-muted-foreground transition-colors",
@@ -702,7 +718,7 @@ export function PhotoUploader({
             )}
           >
             <Plus className="size-5" />
-            <span className="text-xs">Add photo</span>
+            <span className="text-xs">{t("items.add_photo")}</span>
           </button>
         </div>
       </DndContext>
@@ -738,6 +754,7 @@ function SortablePhotoTile({
   onDelete,
   onSetPrimary,
 }: SortablePhotoTileProps) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
 
@@ -770,7 +787,7 @@ function SortablePhotoTile({
       ) : null}
       {isPrimary && (
         <span className="absolute left-1 top-1 rounded-sm bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-foreground">
-          Primary
+          {t("items.primary_badge")}
         </span>
       )}
       <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -780,7 +797,7 @@ function SortablePhotoTile({
               type="button"
               variant="secondary"
               size="icon"
-              aria-label="Photo actions"
+              aria-label={t("items.photo_actions")}
               className="size-7"
               // Stop pointer events from propagating to the parent
               // sortable listener — otherwise the menu open click can
@@ -794,7 +811,7 @@ function SortablePhotoTile({
             {!isPrimary && (
               <DropdownMenuItem onSelect={onSetPrimary}>
                 <Star className="size-4" />
-                Set as primary
+                {t("items.set_as_primary")}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -802,7 +819,7 @@ function SortablePhotoTile({
               className="text-destructive focus:text-destructive"
             >
               <Trash2 className="size-4" />
-              Delete
+              {t("common.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -818,13 +835,14 @@ function SortablePhotoTile({
 // ---------------------------------------------------------------------------
 
 function UploadingTile() {
+  const t = useT();
   return (
     <div
       className={cn(
         "flex aspect-square w-full items-center justify-center rounded-sm",
         "border border-dashed bg-muted/30 text-muted-foreground",
       )}
-      aria-label="Uploading photo"
+      aria-label={t("items.uploading_photo")}
       aria-busy="true"
     >
       <Loader2 className="size-5 animate-spin" />

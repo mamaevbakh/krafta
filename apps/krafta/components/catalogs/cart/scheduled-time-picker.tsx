@@ -30,6 +30,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 type ScheduledTimePickerProps = {
@@ -84,6 +86,7 @@ export function ScheduledTimePicker({
   locale,
   minOffsetMin = 15,
 }: ScheduledTimePickerProps) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
   const [open, setOpen] = useState(false);
   const { date, time } = useMemo(() => parseValue(value), [value]);
 
@@ -174,7 +177,10 @@ export function ScheduledTimePicker({
         value={time}
         onChange={(event) => handleTime(event.target.value)}
         className="w-32 shrink-0 font-mono tabular-nums"
-        aria-label="Time"
+        aria-label={getStorefrontMessage("checkout.schedule.time_aria", {
+          activeLocale,
+          defaultLocale,
+        })}
       />
     </div>
   );

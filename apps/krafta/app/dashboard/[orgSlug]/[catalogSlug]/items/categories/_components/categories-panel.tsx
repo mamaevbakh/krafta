@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { CategoryEditorDrawer } from "./category-editor-drawer"
 import { deleteCategory } from "./actions"
+import { useT } from "@/lib/locales/dashboard/context"
 
 type LocaleOption = {
   id: string
@@ -54,6 +55,7 @@ export function CategoriesPanel({
   translations,
 }: CategoriesPanelProps) {
   const router = useRouter()
+  const t = useT()
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<CatalogCategory | null>(
     null,
@@ -80,7 +82,7 @@ export function CategoriesPanel({
       })
 
       if (!result.ok) {
-        toast.error(result.error ?? "Failed to delete category.")
+        toast.error(result.error ?? t("categories.error.delete_failed"))
         return
       }
 
@@ -91,10 +93,10 @@ export function CategoriesPanel({
 
       toast.success(
         result.deletedItems
-          ? `Category and ${result.deletedItems} item${
-              result.deletedItems === 1 ? "" : "s"
-            } deleted.`
-          : "Category deleted.",
+          ? t("categories.toast.deleted_with_items", {
+              count: result.deletedItems,
+            })
+          : t("categories.toast.deleted"),
       )
       setPendingDelete(null)
       router.refresh()
@@ -109,7 +111,7 @@ export function CategoriesPanel({
         <div className="mx-auto flex h-30 max-w-312 items-center justify-between px-6">
           <div className="space-y-1">
             <h1 className="text-[32px] font-semibold tracking-tight">
-              Categories
+              {t("categories.title")}
             </h1>
           </div>
           <Button
@@ -119,7 +121,7 @@ export function CategoriesPanel({
             }}
           >
             <Plus className="size-4" />
-            Create category
+            {t("categories.create")}
           </Button>
         </div>
       </div>
@@ -127,6 +129,7 @@ export function CategoriesPanel({
       <div className="mx-auto max-w-312 px-6 py-8">
         <DataTable
           columns={createColumns({
+            t,
             onEdit: (category) => {
               setEditingCategory(category)
               setCategoryDialogOpen(true)
@@ -137,7 +140,7 @@ export function CategoriesPanel({
           })}
           data={categories}
           enableStatusTabs
-          searchPlaceholder="Search categories..."
+          searchPlaceholder={t("categories.search_placeholder")}
           onRowClick={(category) => {
             setEditingCategory(category)
             setCategoryDialogOpen(true)
@@ -169,16 +172,20 @@ export function CategoriesPanel({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this category?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("categories.delete_confirm.title")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{pendingDelete?.name ?? "This category"}&rdquo; and all
-              of its items will be removed permanently. This cannot be
-              undone.
+              {t("categories.delete_confirm.description", {
+                name:
+                  pendingDelete?.name ??
+                  t("categories.delete_confirm.fallback_name"),
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>
-              Cancel
+              {t("common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
@@ -187,7 +194,7 @@ export function CategoriesPanel({
               }}
               disabled={isDeleting}
             >
-              Delete category
+              {t("categories.delete_confirm.action")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

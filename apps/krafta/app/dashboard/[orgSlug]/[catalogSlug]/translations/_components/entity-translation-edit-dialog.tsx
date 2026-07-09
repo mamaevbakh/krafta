@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   createTranslation,
@@ -136,13 +137,17 @@ export function EntityTranslationEditDialog({
   onOpenChange,
   entityKind,
   fields,
-  entityLabel,
+  entityLabel: _entityLabel,
   catalogId,
   entity,
   defaultLocale,
   targetLocales,
   onMutation,
 }: EntityTranslationEditDialogProps) {
+  // Copy no longer embeds the English singular noun — it reads generically
+  // and translates cleanly, so `entityLabel` is intentionally unused.
+  void _entityLabel;
+  const t = useT();
   // Per-target form state, keyed by locale code.
   const [forms, setForms] = React.useState<Record<string, TargetForm>>({});
   // Source-pane form (KRA-97 Gap 3 — symmetric source edit). Separate
@@ -260,7 +265,9 @@ export function EntityTranslationEditDialog({
         },
       };
     });
-    toast.success(`Translated into ${locale.display_name}.`);
+    toast.success(
+      t("translations.translated_into", { name: locale.display_name }),
+    );
     onMutation();
   }
 
@@ -273,7 +280,7 @@ export function EntityTranslationEditDialog({
 
     const name = (form.fields.name ?? "").trim();
     if (!name) {
-      if (!options.silent) toast.error("Name is required.");
+      if (!options.silent) toast.error(t("translations.name_required"));
       return false;
     }
 
@@ -318,7 +325,7 @@ export function EntityTranslationEditDialog({
       [locale.locale]: { ...form, dirty: false },
     }));
     if (!options.silent) {
-      toast.success(`Saved ${locale.display_name}.`);
+      toast.success(t("translations.saved_locale", { name: locale.display_name }));
       onMutation();
     }
     return true;
@@ -339,9 +346,9 @@ export function EntityTranslationEditDialog({
     setSavingAll(false);
     if (failedAny && saved === 0) {
       // Per-locale errors fired silently — surface a single combined error.
-      toast.error("Some translations failed to save.");
+      toast.error(t("translations.some_failed"));
     } else if (saved > 0) {
-      toast.success(`Saved ${saved} translation${saved === 1 ? "" : "s"}.`);
+      toast.success(t("translations.saved_n", { count: saved }));
       onMutation();
     }
   }
@@ -349,7 +356,7 @@ export function EntityTranslationEditDialog({
   async function handleSaveSource(): Promise<boolean> {
     const name = sourceForm.name.trim();
     if (!name) {
-      toast.error("Source name is required.");
+      toast.error(t("translations.source_name_required"));
       return false;
     }
     setSavingSource(true);
@@ -373,14 +380,14 @@ export function EntityTranslationEditDialog({
       return false;
     }
     setSourceForm((prev) => ({ ...prev, dirty: false }));
-    toast.success("Source updated. Existing translations may now drift.");
+    toast.success(t("translations.source_updated_drift"));
     onMutation();
     return true;
   }
 
   function handleClose() {
     if (dirtyCount > 0 || sourceDirty) {
-      if (!window.confirm("Discard unsaved changes?")) return;
+      if (!window.confirm(t("translations.discard_confirm"))) return;
     }
     onOpenChange(false);
   }
@@ -406,16 +413,16 @@ export function EntityTranslationEditDialog({
         <div className="flex shrink-0 items-center gap-3 border-b px-6 py-4">
           <div className="min-w-0 flex-1">
             <DialogTitle className="truncate text-lg font-semibold">
-              {entity.name || `Untitled ${entityLabel}`}
+              {entity.name || t("translations.untitled")}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Editing translations for this {entityLabel}.
+              {t("translations.editing_translations")}
               {entity.context ? ` ${entity.context}.` : ""}
             </DialogDescription>
           </div>
           {dirtyCount > 0 && (
             <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-              ● {dirtyCount} unsaved
+              ● {t("translations.n_unsaved", { count: dirtyCount })}
             </span>
           )}
           <Button
@@ -429,17 +436,17 @@ export function EntityTranslationEditDialog({
                   className="size-3.5 animate-spin"
                   aria-hidden="true"
                 />
-                Saving…
+                {t("common.saving")}
               </>
             ) : (
-              `Save all${dirtyCount > 0 ? ` (${dirtyCount})` : ""}`
+              `${t("translations.save_all")}${dirtyCount > 0 ? ` (${dirtyCount})` : ""}`
             )}
           </Button>
           <Button
             variant="ghost"
             size="icon"
             onClick={handleClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X className="size-4" aria-hidden="true" />
           </Button>
@@ -457,7 +464,7 @@ export function EntityTranslationEditDialog({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Source
+                    {t("translations.source")}
                   </span>
                   {defaultLocale && (
                     <span className="text-xs text-muted-foreground">
@@ -467,7 +474,7 @@ export function EntityTranslationEditDialog({
                 </div>
                 {sourceDirty && (
                   <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                    ● unsaved
+                    ● {t("translations.unsaved")}
                   </span>
                 )}
               </div>
@@ -477,7 +484,7 @@ export function EntityTranslationEditDialog({
                   htmlFor="source-name"
                   className="text-[11px] uppercase tracking-wide text-muted-foreground"
                 >
-                  Name
+                  {t("translations.name")}
                 </Label>
                 <Input
                   id="source-name"
@@ -489,7 +496,7 @@ export function EntityTranslationEditDialog({
                       dirty: true,
                     }))
                   }
-                  placeholder={`${entityLabel} name`}
+                  placeholder={t("translations.name")}
                   dir={defaultLocale?.text_direction ?? "ltr"}
                   className="h-9"
                 />
@@ -500,7 +507,7 @@ export function EntityTranslationEditDialog({
                     htmlFor="source-description"
                     className="text-[11px] uppercase tracking-wide text-muted-foreground"
                   >
-                    Description
+                    {t("translations.description")}
                   </Label>
                   <Textarea
                     id="source-description"
@@ -512,7 +519,7 @@ export function EntityTranslationEditDialog({
                         dirty: true,
                       }))
                     }
-                    placeholder="Optional"
+                    placeholder={t("common.optional")}
                     dir={defaultLocale?.text_direction ?? "ltr"}
                     rows={4}
                   />
@@ -530,15 +537,14 @@ export function EntityTranslationEditDialog({
                       className="size-3.5 animate-spin"
                       aria-hidden="true"
                     />
-                    Saving…
+                    {t("common.saving")}
                   </>
                 ) : (
-                  "Save source"
+                  t("translations.save_source")
                 )}
               </Button>
               <p className="pt-2 text-[11px] text-muted-foreground">
-                Editing the source flags existing translations as drift —
-                they may need a re-translate.
+                {t("translations.source_edit_hint")}
               </p>
             </div>
           </aside>
@@ -548,7 +554,7 @@ export function EntityTranslationEditDialog({
             <div className="mx-auto flex max-w-4xl flex-col gap-4">
               {targetLocales.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  No target languages yet. Add one in the sidebar to translate.
+                  {t("translations.no_targets_add")}
                 </p>
               )}
               {targetLocales.map((locale) => {
@@ -589,15 +595,15 @@ export function EntityTranslationEditDialog({
                         </span>
                         {isMissing && (
                           <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">
-                            Not translated yet
+                            {t("translations.not_translated_yet")}
                           </span>
                         )}
                         {isDrift && (
                           <span
                             className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
-                            title="Source changed since this translation was generated"
+                            title={t("translations.source_drift_title")}
                           >
-                            ● source drift
+                            ● {t("translations.source_drift")}
                           </span>
                         )}
                       </div>
@@ -620,7 +626,9 @@ export function EntityTranslationEditDialog({
                               aria-hidden="true"
                             />
                           )}
-                          {isMissing ? "Translate with AI" : "Re-translate"}
+                          {isMissing
+                            ? t("translations.translate_with_ai")
+                            : t("translations.retranslate")}
                         </Button>
                         <Button
                           size="sm"
@@ -634,10 +642,10 @@ export function EntityTranslationEditDialog({
                                 className="size-3.5 animate-spin"
                                 aria-hidden="true"
                               />
-                              Saving…
+                              {t("common.saving")}
                             </>
                           ) : (
-                            "Save"
+                            t("common.save")
                           )}
                         </Button>
                       </div>
@@ -649,7 +657,7 @@ export function EntityTranslationEditDialog({
                           htmlFor={`tname-${locale.locale}`}
                           className="text-xs"
                         >
-                          Name
+                          {t("translations.name")}
                         </Label>
                         <Input
                           id={`tname-${locale.locale}`}
@@ -667,7 +675,7 @@ export function EntityTranslationEditDialog({
                             htmlFor={`tdesc-${locale.locale}`}
                             className="text-xs"
                           >
-                            Description
+                            {t("translations.description")}
                           </Label>
                           <Textarea
                             id={`tdesc-${locale.locale}`}
@@ -679,7 +687,7 @@ export function EntityTranslationEditDialog({
                                 e.target.value,
                               )
                             }
-                            placeholder={entity.description ?? "Optional"}
+                            placeholder={entity.description ?? t("common.optional")}
                             dir={locale.text_direction}
                             rows={3}
                           />

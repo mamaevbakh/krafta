@@ -22,6 +22,7 @@ import {
   defaultDeliverySettings,
 } from "@/lib/catalogs/settings/delivery";
 import { formatPriceInputValue, parsePriceInput } from "@/lib/catalogs/pricing";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 import { updateDeliverySettings } from "./actions";
 
@@ -70,6 +71,7 @@ export function DeliveryForm({
   currencySettings,
   deliveryModeEnabled,
 }: DeliveryFormProps) {
+  const t = useT();
   const [enabled, setEnabled] = React.useState(initial.enabled);
   const [radiusM, setRadiusM] = React.useState(initial.radiusM);
   const [origin, setOrigin] = React.useState<{
@@ -123,7 +125,7 @@ export function DeliveryForm({
 
       if (!result.ok) {
         setStatusKind("error");
-        setStatusMessage(result.error ?? "Unable to save delivery settings.");
+        setStatusMessage(result.error ?? t("settings.delivery.save_error"));
         return;
       }
 
@@ -138,7 +140,7 @@ export function DeliveryForm({
         formatPriceInputValue(result.settings.minOrderCents, currencySettings),
       );
       setStatusKind("ok");
-      setStatusMessage("Delivery zone saved.");
+      setStatusMessage(t("settings.delivery.saved"));
     });
   }, [
     catalogId,
@@ -149,6 +151,7 @@ export function DeliveryForm({
     minOrderDraft,
     origin,
     radiusM,
+    t,
   ]);
 
   const canEnable = origin != null;
@@ -156,17 +159,14 @@ export function DeliveryForm({
   return (
     <div className="space-y-8">
       <FieldSet>
-        <FieldLegend>Delivery zone</FieldLegend>
+        <FieldLegend>{t("settings.delivery.zone_legend")}</FieldLegend>
         <FieldDescription>
-          Set your cafe location and how far you deliver. Orders pinned outside
-          this radius are blocked at checkout.
+          {t("settings.delivery.zone_description")}
         </FieldDescription>
 
         {!deliveryModeEnabled ? (
           <div className="mt-4 rounded-lg border border-dashed bg-muted/40 p-3 text-sm text-muted-foreground">
-            Delivery isn&apos;t in your enabled order modes yet — turn it on
-            under <span className="font-medium text-foreground">Venue</span> for
-            customers to see this zone.
+            {t("settings.delivery.mode_off_notice")}
           </div>
         ) : null}
 
@@ -174,7 +174,7 @@ export function DeliveryForm({
           {/* The map: drag so the pin sits on your cafe. The ring previews the
               delivery radius live as you adjust the slider. */}
           <Field>
-            <FieldLabel>Cafe location &amp; radius</FieldLabel>
+            <FieldLabel>{t("settings.delivery.location_label")}</FieldLabel>
             <div className="relative h-[400px] w-full overflow-hidden rounded-xl border sm:h-[460px]">
               <AddressMapPicker
                 initial={
@@ -182,7 +182,7 @@ export function DeliveryForm({
                 }
                 radiusM={radiusM}
                 onChange={handleOriginChange}
-                searchPlaceholder="Find your cafe address"
+                searchPlaceholder={t("settings.delivery.map_search_placeholder")}
                 className="h-full w-full"
               />
             </div>
@@ -192,7 +192,7 @@ export function DeliveryForm({
                 {origin?.label ? (
                   <span className="text-foreground">{origin.label}</span>
                 ) : (
-                  "Drag the map so the pin sits on your cafe."
+                  t("settings.delivery.drag_hint")
                 )}
               </span>
             </FieldDescription>
@@ -201,7 +201,7 @@ export function DeliveryForm({
           {/* Radius control. */}
           <Field>
             <div className="flex items-center justify-between">
-              <FieldLabel>Delivery radius</FieldLabel>
+              <FieldLabel>{t("settings.delivery.radius_label")}</FieldLabel>
               <span className="text-sm font-medium tabular-nums">
                 {formatKm(radiusM)}
               </span>
@@ -214,7 +214,7 @@ export function DeliveryForm({
               value={radiusM}
               onChange={(e) => setRadiusM(Number(e.target.value))}
               className="w-full accent-foreground"
-              aria-label="Delivery radius in metres"
+              aria-label={t("settings.delivery.radius_aria")}
             />
             <div className="mt-1 flex flex-wrap gap-2">
               {RADIUS_PRESETS.map((preset) => (
@@ -238,40 +238,40 @@ export function DeliveryForm({
           {/* Fee + minimum order, currency-aware. */}
           <div className="grid gap-6 sm:grid-cols-2">
             <Field>
-              <FieldLabel>Delivery fee</FieldLabel>
+              <FieldLabel>{t("settings.delivery.fee_label")}</FieldLabel>
               <div className="flex items-center gap-2">
                 <Input
                   inputMode="decimal"
                   value={feeDraft}
                   onChange={(e) => setFeeDraft(e.target.value)}
                   placeholder="0"
-                  aria-label="Delivery fee"
+                  aria-label={t("settings.delivery.fee_label")}
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   {currencySettings.label}
                 </span>
               </div>
               <FieldDescription>
-                Flat fee added to every delivery order. 0 = free delivery.
+                {t("settings.delivery.fee_hint")}
               </FieldDescription>
             </Field>
 
             <Field>
-              <FieldLabel>Minimum order</FieldLabel>
+              <FieldLabel>{t("settings.delivery.min_order_label")}</FieldLabel>
               <div className="flex items-center gap-2">
                 <Input
                   inputMode="decimal"
                   value={minOrderDraft}
                   onChange={(e) => setMinOrderDraft(e.target.value)}
                   placeholder="0"
-                  aria-label="Minimum order for delivery"
+                  aria-label={t("settings.delivery.min_order_aria")}
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   {currencySettings.label}
                 </span>
               </div>
               <FieldDescription>
-                Smallest subtotal you accept for delivery. 0 = no minimum.
+                {t("settings.delivery.min_order_hint")}
               </FieldDescription>
             </Field>
           </div>
@@ -280,18 +280,18 @@ export function DeliveryForm({
           <Field>
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5 pr-4">
-                <FieldLabel>Enforce this zone</FieldLabel>
+                <FieldLabel>{t("settings.delivery.enforce_label")}</FieldLabel>
                 <FieldDescription>
                   {canEnable
-                    ? "Block checkout for addresses outside the radius."
-                    : "Set your cafe location on the map first."}
+                    ? t("settings.delivery.enforce_hint_ready")
+                    : t("settings.delivery.enforce_hint_need_location")}
                 </FieldDescription>
               </div>
               <Switch
                 checked={enabled}
                 onCheckedChange={setEnabled}
                 disabled={!canEnable}
-                aria-label="Enforce delivery zone"
+                aria-label={t("settings.delivery.enforce_aria")}
               />
             </div>
           </Field>
@@ -314,10 +314,10 @@ export function DeliveryForm({
           {isPending ? (
             <>
               <Spinner className="size-4" />
-              Saving
+              {t("common.saving")}
             </>
           ) : (
-            "Save delivery zone"
+            t("settings.delivery.save_cta")
           )}
         </Button>
       </div>

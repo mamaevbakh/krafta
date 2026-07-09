@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 export type CatalogOption = {
   id: string;
@@ -40,6 +41,7 @@ export function CatalogSwitcher({
   triggerClassName,
 }: CatalogSwitcherProps) {
   const router = useRouter();
+  const t = useT();
   const [searchQuery, setSearchQuery] = React.useState("");
 
   const [selectedSlug, setSelectedSlug] = React.useState(currentCatalogSlug);
@@ -69,7 +71,7 @@ export function CatalogSwitcher({
           <div className="h-4 w-4 rounded bg-muted-foreground/30" />
         </div>
         <div className="grid flex-1 gap-1">
-          <span className="text-xs text-muted-foreground">No catalogs</span>
+          <span className="text-xs text-muted-foreground">{t("nav.catalog.none")}</span>
         </div>
         <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
       </div>
@@ -88,7 +90,7 @@ export function CatalogSwitcher({
             "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ring transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 active:bg-accent active:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground md:w-auto",
             triggerClassName
           )}
-          aria-label="Select catalog"
+          aria-label={t("nav.catalog.select_aria")}
         >
           {activeCatalogLogo ? (
             <Image
@@ -105,7 +107,7 @@ export function CatalogSwitcher({
           )}
           <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium">{activeCatalog?.name}</span>
-            <span className="truncate text-xs text-muted-foreground">Catalogs</span>
+            <span className="truncate text-xs text-muted-foreground">{t("nav.catalog.label")}</span>
           </div>
           <ChevronsUpDown className="ml-auto size-4" />
         </button>
@@ -117,14 +119,14 @@ export function CatalogSwitcher({
       >
         <div className="p-2">
           <Input
-            placeholder="Search catalog..."
+            placeholder={t("nav.catalog.search")}
             className="h-8"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Catalogs
+          {t("nav.catalog.label")}
         </DropdownMenuLabel>
         {filteredCatalogs.map((catalog, index) => {
           const catalogLogo = getCatalogAssetUrl(catalog.logo_path);
@@ -170,7 +172,7 @@ export function CatalogSwitcher({
           <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
             <Plus className="size-4" />
           </div>
-          <span className="font-medium text-muted-foreground">Add catalog</span>
+          <span className="font-medium text-muted-foreground">{t("nav.catalog.add")}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

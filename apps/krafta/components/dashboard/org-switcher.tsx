@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { getOrgAssetUrl } from "@/lib/orgs/media";
+import { useT } from "@/lib/locales/dashboard/context";
 
 export type OrgOption = {
   id: string;
@@ -36,6 +37,7 @@ export function OrgSwitcher({
   triggerClassName,
 }: OrgSwitcherProps) {
   const router = useRouter();
+  const t = useT();
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedSlug, setSelectedSlug] = React.useState(currentOrgSlug);
 
@@ -61,7 +63,7 @@ export function OrgSwitcher({
           <div className="h-4 w-4 rounded bg-muted-foreground/30" />
         </div>
         <div className="grid flex-1 gap-1">
-          <span className="text-xs text-muted-foreground">No organizations</span>
+          <span className="text-xs text-muted-foreground">{t("nav.org.none")}</span>
         </div>
         <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
       </div>
@@ -80,7 +82,7 @@ export function OrgSwitcher({
             "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ring transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 active:bg-accent active:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground md:w-auto",
             triggerClassName,
           )}
-          aria-label="Select organization"
+          aria-label={t("nav.org.select_aria")}
         >
           {activeOrgLogo ? (
             <Image
@@ -108,14 +110,14 @@ export function OrgSwitcher({
       >
         <div className="p-2">
           <Input
-            placeholder="Search organization..."
+            placeholder={t("nav.org.search")}
             className="h-8"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Organizations
+          {t("nav.org.label")}
         </DropdownMenuLabel>
         {filteredOrgs.map((org, index) => {
           const orgLogo = getOrgAssetUrl(org.logo_path);

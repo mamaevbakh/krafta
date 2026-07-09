@@ -1,0 +1,370 @@
+/**
+ * qr — dashboard "qr" surface strings.
+ *
+ * Contract: export { en, ru, "uz-Latn" } objects of flat dotted keys prefixed
+ * "qr.". English is canonical (defines the key union); ru / uz-Latn are
+ * type-checked against it in ../catalog.ts. Use {var} placeholders for runtime
+ * values. See ./common.ts for the full contract.
+ */
+
+export const qr = {
+  en: {
+    // Page chrome
+    "qr.page_title": "QR codes",
+    "qr.page_subtitle":
+      "Printable codes for {name}. Customers scan → land in the right ordering mode.",
+    "qr.mode_qrs_title": "Mode QRs",
+    "qr.tables_title": "Tables",
+    "qr.tables_hint":
+      "One QR per dine-in surface. Add them as you set up the room (Table 1, Bar 2, Patio A …).",
+    "qr.download_all_zip": "Download all (.zip)",
+
+    // Add table
+    "qr.add_table_label": "Add a table",
+    "qr.add_table_placeholder": "e.g. Table {n}",
+    "qr.table_added": "Added “{label}”.",
+    "qr.no_tables_title": "No tables yet.",
+    "qr.no_tables_hint": "Add one above — we’ll generate the QR automatically.",
+
+    // Mode cards
+    "qr.mode_main": "Main",
+    "qr.mode_pickup": "Pickup",
+    "qr.mode_delivery": "Delivery",
+    "qr.mode_main_blurb":
+      "Lands customers on the catalog and lets them pick a mode.",
+    "qr.mode_pickup_blurb":
+      "Lands customers in the pickup form (counter takeaway).",
+    "qr.mode_delivery_blurb":
+      "Lands customers in the delivery form (address required).",
+    "qr.keep_one_mode": "Keep at least one ordering mode enabled.",
+    "qr.mode_enabled": "{mode}: enabled.",
+    "qr.mode_disabled": "{mode}: disabled.",
+    "qr.enable_mode_aria": "Enable {mode}",
+    "qr.disable_mode_aria": "Disable {mode}",
+
+    // Table cards
+    "qr.table_renamed": "Renamed.",
+    "qr.table_activated": "Activated.",
+    "qr.table_deactivated": "Deactivated.",
+    "qr.qr_regenerated": "New QR generated. Reprint the table card.",
+    "qr.table_removed": "Table removed.",
+    "qr.table_label_aria": "Table label",
+    "qr.activate_table_aria": "Activate table",
+    "qr.deactivate_table_aria": "Deactivate table",
+    "qr.qr_pending": "QR pending",
+    "qr.regenerate_shortcode_title":
+      "Regenerate shortcode (invalidates the printed QR)",
+    "qr.regenerate_shortcode_aria": "Regenerate shortcode",
+    "qr.regenerate_confirm_title": "Regenerate QR for “{label}”?",
+    "qr.regenerate_confirm_desc":
+      "The currently printed QR will stop working immediately. You’ll need to reprint the table card with the new code.",
+    "qr.regenerate": "Regenerate",
+    "qr.delete_table": "Delete table",
+    "qr.delete_confirm_title": "Delete “{label}”?",
+    "qr.delete_confirm_desc":
+      "The QR will stop working immediately and the table will be removed from this venue. This can’t be undone.",
+
+    // Scan counts
+    "qr.no_scans": "No scans yet. Print the QR and put it on the table.",
+    "qr.scans_word": "scans",
+    "qr.scans_this_week": "this week",
+    "qr.png_error": "Couldn’t generate PNG.",
+    "qr.qr_preview_aria": "QR code preview",
+
+    // QR studio
+    "qr.studio_title": "QR studio",
+    "qr.studio_subtitle":
+      "Style every QR for this catalog — mode tiles, table tents, and the bulk-download set all use this look.",
+    "qr.reset": "Reset",
+    "qr.save_style": "Save style",
+    "qr.style_saved": "QR style saved.",
+    "qr.reset_done": "Reset to default style.",
+    "qr.logo_too_large": "Logo must be 512 KB or smaller.",
+    "qr.file_read_error": "Couldn’t read the file.",
+    "qr.logo_added": "Logo added.",
+    "qr.preview_aria": "QR style preview",
+    "qr.preview_caption": "Preview — the saved style applies to every QR below.",
+    "qr.tab_style": "Style",
+    "qr.tab_brand": "Brand",
+    "qr.tab_frame": "Frame",
+    "qr.module_shape": "Module shape",
+    "qr.eye_outer": "Eye outer",
+    "qr.eye_inner": "Eye inner",
+    "qr.shape_square": "Square",
+    "qr.shape_dots": "Dots",
+    "qr.shape_rounded": "Rounded",
+    "qr.shape_circle": "Circle",
+    "qr.fg_color": "Foreground color",
+    "qr.bg_color": "Background color",
+    "qr.wordmark": "Wordmark",
+    "qr.hide": "Hide",
+    "qr.wordmark_help":
+      "Leave empty for the default Krafta wordmark, type your own brand (e.g. My Café), or hide it. Logos override wordmarks.",
+    "qr.logo": "Logo",
+    "qr.logo_alt": "Logo",
+    "qr.logo_attached": "Logo attached",
+    "qr.logo_centered_hint": "Centered with a white halo.",
+    "qr.remove_logo_aria": "Remove logo",
+    "qr.logo_size": "Size: {value}% of QR",
+    "qr.frame_label_title": "Frame label",
+    "qr.frame_hint":
+      "Adds a short caption below the QR — like “Scan to order” or a table number.",
+    "qr.toggle_frame_aria": "Toggle frame label",
+    "qr.frame_default_text": "Scan to order",
+    "qr.frame_text_label": "Text",
+    "qr.frame_text_hint": "Up to 24 characters fits the print scale cleanly.",
+    "qr.frame_color": "Frame color",
+    "qr.gradient_title": "Gradient",
+    "qr.gradient_hint":
+      "Two-stop gradient for the dark modules. Overrides the foreground color.",
+    "qr.toggle_gradient_aria": "Toggle gradient",
+    "qr.gradient_type": "Type",
+    "qr.gradient_linear": "Linear",
+    "qr.gradient_radial": "Radial",
+    "qr.gradient_rotation": "Rotation: {value}°",
+    "qr.gradient_from": "From",
+    "qr.gradient_to": "To",
+    "qr.color_picker_aria": "{label} picker",
+    "qr.color_pick_aria": "Pick {color}",
+    "qr.use_color": "Use a color",
+    "qr.transparent": "Transparent",
+    "qr.upload_logo": "Upload logo",
+    "qr.logo_upload_tooltip":
+      "PNG, JPEG, SVG, or WEBP. Up to 512 KB. Square logos work best.",
+  },
+  ru: {
+    "qr.page_title": "QR-коды",
+    "qr.page_subtitle":
+      "Печатные коды для {name}. Клиенты сканируют и попадают в нужный режим заказа.",
+    "qr.mode_qrs_title": "QR-коды режимов",
+    "qr.tables_title": "Столы",
+    "qr.tables_hint":
+      "По одному QR на каждое посадочное место. Добавляйте их по мере обустройства зала (Стол 1, Бар 2, Терраса A …).",
+    "qr.download_all_zip": "Скачать все (.zip)",
+
+    "qr.add_table_label": "Добавить стол",
+    "qr.add_table_placeholder": "напр. Стол {n}",
+    "qr.table_added": "Добавлено: «{label}».",
+    "qr.no_tables_title": "Столов пока нет.",
+    "qr.no_tables_hint": "Добавьте стол выше — QR создастся автоматически.",
+
+    "qr.mode_main": "Основной",
+    "qr.mode_pickup": "Самовывоз",
+    "qr.mode_delivery": "Доставка",
+    "qr.mode_main_blurb": "Открывает каталог и позволяет выбрать режим.",
+    "qr.mode_pickup_blurb": "Открывает форму самовывоза (у стойки).",
+    "qr.mode_delivery_blurb": "Открывает форму доставки (нужен адрес).",
+    "qr.keep_one_mode": "Оставьте включённым хотя бы один режим заказа.",
+    "qr.mode_enabled": "{mode}: включено.",
+    "qr.mode_disabled": "{mode}: выключено.",
+    "qr.enable_mode_aria": "Включить {mode}",
+    "qr.disable_mode_aria": "Выключить {mode}",
+
+    "qr.table_renamed": "Переименовано.",
+    "qr.table_activated": "Включено.",
+    "qr.table_deactivated": "Выключено.",
+    "qr.qr_regenerated": "Новый QR создан. Распечатайте карточку стола заново.",
+    "qr.table_removed": "Стол удалён.",
+    "qr.table_label_aria": "Название стола",
+    "qr.activate_table_aria": "Включить стол",
+    "qr.deactivate_table_aria": "Выключить стол",
+    "qr.qr_pending": "QR готовится",
+    "qr.regenerate_shortcode_title":
+      "Сгенерировать новый код (старый напечатанный QR перестанет работать)",
+    "qr.regenerate_shortcode_aria": "Сгенерировать новый код",
+    "qr.regenerate_confirm_title": "Сгенерировать новый QR для «{label}»?",
+    "qr.regenerate_confirm_desc":
+      "Текущий напечатанный QR сразу перестанет работать. Карточку стола нужно будет распечатать заново с новым кодом.",
+    "qr.regenerate": "Сгенерировать",
+    "qr.delete_table": "Удалить стол",
+    "qr.delete_confirm_title": "Удалить «{label}»?",
+    "qr.delete_confirm_desc":
+      "QR сразу перестанет работать, а стол будет удалён из этого заведения. Это действие необратимо.",
+
+    "qr.no_scans": "Сканирований пока нет. Распечатайте QR и поставьте на стол.",
+    "qr.scans_word": "сканирований",
+    "qr.scans_this_week": "за неделю",
+    "qr.png_error": "Не удалось создать PNG.",
+    "qr.qr_preview_aria": "Предпросмотр QR-кода",
+
+    "qr.studio_title": "QR-студия",
+    "qr.studio_subtitle":
+      "Оформите все QR этого каталога — плитки режимов, настольные таблички и набор для массовой печати используют этот стиль.",
+    "qr.reset": "Сбросить",
+    "qr.save_style": "Сохранить стиль",
+    "qr.style_saved": "Стиль QR сохранён.",
+    "qr.reset_done": "Стиль сброшен к стандартному.",
+    "qr.logo_too_large": "Логотип должен быть не больше 512 КБ.",
+    "qr.file_read_error": "Не удалось прочитать файл.",
+    "qr.logo_added": "Логотип добавлен.",
+    "qr.preview_aria": "Предпросмотр стиля QR",
+    "qr.preview_caption":
+      "Предпросмотр — сохранённый стиль применится ко всем QR ниже.",
+    "qr.tab_style": "Стиль",
+    "qr.tab_brand": "Бренд",
+    "qr.tab_frame": "Рамка",
+    "qr.module_shape": "Форма модулей",
+    "qr.eye_outer": "Внешний глазок",
+    "qr.eye_inner": "Внутренний глазок",
+    "qr.shape_square": "Квадрат",
+    "qr.shape_dots": "Точки",
+    "qr.shape_rounded": "Скруглённая",
+    "qr.shape_circle": "Круг",
+    "qr.fg_color": "Цвет переднего плана",
+    "qr.bg_color": "Цвет фона",
+    "qr.wordmark": "Надпись",
+    "qr.hide": "Скрыть",
+    "qr.wordmark_help":
+      "Оставьте пустым для стандартной надписи Krafta, введите свой бренд (напр. My Café) или скройте её. Логотип имеет приоритет над надписью.",
+    "qr.logo": "Логотип",
+    "qr.logo_alt": "Логотип",
+    "qr.logo_attached": "Логотип добавлен",
+    "qr.logo_centered_hint": "По центру, с белым ореолом.",
+    "qr.remove_logo_aria": "Удалить логотип",
+    "qr.logo_size": "Размер: {value}% от QR",
+    "qr.frame_label_title": "Подпись-рамка",
+    "qr.frame_hint":
+      "Добавляет короткую подпись под QR — например «Сканируйте, чтобы заказать» или номер стола.",
+    "qr.toggle_frame_aria": "Переключить подпись-рамку",
+    "qr.frame_default_text": "Сканируйте, чтобы заказать",
+    "qr.frame_text_label": "Текст",
+    "qr.frame_text_hint": "До 24 символов помещается на печати без потерь.",
+    "qr.frame_color": "Цвет рамки",
+    "qr.gradient_title": "Градиент",
+    "qr.gradient_hint":
+      "Градиент из двух цветов для тёмных модулей. Заменяет цвет переднего плана.",
+    "qr.toggle_gradient_aria": "Переключить градиент",
+    "qr.gradient_type": "Тип",
+    "qr.gradient_linear": "Линейный",
+    "qr.gradient_radial": "Радиальный",
+    "qr.gradient_rotation": "Поворот: {value}°",
+    "qr.gradient_from": "От",
+    "qr.gradient_to": "До",
+    "qr.color_picker_aria": "Палитра: {label}",
+    "qr.color_pick_aria": "Выбрать {color}",
+    "qr.use_color": "Задать цвет",
+    "qr.transparent": "Прозрачный",
+    "qr.upload_logo": "Загрузить логотип",
+    "qr.logo_upload_tooltip":
+      "PNG, JPEG, SVG или WEBP. До 512 КБ. Лучше всего подходят квадратные логотипы.",
+  },
+  "uz-Latn": {
+    "qr.page_title": "QR-kodlar",
+    "qr.page_subtitle":
+      "{name} uchun bosma kodlar. Mijozlar skanerlab, kerakli buyurtma rejimiga tushadi.",
+    "qr.mode_qrs_title": "Rejim QR-kodlari",
+    "qr.tables_title": "Stollar",
+    "qr.tables_hint":
+      "Har bir stol uchun bitta QR. Zalni jihozlagan sari ularni qo‘shing (Stol 1, Bar 2, Terrasa A …).",
+    "qr.download_all_zip": "Barchasini yuklab olish (.zip)",
+
+    "qr.add_table_label": "Stol qo‘shish",
+    "qr.add_table_placeholder": "masalan, Stol {n}",
+    "qr.table_added": "Qo‘shildi: «{label}».",
+    "qr.no_tables_title": "Hozircha stollar yo‘q.",
+    "qr.no_tables_hint": "Yuqoridan bittasini qo‘shing — QR avtomatik yaratiladi.",
+
+    "qr.mode_main": "Asosiy",
+    "qr.mode_pickup": "Olib ketish",
+    "qr.mode_delivery": "Yetkazib berish",
+    "qr.mode_main_blurb":
+      "Mijozlarni katalogga olib kiradi va rejim tanlash imkonini beradi.",
+    "qr.mode_pickup_blurb":
+      "Mijozlarni olib ketish shakliga olib kiradi (peshtaxtadan).",
+    "qr.mode_delivery_blurb":
+      "Mijozlarni yetkazib berish shakliga olib kiradi (manzil kerak).",
+    "qr.keep_one_mode": "Kamida bitta buyurtma rejimini yoqilgan holda qoldiring.",
+    "qr.mode_enabled": "{mode}: yoqildi.",
+    "qr.mode_disabled": "{mode}: o‘chirildi.",
+    "qr.enable_mode_aria": "Yoqish: {mode}",
+    "qr.disable_mode_aria": "O‘chirish: {mode}",
+
+    "qr.table_renamed": "Nomi o‘zgartirildi.",
+    "qr.table_activated": "Yoqildi.",
+    "qr.table_deactivated": "O‘chirildi.",
+    "qr.qr_regenerated": "Yangi QR yaratildi. Stol kartochkasini qayta chop eting.",
+    "qr.table_removed": "Stol o‘chirildi.",
+    "qr.table_label_aria": "Stol nomi",
+    "qr.activate_table_aria": "Stolni yoqish",
+    "qr.deactivate_table_aria": "Stolni o‘chirish",
+    "qr.qr_pending": "QR tayyorlanmoqda",
+    "qr.regenerate_shortcode_title":
+      "Yangi kod yaratish (chop etilgan QR ishlamay qoladi)",
+    "qr.regenerate_shortcode_aria": "Yangi kod yaratish",
+    "qr.regenerate_confirm_title": "«{label}» uchun yangi QR yaratilsinmi?",
+    "qr.regenerate_confirm_desc":
+      "Hozir chop etilgan QR darhol ishlamay qoladi. Stol kartochkasini yangi kod bilan qayta chop etishingiz kerak bo‘ladi.",
+    "qr.regenerate": "Yaratish",
+    "qr.delete_table": "Stolni o‘chirish",
+    "qr.delete_confirm_title": "«{label}» o‘chirilsinmi?",
+    "qr.delete_confirm_desc":
+      "QR darhol ishlamay qoladi va stol ushbu joydan o‘chiriladi. Buni ortga qaytarib bo‘lmaydi.",
+
+    "qr.no_scans": "Hozircha skanerlashlar yo‘q. QRni chop etib, stolga qo‘ying.",
+    "qr.scans_word": "skanerlash",
+    "qr.scans_this_week": "bu hafta",
+    "qr.png_error": "PNG yaratib bo‘lmadi.",
+    "qr.qr_preview_aria": "QR-kod ko‘rinishi",
+
+    "qr.studio_title": "QR studiya",
+    "qr.studio_subtitle":
+      "Ushbu katalogning barcha QRlarini bezang — rejim plitkalari, stol taxtachalari va ommaviy yuklab olish to‘plami shu ko‘rinishdan foydalanadi.",
+    "qr.reset": "Tiklash",
+    "qr.save_style": "Uslubni saqlash",
+    "qr.style_saved": "QR uslubi saqlandi.",
+    "qr.reset_done": "Uslub standart holatga tiklandi.",
+    "qr.logo_too_large": "Logotip 512 KB dan katta bo‘lmasligi kerak.",
+    "qr.file_read_error": "Faylni o‘qib bo‘lmadi.",
+    "qr.logo_added": "Logotip qo‘shildi.",
+    "qr.preview_aria": "QR uslubi ko‘rinishi",
+    "qr.preview_caption":
+      "Ko‘rinish — saqlangan uslub quyidagi barcha QRlarga qo‘llanadi.",
+    "qr.tab_style": "Uslub",
+    "qr.tab_brand": "Brend",
+    "qr.tab_frame": "Ramka",
+    "qr.module_shape": "Modul shakli",
+    "qr.eye_outer": "Tashqi ko‘zcha",
+    "qr.eye_inner": "Ichki ko‘zcha",
+    "qr.shape_square": "Kvadrat",
+    "qr.shape_dots": "Nuqtalar",
+    "qr.shape_rounded": "Yumaloq",
+    "qr.shape_circle": "Doira",
+    "qr.fg_color": "Old fon rangi",
+    "qr.bg_color": "Fon rangi",
+    "qr.wordmark": "Yozuv",
+    "qr.hide": "Yashirish",
+    "qr.wordmark_help":
+      "Standart Krafta yozuvi uchun bo‘sh qoldiring, o‘z brendingizni kiriting (masalan, My Café) yoki yashiring. Logotip yozuvdan ustun turadi.",
+    "qr.logo": "Logotip",
+    "qr.logo_alt": "Logotip",
+    "qr.logo_attached": "Logotip biriktirildi",
+    "qr.logo_centered_hint": "Markazda, oq halo bilan.",
+    "qr.remove_logo_aria": "Logotipni olib tashlash",
+    "qr.logo_size": "O‘lcham: QRning {value}%i",
+    "qr.frame_label_title": "Ramka yozuvi",
+    "qr.frame_hint":
+      "QR ostiga qisqa izoh qo‘shadi — masalan «Buyurtma uchun skanerlang» yoki stol raqami.",
+    "qr.toggle_frame_aria": "Ramka yozuvini almashtirish",
+    "qr.frame_default_text": "Buyurtma uchun skanerlang",
+    "qr.frame_text_label": "Matn",
+    "qr.frame_text_hint": "24 belgigacha bo‘lsa, chop etishda toza chiqadi.",
+    "qr.frame_color": "Ramka rangi",
+    "qr.gradient_title": "Gradient",
+    "qr.gradient_hint":
+      "Qorong‘i modullar uchun ikki rangli gradient. Old fon rangini almashtiradi.",
+    "qr.toggle_gradient_aria": "Gradientni almashtirish",
+    "qr.gradient_type": "Turi",
+    "qr.gradient_linear": "Chiziqli",
+    "qr.gradient_radial": "Radial",
+    "qr.gradient_rotation": "Burilish: {value}°",
+    "qr.gradient_from": "Dan",
+    "qr.gradient_to": "Gacha",
+    "qr.color_picker_aria": "Palitra: {label}",
+    "qr.color_pick_aria": "Tanlash: {color}",
+    "qr.use_color": "Rang tanlash",
+    "qr.transparent": "Shaffof",
+    "qr.upload_logo": "Logotip yuklash",
+    "qr.logo_upload_tooltip":
+      "PNG, JPEG, SVG yoki WEBP. 512 KB gacha. Kvadrat logotiplar eng yaxshi mos keladi.",
+  },
+};

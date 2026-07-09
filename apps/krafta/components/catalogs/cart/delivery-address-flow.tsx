@@ -328,6 +328,7 @@ function ScreenHeader({
   title: string;
   onBack: () => void;
 }) {
+  const t = useT();
   return (
     // Circular outline back (44px) + centered title, vertically aligned with
     // the close X (both anchored at top-4, size-11). px-16 keeps the title off
@@ -339,7 +340,7 @@ function ScreenHeader({
         size="icon"
         className="absolute left-4 top-4 z-10 size-11 rounded-full"
         onClick={onBack}
-        aria-label="Back"
+        aria-label={t("checkout.back")}
       >
         <ArrowLeft className="size-5" />
       </Button>

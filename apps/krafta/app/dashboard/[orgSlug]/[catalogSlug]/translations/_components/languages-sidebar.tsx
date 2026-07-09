@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 import {
   disableCatalogLocale,
   enableCatalogLocale,
@@ -62,6 +63,7 @@ export function LanguagesSidebar({
   locales,
   onMutation,
 }: LanguagesSidebarProps) {
+  const t = useT();
   const [addOpen, setAddOpen] = React.useState(false);
   const [editingLocale, setEditingLocale] =
     React.useState<CatalogLocale | null>(null);
@@ -87,26 +89,26 @@ export function LanguagesSidebar({
       }
       toast.success(
         locale.is_enabled
-          ? `${locale.display_name} disabled`
-          : `${locale.display_name} re-enabled`,
+          ? t("translations.locale_disabled", { name: locale.display_name })
+          : t("translations.locale_enabled", { name: locale.display_name }),
       );
       startTransition(() => onMutation());
     },
-    [catalogId, onMutation],
+    [catalogId, onMutation, t],
   );
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-4 py-3 md:px-5">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Languages
+          {t("translations.languages_heading")}
         </span>
         <Button
           variant="ghost"
           size="icon"
           className="size-7"
           onClick={() => setAddOpen(true)}
-          aria-label="Add language"
+          aria-label={t("translations.add_language")}
         >
           <Plus className="size-4" aria-hidden="true" />
         </Button>
@@ -115,7 +117,7 @@ export function LanguagesSidebar({
       <ul className="flex flex-col">
         {locales.length === 0 ? (
           <li className="px-4 py-2 text-xs text-muted-foreground md:px-5">
-            No languages set up.
+            {t("translations.no_languages")}
           </li>
         ) : (
           locales.map((locale) => {
@@ -145,7 +147,7 @@ export function LanguagesSidebar({
                 {locale.is_default ? (
                   <Star
                     className="mr-1 size-3.5 shrink-0 fill-foreground text-foreground"
-                    aria-label="Default language"
+                    aria-label={t("translations.default_language_aria")}
                   />
                 ) : (
                   <span
@@ -175,7 +177,9 @@ export function LanguagesSidebar({
                   size="icon"
                   className="size-7 text-muted-foreground hover:text-foreground"
                   onClick={() => setEditingLocale(locale)}
-                  aria-label={`Rename ${locale.display_name}`}
+                  aria-label={t("translations.rename_language", {
+                    name: locale.display_name,
+                  })}
                 >
                   <Pencil className="size-3.5" aria-hidden="true" />
                 </Button>
@@ -193,8 +197,12 @@ export function LanguagesSidebar({
                     // open-eye icon next to a visible language.
                     aria-label={
                       locale.is_enabled
-                        ? `Hide ${locale.display_name}`
-                        : `Show ${locale.display_name}`
+                        ? t("translations.hide_language", {
+                            name: locale.display_name,
+                          })
+                        : t("translations.show_language", {
+                            name: locale.display_name,
+                          })
                     }
                   >
                     {pendingLocale === locale.locale ? (

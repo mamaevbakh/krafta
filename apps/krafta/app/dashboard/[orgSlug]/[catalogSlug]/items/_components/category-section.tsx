@@ -33,6 +33,7 @@ import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   Collapsible,
@@ -124,6 +125,7 @@ export function CategorySection({
   catalogId,
   sortable = true,
 }: CategorySectionProps) {
+  const t = useT();
   // useSortable doubles as droppable, so cross-category item drag still
   // resolves to a section root drop. `disabled: !sortable` lets the
   // orphans bucket render with the same component without participating
@@ -231,7 +233,7 @@ export function CategorySection({
             <button
               type="button"
               {...listeners}
-              aria-label={`Drag ${category.name} to reorder`}
+              aria-label={t("items.drag_reorder", { name: category.name })}
               className={cn(
                 "group/grip flex shrink-0 items-center justify-center",
                 "size-9 rounded-md text-muted-foreground transition-colors",
@@ -270,7 +272,7 @@ export function CategorySection({
                 </h2>
               </div>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {items.length} {items.length === 1 ? "item" : "items"}
+                {t("items.items_count", { count: items.length })}
               </span>
             </button>
           </CollapsibleTrigger>
@@ -299,7 +301,7 @@ export function CategorySection({
             <div className="flex flex-col gap-2 pt-3">
               {sortedItems.length === 0 ? (
                 <div className="rounded-xs border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-                  No items in {category.name} yet
+                  {t("items.category_empty", { name: category.name })}
                 </div>
               ) : (
                 sortedItems.map((item) => (

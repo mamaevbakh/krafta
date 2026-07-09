@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 import {
   connectYandexDelivery,
@@ -31,6 +32,7 @@ export function DeliveryCourierForm({
   orgId: string;
   initial: DeliveryCourierInitial;
 }) {
+  const t = useT();
   const [connected, setConnected] = React.useState(initial.connected);
   const [accountLabel, setAccountLabel] = React.useState(initial.accountLabel);
   const [isActive, setIsActive] = React.useState(initial.isActive);
@@ -54,9 +56,11 @@ export function DeliveryCourierForm({
       setIsActive(true);
       setToken("");
       setStatusKind("ok");
-      setStatusMessage(`Connected · token ending ${r.last4}`);
+      setStatusMessage(
+        t("settings.courier.connected_last4", { last4: r.last4 }),
+      );
     });
-  }, [orgId, token, label]);
+  }, [orgId, token, label, t]);
 
   const handleDisconnect = React.useCallback(() => {
     setStatusMessage(null);
@@ -70,9 +74,9 @@ export function DeliveryCourierForm({
       setConnected(false);
       setAccountLabel(null);
       setStatusKind("ok");
-      setStatusMessage("Disconnected.");
+      setStatusMessage(t("settings.courier.disconnected"));
     });
-  }, [orgId]);
+  }, [orgId, t]);
 
   const handleToggleActive = React.useCallback(
     (next: boolean) => {
@@ -94,10 +98,9 @@ export function DeliveryCourierForm({
       <div className="flex items-start gap-3">
         <Truck className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Delivery courier — Yandex Go</h3>
+          <h3 className="text-sm font-semibold">{t("settings.courier.title")}</h3>
           <p className="text-sm text-muted-foreground">
-            Connect your company&apos;s Yandex Delivery account to quote fees and
-            dispatch couriers automatically. Each company uses its own account.
+            {t("settings.courier.description")}
           </p>
         </div>
       </div>
@@ -107,21 +110,21 @@ export function DeliveryCourierForm({
           <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
             <CheckCircle2 className="size-4 shrink-0 text-foreground" />
             <span className="font-medium">
-              {accountLabel || "Yandex Delivery connected"}
+              {accountLabel || t("settings.courier.connected_fallback")}
             </span>
           </div>
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-0.5 pr-4">
-              <FieldLabel>Courier dispatch active</FieldLabel>
-              <FieldDescription>
-                Pause without removing the connected account.
-              </FieldDescription>
+              <FieldLabel>
+                {t("settings.courier.dispatch_active_label")}
+              </FieldLabel>
+              <FieldDescription>{t("settings.pause_hint")}</FieldDescription>
             </div>
             <Switch
               checked={isActive}
               onCheckedChange={handleToggleActive}
               disabled={isPending}
-              aria-label="Courier dispatch active"
+              aria-label={t("settings.courier.dispatch_active_label")}
             />
           </div>
           <Button
@@ -131,37 +134,35 @@ export function DeliveryCourierForm({
             onClick={handleDisconnect}
             disabled={isPending}
           >
-            Disconnect
+            {t("settings.disconnect")}
           </Button>
         </div>
       ) : (
         <div className="space-y-4">
           {initial.usingEnvFallback ? (
             <div className="rounded-lg border border-dashed bg-muted/40 p-3 text-sm text-muted-foreground">
-              Currently using Krafta&apos;s shared test token (dev). Connect your
-              own account below to bill couriers to your company.
+              {t("settings.courier.env_fallback")}
             </div>
           ) : null}
           <Field>
-            <FieldLabel>Account name (optional)</FieldLabel>
+            <FieldLabel>{t("settings.account_name_optional")}</FieldLabel>
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. My Cafe LLC"
+              placeholder={t("settings.account_name_placeholder")}
             />
           </Field>
           <Field>
-            <FieldLabel>Yandex Delivery API token</FieldLabel>
+            <FieldLabel>{t("settings.courier.token_label")}</FieldLabel>
             <Input
               type="password"
               autoComplete="off"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="OAuth token from your Yandex Delivery account"
+              placeholder={t("settings.courier.token_placeholder")}
             />
             <FieldDescription>
-              From your Yandex Delivery corporate account → Integration. We
-              validate it, then store it encrypted — it&apos;s never shown again.
+              {t("settings.courier.token_hint")}
             </FieldDescription>
           </Field>
           <Button
@@ -172,10 +173,10 @@ export function DeliveryCourierForm({
             {isPending ? (
               <>
                 <Spinner className="size-4" />
-                Connecting
+                {t("settings.connecting")}
               </>
             ) : (
-              "Connect Yandex Delivery"
+              t("settings.courier.connect_cta")
             )}
           </Button>
         </div>

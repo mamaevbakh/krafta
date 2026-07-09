@@ -6,6 +6,7 @@ import {
   createAtmosRecurringCharge,
   extractAtmosChargeProviderRefs,
   persistBindingPaymentMethodForPaymentIntent,
+  persistBindingPaymentMethodForCustomer,
   activateSubscriptionAfterCharge,
   writePaymentDebugLog,
   AtmosError,
@@ -48,7 +49,7 @@ export async function POST(
     const { data: intent, error: intentErr } = await supabase
       .schema("payments")
       .from("payment_intents")
-      .select("id, amount_minor, currency, status, order_id")
+      .select("id, amount_minor, currency, status, order_id, metadata")
       .eq("id", session.payment_intent_id)
       .maybeSingle();
     if (intentErr) throw intentErr;
@@ -124,6 +125,61 @@ export async function POST(
         },
       }).catch(() => {});
       return NextResponse.json({ error: code }, { status: 400 });
+    }
+
+    // Card-update ("SetupIntent"): bind the new card as the subscription's
+    // renewal default and finish — NO charge, NO activation. Isolated from the
+    // charge path below so it can never move money.
+    const intentMetadata = (intent.metadata ?? {}) as Record<string, unknown>;
+    if (intentMetadata.purpose === "card_update") {
+      const subscriptionId = String(intentMetadata.subscription_id ?? "");
+      const customerId = String(intentMetadata.customer_id ?? "");
+      if (!subscriptionId || !customerId) {
+        await supabase
+          .schema("payments")
+          .from("payment_intents")
+          .update({ status: "requires_action", updated_at: new Date().toISOString() })
+          .eq("id", intent.id);
+        return NextResponse.json({ error: "card_update_context_missing" }, { status: 409 });
+      }
+
+      const cardPersist = await persistBindingPaymentMethodForCustomer(supabase, {
+        customerId,
+        providerId: "atmos",
+        bindingId: bind.cardToken,
+        orgProviderAccountId,
+        setDefaultForSubscriptionId: subscriptionId,
+      });
+
+      await supabase
+        .schema("payments")
+        .from("payment_intents")
+        .update({ status: "succeeded", updated_at: new Date().toISOString() })
+        .eq("id", intent.id);
+
+      await writePaymentDebugLog(supabase, {
+        scope: "atmos",
+        event: "card_update.saved",
+        providerId: "atmos",
+        publicToken: public_token,
+        paymentIntentId: intent.id,
+        paymentAttemptId: attempt.id,
+        data: {
+          subscriptionId,
+          setAsDefault: cardPersist.setAsDefault,
+          last4: bind.pan ? bind.pan.replace(/\D/g, "").slice(-4) : null,
+        },
+      }).catch(() => {});
+
+      try {
+        await broadcastCheckoutUpdate(supabase, public_token, {
+          reason: "atmos_card_update",
+          providerId: "atmos",
+          paymentIntentId: intent.id,
+        });
+      } catch {}
+
+      return NextResponse.json({ status: "succeeded", paymentIntentStatus: "succeeded" });
     }
 
     // 2) Save the card BEFORE charging (survives a declined first charge).

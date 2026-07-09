@@ -19,6 +19,7 @@ import {
 import { CURRENCY_CODES, getCurrencyName } from "@/lib/locale/currencies";
 import { LANGUAGE_CODES, getLanguageName } from "@/lib/locale/languages";
 import { getTimezoneLabel, getTimezones } from "@/lib/locale/timezones";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   AddressEditor,
@@ -61,6 +62,7 @@ function normalizeModes(raw: string[]): VenueMode[] {
 }
 
 export function VenueForm({ catalogId, catalogSlug, venue }: VenueFormProps) {
+  const t = useT();
   const [name, setName] = React.useState(venue.name);
   // Status dropdown is hidden in v1 — only active ↔ paused via the Switch.
   // Existing 'archived' rows stay archived until exposed in a future ticket.
@@ -150,52 +152,52 @@ export function VenueForm({ catalogId, catalogSlug, venue }: VenueFormProps) {
     startTransition(async () => {
       const result = await updateVenueSettings(submission);
       if (!result.ok) {
-        toast.error(result.error ?? "Unable to save venue settings.");
+        toast.error(result.error ?? t("settings.venue.save_error"));
         return;
       }
-      toast.success("Venue settings saved.");
+      toast.success(t("settings.venue.saved"));
     });
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       <FieldSet>
-        <FieldLegend>Identity</FieldLegend>
+        <FieldLegend>{t("settings.venue.identity_legend")}</FieldLegend>
         <FieldDescription>
-          The name customers see for this venue.
+          {t("settings.venue.identity_description")}
         </FieldDescription>
         <FieldGroup className="mt-6 gap-6">
           <Field>
-            <FieldLabel>Venue name</FieldLabel>
+            <FieldLabel>{t("settings.venue.name_label")}</FieldLabel>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Khiva Branch"
+              placeholder={t("settings.venue.name_placeholder")}
               disabled={isPending}
             />
           </Field>
 
           <Field orientation="horizontal">
             <FieldLabel className="flex flex-col items-start gap-1">
-              <span>Accept orders</span>
+              <span>{t("settings.venue.accept_orders_label")}</span>
               <span className="text-muted-foreground text-xs font-normal">
-                When off, the storefront shows the venue as paused.
+                {t("settings.venue.accept_orders_hint")}
               </span>
             </FieldLabel>
             <Switch
               checked={acceptingOrders}
               onCheckedChange={setAcceptingOrders}
               disabled={isPending}
-              aria-label="Accept orders"
+              aria-label={t("settings.venue.accept_orders_label")}
             />
           </Field>
         </FieldGroup>
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Order modes</FieldLegend>
+        <FieldLegend>{t("settings.venue.modes_legend")}</FieldLegend>
         <FieldDescription>
-          At least one mode must stay enabled.
+          {t("settings.venue.modes_description")}
         </FieldDescription>
         <FieldGroup className="mt-6">
           <ModesEditor value={modes} onChange={setModes} disabled={isPending} />
@@ -203,61 +205,61 @@ export function VenueForm({ catalogId, catalogSlug, venue }: VenueFormProps) {
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Hours</FieldLegend>
+        <FieldLegend>{t("settings.venue.hours_legend")}</FieldLegend>
         <FieldDescription>
-          Single window per day. Overnight hours come with bar mode.
+          {t("settings.venue.hours_description")}
         </FieldDescription>
         <FieldGroup className="mt-6">
           <HoursEditor value={hours} onChange={setHours} disabled={isPending} />
           {hoursError ? (
             <p className="text-destructive text-sm">
-              Closing time must be after opening time.
+              {t("settings.venue.hours_error")}
             </p>
           ) : null}
         </FieldGroup>
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Locale</FieldLegend>
+        <FieldLegend>{t("settings.venue.locale_legend")}</FieldLegend>
         <FieldDescription>
-          Currency, timezone, and default language for receipts and the menu.
+          {t("settings.venue.locale_description")}
         </FieldDescription>
         <FieldGroup className="mt-6 gap-6">
           <Field>
-            <FieldLabel>Currency</FieldLabel>
+            <FieldLabel>{t("settings.venue.currency_label")}</FieldLabel>
             <Combobox
               value={currency}
               onChange={setCurrency}
               options={currencyOptions}
-              placeholder="Select currency"
-              searchPlaceholder="Search currencies…"
-              emptyMessage="No currency found."
+              placeholder={t("settings.venue.currency_placeholder")}
+              searchPlaceholder={t("settings.venue.currency_search")}
+              emptyMessage={t("settings.venue.currency_empty")}
               disabled={isPending}
             />
           </Field>
 
           <Field>
-            <FieldLabel>Timezone</FieldLabel>
+            <FieldLabel>{t("settings.venue.timezone_label")}</FieldLabel>
             <Combobox
               value={timezone}
               onChange={setTimezone}
               options={timezoneOptions}
-              placeholder="Select timezone"
-              searchPlaceholder="Search timezones…"
-              emptyMessage="No timezone found."
+              placeholder={t("settings.venue.timezone_placeholder")}
+              searchPlaceholder={t("settings.venue.timezone_search")}
+              emptyMessage={t("settings.venue.timezone_empty")}
               disabled={isPending}
             />
           </Field>
 
           <Field>
-            <FieldLabel>Language</FieldLabel>
+            <FieldLabel>{t("settings.venue.language_label")}</FieldLabel>
             <Combobox
               value={languageCode}
               onChange={setLanguageCode}
               options={languageOptions}
-              placeholder="Select language"
-              searchPlaceholder="Search languages…"
-              emptyMessage="No language found."
+              placeholder={t("settings.venue.language_placeholder")}
+              searchPlaceholder={t("settings.venue.language_search")}
+              emptyMessage={t("settings.venue.language_empty")}
               disabled={isPending}
             />
           </Field>
@@ -265,9 +267,9 @@ export function VenueForm({ catalogId, catalogSlug, venue }: VenueFormProps) {
       </FieldSet>
 
       <FieldSet>
-        <FieldLegend>Address</FieldLegend>
+        <FieldLegend>{t("settings.venue.address_legend")}</FieldLegend>
         <FieldDescription>
-          Used on receipts and pickup directions.
+          {t("settings.venue.address_description")}
         </FieldDescription>
         <div className="mt-6">
           <AddressEditor
@@ -283,10 +285,10 @@ export function VenueForm({ catalogId, catalogSlug, venue }: VenueFormProps) {
           {isPending ? (
             <>
               <Spinner className="size-4" />
-              Saving
+              {t("common.saving")}
             </>
           ) : (
-            "Save changes"
+            t("common.save_changes")
           )}
         </Button>
       </div>

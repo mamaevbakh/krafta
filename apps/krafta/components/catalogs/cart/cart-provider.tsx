@@ -349,6 +349,12 @@ type CartProviderProps = {
   venueId: string;
   catalogPath: string;
   modes: CartFulfillmentMode[];
+  /**
+   * Whether dine-in (QR-at-table) is entitled for this merchant (Business tier).
+   * When false, a `?mode=dine_in` URL/QR is ignored so the customer falls back
+   * to the pickup/delivery picker. Defaults to true for callers that don't gate.
+   */
+  allowDineIn?: boolean;
   taxes?: PublicTax[];
   initialSummary?: CartSummary;
   children: ReactNode;
@@ -377,6 +383,7 @@ export function CartProvider({
   venueId,
   catalogPath,
   modes,
+  allowDineIn = true,
   taxes = [],
   initialSummary,
   children,
@@ -1094,7 +1101,12 @@ export function CartProvider({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const qrParam = searchParams?.get("qr");
-    const modeParam = searchParams?.get("mode");
+    const rawModeParam = searchParams?.get("mode");
+    // Dine-in is Business-gated (allowDineIn). When the merchant isn't entitled,
+    // ignore any dine_in intent so the visit falls back to the pickup/delivery
+    // picker instead of locking to a table.
+    const modeParam =
+      !allowDineIn && rawModeParam === "dine_in" ? null : rawModeParam;
     const tableParam = searchParams?.get("table");
     const hasFreshScan = Boolean(qrParam);
     const hasModeIntent =
@@ -1152,6 +1164,18 @@ export function CartProvider({
       return;
     }
 
+    if (!allowDineIn) {
+      // A non-Business shop must never (re)enter a dine-in lock — drop any
+      // stale one persisted from when the feature was available.
+      setDineInLock(null);
+      try {
+        window.sessionStorage.removeItem(storageKey);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     try {
       const raw = window.sessionStorage.getItem(storageKey);
       if (raw) {
@@ -1163,7 +1187,7 @@ export function CartProvider({
     } catch {
       // ignore
     }
-  }, [searchParams, storageKey]);
+  }, [searchParams, storageKey, allowDineIn]);
 
   const clearDineInLock = useCallback(() => {
     setDineInLock(null);

@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
+import { orgCan } from "@/lib/billing/gate";
 import {
   connectMerchantAtmos,
   disconnectMerchantAtmos,
@@ -27,18 +29,27 @@ export async function connectAtmosPayments(params: {
   consumerSecret: string;
   accountLabel?: string;
 }): Promise<Result<{ verified: boolean; storeId: string }>> {
+  const t = await getDashboardT();
   const storeId = params.storeId.trim();
   const consumerKey = params.consumerKey.trim();
   const consumerSecret = params.consumerSecret.trim();
   if (!storeId || !consumerKey || !consumerSecret) {
-    return { ok: false, error: "Enter your Atmos store ID, consumer key and secret." };
+    return { ok: false, error: t("settings.payments.error_enter_creds") };
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
+  if (!user) return { ok: false, error: t("settings.payments.error_not_signed_in") };
+
+  // Card acceptance is a Pro-tier feature.
+  if (!(await orgCan(params.orgId, "card_payments"))) {
+    return {
+      ok: false,
+      error: t("settings.payments.error_pro_required"),
+    };
+  }
 
   // Provision the merchant's Atmos account in Krafta Pay (validates the creds,
   // stores them encrypted there). initiatedByUserId → Krafta Pay re-checks org
@@ -54,10 +65,10 @@ export async function connectAtmosPayments(params: {
   if (!connect.ok) {
     const message =
       connect.error === "credentials_rejected"
-        ? "Atmos rejected these credentials. Check the store ID, key and secret and try again."
+        ? t("settings.payments.error_credentials_rejected")
         : connect.error === "forbidden"
-          ? "You need to be an owner or admin to connect payments."
-          : "Couldn't connect Krafta Pay — please try again.";
+          ? t("settings.payments.error_forbidden")
+          : t("settings.payments.error_connect_failed");
     return { ok: false, error: message };
   }
 

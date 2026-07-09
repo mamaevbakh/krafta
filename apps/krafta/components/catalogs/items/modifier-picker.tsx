@@ -13,7 +13,20 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
+
+/** Localized-message helper shape shared by this file's subcomponents. */
+type TFn = (
+  key: Parameters<typeof getStorefrontMessage>[0],
+  vars?: Record<string, string | number>,
+) => string;
+
+function useT(): TFn {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  return (key, vars) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
+}
 
 export type PickedModifier = {
   /** The parent modifier_list id. Always set — gives text-mode rows
@@ -115,6 +128,7 @@ export function ModifierPicker({
   guidedPointerListId = null,
 }: Props) {
   const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = useT();
   const visibleLists = useMemo(
     () => modifierLists.filter((list) => !list.hidden_from_customer),
     [modifierLists],
@@ -349,7 +363,7 @@ export function ModifierPicker({
                   {localizedListNameById.get(list.id) ?? list.name}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {selectionHint(list)}
+                  {selectionHint(list, t)}
                 </span>
               </div>
               {pillState ? <RequiredPill state={pillState} /> : null}
@@ -418,37 +432,43 @@ function initialDefaults(
  * conveys the cap so we don't double up ("Required · 1–10" reads like
  * two requirements; "Up to 10" + Required pill reads like one).
  */
-function selectionHint(list: PublicModifierList): string {
+function selectionHint(list: PublicModifierList, t: TFn): string {
   if (list.modifier_type === "text") {
     // For required text, the pill says "Required"; the hint just
     // carries the length cap when present.
     if (list.text_required) {
       return list.max_length !== null
-        ? `Up to ${list.max_length} chars`
+        ? t("modifier.hint.up_to_chars", { count: list.max_length })
         : "";
     }
     return list.max_length !== null
-      ? `Optional · up to ${list.max_length} chars`
-      : "Optional";
+      ? t("modifier.hint.optional_up_to_chars", { count: list.max_length })
+      : t("checkout.chip.optional");
   }
   // List-mode
-  if (list.min_selected === 1 && list.max_selected === 1) return "Choose 1";
-  if (list.max_selected === null && list.min_selected === 0) return "Optional";
+  if (list.min_selected === 1 && list.max_selected === 1)
+    return t("modifier.hint.choose_one");
+  if (list.max_selected === null && list.min_selected === 0)
+    return t("checkout.chip.optional");
   if (list.min_selected === 0 && list.max_selected !== null) {
-    return `Up to ${list.max_selected}`;
+    return t("modifier.hint.up_to", { count: list.max_selected });
   }
   if (list.min_selected === list.max_selected) {
-    return `Choose ${list.min_selected}`;
+    return t("modifier.hint.choose_n", { count: list.min_selected });
   }
-  if (list.max_selected === null) return `At least ${list.min_selected}`;
+  if (list.max_selected === null)
+    return t("modifier.hint.at_least", { count: list.min_selected });
   // Required with a cap (min=1, max=N): the pill carries Required;
   // the hint just shows the cap. "Up to 10" reads naturally next to
   // a "Required" pill where "1–10" reads as a confusing range.
   if (list.min_selected === 1) {
-    return `Up to ${list.max_selected}`;
+    return t("modifier.hint.up_to", { count: list.max_selected });
   }
   // Multi-required with a separate cap — rarer edge case.
-  return `Choose ${list.min_selected} to ${list.max_selected}`;
+  return t("modifier.hint.choose_range", {
+    min: list.min_selected,
+    max: list.max_selected,
+  });
 }
 
 // ============================================================================
@@ -467,11 +487,12 @@ function TextModifierInput({
   // Pick the right control by max_length. Short caps (<= 80) feel right
   // as a single-line Input; anything larger gets a Textarea. No max_length
   // also goes Textarea since the merchant probably expects multi-line.
+  const t = useT();
   const useTextarea = list.max_length === null || list.max_length > 80;
   const maxAttr = list.max_length ?? undefined;
   const placeholder = list.text_required
-    ? "Required"
-    : "Optional";
+    ? t("modifier.required")
+    : t("checkout.chip.optional");
   // Local counter for character usage. Surfaces "23 / 150" when there's
   // a cap; absent when there isn't (Square's pattern).
   const showCounter = list.max_length !== null;
@@ -715,6 +736,7 @@ function QuantityStepper({
   canIncrement?: boolean;
   onChange: (next: number) => void;
 }) {
+  const t = useT();
   const canDecrement = quantity > 1;
   const canIncrement =
     canIncrementProp && quantity < MAX_PER_MODIFIER_QUANTITY;
@@ -733,7 +755,7 @@ function QuantityStepper({
         disabled={!canDecrement}
         onClick={() => onChange(quantity - 1)}
         className="size-6 rounded-full"
-        aria-label="Decrease quantity"
+        aria-label={t("aria.decrease_quantity")}
       >
         <Minus className="size-3" aria-hidden="true" />
       </Button>
@@ -747,7 +769,7 @@ function QuantityStepper({
         disabled={!canIncrement}
         onClick={() => onChange(quantity + 1)}
         className="size-6 rounded-full"
-        aria-label="Increase quantity"
+        aria-label={t("aria.increase_quantity")}
       >
         <Plus className="size-3" aria-hidden="true" />
       </Button>
@@ -783,14 +805,16 @@ export type RequiredPillState = "neutral" | "satisfied" | "attention";
  * variants are handled by the CSS layer.
  */
 function RequiredPill({ state }: { state: RequiredPillState }) {
+  const t = useT();
+  const label = t("modifier.required");
   if (state === "satisfied") {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-md bg-success-muted px-2 py-0.5 text-[11px] font-medium text-success"
-        aria-label="Required (satisfied)"
+        aria-label={t("modifier.required_satisfied")}
       >
         <Check className="size-3" aria-hidden />
-        Required
+        {label}
       </span>
     );
   }
@@ -798,19 +822,19 @@ function RequiredPill({ state }: { state: RequiredPillState }) {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-md border border-warning bg-warning-muted px-2 py-0.5 text-[11px] font-medium text-warning"
-        aria-label="Required (pending)"
+        aria-label={t("modifier.required_pending")}
       >
         <AlertTriangle className="size-3" aria-hidden />
-        Required
+        {label}
       </span>
     );
   }
   return (
     <span
       className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
-      aria-label="Required"
+      aria-label={label}
     >
-      Required
+      {label}
     </span>
   );
 }

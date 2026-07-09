@@ -32,12 +32,14 @@ import { TableCheck } from "@/components/catalogs/cart/table-check";
 import { CartActions } from "@/components/catalogs/cart/cart-actions";
 import { StorefrontDock } from "@/components/catalogs/storefront-dock";
 import { getOrgCardPaymentEnabled } from "@/lib/payments/settings";
+import { orgCan } from "@/lib/billing/gate";
 import { TelegramFrame } from "@/components/telegram/telegram-frame";
 import { TelegramThemeSync } from "@/components/telegram/telegram-theme-sync";
 import { TelegramSafeAreaBlur } from "@/components/telegram/telegram-safe-area-blur";
 import { TelegramNavTitle } from "@/components/telegram/telegram-nav-title";
 import { TelegramCartButton } from "@/components/telegram/telegram-cart-button";
 import { StorefrontLocaleProvider } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { TmaShareProvider } from "@/lib/telegram/tma-share-context";
 import { getCartSummary, type CartSummary } from "@/lib/cart/orders";
 
@@ -225,7 +227,10 @@ export async function CatalogLayout({
           <section className="space-y-8">
             {categoriesWithItems.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No categories or items in this catalog yet.
+                {getStorefrontMessage("catalog.empty", {
+                  activeLocale,
+                  defaultLocale,
+                })}
               </p>
             )}
 
@@ -241,7 +246,10 @@ export async function CatalogLayout({
                 >
                   {category.items.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      No items in this category yet.
+                      {getStorefrontMessage("catalog.category_empty", {
+                        activeLocale,
+                        defaultLocale,
+                      })}
                     </p>
                   ) : (
                     <div className={`grid gap-2 ${itemGridColsClass}`}>
@@ -362,10 +370,22 @@ export async function CatalogLayout({
   // venue's ordering. The DB CHECK constraint on venues already restricts
   // to this set; this filter is a defense-in-depth.
   const allowedModes = ["dine_in", "pickup", "delivery"] as const;
-  const venueModes = venue.modes_enabled.filter(
+  const configuredModes = venue.modes_enabled.filter(
     (mode): mode is (typeof allowedModes)[number] =>
       (allowedModes as readonly string[]).includes(mode),
   );
+
+  // Dine-in (QR tables → kitchen) is a Business-tier feature. If the merchant
+  // isn't entitled, drop it from the offered modes so the customer falls back
+  // to the pickup/delivery picker — and a table QR (?mode=dine_in) is ignored
+  // client-side (CartProvider honors allowDineIn). Only read entitlement when
+  // dine-in is actually configured, to avoid the lookup on shops that don't use it.
+  const dineInAllowed =
+    configuredModes.includes("dine_in") &&
+    (await orgCan(venue.org_id, "dine_in"));
+  const venueModes = dineInAllowed
+    ? configuredModes
+    : configuredModes.filter((mode) => mode !== "dine_in");
 
   // SSR cart preload (cart-v3 P1). Fetch the customer's current draft
   // cart server-side using the request's cookie-bound Supabase auth
@@ -404,6 +424,7 @@ export async function CatalogLayout({
       venueId={venue.id}
       catalogPath={hrefBase}
       modes={venueModes}
+      allowDineIn={dineInAllowed}
       taxes={taxes}
       initialSummary={initialSummary}
     >

@@ -30,6 +30,7 @@ import { toast } from "sonner";
 
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
 import { DataTable } from "./data-table";
 import { createColumns } from "./columns";
 import { Button } from "@/components/ui/button";
@@ -150,13 +151,14 @@ function ItemsPanelBody({
   items,
   currencySettings,
 }: ItemsPanelProps) {
+  const t = useT();
   const router = useRouter();
   const { setSelectedItemId, startCreating } = useCanvasSelection();
   const defaultCategoryId = categories[0]?.id;
 
   async function handleDeleteItem(item: Item) {
     const shouldDelete = window.confirm(
-      `Delete "${item.name}"? This cannot be undone.`,
+      t("items.delete_confirm", { name: item.name }),
     );
     if (!shouldDelete) return;
 
@@ -167,11 +169,11 @@ function ItemsPanelBody({
     });
 
     if (!result.ok) {
-      toast.error(result.error ?? "Failed to delete item.");
+      toast.error(result.error ?? t("items.delete_failed"));
       return;
     }
 
-    toast.success("Item deleted.");
+    toast.success(t("items.item_deleted"));
     router.refresh();
   }
 
@@ -180,7 +182,7 @@ function ItemsPanelBody({
       <div className="w-full border-b">
         <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
           <div className="space-y-1">
-            <h1 className="text-[32px] font-semibold tracking-tight">Items</h1>
+            <h1 className="text-[32px] font-semibold tracking-tight">{t("items.items_heading")}</h1>
           </div>
           <Button
             onClick={() => {
@@ -189,14 +191,14 @@ function ItemsPanelBody({
             disabled={!defaultCategoryId}
           >
             <Plus className="size-4" />
-            Add item
+            {t("items.add_item")}
           </Button>
         </div>
       </div>
 
       <div className="mx-auto max-w-[1248px] px-5 py-4">
         <DataTable
-          columns={createColumns(currencySettings, {
+          columns={createColumns(t, currencySettings, {
             onEdit: (item) => setSelectedItemId(item.id),
             onDelete: (item) => {
               void handleDeleteItem(item);
@@ -204,7 +206,7 @@ function ItemsPanelBody({
           })}
           data={items}
           enableStatusTabs
-          searchPlaceholder="Search items..."
+          searchPlaceholder={t("items.search_placeholder")}
           onRowClick={(item) => setSelectedItemId(item.id)}
         />
       </div>

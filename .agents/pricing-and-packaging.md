@@ -1,8 +1,13 @@
-# Krafta — Pricing & Packaging (v1 recommendation)
+# Krafta — Pricing & Packaging (v2, ratified)
 
-*Last updated: 2026-06-30 · Status: recommendation for founder to ratify · Reads with [product-marketing.md](product-marketing.md) + [competitors.md](competitors.md)*
+*Last updated: 2026-07-09 · Status: **ratified by founder 2026-07-09** · Reads with [product-marketing.md](product-marketing.md) + [competitors.md](competitors.md)*
 
-Two paid tiers (ratified by founder) on top of a generous Free tier. Value ladders by **operational depth + number of venues**, not by order volume (volume caps create anxiety and are hard to meter at SMB scale; depth/venue tiering matches robo.uz and lacafe and is predictable for the merchant).
+> **v2 changes (ratified 2026-07-09):**
+> 1. **Dine-in is now Business-only** (was Pro+Business). Dine-in is the premium catalyst that pulls full-service venues to the top tier; Pro re-anchors on delivery + card.
+> 2. **Card payments (Krafta Pay online checkout) moved to Pro+Business** (was Business-only "soon"). It's shipped now, so it anchors Pro's "take orders and get paid" story.
+> 3. **On lapse, merchants drop to Free** (keep storefront + free features), never locked out — land-and-expand.
+
+Two paid tiers on top of a generous Free tier. Value ladders by **operational depth + number of venues**, not by order volume (volume caps create anxiety and are hard to meter at SMB scale; depth/venue tiering matches robo.uz and lacafe and is predictable for the merchant).
 
 ---
 
@@ -18,15 +23,16 @@ Two paid tiers (ratified by founder) on top of a generous Free tier. Value ladde
 | QR to menu + share link | ✅ | ✅ | ✅ |
 | Telegram ordering link + alerts | ✅ basic | ✅ rich order bot | ✅ rich order bot |
 | Pickup · delivery-request · browse | ✅ | ✅ | ✅ |
-| **Dine-in (QR per table → kitchen)** | — | ✅ | ✅ |
+| **Card payments — Krafta Pay (online)** | — | ✅ | ✅ *(shipped)* |
 | **Delivery zones + fees + Yandex courier** | — | ✅ | ✅ |
 | All order modes on one screen | — | ✅ | ✅ |
 | Analytics | — | basic | advanced + reporting |
-| Team roles & permissions | — | — | ✅ |
+| **Dine-in (QR per table → kitchen)** | — | — | ✅ *(Business-only, ratified 2026-07-09)* |
 | Multiple venues | — | — | ✅ |
+| Team roles & permissions | — | — | ✅ |
 | Priority / white-glove support | — | — | ✅ |
-| **Krafta Pay (cards, in-person + online)** | — | — | ✅ *(as it ships — Business first)* |
-| **AI ordering assistant** | — | — | ✅ *(as it ships — Business first)* |
+| Card payments in-person / at-table | — | — | ✅ *(as it ships — pairs with dine-in)* |
+| **AI ordering assistant** | — | — | ✅ *(as it ships)* |
 | Promo codes / loyalty | — | — | ✅ *(as it ships)* |
 
 **Annual:** pay yearly, get **2 months free** (~17% off). Improves cash + retention.
@@ -35,9 +41,9 @@ Two paid tiers (ratified by founder) on top of a generous Free tier. Value ladde
 
 ## The logic (why this split)
 
-- **Free is the acquisition engine.** It gives a real outcome — a branded storefront you can take pickup/delivery-request orders through, in 3 languages, tonight, no signup. Generous enough to win adoption and make them dependent; incomplete for running a real floor. This is land-and-expand.
-- **Pro is the "real operations" line.** The moment a business wants **dine-in (QR tables → kitchen)** or **delivery dispatch**, they're running a real operation and they pay. This maps directly to your WTP hypothesis: *businesses that want dine-in pay more.* Everything in Pro is **live today** — no vaporware.
-- **Business is depth + payments + scale.** Multiple venues, team roles, advanced reporting, white-glove support today; **Krafta Pay and the AI assistant land here first** as they ship. This is the tier your highest-WTP segment graduates into.
+- **Free is the acquisition engine.** It gives a real outcome — a branded storefront you can take pickup/delivery-request orders through, in 3 languages, tonight, no signup. Generous enough to win adoption and make them dependent; incomplete for running a real floor. This is land-and-expand. **A lapsed paid merchant falls back here — never locked out.**
+- **Pro is the "take orders and get paid" line.** The moment a business wants **card payments** or **delivery dispatch**, they're running a real operation and they pay. Card acceptance (shipped) + Yandex delivery + all order modes on one screen make Pro a complete single-venue machine. Everything in Pro is **live today** — no vaporware.
+- **Business is the full-service floor.** **Dine-in (QR tables → kitchen) is the flagship top-tier feature** — it's the catalyst that pulls your highest-WTP segment (full-service, multilingual, undigitalized venues) to $39. Plus multiple venues, team roles, advanced reporting, white-glove support; AI assistant + loyalty + at-table card land here as they ship.
 
 ### How your target segment moves through it
 
@@ -64,7 +70,8 @@ This does three jobs at once: kills outreach friction, creates honest urgency ("
 ## Decisions
 
 - ✅ **Two paid tiers** — Pro **250,000 сум/mo** (~$20) + Business **490,000 сум/mo** (~$39), shown in UZS on-site (ratified 2026-06-30). Round numbers, kept just under Robosell's 300k/500k tiers.
-- ✅ **Feature split** — dine-in + delivery = Pro; Krafta Pay + AI + multi-venue + team = Business (recommended split, in effect unless founder adjusts).
+- ✅ **Feature split (v2, ratified 2026-07-09)** — **Pro = card payments + delivery + all order modes + basic analytics** (single venue); **Business = dine-in (exclusive) + multi-venue + team + advanced analytics + priority + AI/loyalty as they ship.** Dine-in moved Pro→Business-only; card moved Business→Pro+Business.
+- ✅ **Lapse = downgrade to Free (ratified 2026-07-09)** — a failed/canceled paid sub drops the merchant to the Free feature set (storefront stays live), never a hard dashboard lock.
 - ✅ **Founding offer** — Business-features-at-Pro-price ($20), locked forever (ratified).
 - ⏳ **Multi-venue metering** — flat (unlimited venues in Business) recommended for launch simplicity; revisit per-venue add-on (lacafe-style) if multi-branch chains adopt.
 - ⏳ **Business price raise** — start $39; revisit upward once Krafta Pay ships and case studies exist.

@@ -71,6 +71,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { CatalogCategory } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { useCanvasSelection } from "./canvas-with-selection";
 import { useCanvasLocale } from "./locale-context";
@@ -148,6 +149,7 @@ export function DraftEditorForm({
   onRequestClose,
   onRegisterClose,
 }: DraftEditorFormProps) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const modifiersManageHref = React.useMemo(() => {
@@ -236,7 +238,7 @@ export function DraftEditorForm({
   const handleSave = React.useCallback(async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      toast.error("Item name is required.");
+      toast.error(t("items.name_required"));
       return;
     }
 
@@ -296,8 +298,8 @@ export function DraftEditorForm({
 
     if (!result.ok) {
       setSaveStatus("error");
-      setSaveError(result.error ?? "Failed to create item.");
-      toast.error(result.error ?? "Failed to create item.");
+      setSaveError(result.error ?? t("items.create_failed"));
+      toast.error(result.error ?? t("items.create_failed"));
       return;
     }
 
@@ -314,7 +316,7 @@ export function DraftEditorForm({
 
     setSaveStatus("saved");
     router.refresh();
-    toast.success("Item created");
+    toast.success(t("items.item_created"));
     onRequestClose();
   }, [
     name,
@@ -332,6 +334,7 @@ export function DraftEditorForm({
     router,
     onRequestClose,
     modifierAttachments,
+    t,
   ]);
 
   // -------------------------------------------------------------------
@@ -370,14 +373,14 @@ export function DraftEditorForm({
       return (
         <Button disabled className={className}>
           <Loader2 className="size-4 animate-spin" />
-          Creating…
+          {t("common.creating")}
         </Button>
       );
     }
     if (saveStatus === "error") {
       return (
         <Button onClick={handleSave} className={className}>
-          Failed — Retry
+          {t("items.create_failed_retry")}
         </Button>
       );
     }
@@ -387,7 +390,7 @@ export function DraftEditorForm({
         disabled={!isDirty || !variationsState.isValid}
         className={className}
       >
-        Create
+        {t("common.create")}
       </Button>
     );
   };
@@ -400,14 +403,14 @@ export function DraftEditorForm({
           size="icon"
           className="size-11 md:size-9"
           onClick={handleClose}
-          aria-label="Close editor"
+          aria-label={t("items.close_editor")}
         >
           <X className="size-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <span className="block text-xs text-muted-foreground">New item</span>
+          <span className="block text-xs text-muted-foreground">{t("items.new_item")}</span>
           <h2 className="truncate text-base font-semibold tracking-tight">
-            {name.trim() || "Untitled"}
+            {name.trim() || t("items.untitled")}
           </h2>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -426,7 +429,7 @@ export function DraftEditorForm({
             {/* Left column */}
             <div className="flex min-w-0 flex-1 flex-col gap-5">
               <Field data-disabled={!isDefaultLocaleEditable ? true : undefined}>
-                <FieldLabel htmlFor="draft-item-type">Item type</FieldLabel>
+                <FieldLabel htmlFor="draft-item-type">{t("items.item_type")}</FieldLabel>
                 <ItemTypeSelect
                   id="draft-item-type"
                   value={productType}
@@ -437,13 +440,13 @@ export function DraftEditorForm({
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="draft-name" className="text-sm font-medium">
-                  Name <span className="text-destructive">*</span>
+                  {t("items.field_name")} <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="draft-name"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="Item name"
+                  placeholder={t("items.name_placeholder")}
                   autoComplete="off"
                   autoFocus
                 />
@@ -458,7 +461,7 @@ export function DraftEditorForm({
                     : undefined
                 }
               >
-                <FieldLabel htmlFor="draft-price">Price</FieldLabel>
+                <FieldLabel htmlFor="draft-price">{t("items.price")}</FieldLabel>
                 <VariationPriceInput
                   id="draft-price"
                   valueCents={
@@ -476,7 +479,7 @@ export function DraftEditorForm({
                 />
                 {hasMultipleVariations && (
                   <FieldDescription>
-                    Price varies by variation — edit each below.
+                    {t("items.price_varies")}
                   </FieldDescription>
                 )}
               </Field>
@@ -486,19 +489,19 @@ export function DraftEditorForm({
                   htmlFor="draft-description"
                   className="text-sm font-medium"
                 >
-                  Description
+                  {t("items.description")}
                 </Label>
                 <Textarea
                   id="draft-description"
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
-                  placeholder="Customer-facing description"
+                  placeholder={t("items.description_placeholder")}
                   rows={4}
                 />
               </div>
 
               <div className="flex flex-col gap-2">
-                <Label className="text-sm font-medium">Photos</Label>
+                <Label className="text-sm font-medium">{t("items.photos")}</Label>
                 <PhotoUploader
                   itemId={draftItemId}
                   orgId={orgId}
@@ -509,7 +512,7 @@ export function DraftEditorForm({
               </div>
 
               <div className="flex flex-col gap-2">
-                <Label className="text-sm font-medium">Variations</Label>
+                <Label className="text-sm font-medium">{t("items.variations")}</Label>
                 <VariationsEditor
                   state={variationsState}
                   dispatch={variationsDispatch}
@@ -544,11 +547,11 @@ export function DraftEditorForm({
                   htmlFor="draft-category"
                   className="text-sm font-medium"
                 >
-                  Category
+                  {t("items.category")}
                 </Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
                   <SelectTrigger id="draft-category">
-                    <SelectValue placeholder="Choose a category" />
+                    <SelectValue placeholder={t("items.choose_category")} />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((c) => (
@@ -566,10 +569,10 @@ export function DraftEditorForm({
                     htmlFor="draft-active"
                     className="text-sm font-medium"
                   >
-                    Visible to customers
+                    {t("items.visible_to_customers")}
                   </Label>
                   <span className="text-xs text-muted-foreground">
-                    Turn off to create the item as a draft.
+                    {t("items.visible_draft_hint")}
                   </span>
                 </div>
                 <Switch
@@ -589,16 +592,15 @@ export function DraftEditorForm({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard new item?</AlertDialogTitle>
+            <AlertDialogTitle>{t("items.discard_new_title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              You have unsaved changes. Closing will lose anything you
-              typed and any photos you uploaded.
+              {t("items.discard_new_description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>{t("items.keep_editing")}</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDiscard}>
-              Discard
+              {t("common.discard")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -606,7 +608,7 @@ export function DraftEditorForm({
 
       {/* vaul Drawer title is required for accessibility (sr-only). */}
       <DrawerPrimitive.Title className="sr-only">
-        Create new item
+        {t("items.create_new_item")}
       </DrawerPrimitive.Title>
     </>
   );

@@ -3,6 +3,7 @@ import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { getPaymentIntentStatuses } from "./pay-internal";
+import { orgCan } from "@/lib/billing/gate";
 
 /**
  * settings.ts — server-only access to commerce.org_payment_settings, the
@@ -72,7 +73,10 @@ export async function getOrgPaymentSettings(
 export async function getOrgCardPaymentEnabled(orgId: string): Promise<boolean> {
   try {
     const settings = await getOrgPaymentSettings(orgId);
-    return Boolean(settings?.isActive);
+    if (!settings?.isActive) return false;
+    // Card acceptance is a Pro-tier feature. A connected-but-downgraded org
+    // falls back to cash-only until they upgrade.
+    return await orgCan(orgId, "card_payments");
   } catch {
     return false;
   }

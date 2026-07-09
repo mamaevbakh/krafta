@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { enqueueTranslationJob } from "@/lib/translation/actions";
 import type { CatalogLocale } from "./languages-sidebar";
@@ -93,6 +94,7 @@ export function TranslateAllButton({
   variant = "outline",
   isAiBusy = false,
 }: TranslateAllButtonProps) {
+  const t = useT();
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -120,7 +122,7 @@ export function TranslateAllButton({
     if (entityIds.length === 0) {
       setSubmitting(false);
       setOpen(false);
-      toast.info("Nothing to translate.");
+      toast.info(t("translations.nothing_to_translate"));
       return;
     }
 
@@ -142,8 +144,8 @@ export function TranslateAllButton({
     const enqueued = result.enqueued ?? 0;
     toast.success(
       enqueued === 0
-        ? "Nothing to translate."
-        : `Queued ${enqueued} translation${enqueued === 1 ? "" : "s"}.`,
+        ? t("translations.nothing_to_translate")
+        : t("translations.queued_n", { count: enqueued }),
     );
     onEnqueued();
   };
@@ -177,7 +179,9 @@ export function TranslateAllButton({
               }
               aria-hidden="true"
             />
-            Translating into {targetLocale.display_name}…
+            {t("translations.translating_into", {
+              name: targetLocale.display_name,
+            })}
           </>
         ) : (
           <>
@@ -186,8 +190,10 @@ export function TranslateAllButton({
               aria-hidden="true"
             />
             {labelMode === "compact"
-              ? "Translate all missing with AI"
-              : `Translate missing → ${targetLocale.display_name}`}
+              ? t("translations.translate_all_missing")
+              : t("translations.translate_missing_to", {
+                  name: targetLocale.display_name,
+                })}
           </>
         )}
       </Button>
@@ -196,25 +202,26 @@ export function TranslateAllButton({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Translate to {targetLocale.display_name}?
+              {t("translations.translate_to_title", {
+                name: targetLocale.display_name,
+              })}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="flex flex-col gap-2 text-sm">
                 <div>
-                  This will translate{" "}
-                  <strong className="text-foreground">{requested}</strong>{" "}
-                  missing item{requested === 1 ? "" : "s"} into{" "}
-                  <strong className="text-foreground">
-                    {targetLocale.display_name}
-                  </strong>{" "}
-                  with AI.
+                  {t("translations.translate_to_desc", {
+                    count: requested,
+                    name: targetLocale.display_name,
+                  })}
                 </div>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={submitting}>
+              {t("common.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -225,10 +232,10 @@ export function TranslateAllButton({
               {submitting ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
-                  Queuing…
+                  {t("translations.queuing")}
                 </>
               ) : (
-                "Translate"
+                t("translations.translate")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

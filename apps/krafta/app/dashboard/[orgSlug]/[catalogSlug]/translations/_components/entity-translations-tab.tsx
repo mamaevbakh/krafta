@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import type { CatalogLocale } from "./languages-sidebar";
 import {
@@ -88,7 +89,7 @@ export function EntityTranslationsTab({
   catalogId,
   entityKind,
   entityLabel,
-  entityLabelPlural,
+  entityLabelPlural: _entityLabelPlural,
   fields,
   rows,
   defaultLocale,
@@ -97,6 +98,22 @@ export function EntityTranslationsTab({
   onMutation,
 }: EntityTranslationsTabProps) {
   void _busyLocales;
+  // Plural noun is no longer taken from the English `entityLabelPlural` prop
+  // — it's resolved per-locale from the entity kind so the copy translates.
+  void _entityLabelPlural;
+  const t = useT();
+  const entityPlural =
+    entityKind === "category"
+      ? t("translations.entity_plural.category")
+      : entityKind === "variation"
+        ? t("translations.entity_plural.variation")
+        : entityKind === "modifier"
+          ? t("translations.entity_plural.modifier")
+          : entityKind === "modifier_list"
+            ? t("translations.entity_plural.modifier_list")
+            : entityKind === "catalog"
+              ? t("translations.entity_plural.catalog")
+              : t("translations.entity_plural.item");
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const editingRow = React.useMemo(
     () => (editingId ? rows.find((r) => r.id === editingId) ?? null : null),
@@ -134,10 +151,11 @@ export function EntityTranslationsTab({
   if (rows.length === 0) {
     return (
       <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
-        <h2 className="text-sm font-medium">No {entityLabelPlural} yet</h2>
+        <h2 className="text-sm font-medium">
+          {t("translations.entity_empty_title")}
+        </h2>
         <p className="text-xs text-muted-foreground">
-          Add {entityLabelPlural} in the catalog first. Once they exist, this
-          tab will show their translation coverage by language.
+          {t("translations.entity_empty_desc", { plural: entityPlural })}
         </p>
       </div>
     );
@@ -147,10 +165,11 @@ export function EntityTranslationsTab({
   if (targetLocales.length === 0) {
     return (
       <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
-        <h2 className="text-sm font-medium">No target language yet</h2>
+        <h2 className="text-sm font-medium">
+          {t("translations.no_target_title")}
+        </h2>
         <p className="text-xs text-muted-foreground">
-          Add a target language in the sidebar and we&apos;ll show you which
-          {" "}{entityLabelPlural} still need translating.
+          {t("translations.entity_no_target_desc")}
         </p>
       </div>
     );
@@ -167,7 +186,6 @@ export function EntityTranslationsTab({
 
       {visibleRows.length === 0 ? (
         <FilterEmptyState
-          entityLabelPlural={entityLabelPlural}
           onClearFilter={() => setFilter(DEFAULT_ENTITY_FILTER)}
         />
       ) : (
@@ -185,11 +203,11 @@ export function EntityTranslationsTab({
                         variant="outline"
                         className="h-4 px-1.5 text-[10px]"
                       >
-                        default
+                        {t("translations.default_badge")}
                       </Badge>
                     </span>
                   ) : (
-                    "Source"
+                    t("translations.source")
                   )}
                 </TableHead>
                 {columnsToShow.map((locale) => (
@@ -241,7 +259,7 @@ export function EntityTranslationsTab({
                     </div>
                   </TableCell>
                   {columnsToShow.map((locale) => {
-                    const t = row.translations.find(
+                    const cell = row.translations.find(
                       (tr) => tr.locale === locale.locale,
                     );
                     // Drift detection (KRA-97 Gap 4): a translation
@@ -253,33 +271,35 @@ export function EntityTranslationsTab({
                     // row's own dialog where the re-translate button
                     // lives.
                     const isDrift =
-                      !!t &&
+                      !!cell &&
                       !!row.current_source_hash &&
-                      !!t.source_hash &&
-                      t.source_hash !== row.current_source_hash;
+                      !!cell.source_hash &&
+                      cell.source_hash !== row.current_source_hash;
                     return (
                       <TableCell
                         key={locale.locale}
                         className="max-w-[280px] align-top"
                       >
-                        {t ? (
+                        {cell ? (
                           <div className="flex min-w-0 max-w-[280px] items-start gap-1.5">
                             {isDrift && (
                               <span
                                 className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500"
                                 aria-hidden="true"
-                                title="Source changed since translation — may need re-translate"
+                                title={t("translations.cell_drift_dot_title")}
                               />
                             )}
                             <span
                               className="block min-w-0 truncate text-sm font-medium"
                               title={
                                 isDrift
-                                  ? `${t.name} (source changed — may need re-translate)`
-                                  : t.name
+                                  ? t("translations.cell_drift_name_title", {
+                                      name: cell.name,
+                                    })
+                                  : cell.name
                               }
                             >
-                              {t.name}
+                              {cell.name}
                             </span>
                           </div>
                         ) : (
@@ -288,7 +308,7 @@ export function EntityTranslationsTab({
                               className="inline-block size-1.5 rounded-full bg-muted-foreground/40"
                               aria-hidden="true"
                             />
-                            Not translated
+                            {t("translations.status_not_translated")}
                           </div>
                         )}
                       </TableCell>
@@ -331,27 +351,25 @@ function toDialogEntity(row: EntityRowForTable): EntityForDialog {
 }
 
 function FilterEmptyState({
-  entityLabelPlural,
   onClearFilter,
 }: {
-  entityLabelPlural: string;
   onClearFilter: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center gap-3 rounded-md border border-dashed bg-muted/20 py-12 text-center">
       <p className="text-sm font-medium">
-        No {entityLabelPlural} match this filter.
+        {t("translations.filter_empty_title")}
       </p>
       <p className="max-w-xs text-xs text-muted-foreground">
-        Try a different status or language combination, or clear the filter
-        to see all {entityLabelPlural}.
+        {t("translations.filter_empty_desc")}
       </p>
       <button
         type="button"
         onClick={onClearFilter}
         className="text-xs text-foreground underline-offset-4 hover:underline"
       >
-        Clear filter
+        {t("translations.clear_filter")}
       </button>
     </div>
   );

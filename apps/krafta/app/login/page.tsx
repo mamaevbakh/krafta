@@ -5,6 +5,8 @@ import { getRequestOrigin, normalizeNextPath } from "@/lib/auth/redirect";
 import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { telegramLoginConfigured } from "@/lib/auth/telegram-bridge";
 import { getUserSafely } from "@krafta/supabase/auth";
+import { DashboardLocaleProvider } from "@/lib/locales/dashboard/context";
+import { getDashboardLocale } from "@/lib/locales/dashboard/server";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -37,21 +39,28 @@ export default async function LoginPage({
     redirect(`/auth/sso/start?next=${encodeURIComponent(next)}`);
   }
 
+  // /login sits outside the dashboard layout, so it isn't wrapped by the
+  // DashboardLocaleProvider. Resolve the UI locale here (cookie →
+  // Accept-Language → ru) and provide it so the client login form localizes.
+  const locale = await getDashboardLocale();
+
   return (
-    <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
-      <div className="flex w-full max-w-sm flex-col gap-6">
-        <Link href="/" className="flex items-center gap-2 self-center font-medium">
-          <BrandWordmark className="text-3xl" />
-        </Link>
-        <LoginForm
-          next={next}
-          telegramClientId={
-            telegramLoginConfigured()
-              ? (process.env.TELEGRAM_LOGIN_CLIENT_ID ?? null)
-              : null
-          }
-        />
+    <DashboardLocaleProvider locale={locale}>
+      <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
+        <div className="flex w-full max-w-sm flex-col gap-6">
+          <Link href="/" className="flex items-center gap-2 self-center font-medium">
+            <BrandWordmark className="text-3xl" />
+          </Link>
+          <LoginForm
+            next={next}
+            telegramClientId={
+              telegramLoginConfigured()
+                ? (process.env.TELEGRAM_LOGIN_CLIENT_ID ?? null)
+                : null
+            }
+          />
+        </div>
       </div>
-    </div>
+    </DashboardLocaleProvider>
   );
 }

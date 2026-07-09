@@ -28,6 +28,8 @@ import { toast } from "sonner";
 import { hapticError, hapticSuccess } from "@/lib/haptics-client";
 import { saveCatalogLayout } from "@/app/dashboard/[orgSlug]/[catalogSlug]/builder/actions";
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 import { cn } from "@/lib/utils";
 
 type OptionConfig<T extends string> = {
@@ -74,64 +76,57 @@ const LOGO_ASPECT_RATIOS: AspectPreset[] = [
 
 const BUILDER_FOCUS_OPTIONS: Array<{
   value: BuilderFocus;
-  label: string;
-  description: string;
+  labelKey: DashboardMessageKey;
   icon: typeof PanelsTopLeft;
 }> = [
   {
     value: "structure",
-    label: "Structure",
-    description: "Header, sections, and navigation",
+    labelKey: "studio.focus_structure",
     icon: PanelsTopLeft,
   },
   {
     value: "cards",
-    label: "Cards",
-    description: "Grid rhythm and item presentation",
+    labelKey: "studio.focus_cards",
     icon: Layers2,
   },
   {
     value: "brand",
-    label: "Brand",
-    description: "Visual tokens and header polish",
+    labelKey: "studio.focus_brand",
     icon: Palette,
   },
   {
     value: "pricing",
-    label: "Pricing",
-    description: "Currency formatting and readability",
+    labelKey: "studio.focus_pricing",
     icon: ReceiptText,
   },
   {
     value: "cart",
-    label: "Cart",
-    description: "Cart and checkout entry points",
+    labelKey: "studio.focus_cart",
     icon: ShoppingBag,
   },
   {
     value: "assistant",
-    label: "Krafta Studio",
-    description: "Build your shop with AI",
+    labelKey: "studio.focus_assistant",
     icon: Sparkles,
   },
 ];
 
-const COMPACT_HEADER_LABELS: Record<string, string> = {
-  "header-basic": "Basic",
-  "header-basic-free-logo": "Free Logo",
-  "header-center": "Center",
-  "header-hero": "Hero",
+const COMPACT_HEADER_LABEL_KEY: Record<string, DashboardMessageKey> = {
+  "header-basic": "studio.header_basic",
+  "header-basic-free-logo": "studio.header_free_logo",
+  "header-center": "studio.header_center",
+  "header-hero": "studio.header_hero",
 };
 
-const NAV_DESCRIPTIONS: Record<string, string> = {
-  "nav-tabs": "Classic category pills",
-  "nav-tabs-motion": "Animated active pill",
-  "nav-tabs-dashboard": "Underline treatment, closer to Studio",
-  "nav-none": "No category bar",
+const NAV_DESCRIPTION_KEY: Record<string, DashboardMessageKey> = {
+  "nav-tabs": "studio.nav_desc_tabs",
+  "nav-tabs-motion": "studio.nav_desc_tabs_motion",
+  "nav-tabs-dashboard": "studio.nav_desc_tabs_dashboard",
+  "nav-none": "studio.nav_desc_none",
 };
 
-const ITEM_DETAIL_LABELS: Record<string, string> = {
-  "item-fullscreen": "Fullscreen",
+const ITEM_DETAIL_LABEL_KEY: Record<string, DashboardMessageKey> = {
+  "item-fullscreen": "studio.item_detail_fullscreen",
 };
 
 const BRAND_TOKEN_DEFAULTS: Record<BrandTokenKey, string> = {
@@ -145,45 +140,45 @@ const BRAND_TOKEN_DEFAULTS: Record<BrandTokenKey, string> = {
 
 const BRAND_TOKEN_CONFIG: Array<{
   key: BrandTokenKey;
-  label: string;
-  description: string;
-  mapsTo: string;
+  labelKey: DashboardMessageKey;
+  descriptionKey: DashboardMessageKey;
+  mapsToKey: DashboardMessageKey;
 }> = [
   {
     key: "pageBackground",
-    label: "Page background",
-    description: "Base catalog canvas color.",
-    mapsTo: "Maps to `background`",
+    labelKey: "studio.brand_page_background",
+    descriptionKey: "studio.brand_page_background_desc",
+    mapsToKey: "studio.brand_page_background_maps",
   },
   {
     key: "cardSurface",
-    label: "Card surface",
-    description: "Primary product card body.",
-    mapsTo: "Maps to `card`",
+    labelKey: "studio.brand_card_surface",
+    descriptionKey: "studio.brand_card_surface_desc",
+    mapsToKey: "studio.brand_card_surface_maps",
   },
   {
     key: "mutedSurface",
-    label: "Muted surface",
-    description: "Used for quiet surfaces and image placeholders.",
-    mapsTo: "Maps to `muted`",
+    labelKey: "studio.brand_muted_surface",
+    descriptionKey: "studio.brand_muted_surface_desc",
+    mapsToKey: "studio.brand_muted_surface_maps",
   },
   {
     key: "primaryText",
-    label: "Primary text",
-    description: "Main reading color for titles and prices.",
-    mapsTo: "Maps to `foreground` / `card-foreground`",
+    labelKey: "studio.brand_primary_text",
+    descriptionKey: "studio.brand_primary_text_desc",
+    mapsToKey: "studio.brand_primary_text_maps",
   },
   {
     key: "secondaryText",
-    label: "Secondary text",
-    description: "Used for helper copy and metadata.",
-    mapsTo: "Maps to `muted-foreground`",
+    labelKey: "studio.brand_secondary_text",
+    descriptionKey: "studio.brand_secondary_text_desc",
+    mapsToKey: "studio.brand_secondary_text_maps",
   },
   {
     key: "border",
-    label: "Border",
-    description: "Default stroke around cards and controls.",
-    mapsTo: "Maps to `border`",
+    labelKey: "studio.brand_border",
+    descriptionKey: "studio.brand_border_desc",
+    mapsToKey: "studio.brand_border_maps",
   },
 ];
 
@@ -290,6 +285,7 @@ export function CatalogBuilderPanel({
   studioPublishedUrl,
   codegenAvailable = true,
 }: BuilderPanelProps) {
+  const t = useT();
   const initialAspectInputs = useMemo(
     () => getAspectInputs(initialLayout.itemCard.aspectRatio, COMMON_ASPECT_RATIOS),
     [initialLayout.itemCard.aspectRatio],
@@ -692,13 +688,13 @@ export function CatalogBuilderPanel({
     });
 
     if (!result.ok) {
-      toast.error("Failed to save layout", {
-        description: result.error ?? "Unknown error",
+      toast.error(t("studio.save_failed"), {
+        description: result.error ?? t("studio.unknown_error"),
       });
       void hapticError();
     } else {
       setLastSavedSignature(currentSignature);
-      toast.success("Studio changes saved");
+      toast.success(t("studio.changes_saved"));
       void hapticSuccess();
     }
 
@@ -736,16 +732,20 @@ export function CatalogBuilderPanel({
         | null;
 
       if (!response.ok || !data?.bannerPath) {
-        throw new Error(data?.error ?? "Failed to upload banner image.");
+        throw new Error(data?.error ?? t("studio.banner_upload_failed_generic"));
       }
 
       setPath(data.bannerPath);
-      toast.success(`${variant === "light" ? "Light" : "Dark"} banner uploaded`);
+      toast.success(
+        variant === "light"
+          ? t("studio.banner_light_uploaded")
+          : t("studio.banner_dark_uploaded"),
+      );
       void hapticSuccess();
     } catch (error) {
-      toast.error("Banner upload failed", {
+      toast.error(t("studio.banner_upload_failed"), {
         description:
-          error instanceof Error ? error.message : "Unknown upload error",
+          error instanceof Error ? error.message : t("studio.unknown_upload_error"),
       });
       void hapticError();
     } finally {
@@ -768,7 +768,7 @@ export function CatalogBuilderPanel({
           <div className="flex items-center gap-4">
             <Button type="button" variant="outline" asChild>
               <Link href={previewHref} target="_blank" rel="noreferrer">
-                Open preview
+                {t("studio.open_preview")}
                 <ArrowUpRight className="size-4" />
               </Link>
             </Button>
@@ -777,7 +777,11 @@ export function CatalogBuilderPanel({
               onClick={handleSave}
               disabled={isSaving || !hasUnsavedChanges}
             >
-              {isSaving ? "Saving..." : hasUnsavedChanges ? "Save changes" : "Saved"}
+              {isSaving
+                ? t("common.saving")
+                : hasUnsavedChanges
+                  ? t("common.save_changes")
+                  : t("common.saved")}
             </Button>
           </div>
         </div>
@@ -935,16 +939,18 @@ function StudioSectionSwitcher({
   /** Coded shops only — gate the "Krafta Studio" (codegen) tab. */
   showAssistant: boolean;
 }) {
+  const t = useT();
   const focusOptions = showAssistant
     ? BUILDER_FOCUS_OPTIONS
     : BUILDER_FOCUS_OPTIONS.filter((focus) => focus.value !== "assistant");
   return (
     <StudioCard className="p-5">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">Studio sections</h2>
+        <h2 className="text-lg font-semibold tracking-tight">
+          {t("studio.sections_title")}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Move across structure, cards, brand, and pricing without growing the
-          page into one long form.
+          {t("studio.sections_desc")}
         </p>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -964,7 +970,7 @@ function StudioSectionSwitcher({
               )}
             >
               <Icon className="size-4" />
-              <span>{focus.label}</span>
+              <span>{t(focus.labelKey)}</span>
               {focus.value === "assistant" ? (
                 <span
                   className={cn(
@@ -974,7 +980,7 @@ function StudioSectionSwitcher({
                       : "border-border text-muted-foreground",
                   )}
                 >
-                  Beta
+                  {t("studio.beta")}
                 </span>
               ) : null}
             </button>
@@ -1010,25 +1016,26 @@ function StructureInspector({
     value: CatalogLayoutSettings["categoryNavVariant"],
   ) => void;
 }) {
+  const t = useT();
   return (
     <StudioCard>
       <InspectorIntro
-        title="Structure"
-        description="Control how the catalog is arranged before people start reading items."
+        title={t("studio.focus_structure")}
+        description={t("studio.structure_intro")}
       />
 
       <SegmentedField
-        label="Header"
-        options={headerOptions.map((option) => ({
-          ...option,
-          label: COMPACT_HEADER_LABELS[option.value] ?? option.label,
-        }))}
+        label={t("studio.field_header")}
+        options={headerOptions.map((option) => {
+          const labelKey = COMPACT_HEADER_LABEL_KEY[option.value];
+          return { ...option, label: labelKey ? t(labelKey) : option.label };
+        })}
         selected={headerVariant}
         onSelect={onHeaderVariantChange}
       />
 
       <SegmentedField
-        label="Section style"
+        label={t("studio.field_section_style")}
         options={sectionOptions}
         selected={sectionVariant}
         onSelect={onSectionVariantChange}
@@ -1036,8 +1043,8 @@ function StructureInspector({
 
       <div className="space-y-3">
         <FieldLabel
-          label="Navigation"
-          hint="Choose how categories appear at the top of the public catalog."
+          label={t("studio.field_navigation")}
+          hint={t("studio.field_navigation_hint")}
         />
         <div className="space-y-2">
           {navOptions.map((option) => {
@@ -1062,11 +1069,11 @@ function StructureInspector({
                       isActive ? "text-background/75" : "text-muted-foreground",
                     )}
                   >
-                    {NAV_DESCRIPTIONS[option.value] ?? "Switch navigation behavior"}
+                    {t(NAV_DESCRIPTION_KEY[option.value] ?? "studio.nav_desc_fallback")}
                   </div>
                 </div>
                 <div className="text-xs uppercase tracking-[0.18em]">
-                  {isActive ? "Active" : "Switch"}
+                  {isActive ? t("studio.state_active") : t("studio.state_switch")}
                 </div>
               </button>
             );
@@ -1110,17 +1117,18 @@ function CardsInspector({
   ) => void;
   pricingSample: string;
 }) {
+  const t = useT();
   const surfaceTags = CARD_SURFACE_MAP[itemCardVariant] ?? [];
 
   return (
     <StudioCard>
       <InspectorIntro
-        title="Cards"
-        description="Tune layout and item presentation without opening several separate blocks."
+        title={t("studio.focus_cards")}
+        description={t("studio.cards_intro")}
       />
 
       <SegmentedField
-        label="Card family"
+        label={t("studio.field_card_family")}
         options={itemCardOptions}
         selected={itemCardVariant}
         onSelect={onItemCardVariantChange}
@@ -1128,7 +1136,7 @@ function CardsInspector({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <StudioInputField
-          label="Columns"
+          label={t("studio.field_columns")}
           value={String(itemCardColumns)}
           onChange={(value) => {
             const nextValue = Number(value);
@@ -1138,7 +1146,7 @@ function CardsInspector({
           inputMode="numeric"
         />
         <StudioInputField
-          label="Aspect ratio"
+          label={t("studio.field_aspect_ratio")}
           value={`${aspectWidth} : ${aspectHeight}`}
           readOnly
         />
@@ -1146,7 +1154,7 @@ function CardsInspector({
 
       <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
         <StudioInputField
-          label="Aspect width"
+          label={t("studio.field_aspect_width")}
           value={String(aspectWidth)}
           onChange={(value) => {
             const nextValue = Number(value);
@@ -1157,7 +1165,7 @@ function CardsInspector({
         />
         <div className="hidden pb-3 text-center text-muted-foreground sm:block">/</div>
         <StudioInputField
-          label="Aspect height"
+          label={t("studio.field_aspect_height")}
           value={String(aspectHeight)}
           onChange={(value) => {
             const nextValue = Number(value);
@@ -1169,17 +1177,17 @@ function CardsInspector({
       </div>
 
       <SegmentedField
-        label="Item detail"
-        options={itemDetailOptions.map((option) => ({
-          ...option,
-          label: ITEM_DETAIL_LABELS[option.value] ?? option.label,
-        }))}
+        label={t("studio.field_item_detail")}
+        options={itemDetailOptions.map((option) => {
+          const labelKey = ITEM_DETAIL_LABEL_KEY[option.value];
+          return { ...option, label: labelKey ? t(labelKey) : option.label };
+        })}
         selected={itemDetailVariant}
         onSelect={onItemDetailVariantChange}
       />
 
       <div className="rounded-xl border border-border bg-muted/20 p-4">
-        <FieldLabel label="Card preview" />
+        <FieldLabel label={t("studio.field_card_preview")} />
         <div className="mt-3 grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
           <div className="overflow-hidden rounded-xl border border-border bg-background p-3 shadow-sm">
             <div className="h-28 rounded-md bg-[linear-gradient(180deg,#e89b59_0%,#c25b33_100%)]" />
@@ -1192,7 +1200,7 @@ function CardsInspector({
             </div>
           </div>
           <div className="rounded-xl border border-border bg-background p-3">
-            <div className="text-sm font-medium">Current card surfaces map to:</div>
+            <div className="text-sm font-medium">{t("studio.card_surfaces_map_to")}</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {surfaceTags.map((tag) => (
                 <span
@@ -1285,17 +1293,18 @@ function BrandInspector({
   catalogLogoFallbackUrl: string | null;
   catalogName: string;
 }) {
+  const t = useT();
   return (
     <StudioCard>
       <InspectorIntro
-        title="Brand"
-        description="Token-based styling for the public catalog. These controls mirror the redesign now and backend persistence can follow later."
+        title={t("studio.focus_brand")}
+        description={t("studio.brand_intro")}
       />
 
       <div className="rounded-xl border border-border bg-muted/20 p-4">
         <FieldLabel
-          label="Core tokens"
-          hint="Frontend-only for now. These values help us stage the redesigned Brand panel before backend settings land."
+          label={t("studio.field_core_tokens")}
+          hint={t("studio.field_core_tokens_hint")}
         />
         <div className="mt-3 space-y-3">
           {BRAND_TOKEN_CONFIG.map((token) => (
@@ -1311,14 +1320,14 @@ function BrandInspector({
                     onBrandTokenChange(token.key, event.target.value)
                   }
                   className="mt-1 h-9 w-9 rounded-full border border-border bg-background"
-                  aria-label={token.label}
+                  aria-label={t(token.labelKey)}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-medium">{token.label}</div>
+                      <div className="text-sm font-medium">{t(token.labelKey)}</div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {token.mapsTo}
+                        {t(token.mapsToKey)}
                       </div>
                     </div>
                     <span className="text-xs text-muted-foreground">
@@ -1326,7 +1335,7 @@ function BrandInspector({
                     </span>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {token.description}
+                    {t(token.descriptionKey)}
                   </p>
                 </div>
               </div>
@@ -1336,22 +1345,22 @@ function BrandInspector({
       </div>
 
       <div className="rounded-xl border border-border bg-muted/20 p-4">
-        <FieldLabel label="Header tokens" />
+        <FieldLabel label={t("studio.field_header_tokens")} />
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <SwatchTextField
-            label="Header light background"
+            label={t("studio.field_header_light_bg")}
             value={headerBackgroundColorLight}
             onChange={onHeaderBackgroundColorLightChange}
-            placeholder="transparent / custom"
+            placeholder={t("studio.placeholder_transparent_custom")}
           />
           <SwatchTextField
-            label="Header dark background"
+            label={t("studio.field_header_dark_bg")}
             value={headerBackgroundColorDark}
             onChange={onHeaderBackgroundColorDarkChange}
-            placeholder="transparent / custom"
+            placeholder={t("studio.placeholder_transparent_custom")}
           />
           <StudioInputField
-            label="Logo radius"
+            label={t("studio.field_logo_radius")}
             value={`${headerLogoCornerRadius}`}
             onChange={(value) => {
               const nextValue = Number(value);
@@ -1361,12 +1370,12 @@ function BrandInspector({
             inputMode="numeric"
           />
           <StudioInputField
-            label="Logo ratio"
+            label={t("studio.field_logo_ratio")}
             value={`${headerLogoAspectWidth} : ${headerLogoAspectHeight}`}
             readOnly
           />
           <StudioInputField
-            label="Logo width"
+            label={t("studio.field_logo_width")}
             value={String(headerLogoAspectWidth)}
             onChange={(value) => {
               const nextValue = Number(value);
@@ -1376,7 +1385,7 @@ function BrandInspector({
             inputMode="numeric"
           />
           <StudioInputField
-            label="Logo height"
+            label={t("studio.field_logo_height")}
             value={String(headerLogoAspectHeight)}
             onChange={(value) => {
               const nextValue = Number(value);
@@ -1388,13 +1397,13 @@ function BrandInspector({
         </div>
 
         <div className="mt-4 rounded-xl border border-dashed border-border bg-background p-4">
-          <div className="text-sm font-medium">Banner media</div>
+          <div className="text-sm font-medium">{t("studio.banner_media")}</div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Upload light and dark header banners or paste a stored path directly.
+            {t("studio.banner_media_hint")}
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <BannerUploadField
-              label="Light banner"
+              label={t("studio.banner_light")}
               value={headerBannerLightPath}
               previewUrl={headerBannerLightPreviewUrl}
               isUploading={isUploadingHeaderBannerLight}
@@ -1404,7 +1413,7 @@ function BrandInspector({
               onClear={() => onHeaderBannerLightPathChange("")}
             />
             <BannerUploadField
-              label="Dark banner"
+              label={t("studio.banner_dark")}
               value={headerBannerDarkPath}
               previewUrl={headerBannerDarkPreviewUrl}
               isUploading={isUploadingHeaderBannerDark}
@@ -1417,7 +1426,7 @@ function BrandInspector({
         </div>
 
         <div className="mt-4 rounded-xl border border-border bg-background p-4">
-          <div className="text-sm font-medium">Logo preview</div>
+          <div className="text-sm font-medium">{t("studio.logo_preview")}</div>
           <div className="mt-3 max-w-[220px] overflow-hidden rounded-xl border border-border/70 bg-muted/20">
             <AspectRatio
               ratio={Math.max(0.1, headerLogoAspectRatio)}
@@ -1427,14 +1436,14 @@ function BrandInspector({
               {catalogLogoFallbackUrl ? (
                 <Image
                   src={catalogLogoFallbackUrl}
-                  alt={`${catalogName} original logo`}
+                  alt={t("studio.logo_alt_original", { name: catalogName })}
                   fill
                   sizes="120px"
                   className="object-cover"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] text-muted-foreground">
-                  No catalog logo in Settings yet
+                  {t("studio.no_catalog_logo")}
                 </div>
               )}
             </AspectRatio>
@@ -1444,32 +1453,32 @@ function BrandInspector({
 
       <div className="rounded-xl border border-border bg-muted/20 p-4">
         <FieldLabel
-          label="Header content"
-          hint="These controls are already real and continue to affect the live preview."
+          label={t("studio.field_header_content")}
+          hint={t("studio.field_header_content_hint")}
         />
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <BinaryPill
-            label="Show logo"
+            label={t("studio.show_logo")}
             active={showHeaderLogo}
             onClick={() => onShowHeaderLogoChange(!showHeaderLogo)}
           />
           <BinaryPill
-            label="Show title"
+            label={t("studio.show_title")}
             active={showHeaderTitle}
             onClick={() => onShowHeaderTitleChange(!showHeaderTitle)}
           />
           <BinaryPill
-            label="Show description"
+            label={t("studio.show_description")}
             active={showHeaderDescription}
             onClick={() => onShowHeaderDescriptionChange(!showHeaderDescription)}
           />
           <BinaryPill
-            label="Show tags"
+            label={t("studio.show_tags")}
             active={showHeaderTags}
             onClick={() => onShowHeaderTagsChange(!showHeaderTags)}
           />
           <BinaryPill
-            label="Stretch logo"
+            label={t("studio.stretch_logo")}
             active={headerLogoFullWidth}
             onClick={() => onHeaderLogoFullWidthChange(!headerLogoFullWidth)}
             className="sm:col-span-2"
@@ -1511,16 +1520,17 @@ function PricingInspector({
   pricingSample: string;
   pricingSaleSample: string;
 }) {
+  const t = useT();
   return (
     <StudioCard>
       <InspectorIntro
-        title="Pricing"
-        description="Format item prices and see the result update immediately."
+        title={t("studio.focus_pricing")}
+        description={t("studio.pricing_intro")}
       />
 
       <div className="rounded-xl border border-border bg-muted/20 p-4">
         <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          Live sample
+          {t("studio.live_sample")}
         </div>
         <div className="mt-3 rounded-xl border border-border bg-background p-5 shadow-sm">
           <div className="text-[44px] font-semibold leading-none tracking-tight">
@@ -1528,43 +1538,43 @@ function PricingInspector({
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span className="rounded-full border border-border bg-muted/20 px-3 py-1">
-              Regular price
+              {t("studio.regular_price")}
             </span>
             <span className="rounded-full border border-border bg-muted/20 px-3 py-1">
-              {pricingSaleSample} sale
+              {t("studio.sale_price", { price: pricingSaleSample })}
             </span>
           </div>
         </div>
       </div>
 
       <StudioInputField
-        label="Currency code"
+        label={t("studio.field_currency_code")}
         value={currencyCode}
         onChange={onCurrencyCodeChange}
       />
 
       <StudioInputField
-        label="Currency label"
+        label={t("studio.field_currency_label")}
         value={currencyLabel}
         onChange={onCurrencyLabelChange}
       />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <SegmentedField
-          label="Position"
+          label={t("studio.field_position")}
           options={[
-            { label: "Before", value: "prefix" },
-            { label: "After", value: "suffix" },
+            { label: t("studio.position_before"), value: "prefix" },
+            { label: t("studio.position_after"), value: "suffix" },
           ]}
           selected={labelPosition}
           onSelect={onLabelPositionChange}
           columns={2}
         />
         <SegmentedField
-          label="Decimals"
+          label={t("studio.field_decimals")}
           options={[
-            { label: "On", value: "on" },
-            { label: "Off", value: "off" },
+            { label: t("studio.on"), value: "on" },
+            { label: t("studio.off"), value: "off" },
           ]}
           selected={showDecimals ? "on" : "off"}
           onSelect={(value) => onShowDecimalsChange(value === "on")}
@@ -1574,21 +1584,21 @@ function PricingInspector({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <SegmentedField
-          label="Thousands"
+          label={t("studio.field_thousands")}
           options={[
-            { label: "Space", value: " " },
-            { label: "Comma", value: "," },
-            { label: "Dot", value: "." },
+            { label: t("studio.sep_space"), value: " " },
+            { label: t("studio.sep_comma"), value: "," },
+            { label: t("studio.sep_dot"), value: "." },
           ]}
           selected={thousandSeparator}
           onSelect={onThousandSeparatorChange}
           columns={3}
         />
         <SegmentedField
-          label="Decimal"
+          label={t("studio.field_decimal")}
           options={[
-            { label: "Dot", value: "." },
-            { label: "Comma", value: "," },
+            { label: t("studio.sep_dot"), value: "." },
+            { label: t("studio.sep_comma"), value: "," },
           ]}
           selected={decimalSeparator}
           onSelect={onDecimalSeparatorChange}
@@ -1597,7 +1607,7 @@ function PricingInspector({
       </div>
 
       <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-        Changes update the catalog cards on the right in real time.
+        {t("studio.pricing_realtime_note")}
       </div>
     </StudioCard>
   );
@@ -1610,11 +1620,12 @@ function CartInspector({
   cartEnabled: boolean;
   onCartEnabledChange: (value: boolean) => void;
 }) {
+  const t = useT();
   return (
     <StudioCard>
       <InspectorIntro
-        title="Cart"
-        description="Ordering is on by default. Switch off for a browse-only menu."
+        title={t("studio.focus_cart")}
+        description={t("studio.cart_intro")}
       />
 
       <button
@@ -1629,25 +1640,23 @@ function CartInspector({
         aria-pressed={cartEnabled}
       >
         <div>
-          <div className="text-sm font-medium">Enable cart</div>
+          <div className="text-sm font-medium">{t("studio.enable_cart")}</div>
           <div
             className={cn(
               "mt-1 text-xs",
               cartEnabled ? "text-background/75" : "text-muted-foreground",
             )}
           >
-            Floating cart button + Add-to-cart CTA on item details.
+            {t("studio.enable_cart_desc")}
           </div>
         </div>
         <div className="text-xs uppercase tracking-[0.18em]">
-          {cartEnabled ? "On" : "Switch"}
+          {cartEnabled ? t("studio.on") : t("studio.state_switch")}
         </div>
       </button>
 
       <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-        On by default. Customers add items and check out using the order modes
-        you enable under Settings → Venue. Turn this off only for a browse-only
-        menu (no cart, no Add-to-cart).
+        {t("studio.cart_footer_note")}
       </div>
     </StudioCard>
   );
@@ -1832,6 +1841,7 @@ function BannerUploadField({
   onUpload: (file: File) => Promise<void>;
   onClear: () => void;
 }) {
+  const t = useT();
   return (
     <div className="rounded-xl border border-border bg-muted/10 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -1844,11 +1854,11 @@ function BannerUploadField({
             disabled={isUploading}
             onClick={() => inputRef.current?.click()}
           >
-            {isUploading ? "Uploading..." : "Upload"}
+            {isUploading ? t("common.uploading") : t("common.upload")}
           </Button>
           {value.trim() ? (
             <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-              Clear
+              {t("studio.clear")}
             </Button>
           ) : null}
         </div>
@@ -1876,10 +1886,10 @@ function BannerUploadField({
 
       <div className="mt-3 relative h-24 overflow-hidden rounded-md border border-border bg-background">
         {previewUrl ? (
-          <Image src={previewUrl} alt={`${label} preview`} fill sizes="(max-width: 768px) 100vw, 400px" className="object-cover" />
+          <Image src={previewUrl} alt={t("studio.banner_preview_alt", { label })} fill sizes="(max-width: 768px) 100vw, 400px" className="object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-            No image selected
+            {t("studio.no_image_selected")}
           </div>
         )}
       </div>
@@ -1898,6 +1908,7 @@ function BinaryPill({
   onClick: () => void;
   className?: string;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -1915,10 +1926,10 @@ function BinaryPill({
         {active ? (
           <>
             <Check className="size-3" />
-            On
+            {t("studio.on")}
           </>
         ) : (
-          "Off"
+          t("studio.off")
         )}
       </span>
     </button>

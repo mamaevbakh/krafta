@@ -5,6 +5,7 @@ import { Sparkles, ArrowRight, Check, Package } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { TranslateAllButton } from "./translate-all-button";
 import type { CatalogLocale } from "./languages-sidebar";
@@ -83,6 +84,7 @@ export function OverviewTab({
   onJumpToItems,
   onMutation,
 }: OverviewTabProps) {
+  const t = useT();
   // Aggregate totals + hero band live in the panel header now (so they
   // stay visible across tabs). Overview only computes per-language card
   // breakdowns from the completeness map passed in.
@@ -105,7 +107,7 @@ export function OverviewTab({
       =================================================================== */}
       <section className="flex flex-col gap-3">
         <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          By language
+          {t("translations.by_language")}
         </h3>
         <ul className="flex flex-col gap-1.5">
           {targetLocales.map((locale) => {
@@ -169,6 +171,7 @@ function LanguageCoverageRow({
   onJumpToItems: (filter: ItemsFilter) => void;
   onMutation: () => void;
 }) {
+  const t = useT();
   const hasWork = stats.notTranslated > 0;
 
   return (
@@ -199,7 +202,7 @@ function LanguageCoverageRow({
       <div className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
         <span
           className="inline-flex items-center gap-1"
-          title={`${stats.translated} translated`}
+          title={t("translations.n_translated", { count: stats.translated })}
         >
           <span
             className="size-1.5 rounded-full bg-emerald-500"
@@ -209,7 +212,9 @@ function LanguageCoverageRow({
         </span>
         <span
           className="inline-flex items-center gap-1"
-          title={`${stats.notTranslated} not translated`}
+          title={t("translations.n_not_translated", {
+            count: stats.notTranslated,
+          })}
         >
           <span
             className="size-1.5 rounded-full bg-muted-foreground/40"
@@ -243,7 +248,7 @@ function LanguageCoverageRow({
             }
           >
             <ArrowRight className="size-3" aria-hidden="true" />
-            Find {stats.notTranslated}
+            {t("translations.find_n", { count: stats.notTranslated })}
           </Button>
           <TranslateAllButton
             catalogId={catalogId}
@@ -257,7 +262,7 @@ function LanguageCoverageRow({
       ) : (
         <span className="inline-flex shrink-0 items-center gap-1 text-xs text-emerald-600 dark:text-emerald-500">
           <Check className="size-3.5" aria-hidden="true" />
-          All done
+          {t("translations.all_done")}
         </span>
       )}
     </li>
@@ -283,6 +288,7 @@ export function StackedProgressBar({
   notTranslated: number;
   total: number;
 }) {
+  const t = useT();
   if (total === 0) {
     return (
       <div className="h-3 w-full rounded-full bg-muted" aria-hidden="true" />
@@ -294,7 +300,10 @@ export function StackedProgressBar({
     <div
       className="flex h-3 w-full overflow-hidden rounded-full bg-muted"
       role="img"
-      aria-label={`${translated} translated, ${notTranslated} not translated`}
+      aria-label={t("translations.progress_aria", {
+        translated,
+        notTranslated,
+      })}
     >
       <div
         className="h-full bg-emerald-500 transition-[width] duration-500 ease-out"
@@ -318,26 +327,30 @@ export function StackedProgressBar({
 // ============================================================================
 
 function NoTargetLocalesEmptyState() {
+  const t = useT();
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
       <Sparkles className="size-8 text-muted-foreground" aria-hidden="true" />
-      <h2 className="text-sm font-medium">No target languages yet</h2>
+      <h2 className="text-sm font-medium">
+        {t("translations.overview_no_targets_title")}
+      </h2>
       <p className="text-xs text-muted-foreground">
-        Add a target language in the sidebar on the left. We&apos;ll start
-        translating your items into it automatically.
+        {t("translations.overview_no_targets_desc")}
       </p>
     </div>
   );
 }
 
 function NoItemsEmptyState() {
+  const t = useT();
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
       <Package className="size-8 text-muted-foreground" aria-hidden="true" />
-      <h2 className="text-sm font-medium">No items in this catalog yet</h2>
+      <h2 className="text-sm font-medium">
+        {t("translations.overview_no_items_title")}
+      </h2>
       <p className="text-xs text-muted-foreground">
-        Add items in the catalog library first. Once items exist, this overview
-        will show your translation coverage by language.
+        {t("translations.overview_no_items_desc")}
       </p>
     </div>
   );

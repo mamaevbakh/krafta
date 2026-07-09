@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { Badge } from "@/components/ui/badge";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { NewShopForm } from "./new-shop-form";
 
 // "Create a new coded shop" entry point (catalog-switcher already links here).
@@ -13,6 +14,7 @@ export default async function NewCodedShopPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const t = await getDashboardT();
 
   const supabase = await createClient();
   const { data: org } = await supabase
@@ -45,10 +47,9 @@ export default async function NewCodedShopPage({
         </header>
 
         <div className="mt-12 space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">New shop</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("home.new_shop_title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Name your shop and Krafta Studio builds it in real code on Krafta&apos;s
-            commerce engine. You shape the look and pages by chatting with the agent.
+            {t("home.new_shop_description")}
           </p>
         </div>
 

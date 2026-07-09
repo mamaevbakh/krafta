@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 /**
  * Modifier-list CRUD server actions — KRA-85.
@@ -71,10 +72,11 @@ export async function saveModifierList(
   input: SaveModifierListInput,
 ): Promise<ActionResult<{ id: string }>> {
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   const name = input.name.trim();
   if (!name) {
-    return { ok: false, error: "Modifier list name is required." };
+    return { ok: false, error: t("modifiers.error.name_required") };
   }
 
   if (
@@ -84,7 +86,7 @@ export async function saveModifierList(
   ) {
     return {
       ok: false,
-      error: "Max selected must be greater than or equal to min selected.",
+      error: t("modifiers.error.max_lt_min"),
     };
   }
 
@@ -93,7 +95,7 @@ export async function saveModifierList(
     input.max_length !== null &&
     input.max_length <= 0
   ) {
-    return { ok: false, error: "Max length must be a positive number." };
+    return { ok: false, error: t("modifiers.error.max_length_positive") };
   }
 
   // --- 1. Upsert the parent list row ---
@@ -136,7 +138,10 @@ export async function saveModifierList(
       .select("id")
       .single();
     if (error || !data) {
-      return { ok: false, error: error?.message ?? "Failed to create list." };
+      return {
+        ok: false,
+        error: error?.message ?? t("modifiers.error.create_failed"),
+      };
     }
     listId = data.id;
   }
@@ -231,6 +236,7 @@ export async function deleteModifierList(input: {
   modifierListId: string;
 }): Promise<ActionResult> {
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   // Pre-check attachments so we can return a useful error instead of the
   // raw "violates foreign key constraint" string. We still rely on the DB
@@ -246,7 +252,7 @@ export async function deleteModifierList(input: {
   if ((count ?? 0) > 0) {
     return {
       ok: false,
-      error: `Detach from ${count} item${count === 1 ? "" : "s"} first.`,
+      error: t("modifiers.error.detach_first", { count: count ?? 0 }),
     };
   }
 

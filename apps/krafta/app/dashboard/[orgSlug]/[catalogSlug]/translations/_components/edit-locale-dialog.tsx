@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { updateCatalogLocale } from "@/lib/translation/actions";
 import { getLocaleDefinition } from "@/lib/locales/registry";
@@ -53,6 +54,7 @@ export function EditLocaleDialog({
   locale,
   onSaved,
 }: EditLocaleDialogProps) {
+  const t = useT();
   const [displayName, setDisplayName] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -88,7 +90,7 @@ export function EditLocaleDialog({
       toast.error(result.error);
       return;
     }
-    toast.success(`Renamed to ${trimmed}`);
+    toast.success(t("translations.locale_renamed", { name: trimmed }));
     onSaved();
   };
 
@@ -101,12 +103,11 @@ export function EditLocaleDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Rename language</DialogTitle>
+            <DialogTitle>{t("translations.rename_dialog_title")}</DialogTitle>
             <DialogDescription>
-              Set how this language appears across the dashboard and
-              storefront. The locale code (
-              <span className="font-mono text-xs">{locale.locale}</span>)
-              stays fixed.
+              {t("translations.rename_desc_before")}
+              <span className="font-mono text-xs">{locale.locale}</span>
+              {t("translations.rename_desc_after")}
             </DialogDescription>
           </DialogHeader>
 
@@ -115,7 +116,7 @@ export function EditLocaleDialog({
               htmlFor="locale-display-name"
               className="text-sm font-medium"
             >
-              Display name
+              {t("translations.display_name_label")}
             </Label>
             <Input
               id="locale-display-name"
@@ -130,7 +131,9 @@ export function EditLocaleDialog({
                 onClick={handleResetToNative}
                 className="self-start text-xs text-muted-foreground underline-offset-4 hover:underline"
               >
-                Reset to native name ({registryDef!.nativeName})
+                {t("translations.reset_to_native", {
+                  name: registryDef!.nativeName,
+                })}
               </button>
             )}
           </div>
@@ -142,16 +145,16 @@ export function EditLocaleDialog({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
               {submitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  Saving…
+                  {t("common.saving")}
                 </>
               ) : (
-                "Save"
+                t("common.save")
               )}
             </Button>
           </DialogFooter>

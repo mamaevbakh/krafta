@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/lib/locales/dashboard/context";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
 import { ModifierListEditorDialog } from "./modifier-list-editor-dialog";
@@ -104,6 +105,7 @@ export function ModifiersPanel({
   currencySettings: CurrencySettings;
 }) {
   const router = useRouter();
+  const t = useT();
   const [editor, setEditor] = React.useState<EditorState>({ mode: "closed" });
   const [attach, setAttach] = React.useState<AttachState>({ mode: "closed" });
   const [query, setQuery] = React.useState("");
@@ -143,18 +145,18 @@ export function ModifiersPanel({
       toast.error(result.error);
       return;
     }
-    toast.success(next ? "List enabled." : "List disabled.");
+    toast.success(
+      next
+        ? t("modifiers.toast.list_enabled")
+        : t("modifiers.toast.list_disabled"),
+    );
     router.refresh();
   }
 
   async function handleDelete(list: ModifierListRow) {
     // Native confirm matches what categories-panel does. Per the ticket
     // we surface the attached-count via the action's pre-check.
-    if (
-      !window.confirm(
-        `Delete "${list.name}"? This cannot be undone. Modifiers inside the list will be removed too.`,
-      )
-    ) {
+    if (!window.confirm(t("modifiers.delete_confirm", { name: list.name }))) {
       return;
     }
     const result = await deleteModifierList({
@@ -166,7 +168,7 @@ export function ModifiersPanel({
       toast.error(result.error);
       return;
     }
-    toast.success("List deleted.");
+    toast.success(t("modifiers.toast.list_deleted"));
     router.refresh();
   }
 
@@ -181,7 +183,7 @@ export function ModifiersPanel({
       toast.error(result.error);
       return;
     }
-    toast.success("Detached.");
+    toast.success(t("modifiers.toast.detached"));
     router.refresh();
   }
 
@@ -193,16 +195,15 @@ export function ModifiersPanel({
         <div className="mx-auto flex h-30 max-w-[1248px] items-center justify-between px-6">
           <div className="space-y-1">
             <h1 className="text-[32px] font-semibold tracking-tight">
-              Modifiers
+              {t("modifiers.title")}
             </h1>
             <p className="text-xs text-muted-foreground">
-              Reusable option lists (sizes, toppings, prep notes) you can
-              attach to any item.
+              {t("modifiers.subtitle")}
             </p>
           </div>
           <Button onClick={() => setEditor({ mode: "create" })}>
             <Plus className="size-4" aria-hidden="true" />
-            New modifier list
+            {t("modifiers.new_list")}
           </Button>
         </div>
       </div>
@@ -221,13 +222,12 @@ export function ModifiersPanel({
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search modifier lists…"
+                  placeholder={t("modifiers.search_placeholder")}
                   className="h-9 pl-8"
                 />
               </div>
               <span className="text-xs text-muted-foreground">
-                {filtered.length}{" "}
-                {filtered.length === 1 ? "list" : "lists"}
+                {t("modifiers.list_count", { count: filtered.length })}
               </span>
             </div>
             <ModifierListsTable
@@ -286,18 +286,16 @@ export function ModifiersPanel({
 // ============================================================================
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useT();
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
-      <h2 className="text-sm font-medium">No modifier lists yet</h2>
+      <h2 className="text-sm font-medium">{t("modifiers.empty.title")}</h2>
       <p className="text-xs text-muted-foreground">
-        Modifier lists let customers customize items at checkout —
-        &ldquo;Choose a size,&rdquo; &ldquo;Add toppings,&rdquo; or
-        &ldquo;Leave a note.&rdquo; Build one, then attach it to as many
-        items as you like.
+        {t("modifiers.empty.description")}
       </p>
       <Button size="sm" onClick={onCreate}>
         <Plus className="size-4" aria-hidden="true" />
-        New modifier list
+        {t("modifiers.new_list")}
       </Button>
     </div>
   );

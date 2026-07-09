@@ -50,6 +50,9 @@
 export type StorefrontMessageKey =
   // Filter chip (carried over from F-5)
   | "all"
+  // Storefront empty states (server-rendered catalog shell)
+  | "catalog.empty"
+  | "catalog.category_empty"
   // Cart drawer chrome
   | "cart.title"
   | "cart.description"
@@ -85,11 +88,13 @@ export type StorefrontMessageKey =
   | "checkout.tip.label"
   | "checkout.tip.none"
   | "checkout.tip.custom"
+  | "checkout.tip.custom_placeholder"
   | "checkout.tip.preset"
   | "checkout.schedule.when"
   | "checkout.schedule.asap"
   | "checkout.schedule.scheduled"
   | "checkout.schedule.pick_date"
+  | "checkout.schedule.time_aria"
   | "checkout.table.label"
   | "checkout.table.placeholder"
   | "checkout.address.label"
@@ -179,6 +184,10 @@ export type StorefrontMessageKey =
   | "placed.scheduled_for"
   // Add to cart
   | "add_to_cart.label"
+  // Short verb-only variant for the compact catalog-card pill.
+  | "add_to_cart.short"
+  // aria label on the catalog-card Add pill. Interpolates `{name}`.
+  | "add_to_cart.aria"
   | "add_to_cart.label_with_price"
   | "add_to_cart.added"
   | "add_to_cart.view"
@@ -197,17 +206,72 @@ export type StorefrontMessageKey =
   // Storefront bottom dock — search input placeholder + a11y label.
   | "search.placeholder"
   | "search.open_aria"
+  // Full-screen search dialog chrome (catalog-search).
+  | "search.title"
+  | "search.close_aria"
+  | "search.prompt"
+  | "search.error"
+  | "search.no_results"
+  | "search.items_heading"
+  | "search.categories_heading"
   // Header language switcher — aria label on the globe-icon trigger.
   // The dropdown items themselves use each locale's `display_name`
   // (merchant-curated), so the only localized string we need is the
   // affordance label for screen readers.
   | "language.select_aria"
+  // Header theme switcher (mode-toggle) — aria label + dropdown items.
+  | "theme.toggle_aria"
+  | "theme.light"
+  | "theme.dark"
+  | "theme.system"
   // Item detail view — variation selector. "Size" reads as the universal
   // header for variation pickers in food/menu contexts even when the
   // actual axis is something else (e.g. "Cold / Hot"). Renamed to
   // generic "Choose option" if you'd rather not assume size semantics.
   | "variation.label"
   | "variation.sold_out"
+  // Modifier picker — required-list status pill (3 states) + its aria labels.
+  | "modifier.required"
+  | "modifier.required_satisfied"
+  | "modifier.required_pending"
+  // Modifier-list selection hints (rendered under each list's title).
+  | "modifier.hint.choose_one"
+  | "modifier.hint.choose_n"
+  | "modifier.hint.up_to"
+  | "modifier.hint.at_least"
+  | "modifier.hint.choose_range"
+  | "modifier.hint.up_to_chars"
+  | "modifier.hint.optional_up_to_chars"
+  // Conversational shopping assistant chrome (opt-in per catalog).
+  | "assistant.title"
+  | "assistant.empty_title"
+  | "assistant.empty_hint"
+  | "assistant.suggestion_recommend"
+  | "assistant.suggestion_popular"
+  | "assistant.suggestion_gift"
+  | "assistant.searching"
+  | "assistant.error"
+  | "assistant.input_placeholder"
+  | "assistant.added_to_cart"
+  | "assistant.opened_choose_options"
+  | "assistant.close_aria"
+  | "assistant.send_aria"
+  // Dine-in running check — the per-table tab bar + "Table Check" sheet
+  // (placed rounds, status pills, running total, ask-for-the-bill).
+  | "table_check.open_aria"
+  | "table_check.table"
+  | "table_check.round_count_plural"
+  | "table_check.round_count_plural.one"
+  | "table_check.round_count_plural.few"
+  | "table_check.round_count_plural.many"
+  | "table_check.subtitle"
+  | "table_check.round"
+  | "table_check.total"
+  | "table_check.request_bill"
+  | "table_check.bill_requested"
+  | "table_check.requesting"
+  | "table_check.status_served"
+  | "table_check.status_preparing"
   // Errors (interpolation-aware — use `{var}` placeholders in the string)
   | "errors.network"
   | "errors.item_not_found"
@@ -231,7 +295,15 @@ export type StorefrontMessageKey =
   | "aria.close_drawer"
   | "aria.decrease_quantity"
   | "aria.increase_quantity"
-  | "aria.remove_item";
+  | "aria.remove_item"
+  | "aria.remove_from_cart"
+  | "aria.share"
+  // Item-name-interpolated stepper labels (`{name}`) used on catalog cards.
+  | "aria.remove_item_named"
+  | "aria.decrease_item_named"
+  | "aria.increase_item_named"
+  | "aria.cart_quantity_config"
+  | "aria.cart_quantity_named";
 
 type MessageTable = Partial<Record<StorefrontMessageKey, string>>;
 
@@ -246,6 +318,9 @@ type MessageTable = Partial<Record<StorefrontMessageKey, string>>;
 
 const EN: MessageTable = {
   all: "All",
+
+  "catalog.empty": "No categories or items in this catalog yet.",
+  "catalog.category_empty": "No items in this category yet.",
 
   "cart.title": "Your cart",
   "cart.description": "Review the items in your cart and continue to checkout.",
@@ -278,11 +353,13 @@ const EN: MessageTable = {
   "checkout.tip.label": "Tip",
   "checkout.tip.none": "No tip",
   "checkout.tip.custom": "Custom",
+  "checkout.tip.custom_placeholder": "Enter tip amount",
   "checkout.tip.preset": "{percent}%",
   "checkout.schedule.when": "When",
   "checkout.schedule.asap": "As soon as possible",
   "checkout.schedule.scheduled": "Schedule",
   "checkout.schedule.pick_date": "Pick a date",
+  "checkout.schedule.time_aria": "Time",
   "checkout.table.label": "Table",
   "checkout.table.placeholder": "Table number",
   "checkout.address.label": "Address",
@@ -369,6 +446,8 @@ const EN: MessageTable = {
   "placed.scheduled_for": "Scheduled for {time}",
 
   "add_to_cart.label": "Add to cart",
+  "add_to_cart.short": "Add",
+  "add_to_cart.aria": "Add {name} to cart",
   "add_to_cart.label_with_price": "Add  •  {price}",
   "add_to_cart.added": "Added {name}",
   "add_to_cart.view": "View cart",
@@ -381,9 +460,56 @@ const EN: MessageTable = {
   "customisations.add_new": "Add new customised item",
   "search.placeholder": "Search the menu",
   "search.open_aria": "Open search",
+  "search.title": "Search",
+  "search.close_aria": "Close search",
+  "search.prompt": "Start typing to search items and categories.",
+  "search.error": "We could not load search results. Please try again.",
+  "search.no_results": "No matches yet. Try another keyword.",
+  "search.items_heading": "Items",
+  "search.categories_heading": "Categories",
   "language.select_aria": "Select language",
+  "theme.toggle_aria": "Toggle theme",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.system": "System",
   "variation.label": "Choose option",
   "variation.sold_out": "Sold out",
+  "modifier.required": "Required",
+  "modifier.required_satisfied": "Required (satisfied)",
+  "modifier.required_pending": "Required (pending)",
+  "modifier.hint.choose_one": "Choose 1",
+  "modifier.hint.choose_n": "Choose {count}",
+  "modifier.hint.up_to": "Up to {count}",
+  "modifier.hint.at_least": "At least {count}",
+  "modifier.hint.choose_range": "Choose {min} to {max}",
+  "modifier.hint.up_to_chars": "Up to {count} chars",
+  "modifier.hint.optional_up_to_chars": "Optional · up to {count} chars",
+  "assistant.title": "Assistant",
+  "assistant.empty_title": "What are you looking for?",
+  "assistant.empty_hint": "Ask in any language — I’ll find it for you.",
+  "assistant.suggestion_recommend": "What do you recommend?",
+  "assistant.suggestion_popular": "Show me something popular",
+  "assistant.suggestion_gift": "I’m looking for a gift",
+  "assistant.searching": "Searching…",
+  "assistant.error": "Something went wrong. Please try again.",
+  "assistant.input_placeholder": "Ask anything…",
+  "assistant.added_to_cart": "Added {name} to cart",
+  "assistant.opened_choose_options": "Opened {name} — choose options to add",
+  "assistant.close_aria": "Close assistant",
+  "assistant.send_aria": "Send",
+
+  "table_check.open_aria": "Open table check",
+  "table_check.table": "Table {table}",
+  "table_check.round_count_plural": "{count} orders",
+  "table_check.round_count_plural.one": "{count} order",
+  "table_check.subtitle": "Your check at this table",
+  "table_check.round": "Order {number}",
+  "table_check.total": "Table total",
+  "table_check.request_bill": "Ask for the bill",
+  "table_check.bill_requested": "Bill requested",
+  "table_check.requesting": "Requesting…",
+  "table_check.status_served": "Served",
+  "table_check.status_preparing": "Preparing",
 
   "errors.network":
     "Network issue. Check your connection and try again.",
@@ -416,10 +542,20 @@ const EN: MessageTable = {
   "aria.decrease_quantity": "Decrease quantity",
   "aria.increase_quantity": "Increase quantity",
   "aria.remove_item": "Remove item",
+  "aria.remove_from_cart": "Remove from cart",
+  "aria.share": "Share",
+  "aria.remove_item_named": "Remove {name} from cart",
+  "aria.decrease_item_named": "Decrease {name} quantity",
+  "aria.increase_item_named": "Increase {name} quantity",
+  "aria.cart_quantity_config": "Cart quantity for this configuration",
+  "aria.cart_quantity_named": "Cart quantity for {name}",
 };
 
 const RU: MessageTable = {
   all: "Все",
+
+  "catalog.empty": "В этом каталоге пока нет категорий и позиций.",
+  "catalog.category_empty": "В этой категории пока нет позиций.",
 
   "cart.title": "Корзина",
   "cart.description": "Просмотрите позиции в корзине и перейдите к оформлению.",
@@ -452,11 +588,13 @@ const RU: MessageTable = {
   "checkout.tip.label": "Чаевые",
   "checkout.tip.none": "Без чаевых",
   "checkout.tip.custom": "Своя сумма",
+  "checkout.tip.custom_placeholder": "Введите сумму чаевых",
   "checkout.tip.preset": "{percent}%",
   "checkout.schedule.when": "Когда",
   "checkout.schedule.asap": "Как можно скорее",
   "checkout.schedule.scheduled": "Запланировать",
   "checkout.schedule.pick_date": "Выберите дату",
+  "checkout.schedule.time_aria": "Время",
   "checkout.table.label": "Стол",
   "checkout.table.placeholder": "Номер стола",
   "checkout.address.label": "Адрес",
@@ -544,6 +682,8 @@ const RU: MessageTable = {
   "placed.scheduled_for": "Запланировано на {time}",
 
   "add_to_cart.label": "В корзину",
+  "add_to_cart.short": "Добавить",
+  "add_to_cart.aria": "Добавить {name} в корзину",
   "add_to_cart.label_with_price": "В корзину  •  {price}",
   "add_to_cart.added": "Добавлено: {name}",
   "add_to_cart.view": "Перейти в корзину",
@@ -556,9 +696,58 @@ const RU: MessageTable = {
   "customisations.add_new": "Добавить ещё с другими настройками",
   "search.placeholder": "Поиск по меню",
   "search.open_aria": "Открыть поиск",
+  "search.title": "Поиск",
+  "search.close_aria": "Закрыть поиск",
+  "search.prompt": "Начните вводить, чтобы искать позиции и категории.",
+  "search.error": "Не удалось загрузить результаты поиска. Попробуйте снова.",
+  "search.no_results": "Пока ничего не найдено. Попробуйте другой запрос.",
+  "search.items_heading": "Позиции",
+  "search.categories_heading": "Категории",
   "language.select_aria": "Выбрать язык",
+  "theme.toggle_aria": "Переключить тему",
+  "theme.light": "Светлая",
+  "theme.dark": "Тёмная",
+  "theme.system": "Системная",
   "variation.label": "Выберите вариант",
   "variation.sold_out": "Нет в наличии",
+  "modifier.required": "Обязательно",
+  "modifier.required_satisfied": "Обязательно (выбрано)",
+  "modifier.required_pending": "Обязательно (не выбрано)",
+  "modifier.hint.choose_one": "Выберите 1",
+  "modifier.hint.choose_n": "Выберите {count}",
+  "modifier.hint.up_to": "До {count}",
+  "modifier.hint.at_least": "Минимум {count}",
+  "modifier.hint.choose_range": "Выберите от {min} до {max}",
+  "modifier.hint.up_to_chars": "До {count} символов",
+  "modifier.hint.optional_up_to_chars": "Необязательно · до {count} символов",
+  "assistant.title": "Ассистент",
+  "assistant.empty_title": "Что вы ищете?",
+  "assistant.empty_hint": "Спросите на любом языке — я найду.",
+  "assistant.suggestion_recommend": "Что посоветуете?",
+  "assistant.suggestion_popular": "Покажите популярное",
+  "assistant.suggestion_gift": "Ищу подарок",
+  "assistant.searching": "Ищу…",
+  "assistant.error": "Что-то пошло не так. Попробуйте снова.",
+  "assistant.input_placeholder": "Спросите что угодно…",
+  "assistant.added_to_cart": "Добавлено в корзину: {name}",
+  "assistant.opened_choose_options": "Открыли {name} — выберите опции, чтобы добавить",
+  "assistant.close_aria": "Закрыть ассистента",
+  "assistant.send_aria": "Отправить",
+
+  "table_check.open_aria": "Открыть счёт стола",
+  "table_check.table": "Стол {table}",
+  "table_check.round_count_plural": "{count} заказов",
+  "table_check.round_count_plural.one": "{count} заказ",
+  "table_check.round_count_plural.few": "{count} заказа",
+  "table_check.round_count_plural.many": "{count} заказов",
+  "table_check.subtitle": "Ваш счёт за этим столом",
+  "table_check.round": "Заказ {number}",
+  "table_check.total": "Итого по столу",
+  "table_check.request_bill": "Попросить счёт",
+  "table_check.bill_requested": "Счёт запрошен",
+  "table_check.requesting": "Запрашиваем…",
+  "table_check.status_served": "Подано",
+  "table_check.status_preparing": "Готовится",
 
   "errors.network": "Проблема с сетью. Проверьте подключение и попробуйте снова.",
   "errors.item_not_found": "Эта позиция больше недоступна.",
@@ -592,10 +781,20 @@ const RU: MessageTable = {
   "aria.decrease_quantity": "Уменьшить количество",
   "aria.increase_quantity": "Увеличить количество",
   "aria.remove_item": "Удалить позицию",
+  "aria.remove_from_cart": "Удалить из корзины",
+  "aria.share": "Поделиться",
+  "aria.remove_item_named": "Удалить {name} из корзины",
+  "aria.decrease_item_named": "Уменьшить количество: {name}",
+  "aria.increase_item_named": "Увеличить количество: {name}",
+  "aria.cart_quantity_config": "Количество в корзине для этой конфигурации",
+  "aria.cart_quantity_named": "Количество в корзине: {name}",
 };
 
 const UZ_LATN: MessageTable = {
   all: "Hammasi",
+
+  "catalog.empty": "Bu katalogda hozircha turkum va mahsulotlar yo‘q.",
+  "catalog.category_empty": "Bu turkumda hozircha mahsulotlar yo‘q.",
 
   "cart.title": "Savatcha",
   "cart.description": "Savatchangizdagi taomlarni ko‘rib chiqing va buyurtma berishga o‘ting.",
@@ -628,11 +827,13 @@ const UZ_LATN: MessageTable = {
   "checkout.tip.label": "Chaqimcha",
   "checkout.tip.none": "Chaqimchasiz",
   "checkout.tip.custom": "Boshqa miqdor",
+  "checkout.tip.custom_placeholder": "Chaqimcha miqdorini kiriting",
   "checkout.tip.preset": "{percent}%",
   "checkout.schedule.when": "Qachon",
   "checkout.schedule.asap": "Tezroq",
   "checkout.schedule.scheduled": "Rejalashtirish",
   "checkout.schedule.pick_date": "Sanani tanlang",
+  "checkout.schedule.time_aria": "Vaqt",
   "checkout.table.label": "Stol",
   "checkout.table.placeholder": "Stol raqami",
   "checkout.address.label": "Manzil",
@@ -721,6 +922,8 @@ const UZ_LATN: MessageTable = {
   "placed.scheduled_for": "{time} ga rejalashtirildi",
 
   "add_to_cart.label": "Savatchaga",
+  "add_to_cart.short": "Qo‘shish",
+  "add_to_cart.aria": "{name}ni savatchaga qo‘shish",
   "add_to_cart.label_with_price": "Savatchaga  •  {price}",
   "add_to_cart.added": "Qo‘shildi: {name}",
   "add_to_cart.view": "Savatchaga o‘tish",
@@ -733,9 +936,55 @@ const UZ_LATN: MessageTable = {
   "customisations.add_new": "Boshqa sozlamalar bilan qo‘shish",
   "search.placeholder": "Menyu bo‘yicha qidirish",
   "search.open_aria": "Qidiruvni ochish",
+  "search.title": "Qidiruv",
+  "search.close_aria": "Qidiruvni yopish",
+  "search.prompt": "Mahsulot va turkumlarni qidirish uchun yozishni boshlang.",
+  "search.error": "Qidiruv natijalarini yuklab bo‘lmadi. Qayta urinib ko‘ring.",
+  "search.no_results": "Hozircha hech narsa topilmadi. Boshqa so‘z bilan urinib ko‘ring.",
+  "search.items_heading": "Mahsulotlar",
+  "search.categories_heading": "Turkumlar",
   "language.select_aria": "Tilni tanlash",
+  "theme.toggle_aria": "Mavzuni almashtirish",
+  "theme.light": "Yorug‘",
+  "theme.dark": "Qorong‘i",
+  "theme.system": "Tizim",
   "variation.label": "Variantni tanlang",
   "variation.sold_out": "Tugagan",
+  "modifier.required": "Majburiy",
+  "modifier.required_satisfied": "Majburiy (tanlandi)",
+  "modifier.required_pending": "Majburiy (tanlanmagan)",
+  "modifier.hint.choose_one": "1 ta tanlang",
+  "modifier.hint.choose_n": "{count} ta tanlang",
+  "modifier.hint.up_to": "{count} tagacha",
+  "modifier.hint.at_least": "Kamida {count} ta",
+  "modifier.hint.choose_range": "{min}–{max} ta tanlang",
+  "modifier.hint.up_to_chars": "{count} belgigacha",
+  "modifier.hint.optional_up_to_chars": "Ixtiyoriy · {count} belgigacha",
+  "assistant.title": "Yordamchi",
+  "assistant.empty_title": "Nimani qidiryapsiz?",
+  "assistant.empty_hint": "Istalgan tilda so‘rang — men topib beraman.",
+  "assistant.suggestion_recommend": "Nimani tavsiya qilasiz?",
+  "assistant.suggestion_popular": "Ommabop mahsulotlarni ko‘rsating",
+  "assistant.suggestion_gift": "Sovg‘a qidiryapman",
+  "assistant.searching": "Qidiryapman…",
+  "assistant.error": "Nimadir xato ketdi. Qayta urinib ko‘ring.",
+  "assistant.input_placeholder": "Istalgan narsani so‘rang…",
+  "assistant.added_to_cart": "Savatchaga qo‘shildi: {name}",
+  "assistant.opened_choose_options": "{name} ochildi — qo‘shish uchun variantlarni tanlang",
+  "assistant.close_aria": "Yordamchini yopish",
+  "assistant.send_aria": "Yuborish",
+
+  "table_check.open_aria": "Stol hisobini ochish",
+  "table_check.table": "Stol {table}",
+  "table_check.round_count_plural": "{count} ta buyurtma",
+  "table_check.subtitle": "Shu stoldagi hisobingiz",
+  "table_check.round": "{number}-buyurtma",
+  "table_check.total": "Stol bo‘yicha jami",
+  "table_check.request_bill": "Hisobni so‘rash",
+  "table_check.bill_requested": "Hisob so‘raldi",
+  "table_check.requesting": "So‘ralmoqda…",
+  "table_check.status_served": "Berildi",
+  "table_check.status_preparing": "Tayyorlanmoqda",
 
   "errors.network": "Internet bilan muammo. Aloqani tekshirib qaytadan urinib ko‘ring.",
   "errors.item_not_found": "Bu taom endi mavjud emas.",
@@ -769,6 +1018,13 @@ const UZ_LATN: MessageTable = {
   "aria.decrease_quantity": "Miqdorni kamaytirish",
   "aria.increase_quantity": "Miqdorni oshirish",
   "aria.remove_item": "Taomni olib tashlash",
+  "aria.remove_from_cart": "Savatchadan olib tashlash",
+  "aria.share": "Ulashish",
+  "aria.remove_item_named": "{name}ni savatchadan olib tashlash",
+  "aria.decrease_item_named": "{name} miqdorini kamaytirish",
+  "aria.increase_item_named": "{name} miqdorini oshirish",
+  "aria.cart_quantity_config": "Ushbu tanlov uchun savatchadagi miqdor",
+  "aria.cart_quantity_named": "{name} uchun savatchadagi miqdor",
 };
 
 /**

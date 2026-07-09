@@ -11,6 +11,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 import type { ChecklistEntry } from "./activation-checklist";
 
@@ -70,17 +71,18 @@ export async function getChecklistEntries(
     (catalogRes.data?.settings_branding as Record<string, unknown>) ?? {};
   const settingsHref = `/dashboard/${params.orgSlug}/${params.catalogSlug}/settings`;
   const itemsHref = `/dashboard/${params.orgSlug}/${params.catalogSlug}/items`;
+  const t = await getDashboardT();
 
   return [
     {
       key: "menu",
-      label: "Make the menu yours — edit or add an item",
+      label: t("activation.checklist.step.menu"),
       done: menuEdited,
       href: itemsHref,
     },
     {
       key: "photo",
-      label: "Add a real photo",
+      label: t("activation.checklist.step.photo"),
       done: (mediaRes.data ?? []).length > 0,
       href: itemsHref,
     },
@@ -91,7 +93,7 @@ export async function getChecklistEntries(
       ? [
           {
             key: "secure",
-            label: "Secure your shop — add a login",
+            label: t("activation.checklist.step.secure"),
             done: false,
             action: "secure" as const,
           },
@@ -99,7 +101,7 @@ export async function getChecklistEntries(
       : []),
     {
       key: "hours",
-      label: "Set your opening hours",
+      label: t("activation.checklist.step.hours"),
       done:
         Object.keys((venue.business_hours as Record<string, unknown>) ?? {})
           .length > 0,
@@ -107,20 +109,20 @@ export async function getChecklistEntries(
     },
     {
       key: "theme",
-      label: "Pick your look",
+      label: t("activation.checklist.step.theme"),
       done: Object.keys(branding).length > 0,
       // The Studio lives at the /builder segment (nav label ≠ route name).
       href: `/dashboard/${params.orgSlug}/${params.catalogSlug}/builder`,
     },
     {
       key: "alerts",
-      label: "Get order alerts in Telegram",
+      label: t("activation.checklist.step.alerts"),
       done: Boolean(telegramRes.data?.chat_id && telegramRes.data.is_active),
       href: settingsHref,
     },
     {
       key: "publish",
-      label: "Publish your shop",
+      label: t("activation.checklist.step.publish"),
       done: venue.status === "active",
     },
   ];

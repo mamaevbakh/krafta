@@ -7,6 +7,8 @@ import { redirect } from "next/navigation";
 
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { findOwnedShop } from "@/lib/auth/merchant-shop";
+import { DashboardLocaleProvider } from "@/lib/locales/dashboard/context";
+import { getDashboardLocale } from "@/lib/locales/dashboard/server";
 
 import { OnboardingWizard } from "./_components/onboarding-wizard";
 
@@ -32,14 +34,21 @@ export default async function OnboardingPage() {
     redirect(`/dashboard/${existing.orgSlug}/${existing.catalogSlug}/items`);
   }
 
+  // /onboarding sits outside the dashboard layout, so it isn't wrapped by the
+  // DashboardLocaleProvider. Resolve the UI locale here (cookie →
+  // Accept-Language → ru) and provide it so the client wizard localizes.
+  const locale = await getDashboardLocale();
+
   return (
-    <main className="min-h-dvh bg-background">
-      <div className="mx-auto flex w-full max-w-md flex-col px-6 py-10 sm:py-16">
-        <BrandWordmark className="text-xl" />
-        <div className="mt-10">
-          <OnboardingWizard />
+    <DashboardLocaleProvider locale={locale}>
+      <main className="min-h-dvh bg-background">
+        <div className="mx-auto flex w-full max-w-md flex-col px-6 py-10 sm:py-16">
+          <BrandWordmark className="text-xl" />
+          <div className="mt-10">
+            <OnboardingWizard />
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </DashboardLocaleProvider>
   );
 }

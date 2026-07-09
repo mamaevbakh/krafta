@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 
 export type DayKey =
@@ -29,16 +30,6 @@ export const DAY_ORDER: DayKey[] = [
   "saturday",
   "sunday",
 ];
-
-const DAY_LABELS: Record<DayKey, string> = {
-  monday: "Monday",
-  tuesday: "Tuesday",
-  wednesday: "Wednesday",
-  thursday: "Thursday",
-  friday: "Friday",
-  saturday: "Saturday",
-  sunday: "Sunday",
-};
 
 const DEFAULT_OPEN = "09:00";
 const DEFAULT_CLOSE = "22:00";
@@ -89,6 +80,7 @@ type HoursEditorProps = {
 };
 
 export function HoursEditor({ value, onChange, disabled }: HoursEditorProps) {
+  const t = useT();
   const setDay = (day: DayKey, windows: HoursWindow[]) => {
     onChange({ ...value, [day]: windows });
   };
@@ -100,13 +92,14 @@ export function HoursEditor({ value, onChange, disabled }: HoursEditorProps) {
         const closed = windows.length === 0;
         const window = windows[0] ?? { open: DEFAULT_OPEN, close: DEFAULT_CLOSE };
         const invalid = !closed && window.open >= window.close;
+        const dayLabel = t(`settings.venue.day.${day}`);
 
         return (
           <div
             key={day}
             className="grid grid-cols-1 items-center gap-3 px-4 py-3 sm:grid-cols-[7rem_1fr_auto]"
           >
-            <div className="text-sm font-medium">{DAY_LABELS[day]}</div>
+            <div className="text-sm font-medium">{dayLabel}</div>
 
             <div className="flex items-center gap-2">
               <Input
@@ -120,7 +113,7 @@ export function HoursEditor({ value, onChange, disabled }: HoursEditorProps) {
                   "w-32",
                   invalid && "border-destructive",
                 )}
-                aria-label={`${DAY_LABELS[day]} opens at`}
+                aria-label={t("settings.venue.day_opens_at", { day: dayLabel })}
                 aria-invalid={invalid || undefined}
               />
               <span className="text-muted-foreground text-sm">–</span>
@@ -135,7 +128,7 @@ export function HoursEditor({ value, onChange, disabled }: HoursEditorProps) {
                   "w-32",
                   invalid && "border-destructive",
                 )}
-                aria-label={`${DAY_LABELS[day]} closes at`}
+                aria-label={t("settings.venue.day_closes_at", { day: dayLabel })}
                 aria-invalid={invalid || undefined}
               />
             </div>
@@ -153,9 +146,9 @@ export function HoursEditor({ value, onChange, disabled }: HoursEditorProps) {
                     ]);
                   }
                 }}
-                aria-label={`${DAY_LABELS[day]} closed`}
+                aria-label={t("settings.venue.day_closed", { day: dayLabel })}
               />
-              Closed
+              {t("settings.venue.closed")}
             </label>
           </div>
         );

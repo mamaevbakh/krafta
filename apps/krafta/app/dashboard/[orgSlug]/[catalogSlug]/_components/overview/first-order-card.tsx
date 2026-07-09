@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useT } from "@/lib/locales/dashboard/context";
 
 type FirstOrderCardProps = {
   storefrontUrl: string;
@@ -35,27 +36,26 @@ export function FirstOrderCard({
   mainQrSvg,
   telegramUrl,
 }: FirstOrderCardProps) {
+  const t = useT();
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-lg font-medium">
-          Get your first order
+          {t("overview.first_order_title")}
         </CardTitle>
-        <CardDescription>
-          Share your shop — orders will show up right here.
-        </CardDescription>
+        <CardDescription>{t("overview.first_order_subtitle")}</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         {!published ? (
           <p className="border-t px-6 py-4 text-sm text-muted-foreground">
-            Publish your shop to get a shareable link and QR code.
+            {t("overview.publish_to_share")}
           </p>
         ) : (
           <ul className="divide-y border-t">
             <li className="flex items-center gap-3 px-6 py-4">
               <Link2 className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">Shop link</p>
+                <p className="text-sm font-medium">{t("overview.shop_link")}</p>
                 <p className="truncate font-mono text-xs text-muted-foreground">
                   {storefrontUrl}
                 </p>
@@ -66,21 +66,23 @@ export function FirstOrderCard({
             <li className="flex items-center gap-3 px-6 py-4">
               <QrCode className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">QR code for tables</p>
+                <p className="text-sm font-medium">
+                  {t("overview.qr_for_tables")}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Print it, put it on the counter.
+                  {t("overview.qr_hint")}
                 </p>
               </div>
               {mainQrSvg ? (
                 <Link
                   href={qrHref}
                   className="size-14 shrink-0 overflow-hidden rounded-md border bg-white p-1"
-                  aria-label="Open QR codes"
+                  aria-label={t("overview.open_qr_codes")}
                   dangerouslySetInnerHTML={{ __html: mainQrSvg }}
                 />
               ) : (
                 <Button asChild variant="outline" size="sm">
-                  <Link href={qrHref}>Open</Link>
+                  <Link href={qrHref}>{t("overview.open")}</Link>
                 </Button>
               )}
             </li>
@@ -89,7 +91,9 @@ export function FirstOrderCard({
               <li className="flex items-center gap-3 px-6 py-4">
                 <Send className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">Telegram Mini App</p>
+                  <p className="text-sm font-medium">
+                    {t("overview.telegram_mini_app")}
+                  </p>
                   <p className="truncate font-mono text-xs text-muted-foreground">
                     {telegramUrl}
                   </p>
@@ -100,7 +104,7 @@ export function FirstOrderCard({
           </ul>
         )}
         <p className="px-6 py-4 text-sm text-muted-foreground">
-          Your orders will appear here.
+          {t("overview.orders_appear_here")}
         </p>
       </CardContent>
     </Card>
@@ -108,6 +112,7 @@ export function FirstOrderCard({
 }
 
 function CopyButton({ value }: { value: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <Button
@@ -115,7 +120,7 @@ function CopyButton({ value }: { value: string }) {
       variant="ghost"
       size="icon"
       className="shrink-0"
-      aria-label={copied ? "Copied" : "Copy"}
+      aria-label={copied ? t("common.copied") : t("common.copy")}
       onClick={() => {
         void navigator.clipboard?.writeText(value).then(() => {
           setCopied(true);

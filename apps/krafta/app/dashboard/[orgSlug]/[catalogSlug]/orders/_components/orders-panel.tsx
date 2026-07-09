@@ -6,6 +6,8 @@ import { Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChimeMute } from "@/lib/hooks/use-chime-mute";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 import { cn } from "@/lib/utils";
 
 import { DataTable } from "../../items/_components/data-table";
@@ -114,12 +116,14 @@ export type OrderRow = {
 
 type StatusTab = "all" | "open" | "completed" | "canceled";
 
-const TABS: Array<{ id: StatusTab; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "open", label: "Open" },
-  { id: "completed", label: "Completed" },
-  { id: "canceled", label: "Canceled" },
-];
+const TAB_IDS: StatusTab[] = ["all", "open", "completed", "canceled"];
+
+const TAB_LABEL_KEY: Record<StatusTab, DashboardMessageKey> = {
+  all: "common.all",
+  open: "orders.tab_open",
+  completed: "orders.tab_completed",
+  canceled: "orders.tab_canceled",
+};
 
 type OrdersPanelProps = {
   catalogId: string;
@@ -132,6 +136,7 @@ export function OrdersPanel({
   rows,
   currencySettings,
 }: OrdersPanelProps) {
+  const t = useT();
   const [tab, setTab] = useState<StatusTab>("open");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
@@ -169,10 +174,11 @@ export function OrdersPanel({
       <div className="w-full border-b">
         <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
           <div className="space-y-1">
-            <h1 className="text-[32px] font-semibold tracking-tight">Orders</h1>
+            <h1 className="text-[32px] font-semibold tracking-tight">
+              {t("orders.title")}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Live queue from the customer-facing catalog. Drafts (in-flight
-              carts) are hidden.
+              {t("orders.subtitle")}
             </p>
           </div>
           <Button
@@ -183,8 +189,8 @@ export function OrdersPanel({
             aria-pressed={muted}
             title={
               muted
-                ? "Sound is off — click to ring on new orders"
-                : "Sound is on — click to mute"
+                ? t("orders.sound_off_hint")
+                : t("orders.sound_on_hint")
             }
           >
             {muted ? (
@@ -192,21 +198,21 @@ export function OrdersPanel({
             ) : (
               <Volume2 className="h-4 w-4" aria-hidden />
             )}
-            {muted ? "Muted" : "Sound on"}
+            {muted ? t("orders.sound_muted") : t("orders.sound_on")}
           </Button>
         </div>
       </div>
 
       <div className="mx-auto max-w-[1248px] space-y-4 px-5 py-4">
         <div className="flex w-full gap-3">
-          {TABS.map((entry) => {
-            const value = counts[entry.id];
-            const isActive = tab === entry.id;
+          {TAB_IDS.map((id) => {
+            const value = counts[id];
+            const isActive = tab === id;
             return (
               <button
-                key={entry.id}
+                key={id}
                 type="button"
-                onClick={() => setTab(entry.id)}
+                onClick={() => setTab(id)}
                 className={cn(
                   "min-w-0 flex-1 rounded-lg border px-3 py-3 text-left transition",
                   isActive
@@ -215,7 +221,7 @@ export function OrdersPanel({
                 )}
               >
                 <div className="text-sm font-medium text-muted-foreground">
-                  {entry.label}
+                  {t(TAB_LABEL_KEY[id])}
                 </div>
                 <div className="mt-2 text-2xl font-semibold">{value}</div>
               </button>
@@ -224,9 +230,9 @@ export function OrdersPanel({
         </div>
 
         <DataTable
-          columns={createOrdersColumns(currencySettings)}
+          columns={createOrdersColumns(currencySettings, t)}
           data={filteredRows}
-          searchPlaceholder="Search by order reference…"
+          searchPlaceholder={t("orders.search_placeholder")}
           searchColumnId="reference"
           onRowClick={(row) => setSelectedOrderId(row.id)}
         />

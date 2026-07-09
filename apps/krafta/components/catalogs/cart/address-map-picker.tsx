@@ -17,6 +17,8 @@ import { Crosshair, Loader2, MapPin, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 export type PickedAddress = {
@@ -153,6 +155,9 @@ export function AddressMapPicker({
   radiusM?: number | null;
   className?: string;
 }) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (key: Parameters<typeof getStorefrontMessage>[0]) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const centerRef = useRef<[number, number]>(TASHKENT_CENTER);
@@ -444,9 +449,9 @@ export function AddressMapPicker({
           <Input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder={searchPlaceholder ?? "Search address"}
+            placeholder={searchPlaceholder ?? t("address.search")}
             className="bg-background pl-9 shadow-sm"
-            aria-label={searchPlaceholder ?? "Search address"}
+            aria-label={searchPlaceholder ?? t("address.search")}
             autoComplete="off"
           />
         </div>
@@ -482,7 +487,7 @@ export function AddressMapPicker({
         size="icon"
         onClick={runGeolocation}
         disabled={locating}
-        aria-label="Use my location"
+        aria-label={t("address.use_location")}
         className="absolute bottom-4 right-4 z-30 size-11 rounded-full bg-background shadow-sm"
       >
         {locating ? (

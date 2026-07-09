@@ -7,14 +7,18 @@ import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import type {
+  DashboardMessageKey,
+  TranslateFn,
+} from "@/lib/locales/dashboard/messages";
 
 import type { OrderRow } from "./orders-panel";
 
-const MODE_LABEL: Record<NonNullable<OrderRow["mode"]>, string> = {
-  dine_in: "Dine-in",
-  pickup: "Pickup",
-  delivery: "Delivery",
-  digital: "Digital",
+const MODE_LABEL_KEY: Record<NonNullable<OrderRow["mode"]>, DashboardMessageKey> = {
+  dine_in: "orders.mode_dine_in",
+  pickup: "orders.mode_pickup",
+  delivery: "orders.mode_delivery",
+  digital: "orders.mode_digital",
 };
 
 const MODE_ICON: Record<NonNullable<OrderRow["mode"]>, LucideIcon> = {
@@ -27,11 +31,12 @@ const MODE_ICON: Record<NonNullable<OrderRow["mode"]>, LucideIcon> = {
 
 export function createOrdersColumns(
   currencySettings: CurrencySettings,
+  t: TranslateFn,
 ): ColumnDef<OrderRow>[] {
   return [
     {
       accessorKey: "reference",
-      header: "Order",
+      header: t("orders.col_order"),
       cell: ({ row }) => {
         const ref = row.getValue<string>("reference");
         const ticket = row.original.ticketName;
@@ -49,7 +54,7 @@ export function createOrdersColumns(
     },
     {
       accessorKey: "createdAt",
-      header: "When",
+      header: t("orders.col_when"),
       cell: ({ row }) => {
         const iso = row.getValue<string>("createdAt");
         return (
@@ -61,7 +66,7 @@ export function createOrdersColumns(
     },
     {
       accessorKey: "mode",
-      header: "Mode",
+      header: t("orders.col_mode"),
       cell: ({ row }) => {
         const mode = row.getValue<OrderRow["mode"]>("mode");
         if (!mode) {
@@ -71,14 +76,14 @@ export function createOrdersColumns(
         return (
           <span className="inline-flex items-center gap-2 text-sm text-foreground">
             <Icon aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
-            {MODE_LABEL[mode]}
+            {t(MODE_LABEL_KEY[mode])}
           </span>
         );
       },
     },
     {
       accessorKey: "customerLabel",
-      header: "Customer",
+      header: t("orders.col_customer"),
       cell: ({ row }) => (
         <span className="truncate text-sm text-foreground">
           {row.getValue<string>("customerLabel")}
@@ -87,7 +92,7 @@ export function createOrdersColumns(
     },
     {
       accessorKey: "itemCount",
-      header: "Items",
+      header: t("orders.col_items"),
       cell: ({ row }) => (
         <span className="text-sm tabular-nums text-foreground">
           {row.getValue<number>("itemCount")}
@@ -96,7 +101,7 @@ export function createOrdersColumns(
     },
     {
       accessorKey: "totalCents",
-      header: () => <div className="text-right">Total</div>,
+      header: () => <div className="text-right">{t("orders.col_total")}</div>,
       cell: ({ row }) => (
         <div className="text-right text-sm font-medium tabular-nums text-foreground">
           {formatPriceCents(row.getValue<number>("totalCents"), currencySettings)}
@@ -105,11 +110,17 @@ export function createOrdersColumns(
     },
     {
       accessorKey: "state",
-      header: "State",
+      header: t("orders.col_state"),
       cell: ({ row }) => {
         const state = row.getValue<OrderRow["state"]>("state");
         const fulfillmentState = row.original.fulfillmentState;
-        return <StateBadge state={state} fulfillmentState={fulfillmentState} />;
+        return (
+          <StateBadge
+            state={state}
+            fulfillmentState={fulfillmentState}
+            t={t}
+          />
+        );
       },
     },
   ];
@@ -118,33 +129,38 @@ export function createOrdersColumns(
 function StateBadge({
   state,
   fulfillmentState,
+  t,
 }: {
   state: OrderRow["state"];
   fulfillmentState: OrderRow["fulfillmentState"];
+  t: TranslateFn;
 }) {
   if (state === "completed") {
-    return <Badge variant="secondary">Completed</Badge>;
+    return <Badge variant="secondary">{t("orders.status_completed")}</Badge>;
   }
   if (state === "canceled") {
-    return <Badge variant="outline">Canceled</Badge>;
+    return <Badge variant="outline">{t("orders.status_canceled")}</Badge>;
   }
   if (state === "draft") {
-    return <Badge variant="outline">Draft</Badge>;
+    return <Badge variant="outline">{t("orders.status_draft")}</Badge>;
   }
   // open: surface fulfillment state if available
   const label = fulfillmentState
-    ? FULFILLMENT_LABEL[fulfillmentState] ?? "Open"
-    : "Open";
+    ? t(FULFILLMENT_LABEL_KEY[fulfillmentState])
+    : t("orders.status_open");
   return <Badge>{label}</Badge>;
 }
 
-const FULFILLMENT_LABEL: Record<NonNullable<OrderRow["fulfillmentState"]>, string> = {
-  proposed: "New",
-  reserved: "Accepted",
-  prepared: "Ready",
-  completed: "Completed",
-  canceled: "Canceled",
-  failed: "Failed",
+const FULFILLMENT_LABEL_KEY: Record<
+  NonNullable<OrderRow["fulfillmentState"]>,
+  DashboardMessageKey
+> = {
+  proposed: "orders.status_new",
+  reserved: "orders.status_accepted",
+  prepared: "orders.status_ready",
+  completed: "orders.status_completed",
+  canceled: "orders.status_canceled",
+  failed: "orders.status_failed",
 };
 
 // ---- helpers ---------------------------------------------------------------

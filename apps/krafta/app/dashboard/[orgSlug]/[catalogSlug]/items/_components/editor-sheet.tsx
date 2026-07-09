@@ -94,6 +94,7 @@ import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { slugify } from "@/lib/catalogs/slug";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { useCanvasSelection } from "./canvas-with-selection";
 import { useCanvasLocale } from "./locale-context";
@@ -201,6 +202,7 @@ export function EditorSheet({
   catalogSlug,
   currencySettings,
 }: EditorSheetProps) {
+  const t = useT();
   const {
     selectedItemId,
     setSelectedItemId,
@@ -307,7 +309,7 @@ export function EditorSheet({
           {isCreating ? (
             <>
               <DrawerPrimitive.Title className="sr-only">
-                Create new item
+                {t("items.create_new_item")}
               </DrawerPrimitive.Title>
               <DraftEditorForm
                 key={`draft-${creatingForCategoryId}`}
@@ -326,7 +328,9 @@ export function EditorSheet({
             selectedItem && (
               <>
                 <DrawerPrimitive.Title className="sr-only">
-                  Edit item: {selectedItem.name || "Untitled item"}
+                  {t("items.edit_item_title", {
+                    name: selectedItem.name || t("items.untitled_item"),
+                  })}
                 </DrawerPrimitive.Title>
                 <EditorForm
                   key={selectedItem.id}
@@ -412,6 +416,7 @@ function EditorForm({
   onRequestClose,
   onRegisterClose,
 }: EditorFormProps) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   // Derive /items/modifiers from the current path so we don't have to
@@ -581,7 +586,7 @@ function EditorForm({
 
   const handleSave = React.useCallback(async () => {
     if (!name.trim()) {
-      toast.error("Item name is required.");
+      toast.error(t("items.name_required"));
       return;
     }
 
@@ -648,8 +653,8 @@ function EditorForm({
 
     if (!result.ok) {
       setSaveStatus("error");
-      setSaveError(result.error ?? "Failed to save.");
-      toast.error(result.error ?? "Failed to save.");
+      setSaveError(result.error ?? t("items.save_failed"));
+      toast.error(result.error ?? t("items.save_failed"));
       return;
     }
 
@@ -665,15 +670,15 @@ function EditorForm({
       });
       if (!activeResult.ok) {
         setSaveStatus("error");
-        setSaveError(activeResult.error ?? "Failed to update status.");
-        toast.error(activeResult.error ?? "Failed to update status.");
+        setSaveError(activeResult.error ?? t("items.status_update_failed"));
+        toast.error(activeResult.error ?? t("items.status_update_failed"));
         return;
       }
     }
 
     setSaveStatus("saved");
     router.refresh();
-    toast.success("Item saved");
+    toast.success(t("items.item_saved"));
     // Auto-close the editor on success — merchant's intent ("save and
     // get out of my way") is satisfied. The toast confirms the write
     // without keeping the sheet open in a "Saved" success-state. The
@@ -703,6 +708,7 @@ function EditorForm({
     onRequestClose,
     variationsState.changes,
     modifierAttachments,
+    t,
   ]);
 
   // ---------------------------------------------------------------------
@@ -753,10 +759,10 @@ function EditorForm({
         itemId: item.id,
       });
       if (!result.ok) {
-        toast.error(result.error ?? "Failed to duplicate item.");
+        toast.error(result.error ?? t("items.duplicate_failed"));
         return;
       }
-      toast.success("Item duplicated.");
+      toast.success(t("items.item_duplicated"));
 
       // Iter 2 T4 / Pass 3 D3A: post-duplicate UX — three-pronged feedback.
       //   1. Toast (above).
@@ -781,6 +787,7 @@ function EditorForm({
     router,
     setSelectedItemId,
     pulseItem,
+    t,
   ]);
 
   const handleDelete = React.useCallback(async () => {
@@ -792,10 +799,10 @@ function EditorForm({
         itemId: item.id,
       });
       if (!result.ok) {
-        toast.error(result.error ?? "Failed to delete item.");
+        toast.error(result.error ?? t("items.delete_failed"));
         return;
       }
-      toast.success("Item deleted.");
+      toast.success(t("items.item_deleted"));
       // Close the prompt explicitly. We used to rely on the
       // AlertDialogAction's built-in close behavior, but when the form
       // unmounts (selectedItemId → null) before the dialog finishes
@@ -810,12 +817,12 @@ function EditorForm({
       // result-object error path. Surface them as a toast so the
       // merchant knows the delete didn't land.
       const message =
-        err instanceof Error ? err.message : "Failed to delete item.";
+        err instanceof Error ? err.message : t("items.delete_failed");
       toast.error(message);
     } finally {
       setIsDeleting(false);
     }
-  }, [catalogId, catalogSlug, item.id, router, onRequestClose]);
+  }, [catalogId, catalogSlug, item.id, router, onRequestClose, t]);
 
   // ---------------------------------------------------------------------
   // Media URLs
@@ -839,14 +846,14 @@ function EditorForm({
       return (
         <Button disabled className={className}>
           <Loader2 className="size-4 animate-spin" />
-          Saving…
+          {t("common.saving")}
         </Button>
       );
     }
     if (saveStatus === "error") {
       return (
         <Button onClick={handleSave} className={className}>
-          Save failed — Retry
+          {t("items.save_failed_retry")}
         </Button>
       );
     }
@@ -856,7 +863,7 @@ function EditorForm({
         disabled={!isDirty || !variationsState.isValid}
         className={className}
       >
-        Save
+        {t("common.save")}
       </Button>
     );
   };
@@ -875,15 +882,15 @@ function EditorForm({
           size="icon"
           className="size-11 md:size-9"
           onClick={handleClose}
-          aria-label="Close editor"
+          aria-label={t("items.close_editor")}
         >
           <X className="size-4" />
         </Button>
 
         <div className="min-w-0 flex-1">
-          <span className="block text-xs text-muted-foreground">Editing</span>
+          <span className="block text-xs text-muted-foreground">{t("items.editing")}</span>
           <h2 className="truncate text-base font-semibold tracking-tight">
-            {initialName || "Untitled item"}
+            {initialName || t("items.untitled_item")}
           </h2>
         </div>
 
@@ -893,9 +900,9 @@ function EditorForm({
               <Button
                 variant="outline"
                 size="sm"
-                aria-label="More actions"
+                aria-label={t("items.more_actions")}
               >
-                Actions
+                {t("items.actions")}
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -905,7 +912,7 @@ function EditorForm({
                 disabled={isDuplicating}
               >
                 <Copy className="size-4" />
-                Duplicate
+                {t("common.duplicate")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -935,21 +942,20 @@ function EditorForm({
           >
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete this item?</AlertDialogTitle>
+                <AlertDialogTitle>{t("items.delete_item_title")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  &ldquo;{initialName}&rdquo; will be removed permanently.
-                  This cannot be undone.
+                  {t("items.delete_item_description", { name: initialName })}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={isDeleting}>
-                  Cancel
+                  {t("common.cancel")}
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDelete}
                   disabled={isDeleting}
                 >
-                  Delete item
+                  {t("items.delete_item_action")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -991,7 +997,7 @@ function EditorForm({
                 REGULAR); other product types stay deferred per
                 ENABLED_CATALOG_ITEM_PRODUCT_TYPES in product-types.ts. */}
             <Field>
-              <FieldLabel htmlFor="editor-item-type">Item type</FieldLabel>
+              <FieldLabel htmlFor="editor-item-type">{t("items.item_type")}</FieldLabel>
               <ItemTypeSelect
                 id="editor-item-type"
                 value={productType}
@@ -1000,7 +1006,7 @@ function EditorForm({
               />
               {!isDefaultLocaleEditable && (
                 <FieldDescription>
-                  Item type is edited on the default locale only.
+                  {t("items.item_type_default_only")}
                 </FieldDescription>
               )}
             </Field>
@@ -1008,20 +1014,20 @@ function EditorForm({
             {/* Name (required) */}
             <div className="flex flex-col gap-2">
               <Label htmlFor="editor-name" className="text-sm font-medium">
-                Name <span className="text-destructive">*</span>
+                {t("items.field_name")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="editor-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Item name"
+                placeholder={t("items.name_placeholder")}
                 autoComplete="off"
               />
               {activeLocale !== defaultLocale && (
                 <span className="text-xs text-muted-foreground">
-                  Editing in{" "}
-                  <span className="font-mono uppercase">{activeLocale}</span>.
-                  Switch the locale tab above to edit other translations.
+                  {t("items.editing_in_locale", {
+                    locale: activeLocale.toUpperCase(),
+                  })}
                 </span>
               )}
             </div>
@@ -1043,7 +1049,7 @@ function EditorForm({
                   : undefined
               }
             >
-              <FieldLabel htmlFor="editor-price">Price</FieldLabel>
+              <FieldLabel htmlFor="editor-price">{t("items.price")}</FieldLabel>
               <VariationPriceInput
                 id="editor-price"
                 valueCents={
@@ -1061,7 +1067,7 @@ function EditorForm({
               />
               {hasMultipleVariations && (
                 <FieldDescription>
-                  Price varies by variation — edit each below.
+                  {t("items.price_varies")}
                 </FieldDescription>
               )}
             </Field>
@@ -1072,13 +1078,13 @@ function EditorForm({
                 htmlFor="editor-description"
                 className="text-sm font-medium"
               >
-                Description
+                {t("items.field_description")}
               </Label>
               <Textarea
                 id="editor-description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="Customer-facing description"
+                placeholder={t("items.description_placeholder")}
                 rows={4}
               />
             </div>
@@ -1088,7 +1094,7 @@ function EditorForm({
                 Empty with an upload button; populated state shows a grid
                 with a trailing "+ Add photo" tile. */}
             <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">Photos</Label>
+              <Label className="text-sm font-medium">{t("items.photos")}</Label>
               <PhotoUploader
                 itemId={item.id}
                 orgId={orgId}
@@ -1106,7 +1112,7 @@ function EditorForm({
                 a banner per A6 (variation name translations are
                 deferred). */}
             <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">Variations</Label>
+              <Label className="text-sm font-medium">{t("items.variations")}</Label>
               <VariationsEditor
                 state={variationsState}
                 dispatch={variationsDispatch}
@@ -1142,10 +1148,10 @@ function EditorForm({
           {/* Right column — metadata cards. lg+: fixed 320px sidebar.
               Below lg: full-width, stacked below the left column. */}
           <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
-            <MetadataCard title="Categories">
+            <MetadataCard title={t("items.categories")}>
               <Select value={categoryId} onValueChange={setCategoryId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a category" />
+                  <SelectValue placeholder={t("items.select_category")} />
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((category) => (
@@ -1157,37 +1163,37 @@ function EditorForm({
               </Select>
             </MetadataCard>
 
-            <MetadataCard title="Status">
+            <MetadataCard title={t("items.status")}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-col">
                   <span className="text-sm font-medium">
-                    {isActive ? "Active" : "Archived"}
+                    {isActive ? t("items.status_active") : t("items.status_archived")}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {isActive
-                      ? "Visible to customers"
-                      : "Hidden from customers"}
+                      ? t("items.visible_to_customers")
+                      : t("items.hidden_from_customers")}
                   </span>
                 </div>
                 <Switch checked={isActive} onCheckedChange={setIsActive} />
               </div>
             </MetadataCard>
 
-            <MetadataCard title="Locations">
+            <MetadataCard title={t("items.locations")}>
               <span className="text-sm text-muted-foreground">
-                All locations
+                {t("items.locations_all")}
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                Per-location overrides ship with multi-location settings.
+                {t("items.locations_hint")}
               </span>
             </MetadataCard>
 
-            <MetadataCard title="Channels">
+            <MetadataCard title={t("items.channels")}>
               <span className="text-sm text-muted-foreground">
-                All channels
+                {t("items.channels_all")}
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                Per-channel visibility ships with KRA-Pay.
+                {t("items.channels_hint")}
               </span>
             </MetadataCard>
           </div>
@@ -1198,7 +1204,7 @@ function EditorForm({
             still see what went wrong. */}
         {saveStatus === "error" && saveError && (
           <div className="border-t bg-destructive/5 px-4 py-3 text-sm text-destructive md:px-6">
-            <span className="font-medium">Save failed:</span> {saveError}
+            <span className="font-medium">{t("items.save_failed_inline")}</span> {saveError}
           </div>
         )}
         </ScrollArea>
@@ -1214,15 +1220,15 @@ function EditorForm({
       <AlertDialog open={discardPromptOpen} onOpenChange={setDiscardPromptOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+            <AlertDialogTitle>{t("items.discard_changes_title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Your edits will be lost. This cannot be undone.
+              {t("items.discard_changes_description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>{t("items.keep_editing")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDiscard}>
-              Discard
+              {t("common.discard")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

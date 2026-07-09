@@ -132,3 +132,44 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const { supabase, user } = await getAuthenticatedUserOrThrow();
+    const url = new URL(req.url);
+    const orgId = parseString(url.searchParams.get("orgId"), "orgId");
+    const environment = (url.searchParams.get("environment") ?? "live") as "test" | "live";
+    await requireOrgMembership({ supabase, userId: user.id, orgId, minRole: "admin" });
+
+    const admin = createAdminSupabase();
+    const { data: account, error: accErr } = await admin
+      .schema("payments")
+      .from("org_provider_accounts")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("provider_id", "atmos")
+      .eq("environment", environment)
+      .maybeSingle();
+    if (accErr) throw accErr;
+    if (!account) return NextResponse.json({ ok: true, deleted: false });
+
+    // Secrets cascade on delete. payment_attempts / payment_methods are NO ACTION,
+    // so an account with payment history raises a FK violation (23503) — we surface
+    // that as "in use" rather than destroying audit records.
+    const { error: delErr } = await admin
+      .schema("payments")
+      .from("org_provider_accounts")
+      .delete()
+      .eq("id", account.id);
+    if (delErr) {
+      if ((delErr as { code?: string }).code === "23503") {
+        return NextResponse.json({ error: "provider_in_use" }, { status: 409 });
+      }
+      throw delErr;
+    }
+    return NextResponse.json({ ok: true, deleted: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "provider_delete_failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

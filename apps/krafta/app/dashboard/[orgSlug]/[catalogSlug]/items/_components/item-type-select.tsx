@@ -33,6 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 
 import type { CatalogItemProductType } from "./product-types";
 
@@ -43,17 +45,24 @@ export type ItemTypeOption = {
   Icon: LucideIcon;
 };
 
-export const ITEM_TYPE_OPTIONS: ItemTypeOption[] = [
+/** Locale-agnostic option config; display strings are resolved via t() at
+ *  render time so the picker follows the dashboard locale. */
+const ITEM_TYPE_OPTION_CONFIG: Array<{
+  value: CatalogItemProductType;
+  titleKey: DashboardMessageKey;
+  descKey: DashboardMessageKey;
+  Icon: LucideIcon;
+}> = [
   {
     value: "FOOD_AND_BEV",
-    title: "Prepared food and beverage",
-    description: "Best for restaurants or other food venues.",
+    titleKey: "items.item_type_food_title",
+    descKey: "items.item_type_food_desc",
     Icon: UtensilsCrossed,
   },
   {
     value: "REGULAR",
-    title: "Physical good",
-    description: "Best for retail items such as clothing or jewelry.",
+    titleKey: "items.item_type_physical_title",
+    descKey: "items.item_type_physical_desc",
     Icon: Tag,
   },
 ];
@@ -71,10 +80,19 @@ export function ItemTypeSelect({
   value,
   onValueChange,
   disabled,
-  options = ITEM_TYPE_OPTIONS,
+  options,
   id,
 }: ItemTypeSelectProps) {
-  const selected = options.find((o) => o.value === value);
+  const t = useT();
+  const resolvedOptions =
+    options ??
+    ITEM_TYPE_OPTION_CONFIG.map((o) => ({
+      value: o.value,
+      title: t(o.titleKey),
+      description: t(o.descKey),
+      Icon: o.Icon,
+    }));
+  const selected = resolvedOptions.find((o) => o.value === value);
 
   return (
     <Select
@@ -83,13 +101,13 @@ export function ItemTypeSelect({
       disabled={disabled}
     >
       <SelectTrigger id={id} className="h-auto! w-full">
-        <SelectValue placeholder="Select item type">
+        <SelectValue placeholder={t("items.select_item_type")}>
           {selected && <ItemTypeOptionRow option={selected} />}
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          {options.map((opt) => (
+          {resolvedOptions.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               <ItemTypeOptionRow option={opt} />
             </SelectItem>
