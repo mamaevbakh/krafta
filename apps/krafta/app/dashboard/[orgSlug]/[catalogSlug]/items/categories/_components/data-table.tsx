@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { Search } from "lucide-react"
+import { useT } from "@/lib/locales/dashboard/context"
 
 type ColumnMeta = {
   headerClassName?: string
@@ -56,7 +57,7 @@ export function DataTable<TData, TValue>({
   defaultPageSize = 25,
   enableStatusTabs = false,
   statusColumnId = "is_active",
-  searchPlaceholder = "Search...",
+  searchPlaceholder,
   onRowClick,
 }: {
   columns: ColumnDef<TData, TValue>[]
@@ -67,6 +68,7 @@ export function DataTable<TData, TValue>({
   searchPlaceholder?: string
   onRowClick?: (row: TData) => void
 }) {
+  const t = useT()
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
@@ -131,9 +133,17 @@ export function DataTable<TData, TValue>({
       {enableStatusTabs && statusCounts ? (
         <div className="flex w-full gap-3">
           {[
-            { id: "all", label: "All", value: statusCounts.total },
-            { id: "active", label: "Active", value: statusCounts.active },
-            { id: "archived", label: "Archived", value: statusCounts.archived },
+            { id: "all", label: t("common.all"), value: statusCounts.total },
+            {
+              id: "active",
+              label: t("categories.status.active"),
+              value: statusCounts.active,
+            },
+            {
+              id: "archived",
+              label: t("categories.status.archived"),
+              value: statusCounts.archived,
+            },
           ].map((card) => (
             <button
               key={card.id}
@@ -162,7 +172,7 @@ export function DataTable<TData, TValue>({
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder={searchPlaceholder}
+              placeholder={searchPlaceholder ?? t("common.search")}
               value={
                 (table.getColumn("name")?.getFilterValue() as string) ?? ""
               }
@@ -174,8 +184,10 @@ export function DataTable<TData, TValue>({
           </div>
           <div className="text-xs text-muted-foreground">
             {selectedCount > 0
-              ? `${selectedCount} selected`
-              : `${table.getFilteredRowModel().rows.length} rows`}
+              ? t("categories.table.selected", { count: selectedCount })
+              : t("categories.table.rows", {
+                  count: table.getFilteredRowModel().rows.length,
+                })}
           </div>
         </div>
 
@@ -183,11 +195,13 @@ export function DataTable<TData, TValue>({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                Columns
+                {t("categories.table.columns")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                {t("categories.table.toggle_columns")}
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {table
                 .getAllColumns()
@@ -214,14 +228,16 @@ export function DataTable<TData, TValue>({
                 size="sm"
                 disabled={selectedCount === 0}
               >
-                Bulk actions
+                {t("categories.table.bulk_actions")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Bulk actions</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                {t("categories.table.bulk_actions")}
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem checked disabled>
-                (Read-only for now)
+                {t("categories.table.bulk_readonly")}
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -287,7 +303,7 @@ export function DataTable<TData, TValue>({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  No results.
+                  {t("categories.table.no_results")}
                 </TableCell>
               </TableRow>
             )}
@@ -302,7 +318,7 @@ export function DataTable<TData, TValue>({
           onClick={() => table.previousPage()}
           disabled={!table.getCanPreviousPage()}
         >
-          Previous
+          {t("categories.table.previous")}
         </Button>
         <Button
           variant="outline"
@@ -310,7 +326,7 @@ export function DataTable<TData, TValue>({
           onClick={() => table.nextPage()}
           disabled={!table.getCanNextPage()}
         >
-          Next
+          {t("common.next")}
         </Button>
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { sealSecret } from "@/lib/crypto/secret-box";
 import { getDeliveryProvider } from "@/lib/delivery/providers";
 import type { Json } from "@/lib/supabase/types";
@@ -24,14 +25,15 @@ export async function connectYandexDelivery(params: {
   token: string;
   accountLabel?: string;
 }): Promise<Result<{ last4: string }>> {
+  const t = await getDashboardT();
   const token = params.token.trim();
   if (!token) {
-    return { ok: false, error: "Enter your Yandex Delivery token." };
+    return { ok: false, error: t("settings.courier.error_enter_token") };
   }
 
   const provider = getDeliveryProvider("yandex");
   if (!provider) {
-    return { ok: false, error: "Provider unavailable." };
+    return { ok: false, error: t("settings.courier.error_provider_unavailable") };
   }
 
   // SAFE auth probe — a price quote, no courier is dispatched. 401 → reject.
@@ -41,8 +43,8 @@ export async function connectYandexDelivery(params: {
       ok: false,
       error:
         verdict.reason === "invalid_token"
-          ? "Yandex rejected this token (401). Check it and try again."
-          : "Couldn't verify the token — please try again.",
+          ? t("settings.courier.error_invalid_token")
+          : t("settings.courier.error_verify_failed"),
     };
   }
 

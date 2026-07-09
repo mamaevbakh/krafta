@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -95,6 +96,7 @@ export async function transitionOrderState(
   input: TransitionInput,
 ): Promise<Result> {
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   // Read current state to validate the transition + know which subtype to
   // touch.
@@ -105,9 +107,10 @@ export async function transitionOrderState(
     .eq("id", input.fulfillmentId)
     .maybeSingle();
   if (readError) return { ok: false, error: readError.message };
-  if (!fulfillment) return { ok: false, error: "Fulfillment not found." };
+  if (!fulfillment)
+    return { ok: false, error: t("orders.error_fulfillment_not_found") };
   if (fulfillment.order_id !== input.orderId) {
-    return { ok: false, error: "Fulfillment does not belong to this order." };
+    return { ok: false, error: t("orders.error_fulfillment_mismatch") };
   }
 
   const target = nextStateFor(
@@ -118,7 +121,10 @@ export async function transitionOrderState(
   if (!target) {
     return {
       ok: false,
-      error: `Cannot ${input.action.replace("_", " ")} from state ${fulfillment.state}.`,
+      error: t("orders.error_invalid_transition", {
+        action: input.action.replace("_", " "),
+        state: fulfillment.state,
+      }),
     };
   }
 

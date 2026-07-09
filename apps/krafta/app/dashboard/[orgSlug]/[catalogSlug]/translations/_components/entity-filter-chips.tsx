@@ -4,6 +4,7 @@ import * as React from "react";
 import { Check, XCircle, List, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import type { CatalogLocale } from "./languages-sidebar";
 import type { EntityRowForTable } from "./entity-translations-tab";
@@ -154,24 +155,20 @@ export function computeEntityChipCounts(
 
 const STATUS_OPTIONS: Array<{
   key: EntityStatusFilter;
-  label: string;
   icon: React.ReactNode;
 }> = [
   {
     key: "all",
-    label: "All",
     icon: <List className="size-3.5" aria-hidden="true" />,
   },
   {
     key: "not-translated",
-    label: "Not translated",
     icon: (
       <XCircle className="size-3.5 text-muted-foreground" aria-hidden="true" />
     ),
   },
   {
     key: "translated",
-    label: "Translated",
     icon: (
       <Check
         className="size-3.5 text-emerald-600 dark:text-emerald-500"
@@ -192,15 +189,23 @@ export function EntityFilterChips({
   targetLocales: CatalogLocale[];
   counts: EntityChipCounts;
 }) {
+  const t = useT();
   const hasActiveFilter =
     filter.status !== "all" || filter.language !== "all";
+
+  const statusLabel = (key: EntityStatusFilter): string =>
+    key === "all"
+      ? t("common.all")
+      : key === "not-translated"
+        ? t("translations.status_not_translated")
+        : t("translations.status_translated");
 
   return (
     <div className="flex flex-col gap-2">
       {/* Status row */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Show
+          {t("translations.filter_show")}
         </span>
         {STATUS_OPTIONS.map((opt) => (
           <Chip
@@ -208,7 +213,7 @@ export function EntityFilterChips({
             active={filter.status === opt.key}
             onClick={() => onFilterChange({ ...filter, status: opt.key })}
             icon={opt.icon}
-            label={opt.label}
+            label={statusLabel(opt.key)}
             count={counts.status[opt.key]}
           />
         ))}
@@ -222,7 +227,7 @@ export function EntityFilterChips({
             )}
           >
             <X className="size-3" aria-hidden="true" />
-            Clear filter
+            {t("translations.clear_filter")}
           </button>
         )}
       </div>
@@ -231,12 +236,12 @@ export function EntityFilterChips({
       {targetLocales.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Language
+            {t("translations.language_label")}
           </span>
           <Chip
             active={filter.language === "all"}
             onClick={() => onFilterChange({ ...filter, language: "all" })}
-            label="All"
+            label={t("common.all")}
           />
           {targetLocales.map((locale) => (
             <Chip

@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { TranslationEditDialog } from "./translation-edit-dialog";
 import type { CatalogLocale } from "./languages-sidebar";
@@ -100,6 +101,7 @@ export function ItemsTab({
   onMutation,
   recentlyUpdated,
 }: ItemsTabProps) {
+  const t = useT();
   const [drawerItemId, setDrawerItemId] = React.useState<string | null>(null);
 
   const drawerItem = React.useMemo(
@@ -135,10 +137,9 @@ export function ItemsTab({
     return (
       <Empty className="py-12">
         <EmptyContent>
-          <EmptyTitle>No items in this catalog</EmptyTitle>
+          <EmptyTitle>{t("translations.items_empty_title")}</EmptyTitle>
           <EmptyDescription>
-            Add items in the Library before translating them. Each item you add
-            shows up here automatically.
+            {t("translations.items_empty_desc")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -179,11 +180,11 @@ export function ItemsTab({
                         {defaultLocale.display_name}
                       </span>
                       <Badge variant="outline" className="h-4 px-1.5 text-[10px]">
-                        default
+                        {t("translations.default_badge")}
                       </Badge>
                     </span>
                   ) : (
-                    "Source"
+                    t("translations.source")
                   )}
                 </TableHead>
                 {columnsToShow.map((locale) => (
@@ -278,19 +279,21 @@ export function ItemsTab({
 }
 
 function FilterEmptyState({ onClearFilter }: { onClearFilter: () => void }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center gap-3 rounded-md border border-dashed bg-muted/20 py-12 text-center">
-      <p className="text-sm font-medium">No items match this filter.</p>
+      <p className="text-sm font-medium">
+        {t("translations.filter_empty_title")}
+      </p>
       <p className="max-w-xs text-xs text-muted-foreground">
-        Try a different status or language combination, or clear the filter
-        to see all items.
+        {t("translations.filter_empty_desc")}
       </p>
       <button
         type="button"
         onClick={onClearFilter}
         className="text-xs text-foreground underline-offset-4 hover:underline"
       >
-        Clear filter
+        {t("translations.clear_filter")}
       </button>
     </div>
   );
@@ -309,6 +312,7 @@ function FilterEmptyState({ onClearFilter }: { onClearFilter: () => void }) {
 // ============================================================================
 
 function TranslationCell({ status }: { status: CellStatus }) {
+  const t = useT();
   if (status.kind === "missing") {
     return (
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -316,7 +320,7 @@ function TranslationCell({ status }: { status: CellStatus }) {
           className="inline-block size-1.5 rounded-full bg-muted-foreground/40"
           aria-hidden="true"
         />
-        Not translated
+        {t("translations.status_not_translated")}
       </div>
     );
   }

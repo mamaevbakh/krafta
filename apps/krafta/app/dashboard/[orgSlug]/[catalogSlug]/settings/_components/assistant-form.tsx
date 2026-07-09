@@ -9,6 +9,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 
 import { updateAssistantSettings } from "./actions";
@@ -28,6 +29,7 @@ export function AssistantForm({
   catalogSlug: string;
   initialEnabled: boolean;
 }) {
+  const t = useT();
   const [enabled, setEnabled] = React.useState(initialEnabled);
   const [status, setStatus] = React.useState<string | null>(null);
   const [isPending, startTransition] = React.useTransition();
@@ -44,26 +46,28 @@ export function AssistantForm({
       });
       if (!result.ok) {
         setEnabled(!next); // revert optimistic toggle
-        setStatus(result.error ?? "Unable to update the assistant setting.");
+        setStatus(result.error ?? t("settings.assistant.update_error"));
         return;
       }
-      setStatus(next ? "Assistant enabled." : "Assistant disabled.");
+      setStatus(
+        next
+          ? t("settings.assistant.enabled_toast")
+          : t("settings.assistant.disabled_toast"),
+      );
     });
-  }, [enabled, catalogId, catalogSlug]);
+  }, [enabled, catalogId, catalogSlug, t]);
 
   return (
     <FieldSet>
       <FieldLegend className="flex items-center gap-2">
         <Sparkles className="size-4" aria-hidden />
-        AI shopping assistant
+        {t("settings.assistant.legend")}
         <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Beta
+          {t("settings.assistant.beta")}
         </span>
       </FieldLegend>
       <FieldDescription>
-        When on, the storefront search opens a conversational assistant that
-        helps shoppers find items in any language and add them to the cart.
-        When off, search stays the classic instant results list.
+        {t("settings.assistant.description")}
       </FieldDescription>
 
       <button
@@ -79,19 +83,21 @@ export function AssistantForm({
         )}
       >
         <div>
-          <div className="text-sm font-medium">Enable assistant</div>
+          <div className="text-sm font-medium">
+            {t("settings.assistant.enable_label")}
+          </div>
           <div
             className={cn(
               "text-xs",
               enabled ? "text-background/70" : "text-muted-foreground",
             )}
           >
-            Conversational search for this storefront.
+            {t("settings.assistant.enable_hint")}
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em]">
           {isPending ? <Spinner className="size-4" /> : null}
-          {enabled ? "On" : "Off"}
+          {enabled ? t("settings.assistant.on") : t("settings.assistant.off")}
         </div>
       </button>
 

@@ -190,3 +190,62 @@ export async function getPaymentIntentStatuses(
   }
   return {};
 }
+
+// ---------------------------------------------------------------------------
+// Subscription lifecycle — first-party cancel / resume / change-plan
+// (change-card runs through the pay.krafta.uz Atmos card form, see below)
+// ---------------------------------------------------------------------------
+
+export type SubscriptionLifecycleInput = {
+  /** The subscriber org (customers.customer_org_id). */
+  customerOrgId: string;
+  subscriptionId: string;
+  initiatedByUserId?: string;
+};
+
+/** Schedule cancel at period end (cancelAtPeriodEnd=true) or resume (=false). */
+export async function setKraftaSubscriptionCancel(
+  input: SubscriptionLifecycleInput & { cancelAtPeriodEnd: boolean },
+): Promise<{ ok: boolean; error?: string }> {
+  const { ok, json } = await signedFetch(
+    "/api/internal/subscriptions/cancel",
+    "POST",
+    { ...input },
+  );
+  if (ok && json?.ok) return { ok: true };
+  return { ok: false, error: json?.error ?? "unknown" };
+}
+
+/** Change plan on the same subscription (immediate for upgrades, deferred for downgrades). */
+export async function changeKraftaSubscriptionPlan(
+  input: SubscriptionLifecycleInput & {
+    planId: string;
+    prorationBehavior: "none" | "defer_to_period_end";
+  },
+): Promise<{ ok: boolean; scheduled?: boolean; error?: string }> {
+  const { ok, json } = await signedFetch(
+    "/api/internal/subscriptions/change-plan",
+    "POST",
+    { ...input },
+  );
+  if (ok && json?.ok) return { ok: true, scheduled: Boolean(json?.scheduled) };
+  return { ok: false, error: json?.error ?? "unknown" };
+}
+
+/**
+ * Start an Atmos card-change for a subscription. Returns a pay.krafta.uz URL
+ * hosting the inline Atmos card form in "setup" mode (bind a new card, set it as
+ * the renewal default — no charge). The merchant is redirected there and bounced
+ * back to `returnUrl` on success.
+ */
+export async function startKraftaCardChange(
+  input: SubscriptionLifecycleInput & { returnUrl: string },
+): Promise<{ ok: true; payUrl: string } | { ok: false; error: string }> {
+  const { ok, json } = await signedFetch(
+    "/api/internal/subscriptions/change-card",
+    "POST",
+    { ...input },
+  );
+  if (ok && json?.payUrl) return { ok: true, payUrl: String(json.payUrl) };
+  return { ok: false, error: json?.error ?? "unknown" };
+}

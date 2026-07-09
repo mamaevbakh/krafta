@@ -308,7 +308,7 @@ const en = {
       badge: "Popular",
       includes: "Everything in Free, plus",
       features: [
-        "Dine-in — QR on tables → kitchen",
+        "Card payments — Krafta Pay",
         "Delivery — zones, fees & Yandex courier",
         "Every order on one screen",
         "Basic analytics",
@@ -322,11 +322,11 @@ const en = {
       priceUsd: "$39/mo",
       includes: "Everything in Pro, plus",
       features: [
-        "Krafta Pay — cards in person & online (soon)",
-        "AI ordering assistant (soon)",
+        "Dine-in — QR on tables → kitchen",
         "Multiple venues & team roles",
         "Advanced analytics & reporting",
         "Priority support",
+        "AI ordering assistant (soon)",
       ],
       note: "Founding shops get Business features at the Pro price — locked.",
     },
@@ -337,7 +337,7 @@ const en = {
     items: [
       {
         q: "What is Krafta?",
-        a: "Everything you need to sell without a marketplace: an online storefront, a QR menu, order management, and (soon) card payments — for cafes, restaurants, and shops in Uzbekistan. Build a menu, take orders from any channel, and run it all from your phone.",
+        a: "Everything you need to sell without a marketplace: an online storefront, a QR menu, order management, and card payments — for cafes, restaurants, and shops in Uzbekistan. Build a menu, take orders from any channel, and run it all from your phone.",
       },
       {
         q: "Do my guests need to install an app?",
@@ -349,7 +349,7 @@ const en = {
       },
       {
         q: "How do I take payment?",
-        a: "Cash in person today. Card payments through Krafta Pay — in person and online — are coming, billed as a flat fee, never a percentage of your sales.",
+        a: "Cash in person, and card online through Krafta Pay (on Pro and Business) — billed as a flat fee, never a percentage of your sales. Card at the table is coming next.",
       },
       {
         q: "Can I do delivery?",
@@ -577,7 +577,7 @@ const ru: LandingContent = {
       badge: "Популярный",
       includes: "Всё из Free, плюс",
       features: [
-        "Зал — QR на столах → на кухню",
+        "Оплата картой — Krafta Pay",
         "Доставка — зоны, тарифы и курьер Яндекса",
         "Все заказы на одном экране",
         "Базовая аналитика",
@@ -591,11 +591,11 @@ const ru: LandingContent = {
       priceUsd: "$39/мес",
       includes: "Всё из Pro, плюс",
       features: [
-        "Krafta Pay — оплата картой в зале и онлайн (скоро)",
-        "AI-ассистент заказов (скоро)",
+        "Зал — QR на столах → на кухню",
         "Несколько точек и роли команды",
         "Расширенная аналитика и отчёты",
         "Приоритетная поддержка",
+        "AI-ассистент заказов (скоро)",
       ],
       note: "Для первых заведений функции Business — по цене Pro, навсегда.",
     },
@@ -606,7 +606,7 @@ const ru: LandingContent = {
     items: [
       {
         q: "Что такое Krafta?",
-        a: "Всё, что нужно, чтобы продавать напрямую, без маркетплейса: витрина, QR-меню, приём заказов и (скоро) оплата картой — для кафе, ресторанов и магазинов Узбекистана. Соберите меню, принимайте заказы по всем каналам и управляйте всем с телефона.",
+        a: "Всё, что нужно, чтобы продавать напрямую, без маркетплейса: витрина, QR-меню, приём заказов и оплата картой — для кафе, ресторанов и магазинов Узбекистана. Соберите меню, принимайте заказы по всем каналам и управляйте всем с телефона.",
       },
       {
         q: "Нужно ли гостям устанавливать приложение?",
@@ -618,7 +618,7 @@ const ru: LandingContent = {
       },
       {
         q: "Как принимать оплату?",
-        a: "Сейчас — наличными в заведении. Приём карт через Krafta Pay — в зале и онлайн — уже скоро, с фиксированной платой, а не процентом с продаж.",
+        a: "Наличными в заведении и картой онлайн через Krafta Pay (на тарифах Pro и Business) — с фиксированной платой, а не процентом с продаж. Приём карт за столом в зале — скоро.",
       },
       {
         q: "Можно ли делать доставку?",

@@ -29,6 +29,7 @@ import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 import { createClient } from "@/lib/supabase/server";
 import { validateTelegramLoginPayload } from "@/lib/telegram/login-widget";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 export type PublishPreflight = {
   orgId: string;
@@ -49,17 +50,18 @@ export async function getPublishPreflight(params: {
   catalogSlug: string;
 }): Promise<PublishPreflight | { error: string }> {
   const supabase = await createClient();
+  const t = await getDashboardT();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
+  if (!user) return { error: t("activation.action.not_signed_in") };
 
   const { data: org } = await supabase
     .from("organizations")
     .select("id, name, slug")
     .eq("slug", params.orgSlug)
     .maybeSingle();
-  if (!org) return { error: "Organization not found." };
+  if (!org) return { error: t("activation.action.org_not_found") };
 
   const { data: catalog } = await supabase
     .from("catalogs")
@@ -67,7 +69,7 @@ export async function getPublishPreflight(params: {
     .eq("org_id", org.id)
     .eq("slug", params.catalogSlug)
     .maybeSingle();
-  if (!catalog) return { error: "Catalog not found." };
+  if (!catalog) return { error: t("activation.action.catalog_not_found") };
 
   const { data: venue } = await supabase
     .from("venues")
@@ -186,7 +188,7 @@ export async function linkGoogleForPublish(
   });
   if (error) return { error: error.message };
   if (data.url) return { url: data.url };
-  return { error: "Failed to start Google sign-in." };
+  return { error: (await getDashboardT())("activation.action.google_failed") };
 }
 
 // ---------------------------------------------------------------------------
@@ -220,24 +222,25 @@ export type RegisterPublishTelegramResult =
 export async function registerPublishTelegram(
   rawPayload: Record<string, unknown>,
 ): Promise<RegisterPublishTelegramResult> {
+  const t = await getDashboardT();
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const admin = telegramAdminClient();
   if (!botToken || !admin) {
-    return { error: "Telegram sign-in is not configured." };
+    return { error: t("activation.action.tg_not_configured") };
   }
 
   let tg;
   try {
     tg = validateTelegramLoginPayload(rawPayload, { botToken });
   } catch {
-    return { error: "Telegram sign-in could not be verified. Please try again." };
+    return { error: t("activation.action.tg_unverified") };
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
+  if (!user) return { error: t("activation.action.not_signed_in") };
   if (!((user as { is_anonymous?: boolean }).is_anonymous ?? false)) {
     // Already registered (double-tap after a slow response): nothing to do.
     return { registered: true, claimed: false };
@@ -261,7 +264,7 @@ export async function registerPublishTelegram(
       "claim_draft_shop_initiate",
     );
     if (initiateErr || !code) {
-      return { error: "Could not start the draft transfer. Please try again." };
+      return { error: t("activation.action.claim_start_failed") };
     }
 
     const minted = await mintDetachedSessionForTelegramUser(admin, {
@@ -269,14 +272,14 @@ export async function registerPublishTelegram(
       tg,
     });
     if ("error" in minted) {
-      return { error: "Could not sign in to your existing account. Please try again." };
+      return { error: t("activation.action.claim_signin_failed") };
     }
 
     const { error: completeErr } = await minted.client
       .rpc("claim_draft_shop_complete", { p_claim_code: code as string })
       .single();
     if (completeErr) {
-      return { error: "Signed in, but the draft transfer failed. Please try again." };
+      return { error: t("activation.action.claim_transfer_failed") };
     }
     return {
       registered: true,
@@ -289,9 +292,9 @@ export async function registerPublishTelegram(
   }
 
   if (attach.error === "account_already_linked") {
-    return { error: "This account is already linked to a different Telegram user." };
+    return { error: t("activation.action.tg_already_linked") };
   }
-  return { error: "Telegram registration failed. Please try again." };
+  return { error: t("activation.action.tg_failed") };
 }
 
 // ---------------------------------------------------------------------------
@@ -337,10 +340,11 @@ export async function publishShop(params: {
   orgId: string;
   finalSlug?: string;
 }): Promise<PublishResult | { error: string; slugTaken?: boolean }> {
+  const t = await getDashboardT();
   const finalSlug = params.finalSlug?.trim() || undefined;
   if (finalSlug && !isValidSlug(finalSlug)) {
     return {
-      error: "The link can use lowercase letters, digits and dashes (3-64 characters).",
+      error: t("activation.action.slug_invalid"),
     };
   }
 
@@ -356,9 +360,9 @@ export async function publishShop(params: {
     const code = (error as { code?: string }).code;
     const msg = (error as { message?: string }).message ?? "";
     if (code === "23505" || msg.includes("duplicate key")) {
-      return { error: "That link is already taken.", slugTaken: true };
+      return { error: t("activation.action.link_taken"), slugTaken: true };
     }
-    return { error: msg || "Publishing failed." };
+    return { error: msg || t("activation.action.publish_failed") };
   }
 
   const origin = getRequestOrigin(await headers());

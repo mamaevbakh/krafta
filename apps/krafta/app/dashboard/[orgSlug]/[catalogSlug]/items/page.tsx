@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 // KRA-35 PR3: LibraryRoot picks between Canvas (default) and Table view
 // based on merchant's localStorage preference. Mobile always renders
 // Canvas. Both views consume the same data shape this page fetches.
@@ -222,11 +223,12 @@ export default async function DashboardItemsPage({ params }: PageProps) {
   }
 
   if (!catalog?.id) {
+    const t = await getDashboardT();
     return (
       <main className="w-full">
         <div className="mx-auto max-w-[1248px] px-6 py-8">
           <p className="text-sm text-muted-foreground">
-            Catalog not found.
+            {t("items.catalog_not_found")}
           </p>
         </div>
       </main>

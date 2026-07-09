@@ -18,6 +18,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { getCatalogAssetUrl } from "@/lib/catalogs/media";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { DeliverySettings } from "@/lib/catalogs/settings/delivery";
@@ -104,6 +105,7 @@ export function SettingsPanel({
   payments,
   assistantEnabled,
 }: SettingsPanelProps) {
+  const t = useT();
   const [activeTab, setActiveTab] = React.useState("venue");
   const [catalogName, setCatalogName] = React.useState(name);
   const [catalogDescription, setCatalogDescription] =
@@ -145,14 +147,14 @@ export function SettingsPanel({
         });
 
         if (!result.ok) {
-          setStatusMessage(result.error ?? "Unable to update settings.");
+          setStatusMessage(result.error ?? t("settings.catalog.update_error"));
           return;
         }
 
-        setStatusMessage("Settings saved.");
+        setStatusMessage(t("settings.catalog.saved"));
       });
     },
-    [catalogId, catalogSlug, catalogName, catalogDescription, catalogTags],
+    [catalogId, catalogSlug, catalogName, catalogDescription, catalogTags, t],
   );
 
   const handleLogoChange = React.useCallback(
@@ -179,7 +181,7 @@ export function SettingsPanel({
 
         if (!response.ok) {
           setStatusMessage(
-            data?.error ?? "Unable to upload the catalog logo.",
+            data?.error ?? t("settings.catalog.logo_upload_error"),
           );
           return;
         }
@@ -189,7 +191,9 @@ export function SettingsPanel({
         }
       } catch (error) {
         setStatusMessage(
-          error instanceof Error ? error.message : "Upload failed.",
+          error instanceof Error
+            ? error.message
+            : t("settings.catalog.logo_upload_failed"),
         );
       } finally {
         setIsUploading(false);
@@ -198,7 +202,7 @@ export function SettingsPanel({
         }
       }
     },
-    [catalogId, orgId],
+    [catalogId, orgId, t],
   );
 
   const handleLogoRemove = React.useCallback(async () => {
@@ -219,7 +223,7 @@ export function SettingsPanel({
 
       if (!response.ok) {
         setStatusMessage(
-          data?.error ?? "Unable to remove the catalog logo.",
+          data?.error ?? t("settings.catalog.logo_remove_error"),
         );
         return;
       }
@@ -227,12 +231,14 @@ export function SettingsPanel({
       setCurrentLogoPath("");
     } catch (error) {
       setStatusMessage(
-        error instanceof Error ? error.message : "Remove failed.",
+        error instanceof Error
+          ? error.message
+          : t("settings.catalog.logo_remove_failed"),
       );
     } finally {
       setIsUploading(false);
     }
-  }, [catalogId, orgId, currentLogoPath]);
+  }, [catalogId, orgId, currentLogoPath, t]);
 
   return (
     <main className="w-full">
@@ -240,10 +246,10 @@ export function SettingsPanel({
         <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between px-6">
           <div className="space-y-1">
             <h1 className="text-[32px] font-semibold tracking-tight">
-              Settings
+              {t("settings.title")}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Customize your catalog presentation and metadata.
+              {t("settings.subtitle")}
             </p>
           </div>
         </div>
@@ -254,14 +260,14 @@ export function SettingsPanel({
           <aside className="lg:w-56">
             <div className="space-y-1">
               {[
-                { id: "venue", label: "Venue" },
-                { id: "delivery", label: "Delivery" },
-                { id: "payments", label: "Payments" },
-                { id: "catalog", label: "Catalog" },
-                { id: "miniapp", label: "Mini App" },
-                { id: "notifications", label: "Notifications" },
-                { id: "account", label: "Account" },
-                { id: "organization", label: "Organization" },
+                { id: "venue", label: t("settings.tabs.venue") },
+                { id: "delivery", label: t("settings.tabs.delivery") },
+                { id: "payments", label: t("settings.tabs.payments") },
+                { id: "catalog", label: t("settings.tabs.catalog") },
+                { id: "miniapp", label: t("settings.tabs.miniapp") },
+                { id: "notifications", label: t("settings.tabs.notifications") },
+                { id: "account", label: t("settings.tabs.account") },
+                { id: "organization", label: t("settings.tabs.organization") },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -291,7 +297,7 @@ export function SettingsPanel({
                   />
                 ) : (
                   <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                    Venue row not found for this catalog. Contact support.
+                    {t("settings.venue_row_missing")}
                   </div>
                 )
               ) : activeTab === "delivery" ? (
@@ -318,8 +324,8 @@ export function SettingsPanel({
               ) : activeTab === "account" || activeTab === "organization" ? (
                 <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                   {activeTab === "account"
-                    ? "Account settings are coming soon."
-                    : "Organization settings are coming soon."}
+                    ? t("settings.account_coming_soon")
+                    : t("settings.organization_coming_soon")}
                 </div>
               ) : (
                 <div className="space-y-8">
@@ -330,36 +336,36 @@ export function SettingsPanel({
                 />
                 <form onSubmit={handleSave} className="space-y-6">
                   <FieldSet>
-                    <FieldLegend>Catalog</FieldLegend>
+                    <FieldLegend>{t("settings.catalog.legend")}</FieldLegend>
                     <FieldDescription>
-                      Control how this catalog appears across your storefront.
+                      {t("settings.catalog.description")}
                     </FieldDescription>
                     <FieldGroup className="mt-6 gap-6">
                       <Field>
-                        <FieldLabel>Catalog name</FieldLabel>
+                        <FieldLabel>{t("settings.catalog.name_label")}</FieldLabel>
                         <Input
                           value={catalogName}
                           onChange={(event) =>
                             setCatalogName(event.target.value)
                           }
-                          placeholder="Catalog name"
+                          placeholder={t("settings.catalog.name_placeholder")}
                         />
                       </Field>
 
                       <Field>
-                        <FieldLabel>Logo</FieldLabel>
+                        <FieldLabel>{t("settings.catalog.logo_label")}</FieldLabel>
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                           <div className="relative h-28 w-28 overflow-hidden rounded-lg border bg-muted/40">
                             {logoUrl ? (
                               <Image
                                 src={logoUrl}
-                                alt="Catalog logo"
+                                alt={t("settings.catalog.logo_alt")}
                                 fill
                                 className="object-cover"
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-                                No logo
+                                {t("settings.catalog.no_logo")}
                               </div>
                             )}
                           </div>
@@ -373,10 +379,10 @@ export function SettingsPanel({
                               {isUploading ? (
                                 <>
                                   <Spinner className="size-4" />
-                                  Uploading
+                                  {t("common.uploading")}
                                 </>
                               ) : (
-                                "Upload logo"
+                                t("settings.catalog.upload_logo")
                               )}
                             </Button>
                             {logoUrl ? (
@@ -386,7 +392,7 @@ export function SettingsPanel({
                                 disabled={isUploading}
                                 onClick={handleLogoRemove}
                               >
-                                Remove
+                                {t("common.remove")}
                               </Button>
                             ) : null}
                             <input
@@ -399,24 +405,28 @@ export function SettingsPanel({
                           </div>
                         </div>
                         <FieldDescription>
-                          Recommended square logo, minimum 256×256.
+                          {t("settings.catalog.logo_hint")}
                         </FieldDescription>
                       </Field>
 
                       <Field>
-                        <FieldLabel>Description</FieldLabel>
+                        <FieldLabel>
+                          {t("settings.catalog.description_label")}
+                        </FieldLabel>
                         <Textarea
                           value={catalogDescription}
                           onChange={(event) =>
                             setCatalogDescription(event.target.value)
                           }
-                          placeholder="Describe this catalog..."
+                          placeholder={t(
+                            "settings.catalog.description_placeholder",
+                          )}
                           className="min-h-[120px] resize-none"
                         />
                       </Field>
 
                       <Field>
-                        <FieldLabel>Tags</FieldLabel>
+                        <FieldLabel>{t("settings.catalog.tags_label")}</FieldLabel>
                         <Input
                           value={tagInput}
                           onChange={(event) => setTagInput(event.target.value)}
@@ -427,10 +437,10 @@ export function SettingsPanel({
                             }
                           }}
                           onBlur={() => handleAddTags(tagInput)}
-                          placeholder="Add tags, separated by commas"
+                          placeholder={t("settings.catalog.tags_placeholder")}
                         />
                         <FieldDescription>
-                          Tags show up in search and discovery surfaces.
+                          {t("settings.catalog.tags_hint")}
                         </FieldDescription>
                         {catalogTags.length > 0 ? (
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -449,7 +459,9 @@ export function SettingsPanel({
                                     )
                                   }
                                   className="rounded-full p-0.5 text-muted-foreground transition hover:text-foreground"
-                                  aria-label={`Remove ${tag}`}
+                                  aria-label={t("settings.catalog.remove_tag", {
+                                    tag,
+                                  })}
                                 >
                                   <X className="size-3" />
                                 </button>
@@ -472,10 +484,10 @@ export function SettingsPanel({
                       {isPending ? (
                         <>
                           <Spinner className="size-4" />
-                          Saving
+                          {t("common.saving")}
                         </>
                       ) : (
-                        "Save changes"
+                        t("common.save_changes")
                       )}
                     </Button>
                   </div>

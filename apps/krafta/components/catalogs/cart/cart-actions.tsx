@@ -4,6 +4,8 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 import { CartStepper } from "./cart-stepper";
@@ -87,6 +89,11 @@ export function CartActions({
 }: CartActionsProps) {
   const cart = useOptionalCart();
   const sheet = useItemSheet();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (
+    key: Parameters<typeof getStorefrontMessage>[0],
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
   // hasMounted flips true after first commit. Gates the stepper branch so the
   // server-rendered tree (always sees empty cart — no localStorage access)
@@ -207,10 +214,10 @@ export function CartActions({
           "variant-default border border-black/15 shadow-lg",
           position === "floating" && "absolute bottom-3 right-3 z-10",
         )}
-        aria-label={`Add ${itemName} to cart`}
+        aria-label={t("add_to_cart.aria", { name: itemName })}
         aria-busy={isHydrating || undefined}
       >
-        Add
+        {t("add_to_cart.short")}
       </Button>
     );
   }

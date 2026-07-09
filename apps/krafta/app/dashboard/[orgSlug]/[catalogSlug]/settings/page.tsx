@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 import { normalizeDeliverySettings } from "@/lib/catalogs/settings/delivery";
@@ -23,11 +24,12 @@ export default async function DashboardSettingsPage({ params }: PageProps) {
     .maybeSingle();
 
   if (!catalog) {
+    const t = await getDashboardT();
     return (
       <main className="w-full">
         <div className="mx-auto max-w-[1248px] px-6 py-8">
           <p className="text-sm text-muted-foreground">
-            Catalog not found.
+            {t("settings.catalog_not_found")}
           </p>
         </div>
       </main>

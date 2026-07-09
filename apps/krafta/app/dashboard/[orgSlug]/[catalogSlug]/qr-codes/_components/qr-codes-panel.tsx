@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   createTable,
@@ -106,6 +107,7 @@ export function QrCodesPanel({
   initialQrStyle,
   previewUrl,
 }: QrCodesPanelProps) {
+  const t = useT();
   const modeQrByKind = React.useMemo(() => {
     const map: Partial<Record<ModeQr["kind"], ModeQr>> = {};
     for (const qr of modeQrs) map[qr.kind] = qr;
@@ -115,11 +117,11 @@ export function QrCodesPanel({
   return (
     <div className="mx-auto flex max-w-[1248px] flex-col gap-8 px-6 py-8">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">QR codes</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {t("qr.page_title")}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Printable codes for{" "}
-          <span className="font-medium text-foreground">{catalogName}</span>.
-          Customers scan → land in the right ordering mode.
+          {t("qr.page_subtitle", { name: catalogName })}
         </p>
       </header>
 
@@ -132,7 +134,7 @@ export function QrCodesPanel({
 
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          Mode QRs
+          {t("qr.mode_qrs_title")}
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {(["main", "pickup", "delivery"] as const).map((kind) => {
@@ -160,11 +162,10 @@ export function QrCodesPanel({
         <div className="flex items-end justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              Tables
+              {t("qr.tables_title")}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              One QR per dine-in surface. Add them as you set up the room
-              (Table 1, Bar 2, Patio A …).
+              {t("qr.tables_hint")}
             </p>
           </div>
           {tables.length > 0 ? (
@@ -179,7 +180,7 @@ export function QrCodesPanel({
                 download={`${catalogSlug}-tables-qrs.zip`}
               >
                 <Download className="size-3.5" aria-hidden />
-                Download all (.zip)
+                {t("qr.download_all_zip")}
               </a>
             </Button>
           ) : null}
@@ -194,9 +195,9 @@ export function QrCodesPanel({
 
         {tables.length === 0 ? (
           <div className="rounded-md border border-dashed bg-muted/20 px-6 py-12 text-center">
-            <p className="text-sm font-medium">No tables yet.</p>
+            <p className="text-sm font-medium">{t("qr.no_tables_title")}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Add one above — we&apos;ll generate the QR automatically.
+              {t("qr.no_tables_hint")}
             </p>
           </div>
         ) : (
@@ -235,19 +236,20 @@ function ModeQrCard({
   modesEnabled: string[];
   catalogSubtitle: string;
 }) {
+  const t = useT();
   const [pending, startToggle] = useTransition();
   const kindLabel =
     qr.kind === "main"
-      ? "Main"
+      ? t("qr.mode_main")
       : qr.kind === "pickup"
-        ? "Pickup"
-        : "Delivery";
+        ? t("qr.mode_pickup")
+        : t("qr.mode_delivery");
   const kindBlurb =
     qr.kind === "main"
-      ? "Lands customers on the catalog and lets them pick a mode."
+      ? t("qr.mode_main_blurb")
       : qr.kind === "pickup"
-        ? "Lands customers in the pickup form (counter takeaway)."
-        : "Lands customers in the delivery form (address required).";
+        ? t("qr.mode_pickup_blurb")
+        : t("qr.mode_delivery_blurb");
 
   const onToggleMode = (next: boolean) => {
     if (qr.kind === "main") return;
@@ -255,7 +257,7 @@ function ModeQrCard({
       ? Array.from(new Set([...modesEnabled, qr.kind]))
       : modesEnabled.filter((m) => m !== qr.kind);
     if (nextModes.length === 0) {
-      toast.error("Keep at least one ordering mode enabled.");
+      toast.error(t("qr.keep_one_mode"));
       return;
     }
     startToggle(async () => {
@@ -265,7 +267,12 @@ function ModeQrCard({
         modes: nextModes as ("dine_in" | "pickup" | "delivery")[],
       });
       if (!result.ok) toast.error(result.error);
-      else toast.success(`${kindLabel} ${next ? "enabled" : "disabled"}.`);
+      else
+        toast.success(
+          next
+            ? t("qr.mode_enabled", { mode: kindLabel })
+            : t("qr.mode_disabled", { mode: kindLabel }),
+        );
     });
   };
 
@@ -287,7 +294,11 @@ function ModeQrCard({
               checked={isModeEnabled}
               disabled={pending}
               onCheckedChange={onToggleMode}
-              aria-label={`${isModeEnabled ? "Disable" : "Enable"} ${kindLabel}`}
+              aria-label={
+                isModeEnabled
+                  ? t("qr.disable_mode_aria", { mode: kindLabel })
+                  : t("qr.enable_mode_aria", { mode: kindLabel })
+              }
             />
           </div>
         ) : null}
@@ -333,6 +344,7 @@ function AddTableForm({
   catalogSlug: string;
   existingCount: number;
 }) {
+  const t = useT();
   const [label, setLabel] = React.useState("");
   const [pending, startAdd] = useTransition();
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -351,7 +363,7 @@ function AddTableForm({
         toast.error(result.error);
         return;
       }
-      toast.success(`Added "${trimmed}".`);
+      toast.success(t("qr.table_added", { label: trimmed }));
       setLabel("");
       // Refocus so the merchant can keep adding rapidly.
       inputRef.current?.focus();
@@ -365,16 +377,14 @@ function AddTableForm({
     >
       <div className="flex flex-1 flex-col gap-1.5">
         <Label htmlFor="add-table-label" className="text-xs">
-          Add a table
+          {t("qr.add_table_label")}
         </Label>
         <Input
           id="add-table-label"
           ref={inputRef}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder={
-            existingCount === 0 ? "e.g. Table 1" : `e.g. Table ${existingCount + 1}`
-          }
+          placeholder={t("qr.add_table_placeholder", { n: existingCount + 1 })}
           autoComplete="off"
           maxLength={64}
         />
@@ -385,7 +395,7 @@ function AddTableForm({
         ) : (
           <Plus className="size-3.5" aria-hidden />
         )}
-        Add
+        {t("common.add")}
       </Button>
     </form>
   );
@@ -400,6 +410,7 @@ function TableQrCard({
   catalogSlug: string;
   catalogSubtitle: string;
 }) {
+  const t = useT();
   const [labelDraft, setLabelDraft] = React.useState(table.label);
   const [pendingRename, startRename] = useTransition();
   const [pendingToggle, startToggle] = useTransition();
@@ -425,7 +436,7 @@ function TableQrCard({
         toast.error(result.error);
         setLabelDraft(table.label);
       } else {
-        toast.success("Renamed.");
+        toast.success(t("qr.table_renamed"));
       }
     });
   };
@@ -438,7 +449,7 @@ function TableQrCard({
         isActive: next,
       });
       if (!result.ok) toast.error(result.error);
-      else toast.success(next ? "Activated." : "Deactivated.");
+      else toast.success(next ? t("qr.table_activated") : t("qr.table_deactivated"));
     });
   };
 
@@ -454,7 +465,7 @@ function TableQrCard({
         catalogSlug,
       });
       if (!result.ok) toast.error(result.error);
-      else toast.success("New QR generated. Reprint the table card.");
+      else toast.success(t("qr.qr_regenerated"));
     });
   };
 
@@ -462,7 +473,7 @@ function TableQrCard({
     startDelete(async () => {
       const result = await deleteTable({ tableId: table.id, catalogSlug });
       if (!result.ok) toast.error(result.error);
-      else toast.success("Table removed.");
+      else toast.success(t("qr.table_removed"));
     });
   };
 
@@ -486,13 +497,17 @@ function TableQrCard({
           }}
           disabled={pendingRename}
           className="h-8 flex-1 border-transparent bg-transparent px-2 text-sm font-medium focus-visible:border-input focus-visible:bg-background"
-          aria-label="Table label"
+          aria-label={t("qr.table_label_aria")}
         />
         <Switch
           checked={table.isActive}
           disabled={pendingToggle}
           onCheckedChange={onToggleActive}
-          aria-label={table.isActive ? "Deactivate table" : "Activate table"}
+          aria-label={
+            table.isActive
+              ? t("qr.deactivate_table_aria")
+              : t("qr.activate_table_aria")
+          }
         />
       </header>
 
@@ -500,7 +515,7 @@ function TableQrCard({
         <QrPreview svg={table.svg} muted={!table.isActive} />
       ) : (
         <div className="grid aspect-square place-items-center rounded-md bg-muted/40 text-xs text-muted-foreground">
-          QR pending
+          {t("qr.qr_pending")}
         </div>
       )}
 
@@ -531,8 +546,8 @@ function TableQrCard({
                 size="icon"
                 className="h-7 w-7"
                 disabled={pendingRegen || !table.qrId}
-                title="Regenerate shortcode (invalidates the printed QR)"
-                aria-label="Regenerate shortcode"
+                title={t("qr.regenerate_shortcode_title")}
+                aria-label={t("qr.regenerate_shortcode_aria")}
               >
                 {pendingRegen ? (
                   <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -544,17 +559,16 @@ function TableQrCard({
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>
-                  Regenerate QR for &ldquo;{table.label}&rdquo;?
+                  {t("qr.regenerate_confirm_title", { label: table.label })}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  The currently printed QR will stop working immediately.
-                  You&apos;ll need to reprint the table card with the new code.
+                  {t("qr.regenerate_confirm_desc")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction onClick={onRegenerateConfirmed}>
-                  Regenerate
+                  {t("qr.regenerate")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -566,8 +580,8 @@ function TableQrCard({
                 size="icon"
                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
                 disabled={pendingDelete}
-                title="Delete table"
-                aria-label="Delete table"
+                title={t("qr.delete_table")}
+                aria-label={t("qr.delete_table")}
               >
                 {pendingDelete ? (
                   <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -579,20 +593,19 @@ function TableQrCard({
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>
-                  Delete &ldquo;{table.label}&rdquo;?
+                  {t("qr.delete_confirm_title", { label: table.label })}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  The QR will stop working immediately and the table will be
-                  removed from this venue. This can&apos;t be undone.
+                  {t("qr.delete_confirm_desc")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={onDeleteConfirmed}
                   className="bg-destructive text-white hover:bg-destructive/90"
                 >
-                  Delete table
+                  {t("qr.delete_table")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -614,6 +627,7 @@ function ScanCountLine({
   total: number;
   last7: number;
 }) {
+  const t = useT();
   // Compact single-line readout. Three states:
   //   - never scanned: muted hint nudging the merchant to print + share
   //   - scanned but quiet this week: just the lifetime total
@@ -622,7 +636,7 @@ function ScanCountLine({
   if (total === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No scans yet. Print the QR and put it on the table.
+        {t("qr.no_scans")}
       </p>
     );
   }
@@ -631,11 +645,12 @@ function ScanCountLine({
       <span className="font-mono font-medium tabular-nums text-foreground">
         {total.toLocaleString()}
       </span>{" "}
-      scan{total === 1 ? "" : "s"}
+      {t("qr.scans_word")}
       {last7 > 0 ? (
         <>
           {" · "}
-          <span className="font-mono tabular-nums">{last7}</span> this week
+          <span className="font-mono tabular-nums">{last7}</span>{" "}
+          {t("qr.scans_this_week")}
         </>
       ) : null}
     </p>
@@ -649,6 +664,7 @@ function QrPreview({
   svg: string;
   muted: boolean;
 }) {
+  const t = useT();
   // The SVG is pre-rendered server-side; we drop it in via
   // dangerouslySetInnerHTML so the browser can scale it natively.
   return (
@@ -658,7 +674,7 @@ function QrPreview({
         muted && "grayscale",
       )}
       role="img"
-      aria-label="QR code preview"
+      aria-label={t("qr.qr_preview_aria")}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
@@ -671,6 +687,7 @@ function DownloadPngButton({
   svg: string;
   fileName: string;
 }) {
+  const t = useT();
   const [pending, setPending] = React.useState(false);
   const onClick = async () => {
     setPending(true);
@@ -683,7 +700,7 @@ function DownloadPngButton({
       URL.revokeObjectURL(url);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Couldn't generate PNG.",
+        err instanceof Error ? err.message : t("qr.png_error"),
       );
     } finally {
       setPending(false);

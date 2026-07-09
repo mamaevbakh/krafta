@@ -46,6 +46,7 @@ import {
 } from "@/app/dashboard/[orgSlug]/[catalogSlug]/items/_components/actions";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { LibraryRowDragPreview } from "./library-row";
 
@@ -212,6 +213,7 @@ export function CanvasWithSelection({
   onDragPreviewClear,
   children,
 }: CanvasWithSelectionProps) {
+  const t = useT();
   const router = useRouter();
   const [selectedItemId, setSelectedItemIdState] = React.useState<
     string | null
@@ -492,7 +494,7 @@ export function CanvasWithSelection({
               "[CanvasWithSelection] reorderCategories failed:",
               result.error,
             );
-            toast.error(result.error ?? "Couldn't save the new category order.");
+            toast.error(result.error ?? t("items.category_reorder_failed"));
             return;
           }
 
@@ -529,6 +531,7 @@ export function CanvasWithSelection({
       onCommitReorder,
       onOptimisticCategoryReorder,
       router,
+      t,
     ],
   );
 

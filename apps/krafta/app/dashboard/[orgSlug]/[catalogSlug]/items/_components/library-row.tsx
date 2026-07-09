@@ -42,6 +42,7 @@ import { getItemImageUrl } from "@/lib/catalogs/media";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import type { Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { useCanvasSelection } from "./canvas-with-selection";
 import { useCanvasLocale } from "./locale-context";
@@ -125,6 +126,7 @@ function LibraryRowMarkup({
   isDragging,
   isOverlay,
 }: LibraryRowMarkupProps) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -167,7 +169,7 @@ function LibraryRowMarkup({
             isFallback && "italic text-muted-foreground",
           )}
         >
-          {nameValue || "Untitled item"}
+          {nameValue || t("items.untitled_item")}
         </span>
       </div>
 
@@ -186,6 +188,7 @@ export function LibraryRow({
   translations,
   currencySettings,
 }: LibraryRowProps) {
+  const t = useT();
   const { selectedItemId, setSelectedItemId, pulsingItemId } =
     useCanvasSelection();
   const {
@@ -226,7 +229,9 @@ export function LibraryRow({
       data-slot="library-row"
       data-row-item-id={item.id}
       data-selected={isSelected || undefined}
-      aria-label={`${nameField.value || "Untitled item"} — click to edit, drag to reorder`}
+      aria-label={t("items.row_aria", {
+        name: nameField.value || t("items.untitled_item"),
+      })}
     >
       <LibraryRowMarkup
         imageUrl={imageUrl}

@@ -7,6 +7,8 @@ import { normalizeQrStyle } from "@/lib/qr/config";
 import { renderQrSvg } from "@/lib/qr/render";
 import { telegramLoginConfigured } from "@/lib/auth/telegram-bridge";
 import { venueDayStartUtc, TODAY_FETCH_LIMIT } from "@/lib/dashboard/overview";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
+import type { TranslateFn } from "@/lib/locales/dashboard/messages";
 
 import { OverviewPanel } from "./_components/overview/overview-panel";
 import type { OverviewOrder } from "./_components/overview/types";
@@ -47,7 +49,7 @@ function mapOrder(order: {
     quantity: number;
     total_price_cents: number;
   }>;
-}): OverviewOrder {
+}, t: TranslateFn): OverviewOrder {
   const fulfillment = order.fulfillments?.[0] ?? null;
   const lineItems = (order.line_items ?? []).map((li) => ({
     name: li.name,
@@ -65,7 +67,7 @@ function mapOrder(order: {
     fulfillmentId: fulfillment?.id ?? null,
     fulfillmentState: (fulfillment?.state ??
       null) as OverviewOrder["fulfillmentState"],
-    customerLabel: formatCustomerLabel(order.customer),
+    customerLabel: formatCustomerLabel(order.customer, t),
     itemCount: lineItems.reduce((sum, li) => sum + li.quantity, 0),
     lineItems,
   };
@@ -81,18 +83,21 @@ function formatCustomerLabel(
       }
     | null
     | undefined,
+  t: TranslateFn,
 ): string {
-  if (!customer) return "Guest";
+  const guest = t("overview.guest");
+  if (!customer) return guest;
   const name = [customer.given_name, customer.family_name]
     .filter(Boolean)
     .join(" ")
     .trim();
-  return name || customer.phone || customer.email || "Guest";
+  return name || customer.phone || customer.email || guest;
 }
 
 export default async function DashboardOverviewPage({ params }: PageProps) {
   const { orgSlug, catalogSlug } = await params;
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   const { data: catalog } = await supabase
     .from("catalogs")
@@ -106,7 +111,9 @@ export default async function DashboardOverviewPage({ params }: PageProps) {
     return (
       <main className="w-full">
         <div className="mx-auto max-w-[1248px] px-6 py-8">
-          <p className="text-sm text-muted-foreground">Catalog not found.</p>
+          <p className="text-sm text-muted-foreground">
+            {t("overview.catalog_not_found")}
+          </p>
         </div>
       </main>
     );
@@ -160,7 +167,9 @@ export default async function DashboardOverviewPage({ params }: PageProps) {
       .neq("state", "draft"),
   ]);
 
-  const todayOrders: OverviewOrder[] = (todayRes.data ?? []).map(mapOrder);
+  const todayOrders: OverviewOrder[] = (todayRes.data ?? []).map((o) =>
+    mapOrder(o, t),
+  );
   const priorOrders = (priorRes.data ?? []).map((o) => ({
     state: o.state as string,
     createdAt: o.created_at,

@@ -12,6 +12,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { COUNTRY_CODES, getCountryName } from "@/lib/locale/countries";
+import { useT } from "@/lib/locales/dashboard/context";
 
 export type VenueAddress = {
   country: string;
@@ -49,6 +50,7 @@ export function AddressEditor({
   onChange,
   disabled,
 }: AddressEditorProps) {
+  const t = useT();
   const countryOptions = React.useMemo<ComboboxOption[]>(
     () =>
       COUNTRY_CODES.map((code) => ({
@@ -66,56 +68,56 @@ export function AddressEditor({
   return (
     <FieldGroup className="gap-6">
       <Field>
-        <FieldLabel>Country</FieldLabel>
+        <FieldLabel>{t("settings.venue.country_label")}</FieldLabel>
         <Combobox
           value={value.country}
           onChange={(code) => set("country", code)}
           options={countryOptions}
-          placeholder="Select country"
-          searchPlaceholder="Search countries…"
-          emptyMessage="No country found."
+          placeholder={t("settings.venue.country_placeholder")}
+          searchPlaceholder={t("settings.venue.country_search")}
+          emptyMessage={t("settings.venue.country_empty")}
           disabled={disabled}
         />
       </Field>
 
       <Field>
-        <FieldLabel>City</FieldLabel>
+        <FieldLabel>{t("settings.venue.city_label")}</FieldLabel>
         <Input
           value={value.city}
           onChange={(event) => set("city", event.target.value)}
           disabled={disabled}
-          placeholder="Tashkent"
+          placeholder={t("settings.venue.city_placeholder")}
         />
       </Field>
 
       <Field>
-        <FieldLabel>Street</FieldLabel>
+        <FieldLabel>{t("settings.venue.street_label")}</FieldLabel>
         <Input
           value={value.street}
           onChange={(event) => set("street", event.target.value)}
           disabled={disabled}
-          placeholder="Amir Temur Avenue 1"
+          placeholder={t("settings.venue.street_placeholder")}
         />
       </Field>
 
       <Field>
-        <FieldLabel>Postal code</FieldLabel>
+        <FieldLabel>{t("settings.venue.postal_label")}</FieldLabel>
         <Input
           value={value.postal}
           onChange={(event) => set("postal", event.target.value)}
           disabled={disabled}
-          placeholder="100000"
+          placeholder={t("settings.venue.postal_placeholder")}
         />
-        <FieldDescription>Optional.</FieldDescription>
+        <FieldDescription>{t("settings.venue.postal_hint")}</FieldDescription>
       </Field>
 
       <Field>
-        <FieldLabel>Notes</FieldLabel>
+        <FieldLabel>{t("settings.venue.notes_label")}</FieldLabel>
         <Textarea
           value={value.notes}
           onChange={(event) => set("notes", event.target.value)}
           disabled={disabled}
-          placeholder="Floor, unit, landmark…"
+          placeholder={t("settings.venue.notes_placeholder")}
           className="min-h-20 resize-none"
         />
       </Field>

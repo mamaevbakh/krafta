@@ -7,6 +7,7 @@
 import { Coffee, ShoppingBag, UtensilsCrossed, type LucideIcon } from "lucide-react";
 
 import type { Database } from "@/lib/supabase/types";
+import type { DashboardLocale } from "@/lib/locales/dashboard/locale";
 
 export type ShopVertical = Database["public"]["Enums"]["shop_vertical"];
 
@@ -67,4 +68,47 @@ export const VERTICAL_KEYS = Object.keys(VERTICALS) as ShopVertical[];
 
 export function isShopVertical(value: string): value is ShopVertical {
   return value in VERTICALS;
+}
+
+// Per-locale display copy for the vertical chooser. VERTICALS keeps the
+// English label/description as the canonical shape (its seed*/modes data is
+// locale-independent); the wizard renders these localized strings instead.
+// The `en` table must mirror VERTICALS' own label/description.
+type VerticalCopy = { label: string; description: string };
+
+const VERTICAL_COPY: Record<
+  DashboardLocale,
+  Record<ShopVertical, VerticalCopy>
+> = {
+  en: {
+    cafe: { label: "Cafe", description: "Coffee, pastries, counter pickup" },
+    restaurant: {
+      label: "Restaurant",
+      description: "Dine-in menu, table orders, delivery",
+    },
+    retail: { label: "Retail", description: "Products with sizes and variations" },
+  },
+  ru: {
+    cafe: { label: "Кафе", description: "Кофе, выпечка, самовывоз у стойки" },
+    restaurant: {
+      label: "Ресторан",
+      description: "Меню в зале, заказы со столов, доставка",
+    },
+    retail: { label: "Магазин", description: "Товары с размерами и вариантами" },
+  },
+  "uz-Latn": {
+    cafe: { label: "Kafe", description: "Kofe, shirinliklar, peshtaxtadan olib ketish" },
+    restaurant: {
+      label: "Restoran",
+      description: "Zaldagi menyu, stoldan buyurtma, yetkazib berish",
+    },
+    retail: { label: "Do‘kon", description: "O‘lcham va variantli mahsulotlar" },
+  },
+};
+
+/** Localized label/description for each vertical. Keys mirror VERTICALS. */
+export function getVerticalCopy(
+  locale: DashboardLocale,
+): Record<ShopVertical, VerticalCopy> {
+  return VERTICAL_COPY[locale] ?? VERTICAL_COPY.en;
 }

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 export default async function OrgDashboardRedirect({
   params,
@@ -13,6 +14,7 @@ export default async function OrgDashboardRedirect({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const t = await getDashboardT();
 
   const supabase = await createClient();
   const { data: org, error: orgError } = await supabase
@@ -49,13 +51,13 @@ export default async function OrgDashboardRedirect({
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
         <header className="flex items-center justify-between">
           <BrandWordmark className="text-3xl" />
-          <Badge variant="outline">Dashboard</Badge>
+          <Badge variant="outline">{t("home.badge_dashboard")}</Badge>
         </header>
 
         <div className="mt-10 flex flex-col gap-2">
-          <h1 className="text-3xl font-semibold tracking-tight">Catalogs</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">{t("home.catalogs_title")}</h1>
           <p className="text-sm text-muted-foreground">
-            {org.name} · Select the catalog you want to manage.
+            {t("home.catalogs_subtitle", { name: org.name })}
           </p>
         </div>
 
@@ -63,7 +65,7 @@ export default async function OrgDashboardRedirect({
           <div className="relative w-full max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search catalogs…"
+              placeholder={t("home.catalogs_search_placeholder")}
               className="pl-9"
               readOnly
             />
@@ -86,7 +88,7 @@ export default async function OrgDashboardRedirect({
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Open catalog</span>
+                    <span>{t("home.open_catalog")}</span>
                     <span className="translate-x-0 transition-transform group-hover:translate-x-0.5">
                       →
                     </span>

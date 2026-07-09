@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { CatalogCategory, Item } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
+import { useT } from "@/lib/locales/dashboard/context";
 import { reorderItems } from "./actions";
 
 import { CanvasWithSelection } from "./canvas-with-selection";
@@ -164,6 +165,7 @@ export function LibraryCanvas({
   itemModifierLists,
   currencySettings,
 }: LibraryCanvasProps) {
+  const t = useT();
   const router = useRouter();
   // (Pre-KRA-88 unified-editor: this used to host CreateItemFlowDialog's
   // open state. Replaced by the EditorSheet's create branch — the
@@ -319,7 +321,7 @@ export function LibraryCanvas({
             "[LibraryCanvas] reorderItems failed:",
             result.error,
           );
-          toast.error(result.error ?? "Couldn't save the new order.");
+          toast.error(result.error ?? t("items.reorder_failed"));
           return;
         }
 
@@ -327,7 +329,7 @@ export function LibraryCanvas({
         router.refresh();
       });
     },
-    [items, applyReorderAction, applyOptimisticReorder, catalogId, catalogSlug, router],
+    [items, applyReorderAction, applyOptimisticReorder, catalogId, catalogSlug, router, t],
   );
 
   // Optimistic category reorder (mirror of the items optimistic state).
@@ -454,7 +456,7 @@ export function LibraryCanvas({
                       category={{
                         id: "__orphans__",
                         catalog_id: catalogId,
-                        name: "Uncategorized",
+                        name: t("items.uncategorized"),
                         slug: "uncategorized",
                         position: 9999,
                         is_active: true,
@@ -522,13 +524,14 @@ function PageHeader({
   categories: CatalogCategory[];
   locales: LocaleOption[];
 }) {
+  const t = useT();
   const { startCreating } = useCanvasSelection();
   const defaultCategoryId = categories[0]?.id;
   return (
     <div className="w-full border-b">
       <div className="mx-auto flex h-[120px] max-w-[1248px] flex-col justify-center gap-2 px-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-[32px] font-semibold tracking-tight">Library</h1>
+          <h1 className="text-[32px] font-semibold tracking-tight">{t("items.library_heading")}</h1>
           <Button
             onClick={() => {
               if (defaultCategoryId) startCreating(defaultCategoryId);
@@ -536,7 +539,7 @@ function PageHeader({
             disabled={!defaultCategoryId}
           >
             <Plus className="size-4" />
-            Add item
+            {t("items.add_item")}
           </Button>
         </div>
       </div>
@@ -554,6 +557,7 @@ function PageHeader({
  * sentence of context so it doesn't feel like a 404.
  */
 function EmptyCatalog({ categories }: { categories: CatalogCategory[] }) {
+  const t = useT();
   const { startCreating } = useCanvasSelection();
   const defaultCategoryId = categories[0]?.id;
   // Left-aligned per DESIGN.md rule 10 (no `text-center` on body copy).
@@ -561,10 +565,9 @@ function EmptyCatalog({ categories }: { categories: CatalogCategory[] }) {
   // the dashed border + generous `py-16` carry the "empty state" weight.
   return (
     <div className="rounded-md border border-dashed py-16 px-6">
-      <h2 className="text-lg font-semibold">No items yet</h2>
+      <h2 className="text-lg font-semibold">{t("items.empty_no_items")}</h2>
       <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-        Build your menu by adding items to a category. Each item appears
-        in the customer-facing catalog as soon as it&rsquo;s active.
+        {t("items.empty_description")}
       </p>
       <Button
         className="mt-6"
@@ -574,7 +577,7 @@ function EmptyCatalog({ categories }: { categories: CatalogCategory[] }) {
         disabled={!defaultCategoryId}
       >
         <Plus className="size-4" />
-        Add your first item
+        {t("items.add_first_item")}
       </Button>
     </div>
   );

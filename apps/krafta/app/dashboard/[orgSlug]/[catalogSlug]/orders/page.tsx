@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { normalizeCurrencySettings } from "@/lib/catalogs/settings/currency";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
+import type { TranslateFn } from "@/lib/locales/dashboard/messages";
 
 import {
   OrdersPanel,
@@ -14,6 +16,7 @@ type PageProps = {
 export default async function DashboardOrdersPage({ params }: PageProps) {
   const { catalogSlug } = await params;
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   const { data: catalog } = await supabase
     .from("catalogs")
@@ -25,7 +28,9 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
     return (
       <main className="w-full">
         <div className="mx-auto max-w-[1248px] px-6 py-8">
-          <p className="text-sm text-muted-foreground">Catalog not found.</p>
+          <p className="text-sm text-muted-foreground">
+            {t("orders.catalog_not_found")}
+          </p>
         </div>
       </main>
     );
@@ -104,7 +109,7 @@ export default async function DashboardOrdersPage({ params }: PageProps) {
       (sum, line) => sum + line.totalPriceCents,
       0,
     );
-    const customerLabel = formatCustomerLabel(order.customer);
+    const customerLabel = formatCustomerLabel(order.customer, t);
 
     const payments = (order.payments ?? []).map((payment) => ({
       id: payment.id,
@@ -173,8 +178,9 @@ function formatCustomerLabel(
       }
     | null
     | undefined,
+  t: TranslateFn,
 ): string {
-  if (!customer) return "Guest";
+  if (!customer) return t("orders.customer_guest");
   const name = [customer.given_name, customer.family_name]
     .filter(Boolean)
     .join(" ")
@@ -182,5 +188,5 @@ function formatCustomerLabel(
   if (name) return name;
   if (customer.phone) return customer.phone;
   if (customer.email) return customer.email;
-  return "Guest";
+  return t("orders.customer_guest");
 }

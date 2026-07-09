@@ -16,6 +16,8 @@ import type {
 import { normalizeCatalogSettings } from "@/lib/catalogs/settings";
 import { getOrgBillingEntitlement } from "@/lib/billing/entitlement";
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 import Link from "next/link";
 
 const HEADER_LABELS: Record<HeaderVariant, string> = {
@@ -25,26 +27,26 @@ const HEADER_LABELS: Record<HeaderVariant, string> = {
   "header-hero": "Hero Header",
 };
 
-const SECTION_LABELS: Record<SectionVariant, string> = {
-  "section-basic": "Basic",
-  "section-separated": "Separated",
-  "section-pill-tabs": "Pill Tabs",
+const SECTION_LABEL_KEY: Record<SectionVariant, DashboardMessageKey> = {
+  "section-basic": "studio.section_basic",
+  "section-separated": "studio.section_separated",
+  "section-pill-tabs": "studio.section_pill_tabs",
 };
 
-const ITEM_CARD_LABELS: Record<ItemCardVariant, string> = {
-  "card-big-photo": "Big Photo",
-  "card-photo-row": "Photo Row",
-  "card-minimal": "Minimal",
-  "card-default": "Default",
-  "card-glass-blur": "Glass Blur",
-  "card-row-compact": "Compact Row",
+const ITEM_CARD_LABEL_KEY: Record<ItemCardVariant, DashboardMessageKey> = {
+  "card-big-photo": "studio.card_big_photo",
+  "card-photo-row": "studio.card_photo_row",
+  "card-minimal": "studio.card_minimal",
+  "card-default": "studio.card_default",
+  "card-glass-blur": "studio.card_glass_blur",
+  "card-row-compact": "studio.card_row_compact",
 };
 
-const NAV_LABELS: Record<CategoryNavVariant, string> = {
-  "nav-tabs": "Sticky Tabs",
-  "nav-tabs-motion": "Sticky Tabs (Motion)",
-  "nav-tabs-dashboard": "Sticky Tabs (Dashboard)",
-  "nav-none": "Hidden",
+const NAV_LABEL_KEY: Record<CategoryNavVariant, DashboardMessageKey> = {
+  "nav-tabs": "studio.nav_sticky_tabs",
+  "nav-tabs-motion": "studio.nav_sticky_tabs_motion",
+  "nav-tabs-dashboard": "studio.nav_sticky_tabs_dashboard",
+  "nav-none": "studio.nav_hidden",
 };
 
 const ITEM_DETAIL_LABELS: Record<
@@ -65,6 +67,7 @@ export default async function CatalogBuilderPage({
 }: BuilderPageProps) {
   const { catalogSlug, orgSlug } = await params;
   const { tab } = (await searchParams) ?? {};
+  const t = await getDashboardT();
   const supabase = await createClient();
   const { data: orgRecord } = await supabase
     .from("organizations")
@@ -85,7 +88,7 @@ export default async function CatalogBuilderPage({
     return (
       <div className="mx-auto w-full max-w-[1248px] px-6 py-8">
         <div className="mt-8 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-          Catalog not found for studio preview.
+          {t("studio.catalog_not_found")}
         </div>
       </div>
     );
@@ -112,11 +115,11 @@ export default async function CatalogBuilderPage({
   }));
   const sectionOptions = sectionVariants.map((variant) => ({
     value: variant,
-    label: SECTION_LABELS[variant] ?? variant,
+    label: t(SECTION_LABEL_KEY[variant]),
   }));
   const itemCardOptions = itemCardVariants.map((variant) => ({
     value: variant,
-    label: ITEM_CARD_LABELS[variant] ?? variant,
+    label: t(ITEM_CARD_LABEL_KEY[variant]),
   }));
   const itemDetailOptions = itemDetailVariants.map((variant) => ({
     value: variant,
@@ -124,7 +127,7 @@ export default async function CatalogBuilderPage({
   }));
   const navOptions = categoryNavVariants.map((variant) => ({
     value: variant,
-    label: NAV_LABELS[variant] ?? variant,
+    label: t(NAV_LABEL_KEY[variant]),
   }));
 
   return (

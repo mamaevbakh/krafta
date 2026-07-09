@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 import {
   connectAtmosPayments,
@@ -32,6 +33,7 @@ export function PaymentsForm({
   orgId: string;
   initial: PaymentsInitial;
 }) {
+  const t = useT();
   const [connected, setConnected] = React.useState(initial.connected);
   const [isActive, setIsActive] = React.useState(initial.isActive);
   const [accountLabel, setAccountLabel] = React.useState(initial.accountLabel);
@@ -72,11 +74,11 @@ export function PaymentsForm({
       setStatusKind("ok");
       setStatusMessage(
         r.verified
-          ? "Connected — customers can now pay by card."
-          : "Saved. We couldn't reach Atmos to verify from here; the first real payment will confirm it.",
+          ? t("settings.payments.connected_verified")
+          : t("settings.payments.connected_unverified"),
       );
     });
-  }, [orgId, storeId, consumerKey, consumerSecret, label]);
+  }, [orgId, storeId, consumerKey, consumerSecret, label, t]);
 
   const handleDisconnect = React.useCallback(() => {
     setStatusMessage(null);
@@ -92,9 +94,9 @@ export function PaymentsForm({
       setAccountLabel(null);
       setStoreIdShown(null);
       setStatusKind("ok");
-      setStatusMessage("Disconnected. Card checkout is turned off.");
+      setStatusMessage(t("settings.payments.disconnected"));
     });
-  }, [orgId]);
+  }, [orgId, t]);
 
   const handleToggleActive = React.useCallback(
     (next: boolean) => {
@@ -116,11 +118,9 @@ export function PaymentsForm({
       <div className="flex items-start gap-3">
         <CreditCard className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Card payments — Krafta Pay (Atmos)</h3>
+          <h3 className="text-sm font-semibold">{t("settings.payments.title")}</h3>
           <p className="text-sm text-muted-foreground">
-            Connect your company&apos;s Atmos account so customers can pay by card
-            at checkout instead of cash only. Payments settle to your own Atmos
-            account. Each company uses its own credentials.
+            {t("settings.payments.description")}
           </p>
         </div>
       </div>
@@ -130,10 +130,10 @@ export function PaymentsForm({
           <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
             <CheckCircle2 className="size-4 shrink-0 text-foreground" />
             <span className="font-medium">
-              {accountLabel || "Krafta Pay connected"}
+              {accountLabel || t("settings.payments.connected_fallback")}
               {storeIdShown ? (
                 <span className="ml-1 font-mono text-xs text-muted-foreground">
-                  · store {storeIdShown}
+                  · {t("settings.payments.store_label")} {storeIdShown}
                 </span>
               ) : null}
             </span>
@@ -142,25 +142,20 @@ export function PaymentsForm({
           {!verified ? (
             <div className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/40 p-3 text-sm text-muted-foreground">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-              <span>
-                Saved, but we couldn&apos;t reach Atmos to verify the credentials
-                from here. The first real card payment will confirm them.
-              </span>
+              <span>{t("settings.payments.unverified_notice")}</span>
             </div>
           ) : null}
 
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-0.5 pr-4">
-              <FieldLabel>Card checkout active</FieldLabel>
-              <FieldDescription>
-                Pause without removing the connected account.
-              </FieldDescription>
+              <FieldLabel>{t("settings.payments.active_label")}</FieldLabel>
+              <FieldDescription>{t("settings.pause_hint")}</FieldDescription>
             </div>
             <Switch
               checked={isActive}
               onCheckedChange={handleToggleActive}
               disabled={isPending}
-              aria-label="Card checkout active"
+              aria-label={t("settings.payments.active_label")}
             />
           </div>
           <Button
@@ -170,51 +165,50 @@ export function PaymentsForm({
             onClick={handleDisconnect}
             disabled={isPending}
           >
-            Disconnect
+            {t("settings.disconnect")}
           </Button>
         </div>
       ) : (
         <div className="space-y-4">
           <Field>
-            <FieldLabel>Account name (optional)</FieldLabel>
+            <FieldLabel>{t("settings.account_name_optional")}</FieldLabel>
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. My Cafe LLC"
+              placeholder={t("settings.account_name_placeholder")}
             />
           </Field>
           <Field>
-            <FieldLabel>Atmos store ID</FieldLabel>
+            <FieldLabel>{t("settings.payments.store_id_label")}</FieldLabel>
             <Input
               inputMode="numeric"
               autoComplete="off"
               value={storeId}
               onChange={(e) => setStoreId(e.target.value)}
-              placeholder="e.g. 1234"
+              placeholder={t("settings.payments.store_id_placeholder")}
             />
           </Field>
           <Field>
-            <FieldLabel>Consumer key</FieldLabel>
+            <FieldLabel>{t("settings.payments.consumer_key_label")}</FieldLabel>
             <Input
               type="password"
               autoComplete="off"
               value={consumerKey}
               onChange={(e) => setConsumerKey(e.target.value)}
-              placeholder="Atmos consumer key"
+              placeholder={t("settings.payments.consumer_key_placeholder")}
             />
           </Field>
           <Field>
-            <FieldLabel>Consumer secret</FieldLabel>
+            <FieldLabel>{t("settings.payments.consumer_secret_label")}</FieldLabel>
             <Input
               type="password"
               autoComplete="off"
               value={consumerSecret}
               onChange={(e) => setConsumerSecret(e.target.value)}
-              placeholder="Atmos consumer secret"
+              placeholder={t("settings.payments.consumer_secret_placeholder")}
             />
             <FieldDescription>
-              From your Atmos merchant account. We validate them, then store them
-              encrypted in Krafta Pay — they&apos;re never shown again.
+              {t("settings.payments.creds_hint")}
             </FieldDescription>
           </Field>
           <Button
@@ -230,10 +224,10 @@ export function PaymentsForm({
             {isPending ? (
               <>
                 <Spinner className="size-4" />
-                Connecting
+                {t("settings.connecting")}
               </>
             ) : (
-              "Connect Krafta Pay"
+              t("settings.payments.connect_cta")
             )}
           </Button>
         </div>

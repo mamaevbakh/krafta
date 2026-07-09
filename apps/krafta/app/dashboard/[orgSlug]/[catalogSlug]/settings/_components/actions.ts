@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
+import { orgCan } from "@/lib/billing/gate";
 import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
 import {
   type DeliverySettings,
@@ -20,7 +22,8 @@ export async function updateCatalogSettings(params: {
   const name = params.name.trim();
 
   if (!name) {
-    return { ok: false, error: "Catalog name is required." };
+    const t = await getDashboardT();
+    return { ok: false, error: t("settings.catalog.name_required") };
   }
 
   const { error } = await supabase
@@ -88,24 +91,28 @@ export async function updateVenueSettings(params: {
     notes: string;
   };
 }) {
+  const t = await getDashboardT();
   const name = params.name.trim();
   if (!name) {
-    return { ok: false as const, error: "Venue name is required." };
+    return { ok: false as const, error: t("settings.venue.name_required") };
   }
 
   if (!/^[A-Z]{3}$/.test(params.currency)) {
-    return { ok: false as const, error: "Currency must be a 3-letter code." };
+    return { ok: false as const, error: t("settings.venue.currency_invalid") };
   }
 
   if (params.modesEnabled.length === 0) {
     return {
       ok: false as const,
-      error: "At least one order mode must be enabled.",
+      error: t("settings.venue.modes_required"),
     };
   }
   for (const mode of params.modesEnabled) {
     if (!ALLOWED_MODES.includes(mode)) {
-      return { ok: false as const, error: `Unknown order mode: ${mode}.` };
+      return {
+        ok: false as const,
+        error: t("settings.venue.mode_unknown", { mode }),
+      };
     }
   }
 
@@ -114,23 +121,51 @@ export async function updateVenueSettings(params: {
     if (!Array.isArray(windows) || windows.length === 0) continue;
     const w = windows[0];
     if (!w || !TIME_PATTERN.test(w.open) || !TIME_PATTERN.test(w.close)) {
-      return { ok: false as const, error: `Invalid hours for ${day}.` };
+      return {
+        ok: false as const,
+        error: t("settings.venue.hours_invalid", {
+          day: t(`settings.venue.day.${day}`),
+        }),
+      };
     }
     if (w.open >= w.close) {
       return {
         ok: false as const,
-        error: `${day}: closing time must be after opening time.`,
+        error: t("settings.venue.hours_order_error", {
+          day: t(`settings.venue.day.${day}`),
+        }),
       };
     }
   }
 
   const supabase = await createClient();
+
+  // Dine-in is a Business-tier feature. Strip it from the saved modes when the
+  // org isn't entitled — never block the whole save, just enforce the gate.
+  let modesEnabled = params.modesEnabled;
+  if (modesEnabled.includes("dine_in")) {
+    const { data: catalogRow } = await supabase
+      .from("catalogs")
+      .select("org_id")
+      .eq("id", params.catalogId)
+      .maybeSingle();
+    if (catalogRow?.org_id && !(await orgCan(catalogRow.org_id, "dine_in"))) {
+      modesEnabled = modesEnabled.filter((mode) => mode !== "dine_in");
+      if (modesEnabled.length === 0) {
+        return {
+          ok: false as const,
+          error: t("settings.venue.dine_in_gated"),
+        };
+      }
+    }
+  }
+
   const { error } = await supabase
     .from("venues")
     .update({
       name,
       status: params.status,
-      modes_enabled: params.modesEnabled,
+      modes_enabled: modesEnabled,
       business_hours: params.businessHours,
       currency: params.currency,
       timezone: params.timezone,
@@ -177,9 +212,10 @@ export async function updateDeliverySettings(params: {
     params.enabled &&
     (settings.originLat == null || settings.originLng == null)
   ) {
+    const t = await getDashboardT();
     return {
       ok: false as const,
-      error: "Set your cafe location on the map before enabling delivery.",
+      error: t("settings.delivery.origin_required"),
     };
   }
 

@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { signOut } from "@/lib/auth/actions";
+import { useT } from "@/lib/locales/dashboard/context";
 
 export function DashboardUserMenu({
   user,
@@ -30,6 +31,7 @@ export function DashboardUserMenu({
   catalogSlug: string;
   showUpgradeCta?: boolean;
 }) {
+  const t = useT();
   const initials = user.name
     .split(" ")
     .map((n) => n[0])
@@ -68,7 +70,7 @@ export function DashboardUserMenu({
               <DropdownMenuItem asChild>
                 <Link href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}>
                   <Sparkles className="size-4" />
-                  Upgrade to Pro
+                  {t("nav.user.upgrade")}
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
@@ -78,23 +80,23 @@ export function DashboardUserMenu({
         <DropdownMenuGroup>
           <DropdownMenuItem>
             <BadgeCheck className="size-4" />
-            Account
+            {t("nav.user.account")}
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href={`/dashboard/${orgSlug}/${catalogSlug}/billing`}>
               <CreditCard className="size-4" />
-              Billing
+              {t("nav.user.billing")}
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem>
             <Bell className="size-4" />
-            Notifications
+            {t("nav.user.notifications")}
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOut()}>
           <LogOut className="size-4" />
-          Log out
+          {t("nav.user.logout")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

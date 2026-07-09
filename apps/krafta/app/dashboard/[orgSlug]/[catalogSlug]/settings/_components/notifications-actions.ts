@@ -3,6 +3,7 @@
 import crypto from "node:crypto";
 
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { openSecret } from "@/lib/crypto/secret-box";
 import { sendTelegramMessage, telegramGetMe } from "@/lib/telegram/bot-api";
 import { getPlatformBotToken } from "@/lib/telegram/settings";
@@ -45,11 +46,12 @@ export async function generateConnectCode(params: {
   venueId: string;
   orgId: string;
 }): Promise<Result<{ code: string; botUsername: string; deepLink: string }>> {
+  const t = await getDashboardT();
   const botUsername = await platformBotUsername();
   if (!botUsername) {
     return {
       ok: false,
-      error: "Бот ещё не настроен на стороне Krafta. Напишите в поддержку.",
+      error: t("settings.notifications.error_bot_not_configured"),
     };
   }
 
@@ -106,6 +108,7 @@ export async function refreshTelegramStatus(params: {
 export async function sendTelegramTest(params: {
   venueId: string;
 }): Promise<Result> {
+  const t = await getDashboardT();
   const supabase = await createClient();
   const { data } = await supabase
     .schema("commerce")
@@ -119,12 +122,12 @@ export async function sendTelegramTest(params: {
     (data?.bot_token_encrypted ? openSecret(data.bot_token_encrypted) : null) ??
     getPlatformBotToken();
   if (!token || !data?.chat_id) {
-    return { ok: false, error: "Сначала подключите чат." };
+    return { ok: false, error: t("settings.notifications.error_connect_chat_first") };
   }
 
   const res = await sendTelegramMessage(token, {
     chatId: data.chat_id,
-    text: "✅ Тест Krafta. Уведомления о заказах работают.",
+    text: t("settings.notifications.test_message"),
   });
   return res.ok ? { ok: true } : { ok: false, error: res.error };
 }

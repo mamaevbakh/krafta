@@ -7,15 +7,16 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { pinRealtimeAuth } from "@/lib/supabase/realtime";
 import { useChimeMute } from "@/lib/hooks/use-chime-mute";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 
 const NEW_ORDER_SOUND_SRC = "/sounds/notif.mp3";
 const TOAST_DURATION_MS = 10_000;
 
-const MODE_LABEL: Record<string, string> = {
-  dine_in: "dine-in",
-  pickup: "pickup",
-  delivery: "delivery",
-  digital: "",
+const ALERT_TITLE_KEY: Record<string, DashboardMessageKey> = {
+  dine_in: "orders.alert_new_dine_in",
+  pickup: "orders.alert_new_pickup",
+  delivery: "orders.alert_new_delivery",
 };
 
 type OrderAlertsProps = {
@@ -37,11 +38,16 @@ type OrderAlertsProps = {
  */
 export function OrderAlerts({ catalogId, ordersHref }: OrderAlertsProps) {
   const router = useRouter();
+  const t = useT();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { muted } = useChimeMute(catalogId);
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
+  // Keep the latest `t` in a ref so the realtime handler translates against
+  // the active locale without re-subscribing the channel (mirrors mutedRef).
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimer.current) return; // coalesce a burst into one refresh
@@ -78,8 +84,8 @@ export function OrderAlerts({ catalogId, ordersHref }: OrderAlertsProps) {
           { event: "INSERT", schema: "commerce", table: "fulfillments" },
           (payload) => {
             const type = (payload.new as { type?: string } | null)?.type ?? "";
-            const modeWord = MODE_LABEL[type] ?? "";
-            const title = modeWord ? `New ${modeWord} order` : "New order";
+            const titleKey = ALERT_TITLE_KEY[type] ?? "orders.alert_new_order";
+            const title = tRef.current(titleKey);
 
             if (!mutedRef.current) {
               const audio = audioRef.current;
@@ -90,10 +96,10 @@ export function OrderAlerts({ catalogId, ordersHref }: OrderAlertsProps) {
             }
 
             toast(title, {
-              description: "A customer just placed an order.",
+              description: tRef.current("orders.alert_description"),
               duration: TOAST_DURATION_MS,
               action: {
-                label: "View",
+                label: tRef.current("orders.alert_view"),
                 onClick: () => router.push(ordersHref),
               },
             });

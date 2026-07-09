@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import type { ModifierListRow } from "./modifiers-panel";
 
@@ -52,16 +53,21 @@ export function ModifierListsTable({
   onToggleActive: (list: ModifierListRow) => void;
   onDelete: (list: ModifierListRow) => void;
 }) {
+  const t = useT();
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[40%]">Name</TableHead>
-            <TableHead>Kind</TableHead>
-            <TableHead className="text-right">Modifiers</TableHead>
-            <TableHead className="text-right">Attached items</TableHead>
-            <TableHead className="w-20">Active</TableHead>
+            <TableHead className="w-[40%]">{t("modifiers.table.name")}</TableHead>
+            <TableHead>{t("modifiers.table.kind")}</TableHead>
+            <TableHead className="text-right">
+              {t("modifiers.table.modifiers")}
+            </TableHead>
+            <TableHead className="text-right">
+              {t("modifiers.table.attached_items")}
+            </TableHead>
+            <TableHead className="w-20">{t("modifiers.table.active")}</TableHead>
             <TableHead className="w-12" />
           </TableRow>
         </TableHeader>
@@ -92,7 +98,9 @@ export function ModifierListsTable({
                     </span>
                     {list.internal_name ? (
                       <span className="text-[11px] text-muted-foreground">
-                        Internal: {list.internal_name}
+                        {t("modifiers.table.internal", {
+                          name: list.internal_name,
+                        })}
                       </span>
                     ) : null}
                   </div>
@@ -102,7 +110,7 @@ export function ModifierListsTable({
                     variant="secondary"
                     className="font-mono text-[10px] uppercase tracking-wide"
                   >
-                    {isList ? "List" : "Text"}
+                    {isList ? t("modifiers.kind.list") : t("modifiers.kind.text")}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
@@ -110,7 +118,9 @@ export function ModifierListsTable({
                     <span className="text-sm">{activeModifierCount}</span>
                   ) : (
                     <span className="text-xs text-muted-foreground">
-                      {list.text_required ? "Required text" : "Optional text"}
+                      {list.text_required
+                        ? t("modifiers.table.required_text")
+                        : t("modifiers.table.optional_text")}
                     </span>
                   )}
                 </TableCell>
@@ -135,8 +145,12 @@ export function ModifierListsTable({
                       onCheckedChange={() => onToggleActive(list)}
                       aria-label={
                         list.is_active
-                          ? `Disable ${list.name}`
-                          : `Enable ${list.name}`
+                          ? t("modifiers.table.disable_aria", {
+                              name: list.name,
+                            })
+                          : t("modifiers.table.enable_aria", {
+                              name: list.name,
+                            })
                       }
                     />
                   </div>
@@ -149,7 +163,7 @@ export function ModifierListsTable({
                           variant="ghost"
                           size="icon"
                           className="size-8"
-                          aria-label="More actions"
+                          aria-label={t("modifiers.table.more_actions_aria")}
                         >
                           <MoreHorizontal
                             className="size-4"
@@ -163,11 +177,11 @@ export function ModifierListsTable({
                             className="size-3.5"
                             aria-hidden="true"
                           />
-                          Edit
+                          {t("common.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => onAttach(list)}>
                           <Link2 className="size-3.5" aria-hidden="true" />
-                          Attach to items…
+                          {t("modifiers.table.attach_action")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -175,7 +189,7 @@ export function ModifierListsTable({
                           className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                         >
                           <Trash2 className="size-3.5" aria-hidden="true" />
-                          Delete
+                          {t("common.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

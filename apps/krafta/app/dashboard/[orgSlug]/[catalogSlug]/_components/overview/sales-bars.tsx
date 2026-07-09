@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useT } from "@/lib/locales/dashboard/context";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 
@@ -28,19 +29,24 @@ type SalesBarsProps = {
  * no tabs, no hover dependency. Only rendered past the insight gate.
  */
 export function SalesBars({ days, currency }: SalesBarsProps) {
+  const t = useT();
   const max = Math.max(1, ...days.map((d) => d.revenueCents));
   const peak = days.reduce((a, b) => (b.revenueCents > a.revenueCents ? b : a));
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-medium">Revenue · 7 days</CardTitle>
+        <CardTitle className="text-lg font-medium">
+          {t("overview.revenue_7d")}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div
           className="flex h-24 items-end gap-2"
           role="img"
-          aria-label={`Revenue over the last 7 days, peak ${formatPriceCents(peak.revenueCents, currency)}`}
+          aria-label={t("overview.revenue_chart_aria", {
+            peak: formatPriceCents(peak.revenueCents, currency),
+          })}
         >
           {days.map((d) => {
             const pct = Math.round((d.revenueCents / max) * 100);
@@ -73,11 +79,11 @@ export function SalesBars({ days, currency }: SalesBarsProps) {
           ))}
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Peak{" "}
+          {t("overview.peak")}{" "}
           <span className="font-mono tabular-nums">
             {formatPriceCents(peak.revenueCents, currency)}
           </span>{" "}
-          on {peak.label}
+          {t("overview.peak_on_day", { day: peak.label })}
         </p>
       </CardContent>
     </Card>

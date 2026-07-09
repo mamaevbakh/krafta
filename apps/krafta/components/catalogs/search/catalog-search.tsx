@@ -23,6 +23,10 @@ import { getItemImageUrl } from "@/lib/catalogs/media";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import {
+  getStorefrontMessage,
+  getStorefrontPlural,
+} from "@/lib/locales/messages";
 import { useItemSheet } from "@/components/catalogs/items/item-detail-controller";
 import { DialogTitle } from "@radix-ui/react-dialog";
 
@@ -99,6 +103,8 @@ export function CatalogSearch({
 }: CatalogSearchProps) {
   const { openItem } = useItemSheet();
   const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (key: Parameters<typeof getStorefrontMessage>[0]) =>
+    getStorefrontMessage(key, { activeLocale, defaultLocale });
   // Controlled vs uncontrolled: when the storefront dock passes both
   // `open` and `onOpenChange`, those drive the dialog state and the
   // legacy floating trigger is suppressed. Otherwise we keep the
@@ -501,7 +507,7 @@ export function CatalogSearch({
         <DialogTrigger asChild>
           <Button
             type="button"
-            aria-label="Open search"
+            aria-label={t("search.open_aria")}
             variant="default"
             size="icon-lg"
             className="fixed bottom-6 right-6 z-40 h-12 w-12 rounded-full "
@@ -521,7 +527,7 @@ export function CatalogSearch({
           "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
         )}
       >
-        <DialogTitle className="sr-only">Catalog Search</DialogTitle>
+        <DialogTitle className="sr-only">{t("search.title")}</DialogTitle>
         <div className="flex h-full w-full min-h-0 flex-col gap-6 p-4 sm:p-6">
           <div className="flex items-center gap-3">
             <div className="relative w-full">
@@ -530,14 +536,14 @@ export function CatalogSearch({
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search anything"
+                placeholder={t("search.placeholder")}
                 className="h-12 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-base shadow-none"
               />
             </div>
             <DialogClose asChild>
               <Button
                 type="button"
-                aria-label="Close search"
+                aria-label={t("search.close_aria")}
                 variant="outline"
                 size="icon"
                 className="rounded-full"
@@ -550,13 +556,13 @@ export function CatalogSearch({
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pb-6">
             {!query.trim() && (
               <p className="text-sm text-muted-foreground">
-                Start typing to search items and categories.
+                {t("search.prompt")}
               </p>
             )}
 
             {hasError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                We could not load search results. Please try again.
+                {t("search.error")}
               </div>
             )}
 
@@ -597,14 +603,14 @@ export function CatalogSearch({
 
             {!isLoading && query.trim() && !hasResults && !hasError && (
               <p className="text-sm text-muted-foreground">
-                No matches yet. Try another keyword.
+                {t("search.no_results")}
               </p>
             )}
 
             {!isLoading && resolvedResults.items.length > 0 && (
               <section className="space-y-3">
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Items
+                  {t("search.items_heading")}
                 </div>
                 <div className="space-y-3">
                   {resolvedResults.items.map((match) => {
@@ -658,7 +664,7 @@ export function CatalogSearch({
             {!isLoading && resolvedResults.categories.length > 0 && (
               <section className="space-y-3">
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Categories
+                  {t("search.categories_heading")}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {resolvedResults.categories.map(({ category }) => (
@@ -673,7 +679,11 @@ export function CatalogSearch({
                           category.name}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {category.items.length} items
+                        {getStorefrontPlural(
+                          "cart.item_count_plural",
+                          category.items.length,
+                          { activeLocale, defaultLocale },
+                        )}
                       </div>
                     </button>
                   ))}

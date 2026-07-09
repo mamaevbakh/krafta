@@ -26,6 +26,7 @@ import { LayoutGrid, Table as TableIcon } from "lucide-react";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 export type LibraryView = "canvas" | "table";
 
@@ -70,6 +71,7 @@ export function LibraryViewToggle({
   onViewChange: (next: LibraryView) => void;
   className?: string;
 }) {
+  const t = useT();
   return (
     <Tabs
       value={view}
@@ -92,14 +94,14 @@ export function LibraryViewToggle({
           className="rounded-full data-[state=active]:bg-foreground data-[state=active]:text-background"
         >
           <LayoutGrid className="size-4" />
-          Canvas
+          {t("items.view_canvas")}
         </TabsTrigger>
         <TabsTrigger
           value="table"
           className="rounded-full data-[state=active]:bg-foreground data-[state=active]:text-background"
         >
           <TableIcon className="size-4" />
-          Table
+          {t("items.view_table")}
         </TabsTrigger>
       </TabsList>
     </Tabs>

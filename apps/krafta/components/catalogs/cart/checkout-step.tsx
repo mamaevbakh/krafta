@@ -1112,7 +1112,7 @@ function TipControl({
           inputMode="decimal"
           value={customStr}
           onChange={(event) => handleCustomChange(event.target.value)}
-          placeholder="Enter tip amount"
+          placeholder={t("checkout.tip.custom_placeholder")}
         />
       ) : null}
     </div>

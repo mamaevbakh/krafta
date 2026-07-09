@@ -5,6 +5,8 @@ import { Minus, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import { getStorefrontMessage } from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 import { AnimatedQty } from "./animated-qty";
@@ -74,6 +76,12 @@ export function CartStepper({
   className,
   floating,
 }: CartStepperProps) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (
+    key: Parameters<typeof getStorefrontMessage>[0],
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
+
   const showTrashAtMin =
     variant === "card" || variant === "config" || variant === "detail";
   const isAtMin = quantity <= 1;
@@ -86,17 +94,19 @@ export function CartStepper({
   const decrementAriaLabel =
     variant === "detail"
       ? isAtMin
-        ? "Remove from cart"
-        : "Decrease quantity"
+        ? t("aria.remove_from_cart")
+        : t("aria.decrease_quantity")
       : showTrashAtMin && isAtMin
-        ? `Remove ${itemName} from cart`
-        : `Decrease ${itemName} quantity`;
+        ? t("aria.remove_item_named", { name: itemName })
+        : t("aria.decrease_item_named", { name: itemName });
   const incrementAriaLabel =
-    variant === "detail" ? "Increase quantity" : `Increase ${itemName} quantity`;
+    variant === "detail"
+      ? t("aria.increase_quantity")
+      : t("aria.increase_item_named", { name: itemName });
   const groupAriaLabel =
     variant === "detail"
-      ? "Cart quantity for this configuration"
-      : `Cart quantity for ${itemName}`;
+      ? t("aria.cart_quantity_config")
+      : t("aria.cart_quantity_named", { name: itemName });
 
   // ── ButtonGroup variants (card, config) ─────────────────────────────
   if (variant === "card" || variant === "config") {

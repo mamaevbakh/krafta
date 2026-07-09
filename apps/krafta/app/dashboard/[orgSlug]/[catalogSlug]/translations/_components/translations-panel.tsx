@@ -7,6 +7,7 @@ import { Globe } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { LanguagesSidebar, type CatalogLocale } from "./languages-sidebar";
 import { ItemsTab, type ItemRow } from "./items-tab";
@@ -829,24 +830,15 @@ function formatActivityCopy(
 }
 
 function NoTargetLocalesEmpty({ hasDefaultLocale }: { hasDefaultLocale: boolean }) {
+  const t = useT();
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
       <Globe className="size-8 text-muted-foreground" aria-hidden="true" />
-      <h2 className="text-sm font-medium">No target language yet</h2>
+      <h2 className="text-sm font-medium">{t("translations.no_target_title")}</h2>
       <p className="text-xs text-muted-foreground">
-        {hasDefaultLocale ? (
-          <>
-            Your default language is set. Add another language in the sidebar
-            (Russian, Uzbek, English, or any locale code) and we&apos;ll
-            translate your menu into it.
-          </>
-        ) : (
-          <>
-            This catalog has no languages configured yet. Add a default
-            language and at least one target language in the sidebar to get
-            started.
-          </>
-        )}
+        {hasDefaultLocale
+          ? t("translations.no_target_desc_has_default")
+          : t("translations.no_target_desc_no_default")}
       </p>
     </div>
   );

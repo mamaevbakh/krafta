@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { ExternalLink, Volume2, VolumeX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useT, useDashboardLocale } from "@/lib/locales/dashboard/context";
 import { useChimeMute } from "@/lib/hooks/use-chime-mute";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import {
@@ -65,6 +66,9 @@ export function OverviewPanel(props: OverviewPanelProps) {
     telegramUrl,
     nowIso,
   } = props;
+
+  const t = useT();
+  const locale = useDashboardLocale();
 
   const ordersHref = `/dashboard/${orgSlug}/${catalogSlug}/orders`;
   const qrHref = `/dashboard/${orgSlug}/${catalogSlug}/qr-codes`;
@@ -128,7 +132,7 @@ export function OverviewPanel(props: OverviewPanelProps) {
     priorOrders.forEach(addRev);
     const bars: DayBar[] = dayKeys.map((key) => ({
       key,
-      label: weekdayLabel(key),
+      label: weekdayLabel(key, locale),
       revenueCents: revByDay.get(key) ?? 0,
       isToday: key === todayKey,
     }));
@@ -157,14 +161,14 @@ export function OverviewPanel(props: OverviewPanelProps) {
       showInsights,
       popular,
     };
-  }, [nowIso, timeZone, todayOrders, priorOrders]);
+  }, [nowIso, timeZone, todayOrders, priorOrders, locale]);
 
   const statusLine = paused
-    ? "Shop is paused"
+    ? t("overview.status_paused")
     : catalogStatus === "draft"
-      ? "Draft — only you can see this shop"
-      : "Taking orders";
-  const dateLine = new Intl.DateTimeFormat("en-US", {
+      ? t("overview.status_draft")
+      : t("overview.status_taking_orders");
+  const dateLine = new Intl.DateTimeFormat(locale, {
     timeZone,
     weekday: "long",
     month: "long",
@@ -177,7 +181,9 @@ export function OverviewPanel(props: OverviewPanelProps) {
       <div className="w-full border-b">
         <div className="mx-auto flex h-[120px] max-w-[1248px] items-center justify-between gap-4 px-6">
           <div className="space-y-1">
-            <h1 className="text-[32px] font-semibold tracking-tight">Overview</h1>
+            <h1 className="text-[32px] font-semibold tracking-tight">
+              {t("overview.title")}
+            </h1>
             <p className="text-sm text-muted-foreground">
               {dateLine} · {statusLine}
             </p>
@@ -189,7 +195,7 @@ export function OverviewPanel(props: OverviewPanelProps) {
               size="icon"
               onClick={toggleMute}
               aria-pressed={muted}
-              title={muted ? "Sound off" : "Sound on"}
+              title={muted ? t("overview.sound_off") : t("overview.sound_on")}
             >
               {muted ? (
                 <VolumeX className="size-4" aria-hidden />
@@ -201,7 +207,7 @@ export function OverviewPanel(props: OverviewPanelProps) {
               <Button asChild variant="outline" size="sm">
                 <a href={storefrontUrl} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="size-4" aria-hidden />
-                  <span className="hidden sm:inline">Open shop</span>
+                  <span className="hidden sm:inline">{t("overview.open_shop")}</span>
                 </a>
               </Button>
             ) : null}

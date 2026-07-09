@@ -15,6 +15,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 
 import {
@@ -44,8 +45,11 @@ export function NotificationsForm({
   orgId: string;
   initial: TelegramInitial | null;
 }) {
+  const t = useT();
   const [chatTitle, setChatTitle] = React.useState<string | null>(
-    initial?.chatConnected ? (initial?.chatTitle ?? "Чат") : null,
+    initial?.chatConnected
+      ? (initial?.chatTitle ?? t("settings.notifications.chat_default"))
+      : null,
   );
   const [isActive, setIsActive] = React.useState<boolean>(
     initial?.isActive ?? true,
@@ -59,9 +63,9 @@ export function NotificationsForm({
   if (!venueId) {
     return (
       <FieldSet>
-        <FieldLegend>Notifications</FieldLegend>
+        <FieldLegend>{t("settings.notifications.legend")}</FieldLegend>
         <div className="mt-4 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          Venue row not found for this catalog. Notifications need a venue.
+          {t("settings.notifications.no_venue")}
         </div>
       </FieldSet>
     );
@@ -88,14 +92,17 @@ export function NotificationsForm({
       const res = await refreshTelegramStatus({ venueId });
       if (!res.ok) return setStatus({ kind: "err", msg: res.error });
       if (res.chatConnected) {
-        setChatTitle(res.chatTitle ?? "Чат");
+        setChatTitle(res.chatTitle ?? t("settings.notifications.chat_default"));
         setIsActive(res.isActive);
         setConnect(null);
-        setStatus({ kind: "ok", msg: "Чат подключён." });
+        setStatus({
+          kind: "ok",
+          msg: t("settings.notifications.chat_connected"),
+        });
       } else {
         setStatus({
           kind: "err",
-          msg: "Пока не вижу подключения. Отправьте код боту и попробуйте снова.",
+          msg: t("settings.notifications.not_connected_yet"),
         });
       }
     });
@@ -105,7 +112,7 @@ export function NotificationsForm({
       const res = await sendTelegramTest({ venueId });
       setStatus(
         res.ok
-          ? { kind: "ok", msg: "Тестовое сообщение отправлено." }
+          ? { kind: "ok", msg: t("settings.notifications.test_sent") }
           : { kind: "err", msg: res.error },
       );
     });
@@ -127,14 +134,17 @@ export function NotificationsForm({
       setChatTitle(null);
       setConnect(null);
       setIsActive(true);
-      setStatus({ kind: "ok", msg: "Чат отключён." });
+      setStatus({
+        kind: "ok",
+        msg: t("settings.notifications.chat_disconnected"),
+      });
     });
 
   return (
     <FieldSet>
-      <FieldLegend>Notifications</FieldLegend>
+      <FieldLegend>{t("settings.notifications.legend")}</FieldLegend>
       <FieldDescription>
-        Get a Telegram message the moment a customer places an order.
+        {t("settings.notifications.description")}
       </FieldDescription>
 
       <FieldGroup className="mt-6 gap-6">
@@ -142,14 +152,14 @@ export function NotificationsForm({
           // ── Connected ──────────────────────────────────────────────
           <>
             <Field>
-              <FieldLabel>Order chat</FieldLabel>
+              <FieldLabel>{t("settings.notifications.order_chat_label")}</FieldLabel>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="gap-1">
                   <Check className="size-3" />
                   {chatTitle}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  receives every order
+                  {t("settings.notifications.receives_every_order")}
                 </span>
                 <Button
                   type="button"
@@ -159,7 +169,7 @@ export function NotificationsForm({
                   onClick={handleDisconnect}
                   disabled={pending}
                 >
-                  Disconnect
+                  {t("settings.disconnect")}
                 </Button>
               </div>
             </Field>
@@ -172,7 +182,7 @@ export function NotificationsForm({
                 disabled={pending}
               />
               <FieldLabel htmlFor="tg-active" className="cursor-pointer">
-                Send order alerts
+                {t("settings.notifications.send_alerts_label")}
               </FieldLabel>
             </Field>
 
@@ -189,7 +199,7 @@ export function NotificationsForm({
                 ) : (
                   <Send className="size-4" />
                 )}
-                Send test message
+                {t("settings.notifications.send_test")}
               </Button>
             </Field>
           </>
@@ -202,52 +212,54 @@ export function NotificationsForm({
               disabled={pending}
               className="w-fit"
             >
-              {pending ? <Spinner className="size-4" /> : "Connect order alerts"}
+              {pending ? (
+                <Spinner className="size-4" />
+              ) : (
+                t("settings.notifications.connect_cta")
+              )}
             </Button>
             <FieldDescription>
-              Connect a Telegram group for your team — or a private chat
-              just for you. Every order arrives instantly; customers never
-              see it.
+              {t("settings.notifications.connect_hint")}
             </FieldDescription>
           </Field>
         ) : (
           // ── Code minted — pick who receives the orders ────────────
           <>
             <FieldDescription>
-              Where should orders land? Pick one.
+              {t("settings.notifications.pick_destination")}
             </FieldDescription>
 
             <Field>
-              <FieldLabel>My team</FieldLabel>
+              <FieldLabel>{t("settings.notifications.team_label")}</FieldLabel>
               <FieldDescription>
-                Add{" "}
-                <span className="font-mono">@{connect.botUsername}</span>{" "}
-                to your team&rsquo;s Telegram group, then send this message
-                in the group:
+                {t("settings.notifications.team_add_pre")}{" "}
+                <span className="font-mono">@{connect.botUsername}</span>
+                {t("settings.notifications.team_add_post")}
               </FieldDescription>
               <code className="mt-1 inline-block w-fit rounded-md border bg-muted px-3 py-1.5 font-mono text-sm">
                 /connect {connect.code}
               </code>
               <FieldDescription>
-                Everyone in the group sees every order. Best when more than
-                one person works the counter.
+                {t("settings.notifications.team_hint")}
               </FieldDescription>
             </Field>
 
             <Field>
-              <FieldLabel>Just me</FieldLabel>
+              <FieldLabel>{t("settings.notifications.self_label")}</FieldLabel>
               <Button asChild className="w-fit">
                 <a
                   href={connect.deepLink}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Open @{connect.botUsername} in Telegram
+                  {t("settings.notifications.open_in_telegram", {
+                    bot: connect.botUsername,
+                  })}
                 </a>
               </Button>
               <FieldDescription>
-                Tap <b>Start</b> — orders arrive in your private chat with
-                the bot. Best for a one-person shop.
+                {t("settings.notifications.self_hint_pre")} <b>Start</b>
+                {t("settings.notifications.self_hint_post")}
               </FieldDescription>
             </Field>
 
@@ -259,10 +271,14 @@ export function NotificationsForm({
                 disabled={pending}
                 className="w-fit"
               >
-                {pending ? <Spinner className="size-4" /> : "I’ve connected — check"}
+                {pending ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  t("settings.notifications.check_cta")
+                )}
               </Button>
               <FieldDescription>
-                Code expires in 30 minutes.
+                {t("settings.notifications.code_expires")}
               </FieldDescription>
             </Field>
           </>

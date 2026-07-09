@@ -39,6 +39,7 @@ import {
 import { isValidSlug } from "@/lib/onboarding/slug";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithEmail } from "@/lib/auth/actions";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   completeDraftClaim,
@@ -81,6 +82,7 @@ export function PublishDialog({
   /** Set when returning from the Google OAuth round-trip (?publish=<slug>). */
   resumeSlug?: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const [step, setStep] = React.useState<Step>("loading");
   const [preflight, setPreflight] = React.useState<PublishPreflight | null>(null);
@@ -150,7 +152,7 @@ export function PublishDialog({
   const advanceFromSlug = () => {
     if (!preflight) return;
     if (slug && !isValidSlug(slug)) {
-      setError("Lowercase letters, digits and dashes only (3-64 characters).");
+      setError(t("activation.publish.slug_invalid"));
       return;
     }
     setError(null);
@@ -226,7 +228,7 @@ export function PublishDialog({
       : await supabase.auth.refreshSession();
     setBusy(false);
     if (sessionErr) {
-      setError("Could not refresh your session. Please try again.");
+      setError(t("activation.error.session_refresh"));
       return;
     }
     void doPublish(preflight.orgId, slug);
@@ -281,7 +283,7 @@ export function PublishDialog({
       setError(
         change.error?.message ??
           verified.error?.message ??
-          "Verification failed",
+          t("activation.error.verification_failed"),
       );
       return;
     }
@@ -330,13 +332,13 @@ export function PublishDialog({
     });
     if (signin.error || !signin.data.session) {
       setBusy(false);
-      setError(signin.error?.message ?? "Verification failed");
+      setError(signin.error?.message ?? t("activation.error.verification_failed"));
       return;
     }
     const code = sessionStorage.getItem(PENDING_CLAIM_KEY);
     if (!code) {
       setBusy(false);
-      setError("The claim expired — close this dialog and try again.");
+      setError(t("activation.claim.expired"));
       return;
     }
     const claimed = await completeDraftClaim(code);
@@ -380,9 +382,11 @@ export function PublishDialog({
       <DialogContent className="sm:max-w-md">
         {step === "loading" && (
           <>
-            <DialogTitle className="sr-only">Preparing to publish</DialogTitle>
+            <DialogTitle className="sr-only">
+              {t("activation.publish.preparing_title")}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              Loading your shop details.
+              {t("activation.publish.preparing_desc")}
             </DialogDescription>
             <div className="flex items-center justify-center py-12">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -393,10 +397,9 @@ export function PublishDialog({
         {step === "slug" && preflight && (
           <>
             <DialogHeader>
-              <DialogTitle>Choose your shop link</DialogTitle>
+              <DialogTitle>{t("activation.publish.slug_title")}</DialogTitle>
               <DialogDescription>
-                This is the address customers open and the QR code points to.
-                It can&apos;t change after you publish.
+                {t("activation.publish.slug_desc")}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -407,7 +410,9 @@ export function PublishDialog({
               className="flex flex-col gap-4"
             >
               <div className="flex flex-col gap-2">
-                <Label htmlFor="publish-slug">Shop link</Label>
+                <Label htmlFor="publish-slug">
+                  {t("activation.publish.slug_label")}
+                </Label>
                 <Input
                   id="publish-slug"
                   value={slug}
@@ -426,7 +431,7 @@ export function PublishDialog({
                 </p>
               )}
               <Button type="submit" className="w-full">
-                Continue
+                {t("common.continue")}
               </Button>
             </form>
           </>
@@ -435,10 +440,9 @@ export function PublishDialog({
         {step === "demo" && preflight && (
           <>
             <DialogHeader>
-              <DialogTitle>You still have demo items</DialogTitle>
+              <DialogTitle>{t("activation.demo.title")}</DialogTitle>
               <DialogDescription>
-                These starter items haven&apos;t been edited. Customers could
-                order them at the demo prices.
+                {t("activation.demo.desc")}
               </DialogDescription>
             </DialogHeader>
             <ul className="max-h-40 overflow-y-auto rounded-lg border px-3 py-2 text-sm">
@@ -465,10 +469,10 @@ export function PublishDialog({
                 ) : (
                   <Trash2 className="size-4" />
                 )}
-                Remove demo items
+                {t("activation.demo.remove")}
               </Button>
               <Button type="button" onClick={advanceFromDemo} disabled={busy}>
-                Keep them and publish
+                {t("activation.demo.keep")}
               </Button>
             </div>
           </>
@@ -477,10 +481,9 @@ export function PublishDialog({
         {step === "register" && (
           <>
             <DialogHeader>
-              <DialogTitle>Create your account</DialogTitle>
+              <DialogTitle>{t("activation.register.title")}</DialogTitle>
               <DialogDescription>
-                Registering keeps your shop yours — everything you built stays
-                exactly as it is.
+                {t("activation.register.desc")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-4">
@@ -492,7 +495,7 @@ export function PublishDialog({
                 disabled={busy}
               >
                 {busy ? <Loader2 className="animate-spin" /> : null}
-                Continue with Google
+                {t("activation.register.google")}
               </Button>
               {preflight?.telegramBotUsername && (
                 <TelegramLoginButton
@@ -504,13 +507,13 @@ export function PublishDialog({
               <div className="flex items-center gap-3">
                 <Separator className="flex-1" />
                 <span className="text-xs text-muted-foreground">
-                  or with email
+                  {t("activation.register.or_email")}
                 </span>
                 <Separator className="flex-1" />
               </div>
               <form onSubmit={handleSendEmail} className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="publish-email">Email</Label>
+                  <Label htmlFor="publish-email">{t("activation.email")}</Label>
                   <Input
                     id="publish-email"
                     type="email"
@@ -529,7 +532,7 @@ export function PublishDialog({
                 )}
                 <Button type="submit" className="w-full" disabled={busy}>
                   {busy ? <Loader2 className="animate-spin" /> : <Send className="size-4" />}
-                  Send code
+                  {t("activation.register.send_code")}
                 </Button>
               </form>
             </div>
@@ -539,9 +542,9 @@ export function PublishDialog({
         {(step === "otp" || step === "claim-otp") && (
           <>
             <DialogHeader>
-              <DialogTitle>Enter the code</DialogTitle>
+              <DialogTitle>{t("activation.otp.title")}</DialogTitle>
               <DialogDescription>
-                We sent a 6-digit code to {email}.
+                {t("activation.otp.desc", { email })}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -580,7 +583,9 @@ export function PublishDialog({
                 disabled={busy || otp.length !== 6}
               >
                 {busy ? <Loader2 className="animate-spin" /> : null}
-                {step === "otp" ? "Verify and publish" : "Sign in and claim"}
+                {step === "otp"
+                  ? t("activation.otp.verify_publish")
+                  : t("activation.otp.signin_claim")}
               </Button>
               <Button
                 type="button"
@@ -592,7 +597,7 @@ export function PublishDialog({
                   setStep(step === "otp" ? "register" : "claim");
                 }}
               >
-                Use a different email
+                {t("activation.otp.different_email")}
               </Button>
             </form>
           </>
@@ -601,15 +606,14 @@ export function PublishDialog({
         {step === "claim" && (
           <>
             <DialogHeader>
-              <DialogTitle>This email already has an account</DialogTitle>
+              <DialogTitle>{t("activation.claim.title")}</DialogTitle>
               <DialogDescription>
-                Sign in to it and we&apos;ll bring this draft shop along —
-                nothing you built is lost.
+                {t("activation.claim.desc")}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleClaimSend} className="flex flex-col gap-3">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="claim-email">Email</Label>
+                <Label htmlFor="claim-email">{t("activation.email")}</Label>
                 <Input
                   id="claim-email"
                   type="email"
@@ -627,7 +631,7 @@ export function PublishDialog({
               )}
               <Button type="submit" className="w-full" disabled={busy}>
                 {busy ? <Loader2 className="animate-spin" /> : <Send className="size-4" />}
-                Send sign-in code
+                {t("activation.claim.send_code")}
               </Button>
               <Button
                 type="button"
@@ -636,7 +640,7 @@ export function PublishDialog({
                 disabled={busy}
                 onClick={() => setStep("register")}
               >
-                Use a different email instead
+                {t("activation.claim.different_email")}
               </Button>
             </form>
           </>
@@ -644,14 +648,16 @@ export function PublishDialog({
 
         {step === "publishing" && (
           <>
-            <DialogTitle className="sr-only">Publishing</DialogTitle>
+            <DialogTitle className="sr-only">
+              {t("activation.publishing.title")}
+            </DialogTitle>
             <DialogDescription className="sr-only">
-              Making your shop public.
+              {t("activation.publishing.desc")}
             </DialogDescription>
             <div className="flex flex-col items-center gap-3 py-12">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                Publishing your shop…
+                {t("activation.publishing.message")}
               </p>
             </div>
           </>
@@ -660,9 +666,9 @@ export function PublishDialog({
         {step === "live" && result && (
           <>
             <DialogHeader>
-              <DialogTitle>Your shop is live</DialogTitle>
+              <DialogTitle>{t("activation.live.title")}</DialogTitle>
               <DialogDescription>
-                Share the link or print the QR — customers can order right now.
+                {t("activation.live.desc")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center gap-4">
@@ -680,7 +686,7 @@ export function PublishDialog({
                   variant="outline"
                   size="icon"
                   onClick={handleCopy}
-                  aria-label="Copy link"
+                  aria-label={t("activation.live.copy_aria")}
                 >
                   {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </Button>
@@ -688,17 +694,16 @@ export function PublishDialog({
               <Button asChild variant="outline" className="w-full">
                 <a href={result.storefrontUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="size-4" />
-                  Open your storefront
+                  {t("activation.live.open_storefront")}
                 </a>
               </Button>
               <Separator />
               <div className="flex w-full flex-col gap-1">
                 <p className="text-sm font-medium">
-                  Don&apos;t miss your first order
+                  {t("activation.live.first_order_title")}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Connect Telegram and new orders ping your phone the moment
-                  they arrive.
+                  {t("activation.live.first_order_desc")}
                 </p>
               </div>
               <div className="flex w-full flex-col gap-2">
@@ -706,7 +711,7 @@ export function PublishDialog({
                   <a
                     href={`/dashboard/${result.orgSlug}/${result.catalogSlug}/settings`}
                   >
-                    Get order alerts in Telegram
+                    {t("activation.checklist.step.alerts")}
                   </a>
                 </Button>
                 <Button
@@ -715,7 +720,7 @@ export function PublishDialog({
                   className="w-full"
                   onClick={finishToDashboard}
                 >
-                  Maybe later — go to my dashboard
+                  {t("activation.live.maybe_later")}
                 </Button>
               </div>
             </div>

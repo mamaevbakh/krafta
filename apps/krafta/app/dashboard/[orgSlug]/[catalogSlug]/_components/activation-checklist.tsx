@@ -32,6 +32,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { SecureAccountDialog } from "./secure-account-dialog";
 
@@ -62,6 +63,7 @@ export function ActivationChecklist({
   telegramBotUsername: string | null;
   entries: ChecklistEntry[];
 }) {
+  const t = useT();
   const openKey = `krafta.checklist.open.${catalogId}`;
   // Render nothing until localStorage resolves — avoids flashing the panel
   // for merchants who collapsed it.
@@ -103,10 +105,10 @@ export function ActivationChecklist({
           "flex min-h-11 items-center gap-2 rounded-full border bg-background/85 px-4 py-2.5 text-sm font-medium shadow-sm backdrop-blur-md transition-colors hover:bg-accent",
           "animate-in fade-in-0 slide-in-from-bottom-2 duration-200",
         )}
-        aria-label="Open setup checklist"
+        aria-label={t("activation.checklist.open_aria")}
       >
         <ListTodo className="size-4 text-muted-foreground" />
-        <span className="hidden sm:inline">Get ready to open</span>
+        <span className="hidden sm:inline">{t("activation.checklist.title")}</span>
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {doneCount}/{entries.length}
         </span>
@@ -127,7 +129,7 @@ export function ActivationChecklist({
   return (
     <>
     <section
-      aria-label="Setup checklist"
+      aria-label={t("activation.checklist.aria")}
       className={cn(
         CORNER,
         "w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-lg border bg-background/95 shadow-sm backdrop-blur-md",
@@ -136,12 +138,12 @@ export function ActivationChecklist({
     >
       <header className="flex items-center gap-1 border-b py-2 pl-4 pr-2">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium">Get ready to open</h2>
+          <h2 className="text-sm font-medium">{t("activation.checklist.title")}</h2>
           <p className="text-xs text-muted-foreground">
             <span className="font-mono tabular-nums">
               {doneCount}/{entries.length}
             </span>{" "}
-            done — nothing here blocks you.
+            {t("activation.checklist.done_hint")}
           </p>
         </div>
         <Button
@@ -150,7 +152,7 @@ export function ActivationChecklist({
           size="icon"
           className="size-8 text-muted-foreground"
           onClick={collapse}
-          aria-label="Collapse checklist"
+          aria-label={t("activation.checklist.collapse_aria")}
         >
           <ChevronDown className="size-4" />
         </Button>

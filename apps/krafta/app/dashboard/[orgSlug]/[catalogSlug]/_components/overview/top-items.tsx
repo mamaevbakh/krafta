@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useT } from "@/lib/locales/dashboard/context";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { TopItem } from "@/lib/dashboard/overview";
@@ -22,11 +23,16 @@ type TopItemsProps = {
  * fake one. Only rendered past the same insight gate as the chart.
  */
 export function TopItems({ items, currency }: TopItemsProps) {
+  const t = useT();
   return (
     <Card className="h-full">
       <CardHeader className="flex-row items-baseline justify-between gap-2 space-y-0">
-        <CardTitle className="text-lg font-medium">Popular</CardTitle>
-        <span className="text-xs text-muted-foreground">7 days</span>
+        <CardTitle className="text-lg font-medium">
+          {t("overview.popular")}
+        </CardTitle>
+        <span className="text-xs text-muted-foreground">
+          {t("overview.days_7")}
+        </span>
       </CardHeader>
       <CardContent className="p-0">
         <ul className="divide-y border-t">

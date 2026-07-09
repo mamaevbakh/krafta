@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { slugify } from "@/lib/catalogs/slug";
+import { useT } from "@/lib/locales/dashboard/context";
 
 export type AdvancedSectionProps = {
   slug: string;
@@ -51,6 +52,7 @@ export function AdvancedSection({
   disabled,
   idPrefix,
 }: AdvancedSectionProps) {
+  const t = useT();
   const [open, setOpen] = React.useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col">
@@ -67,7 +69,7 @@ export function AdvancedSection({
         ) : (
           <ChevronRight className="size-4 shrink-0 transition-transform" aria-hidden="true" />
         )}
-        <span>Advanced</span>
+        <span>{t("items.advanced")}</span>
       </CollapsibleTrigger>
       <CollapsibleContent
         className={cn(
@@ -78,7 +80,7 @@ export function AdvancedSection({
       >
         <div className="flex flex-col gap-5 pt-3">
           <Field data-disabled={disabled ? true : undefined}>
-            <FieldLabel htmlFor={`${idPrefix}-slug`}>Web link</FieldLabel>
+            <FieldLabel htmlFor={`${idPrefix}-slug`}>{t("items.web_link")}</FieldLabel>
             <Input
               id={`${idPrefix}-slug`}
               value={slug}
@@ -87,16 +89,13 @@ export function AdvancedSection({
                 const trimmed = slug.trim();
                 if (trimmed) onSlugChange(slugify(trimmed));
               }}
-              placeholder="auto-generated-from-name"
+              placeholder={t("items.web_link_placeholder")}
               autoComplete="off"
               spellCheck={false}
               disabled={disabled}
             />
             <FieldDescription>
-              This is the short text at the end of the link your
-              customers will see and share. We make one for you from
-              the item&apos;s name — change it if you want a shorter
-              or easier-to-remember link.
+              {t("items.web_link_description")}
             </FieldDescription>
           </Field>
         </div>

@@ -29,6 +29,8 @@ import { signInWithEmail, verifyOtpCode, signInWithGoogle } from "@/lib/auth/act
 import { signInWithTelegramIdToken } from "@/lib/auth/telegram-actions";
 import { TelegramOidcLoginButton } from "@/components/telegram-oidc-login";
 import { toast } from "sonner";
+import { Fragment } from "react";
+import { useT } from "@/lib/locales/dashboard/context";
 
 type Step = "email" | "otp";
 
@@ -45,6 +47,7 @@ export function LoginForm({
   telegramClientId = null,
   ...props
 }: LoginFormProps) {
+  const t = useT();
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -56,7 +59,7 @@ export function LoginForm({
       if (result.error) {
         toast.error(result.error);
       } else {
-        toast.success("Check your email for the login link or code!");
+        toast.success(t("login.toast_check_email"));
         setStep("otp");
       }
     });
@@ -77,7 +80,7 @@ export function LoginForm({
       if (result.error) {
         toast.error(result.error);
       } else {
-        toast.success("Successfully logged in!");
+        toast.success(t("login.toast_logged_in"));
         window.location.href = next;
       }
     });
@@ -95,7 +98,7 @@ export function LoginForm({
         return;
       }
 
-      toast.error("Failed to initiate Google sign in");
+      toast.error(t("login.toast_google_failed"));
     });
   };
 
@@ -120,12 +123,12 @@ export function LoginForm({
       <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-xl">
-            {step === "email" ? "Welcome" : "Enter verification code"}
+            {step === "email" ? t("login.welcome") : t("login.verify_title")}
           </CardTitle>
           <CardDescription>
             {step === "email"
-              ? "Sign in with your email or Google account"
-              : `We sent a code to ${email}`}
+              ? t("login.email_subtitle")
+              : t("login.otp_sent", { email })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -146,7 +149,7 @@ export function LoginForm({
                         fill="currentColor"
                       />
                     </svg>
-                    Continue with Google
+                    {t("login.continue_google")}
                   </Button>
                 </Field>
                 {telegramClientId && (
@@ -159,14 +162,14 @@ export function LoginForm({
                   </Field>
                 )}
                 <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
-                  Or continue with email
+                  {t("login.or_continue_email")}
                 </FieldSeparator>
                 <Field>
-                  <FieldLabel htmlFor="email">Email</FieldLabel>
+                  <FieldLabel htmlFor="email">{t("login.email_label")}</FieldLabel>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder={t("login.email_placeholder")}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -176,10 +179,10 @@ export function LoginForm({
                 </Field>
                 <Field>
                   <Button type="submit" disabled={isPending} className="w-full">
-                    {isPending ? "Sending..." : "Send magic link"}
+                    {isPending ? t("login.sending") : t("login.send_magic_link")}
                   </Button>
                   <FieldDescription className="text-center text-xs text-muted-foreground mt-2">
-                    We&apos;ll send you a magic link and a one-time code
+                    {t("login.magic_link_hint")}
                   </FieldDescription>
                 </Field>
               </FieldGroup>
@@ -188,7 +191,7 @@ export function LoginForm({
             <form onSubmit={handleOtpSubmit}>
               <FieldGroup>
                 <Field className="flex flex-col items-center">
-                  <FieldLabel htmlFor="otp" className="sr-only">Verification code</FieldLabel>
+                  <FieldLabel htmlFor="otp" className="sr-only">{t("login.verification_code")}</FieldLabel>
                   <InputOTP
                     id="otp"
                     maxLength={6}
@@ -212,12 +215,12 @@ export function LoginForm({
                     </InputOTPGroup>
                   </InputOTP>
                   <FieldDescription className="text-center text-xs text-muted-foreground mt-3">
-                    Enter the 6-digit code from your email, or click the magic link
+                    {t("login.otp_hint")}
                   </FieldDescription>
                 </Field>
                 <Field>
                   <Button type="submit" disabled={isPending || otpCode.length !== 6} className="w-full">
-                    {isPending ? "Verifying..." : "Verify code"}
+                    {isPending ? t("login.verifying") : t("login.verify_code")}
                   </Button>
                 </Field>
                 <Field className="flex flex-col items-center gap-2">
@@ -228,7 +231,7 @@ export function LoginForm({
                     onClick={handleBack}
                     disabled={isPending}
                   >
-                    ← Use a different email
+                    ← {t("login.use_different_email")}
                   </Button>
                   <Button
                     type="button"
@@ -237,7 +240,7 @@ export function LoginForm({
                     onClick={sendEmail}
                     disabled={isPending}
                   >
-                    Resend code
+                    {t("login.resend_code")}
                   </Button>
                 </Field>
               </FieldGroup>
@@ -246,8 +249,33 @@ export function LoginForm({
         </CardContent>
       </Card>
       <FieldDescription className="px-6 text-center text-xs">
-        By continuing, you agree to our <a href="#" className="underline underline-offset-4 hover:text-primary">Terms of Service</a>{" "}
-        and <a href="#" className="underline underline-offset-4 hover:text-primary">Privacy Policy</a>.
+        {t("login.legal")
+          .split(/(\{terms\}|\{privacy\})/)
+          .map((part, i) => {
+            if (part === "{terms}") {
+              return (
+                <a
+                  key={i}
+                  href="#"
+                  className="underline underline-offset-4 hover:text-primary"
+                >
+                  {t("login.terms")}
+                </a>
+              );
+            }
+            if (part === "{privacy}") {
+              return (
+                <a
+                  key={i}
+                  href="#"
+                  className="underline underline-offset-4 hover:text-primary"
+                >
+                  {t("login.privacy")}
+                </a>
+              );
+            }
+            return <Fragment key={i}>{part}</Fragment>;
+          })}
       </FieldDescription>
     </div>
   );

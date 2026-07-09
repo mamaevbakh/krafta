@@ -18,6 +18,11 @@ import {
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import { getRunningCheckAction, requestBillAction } from "@/lib/cart/actions";
 import { haptic } from "@/lib/telegram/webapp";
+import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
+import {
+  getStorefrontMessage,
+  getStorefrontPlural,
+} from "@/lib/locales/messages";
 import { cn } from "@/lib/utils";
 
 import { useOptionalCart } from "./cart-provider";
@@ -35,7 +40,9 @@ import { useOptionalCart } from "./cart-provider";
  *
  * Refresh model (v1): fetch on mount, when a new round is placed (placedOrder
  * changes), and each time the sheet opens — no realtime subscription yet
- * (ADR §7 followup). Strings are RU-only for v1 (TODO: move to messages.ts).
+ * (ADR §7 followup). Chrome strings follow the storefront locale via
+ * getStorefrontMessage (table_check.* keys); the round count pluralizes
+ * through getStorefrontPlural.
  */
 
 type RunningCheck = Awaited<ReturnType<typeof getRunningCheckAction>>;
@@ -50,6 +57,11 @@ export function TableCheck({
   currencySettings?: CurrencySettings;
 }) {
   const cart = useOptionalCart();
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
+  const t = (
+    key: Parameters<typeof getStorefrontMessage>[0],
+    vars?: Record<string, string | number>,
+  ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
   const tableLabel = cart?.dineInLock?.tableLabel ?? null;
   // Changes on every successful place — our cue to re-fetch the check.
   const placedOrderId = cart?.placedOrder?.orderId ?? null;
@@ -118,7 +130,7 @@ export function TableCheck({
             haptic.impact("light");
             setOpen(true);
           }}
-          aria-label="Открыть счёт стола"
+          aria-label={t("table_check.open_aria")}
           className={cn(
             "mx-auto flex w-full max-w-md items-center gap-3 rounded-full border border-border",
             "bg-background/90 px-4 py-2.5 backdrop-blur-2xl",
@@ -127,8 +139,12 @@ export function TableCheck({
         >
           <Receipt className="size-4 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
-            Стол {tableLabel} · {check.rounds.length}{" "}
-            {pluralRu(check.rounds.length, "заказ", "заказа", "заказов")}
+            {t("table_check.table", { table: tableLabel })} ·{" "}
+            {getStorefrontPlural(
+              "table_check.round_count_plural",
+              check.rounds.length,
+              { activeLocale, defaultLocale },
+            )}
           </span>
           <span className="shrink-0 font-mono text-sm font-semibold tabular-nums">
             {money(check.runningTotalCents)}
@@ -150,9 +166,11 @@ export function TableCheck({
         >
           <div className="flex min-h-0 flex-1 flex-col">
             <DrawerHeader className="text-center">
-              <DrawerTitle className="text-lg">Стол {tableLabel}</DrawerTitle>
+              <DrawerTitle className="text-lg">
+                {t("table_check.table", { table: tableLabel })}
+              </DrawerTitle>
               <DrawerDescription className="text-xs">
-                Ваш счёт за этим столом
+                {t("table_check.subtitle")}
               </DrawerDescription>
             </DrawerHeader>
 
@@ -165,7 +183,7 @@ export function TableCheck({
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        Заказ {i + 1}
+                        {t("table_check.round", { number: i + 1 })}
                       </span>
                       <StatusPill state={round.state} />
                     </div>
@@ -196,7 +214,7 @@ export function TableCheck({
               <div className="mx-auto w-full max-w-md px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
                 <div className="mb-3 flex items-baseline justify-between">
                   <span className="text-sm font-medium text-foreground">
-                    Итого по столу
+                    {t("table_check.total")}
                   </span>
                   <span className="font-mono text-base font-semibold tabular-nums text-foreground">
                     {money(check.runningTotalCents)}
@@ -210,7 +228,7 @@ export function TableCheck({
                     className="flex-1"
                     onClick={() => setOpen(false)}
                   >
-                    Заказать ещё
+                    {t("placed.order_more")}
                   </Button>
                   <Button
                     type="button"
@@ -220,10 +238,10 @@ export function TableCheck({
                     onClick={onAskBill}
                   >
                     {billRequested
-                      ? "Счёт запрошен"
+                      ? t("table_check.bill_requested")
                       : requesting
-                        ? "Запрашиваем…"
-                        : "Попросить счёт"}
+                        ? t("table_check.requesting")
+                        : t("table_check.request_bill")}
                   </Button>
                 </div>
               </div>
@@ -236,26 +254,24 @@ export function TableCheck({
 }
 
 function StatusPill({ state }: { state: "open" | "completed" }) {
+  const { activeLocale, defaultLocale } = useStorefrontLocale();
   if (state === "completed") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-foreground">
         <Check className="size-3" aria-hidden />
-        Подано
+        {getStorefrontMessage("table_check.status_served", {
+          activeLocale,
+          defaultLocale,
+        })}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-      Готовится
+      {getStorefrontMessage("table_check.status_preparing", {
+        activeLocale,
+        defaultLocale,
+      })}
     </span>
   );
-}
-
-// ru plural: 1 заказ / 2 заказа / 5 заказов.
-function pluralRu(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
-  return many;
 }

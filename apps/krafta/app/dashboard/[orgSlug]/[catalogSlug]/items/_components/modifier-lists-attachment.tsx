@@ -49,6 +49,7 @@ import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 /**
  * ModifierListsAttachment — Square-inspired per-item modifier UX.
@@ -119,6 +120,7 @@ export function ModifierListsAttachment({
   disabled,
   manageHref,
 }: ModifierListsAttachmentProps) {
+  const t = useT();
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
   // Sensors must be initialized unconditionally — React's rules-of-hooks
@@ -234,22 +236,22 @@ export function ModifierListsAttachment({
     return (
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <h3 className="text-sm font-semibold">Modifiers</h3>
+          <h3 className="text-sm font-semibold">{t("items.modifiers")}</h3>
           <p className="text-xs text-muted-foreground">
-            Allow customizations such as add-ons or special requests.{" "}
+            {t("items.modifiers_help")}{" "}
             {manageHref ? (
               <Link
                 href={manageHref}
                 className="font-medium text-foreground underline-offset-4 hover:underline"
               >
-                Create a list
+                {t("items.modifiers_create_list")}
               </Link>
             ) : (
               <span className="font-medium text-foreground">
-                Items → Modifiers
+                {t("items.items_modifiers_path")}
               </span>
             )}{" "}
-            first.
+            {t("items.modifiers_first_suffix")}
           </p>
         </div>
       </div>
@@ -263,9 +265,9 @@ export function ModifierListsAttachment({
       <>
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-0.5">
-            <h3 className="text-sm font-semibold">Modifiers</h3>
+            <h3 className="text-sm font-semibold">{t("items.modifiers")}</h3>
             <p className="text-xs text-muted-foreground">
-              Allow customizations such as add-ons or special requests.
+              {t("items.modifiers_help")}
             </p>
           </div>
           <Button
@@ -277,7 +279,7 @@ export function ModifierListsAttachment({
             onClick={() => setDialogOpen(true)}
           >
             <Plus className="size-3.5" aria-hidden="true" />
-            Add
+            {t("common.add")}
           </Button>
         </div>
 
@@ -300,7 +302,7 @@ export function ModifierListsAttachment({
             "Modifiers ... Edit" layout. The Edit button opens the same
             checkbox dialog the empty state's Add button does. */}
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">Modifiers</h3>
+          <h3 className="text-sm font-semibold">{t("items.modifiers")}</h3>
           <Button
             type="button"
             variant="ghost"
@@ -310,7 +312,7 @@ export function ModifierListsAttachment({
             onClick={() => setDialogOpen(true)}
           >
             <Pencil className="size-3" aria-hidden="true" />
-            Edit
+            {t("common.edit")}
           </Button>
         </div>
 
@@ -376,6 +378,7 @@ function AttachmentRow({
   onPatch: (patch: Partial<ModifierAttachment>) => void;
   onDetach: () => void;
 }) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: attachment.modifierListId });
 
@@ -389,31 +392,32 @@ function AttachmentRow({
   const choicePreview = React.useMemo(() => {
     if (list.modifier_type === "text") {
       if (list.max_length != null) {
-        return `Text modifier: ${list.max_length} character limit`;
+        return t("items.text_modifier_limit", { count: list.max_length });
       }
-      return "Text modifier: no limit";
+      return t("items.text_modifier_no_limit");
     }
     const active = list.modifiers
       .filter((m) => m.is_active)
       .sort((a, b) => a.ordinal - b.ordinal);
-    if (active.length === 0) return "No choices yet";
+    if (active.length === 0) return t("items.no_choices");
     const shown = active.slice(0, 3).map((m) => m.name);
     if (active.length > 3) shown[2] = `${shown[2]} +${active.length - 3}`;
     return shown.join(", ");
-  }, [list]);
+  }, [list, t]);
 
   // Right-side min/max chip. Honors per-item overrides — if set, those
   // win over the list-level defaults. For text modifiers, "Required" /
   // "Optional" is more informative than a numeric range.
   const minMaxLabel = React.useMemo(() => {
     if (list.modifier_type === "text") {
-      return list.text_required ? "Required" : "Optional";
+      return list.text_required ? t("common.required") : t("common.optional");
     }
     const min = attachment.minSelectedOverride ?? list.min_selected;
     const max = attachment.maxSelectedOverride ?? list.max_selected;
-    const maxLabel = max == null ? "∞ max" : `${max} max`;
-    return `${min} min/${maxLabel}`;
-  }, [list, attachment]);
+    const maxLabel =
+      max == null ? t("items.max_unlimited") : t("items.max_value", { max });
+    return t("items.min_slash_max", { min, max: maxLabel });
+  }, [list, attachment, t]);
 
   const isCustomized =
     attachment.minSelectedOverride !== null ||
@@ -432,7 +436,7 @@ function AttachmentRow({
       <button
         type="button"
         className="touch-none text-muted-foreground hover:text-foreground"
-        aria-label="Drag to reorder"
+        aria-label={t("items.drag_reorder", { name: list.name })}
         disabled={disabled}
         {...attributes}
         {...listeners}
@@ -445,7 +449,7 @@ function AttachmentRow({
           <span className="truncate text-sm font-semibold">{list.name}</span>
           {!list.is_active && (
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              Inactive
+              {t("items.inactive")}
             </span>
           )}
         </div>
@@ -467,12 +471,12 @@ function AttachmentRow({
         </span>
         {attachment.hiddenFromCustomerOverride && (
           <span className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400">
-            Hidden from customers
+            {t("items.hidden_from_customers")}
           </span>
         )}
         {isCustomized && !attachment.hiddenFromCustomerOverride && (
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Customized
+            {t("items.customized")}
           </span>
         )}
       </div>
@@ -491,7 +495,7 @@ function AttachmentRow({
         className="size-8 text-muted-foreground hover:text-destructive"
         disabled={disabled}
         onClick={onDetach}
-        aria-label={`Detach ${list.name}`}
+        aria-label={t("items.detach_aria", { name: list.name })}
       >
         <Trash2 className="size-4" aria-hidden="true" />
       </Button>
@@ -514,6 +518,7 @@ function OverrideSettingsPopover({
   disabled?: boolean;
   onPatch: (patch: Partial<ModifierAttachment>) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = React.useState(false);
 
   const isText = list.modifier_type === "text";
@@ -545,7 +550,7 @@ function OverrideSettingsPopover({
             isCustomized && "text-foreground",
           )}
           disabled={disabled}
-          aria-label={`Settings for ${list.name}`}
+          aria-label={t("items.settings_aria", { name: list.name })}
         >
           <Settings2 className="size-4" aria-hidden="true" />
         </Button>
@@ -554,27 +559,28 @@ function OverrideSettingsPopover({
         <div className="flex flex-col gap-3 px-4 py-3">
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold">
-              {list.name} &middot; for this item
+              {list.name} &middot; {t("items.for_this_item")}
             </span>
             <span className="text-xs text-muted-foreground">
-              Override the list&rsquo;s defaults for this item only. List-wide
-              settings stay untouched.
+              {t("items.override_description")}
             </span>
           </div>
 
           {isText ? (
             <div className="flex items-center justify-between rounded-md border px-3 py-2">
               <div className="flex flex-col gap-0.5">
-                <Label className="text-xs font-medium">Behavior</Label>
+                <Label className="text-xs font-medium">{t("items.behavior")}</Label>
                 <span className="text-xs text-muted-foreground">
-                  {list.text_required ? "Required text" : "Optional text"}
+                  {list.text_required
+                    ? t("items.required_text")
+                    : t("items.optional_text")}
                   {list.max_length != null
-                    ? ` · ${list.max_length} char limit`
+                    ? t("items.char_limit_suffix", { count: list.max_length })
                     : ""}
                 </span>
               </div>
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                List-level
+                {t("items.list_level")}
               </span>
             </div>
           ) : (
@@ -584,7 +590,7 @@ function OverrideSettingsPopover({
                   htmlFor={`min-${attachment.modifierListId}`}
                   className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
                 >
-                  Min
+                  {t("items.min")}
                 </Label>
                 <Input
                   id={`min-${attachment.modifierListId}`}
@@ -602,7 +608,7 @@ function OverrideSettingsPopover({
                   className="h-8 w-20 tabular-nums"
                 />
                 <span className="text-[10px] text-muted-foreground">
-                  default {list.min_selected}
+                  {t("items.default_value", { value: list.min_selected })}
                 </span>
               </div>
               <div className="flex flex-col gap-1">
@@ -610,7 +616,7 @@ function OverrideSettingsPopover({
                   htmlFor={`max-${attachment.modifierListId}`}
                   className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
                 >
-                  Max
+                  {t("items.max")}
                 </Label>
                 <Input
                   id={`max-${attachment.modifierListId}`}
@@ -618,7 +624,7 @@ function OverrideSettingsPopover({
                   inputMode="numeric"
                   min={resolvedMin}
                   value={resolvedMax ?? ""}
-                  placeholder="No limit"
+                  placeholder={t("items.no_limit")}
                   onChange={(e) => {
                     const raw = e.target.value;
                     if (raw === "") {
@@ -637,7 +643,9 @@ function OverrideSettingsPopover({
                   className="h-8 w-24 tabular-nums"
                 />
                 <span className="text-[10px] text-muted-foreground">
-                  default {list.max_selected ?? "no limit"}
+                  {t("items.default_value", {
+                    value: list.max_selected ?? t("items.no_limit_lower"),
+                  })}
                 </span>
               </div>
             </div>
@@ -651,11 +659,10 @@ function OverrideSettingsPopover({
                 htmlFor={`hidden-${attachment.modifierListId}`}
                 className="text-xs font-medium"
               >
-                Hide from customers
+                {t("items.hide_from_customers")}
               </Label>
               <span className="text-[11px] text-muted-foreground">
-                Apply this list internally (e.g. kitchen prep notes) without
-                showing it on the storefront.
+                {t("items.hide_help")}
               </span>
             </div>
             <Switch
@@ -677,7 +684,7 @@ function OverrideSettingsPopover({
               onClick={resetAll}
             >
               <RotateCcw className="size-3" aria-hidden="true" />
-              Reset to default
+              {t("items.reset_to_default")}
             </Button>
             <Button
               type="button"
@@ -685,7 +692,7 @@ function OverrideSettingsPopover({
               className="h-7"
               onClick={() => setOpen(false)}
             >
-              Done
+              {t("common.done")}
             </Button>
           </div>
         </div>
@@ -714,6 +721,7 @@ function AddModifiersDialog({
   onCommit: (nextIds: string[]) => void;
   manageHref?: string;
 }) {
+  const t = useT();
   const [draft, setDraft] = React.useState<Set<string>>(
     () => new Set(attachedIds),
   );
@@ -750,7 +758,7 @@ function AddModifiersDialog({
               variant="ghost"
               size="icon"
               className="size-9 rounded-full"
-              aria-label="Close"
+              aria-label={t("common.close")}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -772,27 +780,26 @@ function AddModifiersDialog({
             onClick={handleDone}
             className="h-9 rounded-full px-5"
           >
-            Done
+            {t("common.done")}
           </Button>
         </div>
 
         <DialogHeader className="px-6">
           <DialogTitle className="text-2xl font-bold">
-            Add modifiers
+            {t("items.add_modifiers")}
           </DialogTitle>
           <DialogDescription>
-            Select modifier sets to apply to this item. Create new or manage
-            existing sets in{" "}
+            {t("items.add_modifiers_desc")}{" "}
             {manageHref ? (
               <Link
                 href={manageHref}
                 className="font-medium text-foreground underline-offset-4 hover:underline"
               >
-                Items → Modifiers
+                {t("items.items_modifiers_path")}
               </Link>
             ) : (
               <span className="font-medium text-foreground">
-                Items → Modifiers
+                {t("items.items_modifiers_path")}
               </span>
             )}
             .
@@ -802,7 +809,7 @@ function AddModifiersDialog({
         <div className="px-6 pt-4 pb-6">
           {available.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No active modifier sets in this catalog yet.
+              {t("items.no_active_modifiers")}
               {manageHref ? (
                 <>
                   {" "}
@@ -810,7 +817,7 @@ function AddModifiersDialog({
                     href={manageHref}
                     className="font-medium text-foreground underline-offset-4 hover:underline"
                   >
-                    Create one
+                    {t("items.create_one")}
                   </Link>
                   .
                 </>
@@ -823,13 +830,13 @@ function AddModifiersDialog({
                   const checked = draft.has(list.id);
                   const subtitle = list.modifier_type === "text"
                     ? list.max_length != null
-                      ? `Text modifier: ${list.max_length} character limit`
-                      : "Text modifier"
+                      ? t("items.text_modifier_limit", { count: list.max_length })
+                      : t("items.text_modifier")
                     : list.modifiers
                         .filter((m) => m.is_active)
                         .slice(0, 3)
                         .map((m) => m.name)
-                        .join(", ") || "No choices yet";
+                        .join(", ") || t("items.no_choices");
                   return (
                     <li key={list.id}>
                       <label

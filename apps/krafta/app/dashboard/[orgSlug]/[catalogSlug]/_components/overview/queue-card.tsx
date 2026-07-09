@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useT, useDashboardLocale } from "@/lib/locales/dashboard/context";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import {
@@ -37,16 +38,21 @@ type QueueCardProps = {
 // dine_in has no "ready" stage — it hands off straight from accepted.
 function nextAction(order: OverviewOrder): {
   action: OrderAction;
-  label: string;
+  labelKey:
+    | "overview.action_accept"
+    | "overview.action_ready"
+    | "overview.action_hand_off";
 } | null {
   const s = order.fulfillmentState;
-  if (s === "proposed") return { action: "accept", label: "Accept" };
+  if (s === "proposed")
+    return { action: "accept", labelKey: "overview.action_accept" };
   if (s === "reserved") {
     return order.mode === "dine_in"
-      ? { action: "mark_completed", label: "Hand off" }
-      : { action: "mark_ready", label: "Ready" };
+      ? { action: "mark_completed", labelKey: "overview.action_hand_off" }
+      : { action: "mark_ready", labelKey: "overview.action_ready" };
   }
-  if (s === "prepared") return { action: "mark_completed", label: "Hand off" };
+  if (s === "prepared")
+    return { action: "mark_completed", labelKey: "overview.action_hand_off" };
   return null;
 }
 
@@ -57,6 +63,7 @@ export function QueueCard({
   catalogPath,
   paused,
 }: QueueCardProps) {
+  const t = useT();
   // The queue is orders still needing a hand: anything open with a non-terminal
   // fulfillment state. Newest first.
   const active = orders.filter(
@@ -75,7 +82,7 @@ export function QueueCard({
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle className="flex items-center gap-2 text-lg font-medium">
-          Needs attention
+          {t("overview.needs_attention")}
           {active.length > 0 ? (
             <Badge
               variant={newCount > 0 ? "destructive" : "secondary"}
@@ -90,7 +97,7 @@ export function QueueCard({
             href={ordersHref}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            All orders →
+            {t("overview.all_orders")} →
           </Link>
         ) : null}
       </CardHeader>
@@ -99,9 +106,7 @@ export function QueueCard({
         {active.length === 0 ? (
           <div className="flex items-center gap-2 px-6 py-6 text-sm text-muted-foreground">
             <Check className="size-4" aria-hidden />
-            {paused
-              ? "Shop is paused — no new orders are coming in"
-              : "All orders handled"}
+            {paused ? t("overview.queue_paused") : t("overview.all_handled")}
           </div>
         ) : (
           <ul className="divide-y border-t">
@@ -132,6 +137,8 @@ function QueueRow({
   ordersHref: string;
   catalogPath: string;
 }) {
+  const t = useT();
+  const locale = useDashboardLocale();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +172,7 @@ function QueueRow({
         ) : null}
         <span className="font-mono text-sm font-medium">{order.reference}</span>
         <span className="truncate text-xs text-muted-foreground">
-          {order.customerLabel} · {formatRelative(order.createdAt)}
+          {order.customerLabel} · {formatRelative(order.createdAt, locale)}
         </span>
       </Link>
 
@@ -183,7 +190,7 @@ function QueueRow({
           className={cn("shrink-0", error && "border-destructive")}
           title={error ?? undefined}
         >
-          {pending ? "…" : next.label}
+          {pending ? "…" : t(next.labelKey)}
         </Button>
       ) : null}
     </li>

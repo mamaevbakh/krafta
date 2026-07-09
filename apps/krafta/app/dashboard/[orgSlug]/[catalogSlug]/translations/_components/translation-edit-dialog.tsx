@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   createTranslation,
@@ -105,6 +106,7 @@ export function TranslationEditDialog({
   catalogId,
   onMutation,
 }: TranslationEditDialogProps) {
+  const t = useT();
   // Per-locale form state, keyed by locale code.
   const [forms, setForms] = React.useState<Record<string, LocaleFormState>>(
     () => {
@@ -216,7 +218,7 @@ export function TranslationEditDialog({
 
     const trimmedName = sourceForm.name.trim();
     if (!trimmedName) {
-      toast.error("Name is required.");
+      toast.error(t("translations.name_required"));
       setSavingSource(false);
       return false;
     }
@@ -242,7 +244,7 @@ export function TranslationEditDialog({
       // simplification — drift is tracked in the DB but not announced
       // here. If the merchant wants the new text translated, they
       // hit Retranslate per locale below.
-      toast.success("Source saved.");
+      toast.success(t("translations.source_saved"));
       onMutation();
     }
     return true;
@@ -304,7 +306,7 @@ export function TranslationEditDialog({
       };
     });
 
-    toast.success(`Translated to ${locale.display_name}.`);
+    toast.success(t("translations.translated_into", { name: locale.display_name }));
     onMutation();
   };
 
@@ -324,7 +326,7 @@ export function TranslationEditDialog({
     };
 
     if (!fields.name) {
-      toast.error("Name is required.");
+      toast.error(t("translations.name_required"));
       setSaving((prev) => {
         const next = new Set(prev);
         next.delete(locale.locale);
@@ -366,7 +368,7 @@ export function TranslationEditDialog({
       [locale.locale]: { ...form, dirty: false },
     }));
     if (!options.silent) {
-      toast.success(`Saved ${locale.display_name}`);
+      toast.success(t("translations.saved_locale", { name: locale.display_name }));
       onMutation();
     }
     return true;
@@ -405,21 +407,22 @@ export function TranslationEditDialog({
       return;
     }
 
-    const parts: string[] = [];
-    if (sourceWasDirty) parts.push("source");
-    if (savedTargets > 0)
-      parts.push(
-        `${savedTargets} translation${savedTargets === 1 ? "" : "s"}`,
-      );
-
-    if (parts.length === 0) {
-      toast.info("Nothing to save.");
+    if (!sourceWasDirty && savedTargets === 0) {
+      toast.info(t("translations.nothing_to_save"));
       return;
     }
 
     // Drift notification removed along with the "needs review" surface.
     // The DB drift trigger still fires; we just don't mention it.
-    toast.success(`Saved ${parts.join(" + ")}.`);
+    if (sourceWasDirty && savedTargets > 0) {
+      toast.success(
+        t("translations.saved_source_and_n", { count: savedTargets }),
+      );
+    } else if (sourceWasDirty) {
+      toast.success(t("translations.source_saved"));
+    } else {
+      toast.success(t("translations.saved_n", { count: savedTargets }));
+    }
     onMutation();
   };
 
@@ -453,7 +456,7 @@ export function TranslationEditDialog({
         )}
       >
         <DialogTitle className="sr-only">
-          Translate item: {item.name}
+          {t("translations.translate_item_sr", { name: item.name })}
         </DialogTitle>
 
         {/* Sticky top bar */}
@@ -463,13 +466,13 @@ export function TranslationEditDialog({
             size="icon"
             className="size-9"
             onClick={() => onOpenChange(false)}
-            aria-label="Close translation editor"
+            aria-label={t("translations.close_editor")}
           >
             <X className="size-4" aria-hidden="true" />
           </Button>
           <div className="min-w-0 flex-1">
             <span className="block text-xs text-muted-foreground">
-              Translate item
+              {t("translations.translate_item")}
             </span>
             <h2 className="truncate text-base font-semibold tracking-tight">
               {item.name}
@@ -479,7 +482,7 @@ export function TranslationEditDialog({
             <>
               <Badge variant="outline" className="shrink-0 gap-1">
                 <span className="text-amber-600 dark:text-amber-500">●</span>
-                {dirtyCount} unsaved
+                {t("translations.n_unsaved", { count: dirtyCount })}
               </Badge>
               <Button
                 type="button"
@@ -494,10 +497,10 @@ export function TranslationEditDialog({
                       className="size-3.5 animate-spin"
                       aria-hidden="true"
                     />
-                    Saving…
+                    {t("common.saving")}
                   </>
                 ) : (
-                  "Save all"
+                  t("translations.save_all")
                 )}
               </Button>
             </>
@@ -524,15 +527,15 @@ export function TranslationEditDialog({
               "max-h-[40vh] lg:max-h-none",
               sourceForm.dirty && "ring-1 ring-inset ring-amber-500/30",
             )}
-            aria-label="Source content"
+            aria-label={t("translations.source")}
           >
             <div className="flex flex-col gap-4 p-4 md:p-6">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="h-5">
-                  {defaultLocale?.display_name ?? "Source"}
+                  {defaultLocale?.display_name ?? t("translations.source")}
                 </Badge>
                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  default · source
+                  {t("translations.default_source_tag")}
                 </span>
                 <TooltipProvider delayDuration={150}>
                   <Tooltip>
@@ -540,15 +543,13 @@ export function TranslationEditDialog({
                       <button
                         type="button"
                         className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-                        aria-label="What happens when I edit the source?"
+                        aria-label={t("translations.source_help_aria")}
                       >
                         <Info className="size-3.5" aria-hidden="true" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-xs">
-                      Editing the source updates the catalog, but existing
-                      translations on each target stay as they are. Hit
-                      Retranslate per language to refresh them with AI.
+                      {t("translations.source_edit_tooltip")}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -563,7 +564,8 @@ export function TranslationEditDialog({
                     htmlFor="source-name"
                     className="text-xs text-muted-foreground"
                   >
-                    Name <span className="text-destructive">*</span>
+                    {t("translations.name")}{" "}
+                    <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="source-name"
@@ -578,7 +580,7 @@ export function TranslationEditDialog({
                     htmlFor="source-description"
                     className="text-xs text-muted-foreground"
                   >
-                    Description
+                    {t("translations.description")}
                   </Label>
                   <Textarea
                     id="source-description"
@@ -587,7 +589,7 @@ export function TranslationEditDialog({
                       updateSourceField("description", e.target.value)
                     }
                     rows={5}
-                    placeholder="Add a description (optional)"
+                    placeholder={t("translations.description_placeholder")}
                     lang={defaultLocale?.locale}
                   />
                 </div>
@@ -610,7 +612,7 @@ export function TranslationEditDialog({
                     onClick={discardSource}
                     disabled={savingSource || savingAll}
                   >
-                    Discard
+                    {t("common.discard")}
                   </Button>
                   <Button
                     type="button"
@@ -624,10 +626,10 @@ export function TranslationEditDialog({
                           className="size-3.5 animate-spin"
                           aria-hidden="true"
                         />
-                        Saving…
+                        {t("common.saving")}
                       </>
                     ) : (
-                      "Save source"
+                      t("translations.save_source")
                     )}
                   </Button>
                 </div>
@@ -678,12 +680,14 @@ export function TranslationEditDialog({
                           {aiPending.has(locale.locale) ? (
                             <>
                               <Loader2 className="size-3.5 animate-spin" />
-                              Translating…
+                              {t("translations.translating")}
                             </>
                           ) : (
                             <>
                               <Sparkles className="size-3.5" />
-                              {serverRow ? "Retranslate" : "Translate with AI"}
+                              {serverRow
+                                ? t("translations.retranslate")
+                                : t("translations.translate_with_ai")}
                             </>
                           )}
                         </Button>
@@ -700,7 +704,8 @@ export function TranslationEditDialog({
                           htmlFor={`name-${locale.locale}`}
                           className="text-xs"
                         >
-                          Name <span className="text-destructive">*</span>
+                          {t("translations.name")}{" "}
+                          <span className="text-destructive">*</span>
                         </Label>
                         <Input
                           id={`name-${locale.locale}`}
@@ -718,7 +723,7 @@ export function TranslationEditDialog({
                             htmlFor={`desc-${locale.locale}`}
                             className="text-xs"
                           >
-                            Description
+                            {t("translations.description")}
                           </Label>
                           <Textarea
                             id={`desc-${locale.locale}`}
@@ -731,7 +736,9 @@ export function TranslationEditDialog({
                               )
                             }
                             rows={5}
-                            placeholder="Translate the description"
+                            placeholder={t(
+                              "translations.translate_description_placeholder",
+                            )}
                             lang={locale.locale}
                           />
                         </div>
@@ -758,7 +765,7 @@ export function TranslationEditDialog({
                           }
                           disabled={saving.has(locale.locale)}
                         >
-                          Discard
+                          {t("common.discard")}
                         </Button>
                         <Button
                           type="button"
@@ -769,10 +776,10 @@ export function TranslationEditDialog({
                           {saving.has(locale.locale) ? (
                             <>
                               <Loader2 className="size-3.5 animate-spin" />
-                              Saving…
+                              {t("common.saving")}
                             </>
                           ) : (
-                            "Save"
+                            t("common.save")
                           )}
                         </Button>
                       </div>
@@ -782,8 +789,7 @@ export function TranslationEditDialog({
               })}
 
               <p className="pt-2 text-center text-[11px] text-muted-foreground">
-                Manual edits override AI translations. AI re-translation will
-                skip human-edited rows unless you explicitly retranslate.
+                {t("translations.manual_override_note")}
               </p>
             </div>
           </main>

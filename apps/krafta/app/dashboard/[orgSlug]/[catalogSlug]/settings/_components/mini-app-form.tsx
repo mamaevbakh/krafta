@@ -14,6 +14,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { useT } from "@/lib/locales/dashboard/context";
 import { cn } from "@/lib/utils";
 
 import { setTmaEnabled } from "./tma-actions";
@@ -37,6 +38,7 @@ export function MiniAppForm({
   venueId: string | null;
   initial: MiniAppInitial;
 }) {
+  const t = useT();
   const [enabled, setEnabled] = React.useState(initial.enabled);
   const [status, setStatus] = React.useState<Status>(null);
   const [copied, setCopied] = React.useState(false);
@@ -45,9 +47,9 @@ export function MiniAppForm({
   if (!venueId) {
     return (
       <FieldSet>
-        <FieldLegend>Telegram Mini App</FieldLegend>
+        <FieldLegend>{t("settings.miniapp.legend")}</FieldLegend>
         <div className="mt-4 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          Venue row not found for this catalog. The Mini App needs a venue.
+          {t("settings.miniapp.no_venue")}
         </div>
       </FieldSet>
     );
@@ -56,13 +58,12 @@ export function MiniAppForm({
   if (!initial.deepLink || !initial.botUsername) {
     return (
       <FieldSet>
-        <FieldLegend>Telegram Mini App</FieldLegend>
+        <FieldLegend>{t("settings.miniapp.legend")}</FieldLegend>
         <FieldDescription>
-          Let customers order from your shop inside Telegram — no app install.
+          {t("settings.miniapp.description")}
         </FieldDescription>
         <div className="mt-4 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          The Krafta bot isn’t configured yet on our side. Please contact
-          support to turn on the Mini App.
+          {t("settings.miniapp.not_configured")}
         </div>
       </FieldSet>
     );
@@ -87,7 +88,7 @@ export function MiniAppForm({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      setStatus({ kind: "err", msg: "Не удалось скопировать ссылку." });
+      setStatus({ kind: "err", msg: t("settings.miniapp.copy_error") });
     }
   };
 
@@ -95,7 +96,7 @@ export function MiniAppForm({
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Закажите у нас в Telegram",
+          title: t("settings.miniapp.share_title"),
           url: deepLink,
         });
         return;
@@ -109,11 +110,11 @@ export function MiniAppForm({
 
   return (
     <FieldSet>
-      <FieldLegend>Telegram Mini App</FieldLegend>
+      <FieldLegend>{t("settings.miniapp.legend")}</FieldLegend>
       <FieldDescription>
-        Let customers order from your shop inside Telegram — no app install. We
-        host it on the shared <span className="font-mono">@{initial.botUsername}</span>{" "}
-        bot, so there’s nothing for you to set up.
+        {t("settings.miniapp.description")} {t("settings.miniapp.hosted_pre")}{" "}
+        <span className="font-mono">@{initial.botUsername}</span>
+        {t("settings.miniapp.hosted_post")}
       </FieldDescription>
 
       <FieldGroup className="mt-6 gap-6">
@@ -125,7 +126,7 @@ export function MiniAppForm({
             disabled={pending}
           />
           <FieldLabel htmlFor="tma-enabled" className="cursor-pointer">
-            Enable Mini App storefront
+            {t("settings.miniapp.enable_label")}
           </FieldLabel>
           {pending ? <Spinner className="size-4 text-muted-foreground" /> : null}
         </Field>
@@ -133,7 +134,7 @@ export function MiniAppForm({
         {enabled ? (
           <>
             <Field>
-              <FieldLabel>Your Mini App link</FieldLabel>
+              <FieldLabel>{t("settings.miniapp.link_label")}</FieldLabel>
               <div className="flex flex-wrap items-center gap-2">
                 <code className="min-w-0 flex-1 truncate rounded-md border bg-muted px-3 py-2 font-mono text-sm">
                   {deepLink}
@@ -149,21 +150,20 @@ export function MiniAppForm({
                   ) : (
                     <Copy className="size-4" />
                   )}
-                  {copied ? "Copied" : "Copy"}
+                  {copied ? t("common.copied") : t("common.copy")}
                 </Button>
               </div>
               <FieldDescription>
-                Share this link anywhere — tapping it opens your shop right
-                inside Telegram.
+                {t("settings.miniapp.link_hint")}
               </FieldDescription>
             </Field>
 
             <Field>
-              <FieldLabel>QR code</FieldLabel>
+              <FieldLabel>{t("settings.miniapp.qr_label")}</FieldLabel>
               <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                 {initial.qrSvg ? (
                   <div
-                    aria-label="Mini App QR code"
+                    aria-label={t("settings.miniapp.qr_aria")}
                     className="size-40 shrink-0 rounded-xl border bg-white p-2 [&>svg]:size-full"
                     dangerouslySetInnerHTML={{ __html: initial.qrSvg }}
                   />
@@ -177,16 +177,16 @@ export function MiniAppForm({
                         rel="noopener noreferrer"
                       >
                         <ExternalLink className="size-4" />
-                        Open in Telegram
+                        {t("settings.miniapp.open_in_telegram")}
                       </a>
                     </Button>
                     <Button type="button" variant="outline" onClick={handleShare}>
                       <Share2 className="size-4" />
-                      Share
+                      {t("settings.miniapp.share")}
                     </Button>
                   </div>
                   <FieldDescription>
-                    Print it for tables or the counter. Customers scan to order.
+                    {t("settings.miniapp.qr_hint")}
                   </FieldDescription>
                 </div>
               </div>
@@ -194,7 +194,7 @@ export function MiniAppForm({
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Turn it on to get a shareable link and a QR code for your tables.
+            {t("settings.miniapp.disabled_hint")}
           </p>
         )}
       </FieldGroup>

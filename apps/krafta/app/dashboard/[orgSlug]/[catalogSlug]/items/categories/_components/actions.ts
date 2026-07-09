@@ -7,6 +7,7 @@ import { updateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
 import { deleteSearchDocumentsBySourceIds } from "@/lib/catalogs/search-documents";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 
 function slugify(value: string): string {
   return value
@@ -75,15 +76,16 @@ export async function createCategory(params: {
   translations: CategoryTranslationInput[];
 }) {
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   const baseName = params.name.trim();
   if (!baseName) {
-    return { ok: false, error: "Category name is required." };
+    return { ok: false, error: t("categories.error.name_required") };
   }
 
   const slug = slugify(params.slug?.trim() ?? baseName);
   if (!slug) {
-    return { ok: false, error: "Category slug could not be generated." };
+    return { ok: false, error: t("categories.error.slug_invalid") };
   }
 
   const { data: existingCategory } = await supabase
@@ -94,7 +96,7 @@ export async function createCategory(params: {
     .maybeSingle();
 
   if (existingCategory?.id) {
-    return { ok: false, error: "This slug is already used in this catalog." };
+    return { ok: false, error: t("categories.error.slug_taken") };
   }
 
   const { data: lastCategory } = await supabase
@@ -119,7 +121,10 @@ export async function createCategory(params: {
     .single();
 
   if (categoryError || !category) {
-    return { ok: false, error: categoryError?.message ?? "Failed to create category." };
+    return {
+      ok: false,
+      error: categoryError?.message ?? t("categories.error.create_failed"),
+    };
   }
 
   const translations = params.translations
@@ -145,7 +150,9 @@ export async function createCategory(params: {
     if (translationError) {
       return {
         ok: false,
-        error: translationError.message ?? "Failed to create category translations.",
+        error:
+          translationError.message ??
+          t("categories.error.create_translations_failed"),
       };
     }
   }
@@ -172,15 +179,16 @@ export async function updateCategory(params: {
   translations: CategoryTranslationInput[];
 }) {
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   const baseName = params.name.trim();
   if (!baseName) {
-    return { ok: false, error: "Category name is required." };
+    return { ok: false, error: t("categories.error.name_required") };
   }
 
   const slug = slugify(params.slug?.trim() ?? baseName);
   if (!slug) {
-    return { ok: false, error: "Category slug could not be generated." };
+    return { ok: false, error: t("categories.error.slug_invalid") };
   }
 
   const { data: existingCategory } = await supabase
@@ -192,7 +200,7 @@ export async function updateCategory(params: {
     .maybeSingle();
 
   if (existingCategory?.id) {
-    return { ok: false, error: "This slug is already used in this catalog." };
+    return { ok: false, error: t("categories.error.slug_taken") };
   }
 
   const { error: categoryError } = await supabase
@@ -237,7 +245,8 @@ export async function updateCategory(params: {
       return {
         ok: false,
         error:
-          upsertError.message ?? "Failed to save category translations.",
+          upsertError.message ??
+          t("categories.error.save_translations_failed"),
       };
     }
   }
@@ -258,6 +267,7 @@ export async function deleteCategory(params: {
   categoryId: string;
 }) {
   const supabase = await createClient();
+  const t = await getDashboardT();
 
   const { data: category, error: categoryError } = await supabase
     .from("catalog_categories")
@@ -267,7 +277,10 @@ export async function deleteCategory(params: {
     .maybeSingle();
 
   if (categoryError || !category) {
-    return { ok: false, error: categoryError?.message ?? "Category not found." };
+    return {
+      ok: false,
+      error: categoryError?.message ?? t("categories.error.not_found"),
+    };
   }
 
   const { data: categoryTranslations, error: categoryTranslationsError } =

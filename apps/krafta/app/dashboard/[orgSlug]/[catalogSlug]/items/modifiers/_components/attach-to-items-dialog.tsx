@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { attachModifierListToItems } from "./actions";
 import type {
@@ -62,6 +63,7 @@ export function AttachToItemsDialog({
   onAttached: () => void;
   onDetachItem: (listId: string, itemId: string) => void;
 }) {
+  const t = useT();
   const [query, setQuery] = React.useState("");
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = React.useState(false);
@@ -122,7 +124,7 @@ export function AttachToItemsDialog({
       return;
     }
     toast.success(
-      `Attached to ${selected.size} item${selected.size === 1 ? "" : "s"}.`,
+      t("modifiers.attach.toast_attached", { count: selected.size }),
     );
     onAttached();
   }
@@ -135,11 +137,14 @@ export function AttachToItemsDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            Attach {list?.name ? `"${list.name}"` : "list"} to items
+            {t("modifiers.attach.title", {
+              target: list?.name
+                ? `"${list.name}"`
+                : t("modifiers.attach.title_list"),
+            })}
           </DialogTitle>
           <DialogDescription>
-            Customers will see this list at checkout on every item it&apos;s
-            attached to.
+            {t("modifiers.attach.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -148,7 +153,9 @@ export function AttachToItemsDialog({
           {attached.length > 0 && (
             <section className="flex flex-col gap-2">
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Currently attached ({attached.length})
+                {t("modifiers.attach.currently_attached", {
+                  count: attached.length,
+                })}
               </h3>
               <ScrollArea className="max-h-32 rounded-md border">
                 <div className="flex flex-wrap gap-1.5 p-2">
@@ -165,7 +172,9 @@ export function AttachToItemsDialog({
                           if (list) onDetachItem(list.id, item.id);
                         }}
                         className="rounded-sm text-muted-foreground hover:bg-background hover:text-destructive"
-                        aria-label={`Detach ${item.name}`}
+                        aria-label={t("modifiers.attach.detach_aria", {
+                          name: item.name,
+                        })}
                       >
                         <X className="size-3" aria-hidden="true" />
                       </button>
@@ -180,7 +189,7 @@ export function AttachToItemsDialog({
           <section className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Add to more items
+                {t("modifiers.attach.add_more")}
               </h3>
               {available.length > 0 && (
                 <Button
@@ -190,7 +199,9 @@ export function AttachToItemsDialog({
                   className="h-7 text-xs"
                   onClick={toggleAllVisible}
                 >
-                  {allVisibleSelected ? "Clear" : "Select all visible"}
+                  {allVisibleSelected
+                    ? t("modifiers.attach.clear")
+                    : t("modifiers.attach.select_all_visible")}
                 </Button>
               )}
             </div>
@@ -203,7 +214,7 @@ export function AttachToItemsDialog({
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search items…"
+                placeholder={t("modifiers.attach.search_placeholder")}
                 className="h-9 pl-8"
               />
             </div>
@@ -212,10 +223,10 @@ export function AttachToItemsDialog({
               {available.length === 0 ? (
                 <div className="px-3 py-8 text-center text-xs text-muted-foreground">
                   {query
-                    ? "No matches."
+                    ? t("modifiers.attach.no_matches")
                     : items.length === 0
-                      ? "This catalog has no items yet."
-                      : "Every item already has this list attached."}
+                      ? t("modifiers.attach.no_items")
+                      : t("modifiers.attach.all_attached")}
                 </div>
               ) : (
                 <ul className="flex flex-col">
@@ -250,7 +261,7 @@ export function AttachToItemsDialog({
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >
-            Close
+            {t("common.close")}
           </Button>
           <Button
             type="button"
@@ -260,12 +271,12 @@ export function AttachToItemsDialog({
             {submitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                Attaching…
+                {t("modifiers.attach.attaching")}
               </>
             ) : selected.size === 0 ? (
-              "Attach"
+              t("modifiers.attach.attach")
             ) : (
-              `Attach to ${selected.size} item${selected.size === 1 ? "" : "s"}`
+              t("modifiers.attach.attach_count", { count: selected.size })
             )}
           </Button>
         </DialogFooter>

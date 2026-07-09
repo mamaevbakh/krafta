@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { CatalogCategory } from "@/lib/catalogs/types";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { CategoriesPanel } from "./_components/categories-panel";
 
 type PageProps = {
@@ -63,11 +64,12 @@ export default async function DashboardCategoriesPage({ params }: PageProps) {
   }
 
   if (!catalog?.id) {
+    const t = await getDashboardT();
     return (
       <main className="w-full">
         <div className="mx-auto max-w-312 px-6 py-8">
           <p className="text-sm text-muted-foreground">
-            Catalog not found.
+            {t("categories.catalog_not_found")}
           </p>
         </div>
       </main>

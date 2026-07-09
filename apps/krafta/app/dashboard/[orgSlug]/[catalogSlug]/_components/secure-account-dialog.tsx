@@ -44,6 +44,7 @@ import {
 } from "@/components/telegram-login-button";
 import { createClient } from "@/lib/supabase/client";
 import { signInWithEmail } from "@/lib/auth/actions";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   completeDraftClaim,
@@ -70,6 +71,7 @@ export function SecureAccountDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const [step, setStep] = React.useState<Step>("register");
   const [email, setEmail] = React.useState("");
@@ -120,7 +122,7 @@ export function SecureAccountDialog({
       : await supabase.auth.refreshSession();
     setBusy(false);
     if (sessionErr) {
-      setError("Could not refresh your session. Please try again.");
+      setError(t("activation.error.session_refresh"));
       return;
     }
     setStep("done");
@@ -167,7 +169,9 @@ export function SecureAccountDialog({
     setBusy(false);
     if (verified.error || !verified.data.user) {
       setError(
-        change.error?.message ?? verified.error?.message ?? "Verification failed",
+        change.error?.message ??
+          verified.error?.message ??
+          t("activation.error.verification_failed"),
       );
       return;
     }
@@ -211,13 +215,13 @@ export function SecureAccountDialog({
     });
     if (signin.error || !signin.data.session) {
       setBusy(false);
-      setError(signin.error?.message ?? "Verification failed");
+      setError(signin.error?.message ?? t("activation.error.verification_failed"));
       return;
     }
     const code = sessionStorage.getItem(PENDING_CLAIM_KEY);
     if (!code) {
       setBusy(false);
-      setError("The transfer expired — close this and try again.");
+      setError(t("activation.secure.transfer_expired"));
       return;
     }
     const claimed = await completeDraftClaim(code);
@@ -250,10 +254,9 @@ export function SecureAccountDialog({
         {step === "register" && (
           <>
             <DialogHeader>
-              <DialogTitle>Secure your shop</DialogTitle>
+              <DialogTitle>{t("activation.secure.title")}</DialogTitle>
               <DialogDescription>
-                Right now your shop only lives in this browser. Add a login so
-                you never lose it — everything you built stays exactly as it is.
+                {t("activation.secure.desc")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-4">
@@ -265,7 +268,7 @@ export function SecureAccountDialog({
                 disabled={busy}
               >
                 {busy ? <Loader2 className="animate-spin" /> : null}
-                Continue with Google
+                {t("activation.register.google")}
               </Button>
               {telegramBotUsername && (
                 <TelegramLoginButton
@@ -276,12 +279,14 @@ export function SecureAccountDialog({
               )}
               <div className="flex items-center gap-3">
                 <Separator className="flex-1" />
-                <span className="text-xs text-muted-foreground">or with email</span>
+                <span className="text-xs text-muted-foreground">
+                  {t("activation.register.or_email")}
+                </span>
                 <Separator className="flex-1" />
               </div>
               <form onSubmit={handleSendEmail} className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="secure-email">Email</Label>
+                  <Label htmlFor="secure-email">{t("activation.email")}</Label>
                   <Input
                     id="secure-email"
                     type="email"
@@ -300,7 +305,7 @@ export function SecureAccountDialog({
                 )}
                 <Button type="submit" className="w-full" disabled={busy}>
                   {busy ? <Loader2 className="animate-spin" /> : <Send className="size-4" />}
-                  Send code
+                  {t("activation.register.send_code")}
                 </Button>
               </form>
             </div>
@@ -310,9 +315,9 @@ export function SecureAccountDialog({
         {(step === "otp" || step === "claim-otp") && (
           <>
             <DialogHeader>
-              <DialogTitle>Enter the code</DialogTitle>
+              <DialogTitle>{t("activation.otp.title")}</DialogTitle>
               <DialogDescription>
-                We sent a 6-digit code to {email}.
+                {t("activation.otp.desc", { email })}
               </DialogDescription>
             </DialogHeader>
             <form
@@ -351,7 +356,9 @@ export function SecureAccountDialog({
                 disabled={busy || otp.length !== 6}
               >
                 {busy ? <Loader2 className="animate-spin" /> : null}
-                {step === "otp" ? "Verify" : "Sign in and transfer"}
+                {step === "otp"
+                  ? t("activation.secure.verify")
+                  : t("activation.secure.signin_transfer")}
               </Button>
               <Button
                 type="button"
@@ -363,7 +370,7 @@ export function SecureAccountDialog({
                   setStep(step === "otp" ? "register" : "claim");
                 }}
               >
-                Use a different email
+                {t("activation.otp.different_email")}
               </Button>
             </form>
           </>
@@ -372,15 +379,14 @@ export function SecureAccountDialog({
         {step === "claim" && (
           <>
             <DialogHeader>
-              <DialogTitle>This email already has an account</DialogTitle>
+              <DialogTitle>{t("activation.claim.title")}</DialogTitle>
               <DialogDescription>
-                Sign in to it and we&apos;ll bring this shop along — nothing you
-                built is lost.
+                {t("activation.claim.desc")}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleClaimSend} className="flex flex-col gap-3">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="secure-claim-email">Email</Label>
+                <Label htmlFor="secure-claim-email">{t("activation.email")}</Label>
                 <Input
                   id="secure-claim-email"
                   type="email"
@@ -398,7 +404,7 @@ export function SecureAccountDialog({
               )}
               <Button type="submit" className="w-full" disabled={busy}>
                 {busy ? <Loader2 className="animate-spin" /> : <Send className="size-4" />}
-                Send sign-in code
+                {t("activation.claim.send_code")}
               </Button>
               <Button
                 type="button"
@@ -407,7 +413,7 @@ export function SecureAccountDialog({
                 disabled={busy}
                 onClick={() => setStep("register")}
               >
-                Use a different email instead
+                {t("activation.claim.different_email")}
               </Button>
             </form>
           </>
@@ -416,9 +422,9 @@ export function SecureAccountDialog({
         {step === "done" && (
           <>
             <DialogHeader>
-              <DialogTitle>Your shop is secured</DialogTitle>
+              <DialogTitle>{t("activation.secured.title")}</DialogTitle>
               <DialogDescription>
-                You can sign back in any time — from any device.
+                {t("activation.secured.desc")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center gap-4 py-2">
@@ -431,7 +437,7 @@ export function SecureAccountDialog({
                 onClick={() => handleOpenChange(false)}
               >
                 <Check className="size-4" />
-                Done
+                {t("common.done")}
               </Button>
             </div>
           </>

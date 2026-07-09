@@ -38,6 +38,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 import {
   formatPriceInputValue,
   parsePriceInput,
@@ -157,6 +158,7 @@ export function ModifierListEditorDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [form, setForm] = React.useState<EditorForm>(() => toFormFromList(list));
   const [snapshot, setSnapshot] = React.useState<string>(() =>
     JSON.stringify(toFormFromList(list)),
@@ -246,22 +248,27 @@ export function ModifierListEditorDialog({
       toast.error(result.error);
       return;
     }
-    toast.success(isEditing ? "List saved." : "List created.");
+    toast.success(
+      isEditing
+        ? t("modifiers.toast.list_saved")
+        : t("modifiers.toast.list_created"),
+    );
     onSaved();
   }
 
   function handleClose() {
-    if (isDirty && !window.confirm("Discard unsaved changes?")) return;
+    if (isDirty && !window.confirm(t("modifiers.editor.discard_confirm")))
+      return;
     onOpenChange(false);
   }
 
   const titleText = isEditing
-    ? form.name || "Modifier list"
-    : "New modifier list";
+    ? form.name || t("modifiers.editor.title_fallback")
+    : t("modifiers.new_list");
   const descriptionText =
     form.modifier_type === "list"
-      ? "Build a set of choices customers pick from at checkout."
-      : "Let customers type a short note (size of a kid's shirt, prep request, etc.).";
+      ? t("modifiers.editor.desc_list")
+      : t("modifiers.editor.desc_text");
 
   return (
     <Dialog
@@ -296,7 +303,7 @@ export function ModifierListEditorDialog({
           </div>
           {isDirty && (
             <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-              ● Unsaved
+              ● {t("modifiers.editor.unsaved")}
             </span>
           )}
           <Button
@@ -311,12 +318,12 @@ export function ModifierListEditorDialog({
                   className="size-3.5 animate-spin"
                   aria-hidden="true"
                 />
-                Saving…
+                {t("common.saving")}
               </>
             ) : isEditing ? (
-              "Save changes"
+              t("common.save_changes")
             ) : (
-              "Create list"
+              t("modifiers.editor.create_list")
             )}
           </Button>
           <Button
@@ -324,7 +331,7 @@ export function ModifierListEditorDialog({
             size="icon"
             onClick={handleClose}
             disabled={submitting}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X className="size-4" aria-hidden="true" />
           </Button>
@@ -336,40 +343,46 @@ export function ModifierListEditorDialog({
           <div className="mx-auto flex max-w-2xl flex-col gap-6">
             {/* Name */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ml-name">Name</Label>
+              <Label htmlFor="ml-name">{t("modifiers.editor.name_label")}</Label>
               <Input
                 id="ml-name"
                 value={form.name}
                 onChange={(e) => update("name", e.target.value)}
-                placeholder="Size, Toppings, Note for kitchen…"
+                placeholder={t("modifiers.editor.name_placeholder")}
                 autoFocus
               />
               <p className="text-[11px] text-muted-foreground">
-                The label customers see at checkout.
+                {t("modifiers.editor.name_hint")}
               </p>
             </div>
 
             {/* Internal name */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ml-internal">Internal name (optional)</Label>
+              <Label htmlFor="ml-internal">
+                {t("modifiers.editor.internal_label")}
+              </Label>
               <Input
                 id="ml-internal"
                 value={form.internal_name}
                 onChange={(e) => update("internal_name", e.target.value)}
-                placeholder="Only you see this"
+                placeholder={t("modifiers.editor.internal_placeholder")}
               />
             </div>
 
             {/* Kind */}
             <div className="flex flex-col gap-1.5">
-              <Label>Kind</Label>
+              <Label>{t("modifiers.editor.kind_label")}</Label>
               <Tabs
                 value={form.modifier_type}
                 onValueChange={(v) => update("modifier_type", v as ModifierKind)}
               >
                 <TabsList className="grid w-full max-w-xs grid-cols-2">
-                  <TabsTrigger value="list">List of choices</TabsTrigger>
-                  <TabsTrigger value="text">Free text</TabsTrigger>
+                  <TabsTrigger value="list">
+                    {t("modifiers.editor.kind_list")}
+                  </TabsTrigger>
+                  <TabsTrigger value="text">
+                    {t("modifiers.editor.kind_text")}
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
@@ -381,7 +394,9 @@ export function ModifierListEditorDialog({
                 {/* Min/max bounds */}
                 <div className="flex flex-wrap items-end gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="ml-min">Min selections</Label>
+                    <Label htmlFor="ml-min">
+                      {t("modifiers.editor.min_label")}
+                    </Label>
                     <Input
                       id="ml-min"
                       type="number"
@@ -395,14 +410,16 @@ export function ModifierListEditorDialog({
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="ml-max">Max selections</Label>
+                    <Label htmlFor="ml-max">
+                      {t("modifiers.editor.max_label")}
+                    </Label>
                     <Input
                       id="ml-max"
                       type="number"
                       inputMode="numeric"
                       min={form.min_selected}
                       value={form.max_selected ?? ""}
-                      placeholder="No limit"
+                      placeholder={t("modifiers.editor.no_limit")}
                       onChange={(e) => {
                         const raw = e.target.value;
                         update(
@@ -414,8 +431,7 @@ export function ModifierListEditorDialog({
                     />
                   </div>
                   <p className="ml-1 max-w-xs text-[11px] text-muted-foreground">
-                    Set min=0 to make the list optional. Leave max blank to
-                    allow any number of selections.
+                    {t("modifiers.editor.minmax_hint")}
                   </p>
                 </div>
 
@@ -424,7 +440,7 @@ export function ModifierListEditorDialog({
                 {/* Modifier rows */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <Label>Choices</Label>
+                    <Label>{t("modifiers.editor.choices_label")}</Label>
                     <Button
                       type="button"
                       variant="outline"
@@ -432,13 +448,13 @@ export function ModifierListEditorDialog({
                       onClick={addRow}
                     >
                       <Plus className="size-3.5" aria-hidden="true" />
-                      Add choice
+                      {t("modifiers.editor.add_choice")}
                     </Button>
                   </div>
 
                   {form.rows.length === 0 ? (
                     <div className="rounded-md border border-dashed py-8 text-center text-xs text-muted-foreground">
-                      No choices yet. Add at least one.
+                      {t("modifiers.editor.no_choices")}
                     </div>
                   ) : (
                     <ModifierRowsList
@@ -455,9 +471,11 @@ export function ModifierListEditorDialog({
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between rounded-md border px-4 py-3">
                   <div className="flex flex-col gap-1">
-                    <Label htmlFor="ml-text-required">Text is required</Label>
+                    <Label htmlFor="ml-text-required">
+                      {t("modifiers.editor.text_required_label")}
+                    </Label>
                     <p className="text-[11px] text-muted-foreground">
-                      Customer must type something to add the item to cart.
+                      {t("modifiers.editor.text_required_hint")}
                     </p>
                   </div>
                   <Switch
@@ -468,7 +486,7 @@ export function ModifierListEditorDialog({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="ml-max-length">
-                    Max length (optional)
+                    {t("modifiers.editor.max_length_label")}
                   </Label>
                   <Input
                     id="ml-max-length"
@@ -476,7 +494,7 @@ export function ModifierListEditorDialog({
                     inputMode="numeric"
                     min={1}
                     value={form.max_length ?? ""}
-                    placeholder="No limit"
+                    placeholder={t("modifiers.editor.no_limit")}
                     onChange={(e) => {
                       const raw = e.target.value;
                       update(
@@ -487,7 +505,7 @@ export function ModifierListEditorDialog({
                     className="w-32"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Cap on how long the typed note can be.
+                    {t("modifiers.editor.max_length_hint")}
                   </p>
                 </div>
               </div>
@@ -498,10 +516,11 @@ export function ModifierListEditorDialog({
             {/* Active toggle — soft delete */}
             <div className="flex items-center justify-between rounded-md border px-4 py-3">
               <div className="flex flex-col gap-1">
-                <Label htmlFor="ml-active">Active</Label>
+                <Label htmlFor="ml-active">
+                  {t("modifiers.editor.active_label")}
+                </Label>
                 <p className="text-[11px] text-muted-foreground">
-                  Inactive lists are hidden from customer checkout but stay
-                  attached to items.
+                  {t("modifiers.editor.active_hint")}
                 </p>
               </div>
               <Switch
@@ -578,6 +597,7 @@ function SortableModifierRow({
   onChange: (key: string, patch: Partial<ModifierDraftRow>) => void;
   onRemove: (key: string) => void;
 }) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: row.key });
 
@@ -613,7 +633,7 @@ function SortableModifierRow({
       <button
         type="button"
         className="touch-none text-muted-foreground hover:text-foreground"
-        aria-label="Drag to reorder"
+        aria-label={t("modifiers.editor.drag_aria")}
         {...attributes}
         {...listeners}
       >
@@ -622,7 +642,7 @@ function SortableModifierRow({
       <Input
         value={row.name}
         onChange={(e) => onChange(row.key, { name: e.target.value })}
-        placeholder="Choice name"
+        placeholder={t("modifiers.editor.choice_name_placeholder")}
         className="h-8 flex-1 border-none bg-transparent shadow-none focus-visible:ring-1"
       />
       {/* Price + currency suffix label.  InputGroup keeps the addon
@@ -649,7 +669,7 @@ function SortableModifierRow({
           }}
           inputMode={currencySettings.showDecimals ? "decimal" : "numeric"}
           placeholder={formatPriceInputValue(0, currencySettings)}
-          aria-label="Price"
+          aria-label={t("modifiers.editor.price_aria")}
           className="text-right font-mono tabular-nums"
         />
         <InputGroupAddon
@@ -665,13 +685,13 @@ function SortableModifierRow({
       </InputGroup>
       <label
         className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-        title="Pre-selected for the customer by default"
+        title={t("modifiers.editor.default_tooltip")}
       >
         <Switch
           checked={row.on_by_default}
           onCheckedChange={(v) => onChange(row.key, { on_by_default: v })}
         />
-        Default
+        {t("modifiers.editor.default_toggle")}
       </label>
       <Button
         type="button"
@@ -679,7 +699,7 @@ function SortableModifierRow({
         size="icon"
         className="size-8 text-muted-foreground hover:text-destructive"
         onClick={() => onRemove(row.key)}
-        aria-label="Remove choice"
+        aria-label={t("modifiers.editor.remove_choice_aria")}
       >
         <Trash2 className="size-3.5" aria-hidden="true" />
       </Button>

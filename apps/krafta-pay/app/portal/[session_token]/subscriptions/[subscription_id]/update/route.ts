@@ -78,6 +78,26 @@ export async function POST(
         : ({} as Record<string, unknown>);
 
     if (subscription.plan_id === targetPlan.id && prorationBehavior === "none") {
+      // Re-selecting the current plan cancels any scheduled (deferred) downgrade —
+      // otherwise it would silently apply at the next renewal.
+      if (nextMetadata.pending_plan_change) {
+        delete nextMetadata.pending_plan_change;
+        const { error: clearErr } = await supabase
+          .schema("payments")
+          .from("subscriptions")
+          .update({ metadata: nextMetadata as any, updated_at: nowIso })
+          .eq("id", subscription.id);
+        if (clearErr) throw clearErr;
+
+        await supabase.schema("payments").from("subscription_events").insert({
+          subscription_id: subscription.id,
+          event_type: "customer_portal_plan_change_canceled",
+          payload: {
+            plan_id: subscription.plan_id,
+            customer_portal_session_id: portalSession.session.id,
+          },
+        });
+      }
       return redirectToPortal(req, session_token, { success: "plan_unchanged" });
     }
 

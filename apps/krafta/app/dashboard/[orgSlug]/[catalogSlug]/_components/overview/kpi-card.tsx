@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
+import { useT } from "@/lib/locales/dashboard/context";
 import { formatPriceCents } from "@/lib/catalogs/pricing";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import { useAnimatedNumber } from "@/lib/hooks/use-animated-number";
@@ -45,6 +46,7 @@ export function KpiCard({
   weekAgoDelta,
   currency,
 }: KpiCardProps) {
+  const t = useT();
   const ordersLabel = truncated ? `${todayOrderCount}+` : String(today.orders);
 
   return (
@@ -52,7 +54,9 @@ export function KpiCard({
       <div className="grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {/* Revenue — full width on mobile, first cell on desktop */}
         <div className="p-4">
-          <p className="text-xs text-muted-foreground">Revenue today</p>
+          <p className="text-xs text-muted-foreground">
+            {t("overview.revenue_today")}
+          </p>
           <Money
             cents={today.revenueCents}
             currency={currency}
@@ -60,11 +64,14 @@ export function KpiCard({
           />
           {yesterday && (yesterday.orders > 0 || today.orders === 0) ? (
             <p className="mt-1 text-xs text-muted-foreground">
-              Yesterday:{" "}
+              {t("overview.yesterday")}:{" "}
               <span className="font-mono tabular-nums">
                 {formatPriceCents(yesterday.revenueCents, currency)}
               </span>{" "}
-              · {yesterday.orders} {yesterday.orders === 1 ? "order" : "orders"}
+              · {yesterday.orders}{" "}
+              {yesterday.orders === 1
+                ? t("overview.order_one")
+                : t("overview.order_other")}
             </p>
           ) : null}
         </div>
@@ -72,7 +79,7 @@ export function KpiCard({
         <div className="grid grid-cols-2 divide-x sm:contents">
           {/* Orders */}
           <div className="p-4">
-            <p className="text-xs text-muted-foreground">Orders</p>
+            <p className="text-xs text-muted-foreground">{t("overview.orders")}</p>
             <p className="mt-1 text-2xl font-semibold tabular-nums">
               {ordersLabel}
             </p>
@@ -83,7 +90,9 @@ export function KpiCard({
 
           {/* Average check */}
           <div className="p-4">
-            <p className="text-xs text-muted-foreground">Average order</p>
+            <p className="text-xs text-muted-foreground">
+              {t("overview.avg_order")}
+            </p>
             <p className="mt-1 text-2xl font-semibold">
               {today.avgCheckCents === null ? (
                 <span className="text-muted-foreground">—</span>
@@ -100,10 +109,11 @@ export function KpiCard({
 
 /** Monochrome delta line — direction shown by the arrow glyph, never by color. */
 function DeltaLine({ value }: { value: number }) {
+  const t = useT();
   if (value === 0) {
     return (
       <p className="mt-1 font-mono text-xs text-muted-foreground">
-        Same as last week
+        {t("overview.delta_same")}
       </p>
     );
   }
@@ -112,7 +122,7 @@ function DeltaLine({ value }: { value: number }) {
   return (
     <p className="mt-1 inline-flex items-center gap-0.5 font-mono text-xs text-muted-foreground">
       <Icon className="size-3" aria-hidden />
-      {Math.abs(value)}% vs last week
+      {t("overview.delta_vs_last_week", { value: Math.abs(value) })}
     </p>
   );
 }

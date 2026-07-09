@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import { enqueueTranslationJob } from "@/lib/translation/actions";
 import type { EntityKind } from "@/lib/translation/schemas";
@@ -108,6 +109,22 @@ export function TranslateEverythingButton({
   className,
   isAiBusy = false,
 }: TranslateEverythingButtonProps) {
+  const t = useT();
+  // Translated plural noun per entity kind — the confirmation breakdown
+  // ("3 items, 2 categories") reads from these instead of the English
+  // singular/pluralLabel props threaded through the payload.
+  const kindPlural = (kind: EntityKind): string =>
+    kind === "category"
+      ? t("translations.entity_plural.category")
+      : kind === "variation"
+        ? t("translations.entity_plural.variation")
+        : kind === "modifier"
+          ? t("translations.entity_plural.modifier")
+          : kind === "modifier_list"
+            ? t("translations.entity_plural.modifier_list")
+            : kind === "catalog"
+              ? t("translations.entity_plural.catalog")
+              : t("translations.entity_plural.item");
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -188,8 +205,8 @@ export function TranslateEverythingButton({
     }
     toast.success(
       totalEnqueued === 0
-        ? "Nothing new to translate."
-        : `Queued ${totalEnqueued} translations across ${perLanguage.length} ${perLanguage.length === 1 ? "language" : "languages"}.`,
+        ? t("translations.nothing_new")
+        : t("translations.queued_n", { count: totalEnqueued }),
     );
     onEnqueued();
   };
@@ -227,12 +244,12 @@ export function TranslateEverythingButton({
               className="size-4 animate-spin"
               aria-hidden="true"
             />
-            AI translating…
+            {t("translations.ai_translating")}
           </>
         ) : (
           <>
             <Sparkles className="size-4" aria-hidden="true" />
-            Translate everything missing ({grandTotal})
+            {t("translations.translate_everything_n", { count: grandTotal })}
           </>
         )}
       </BorderBeamButton>
@@ -241,18 +258,14 @@ export function TranslateEverythingButton({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Translate everything missing with AI?
+              {t("translations.translate_everything_title")}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="flex flex-col gap-2 text-sm">
                 <p>
-                  This will queue{" "}
-                  <strong className="text-foreground">{grandTotal}</strong>{" "}
-                  translation{grandTotal === 1 ? "" : "s"} across{" "}
-                  <strong className="text-foreground">
-                    {perLanguage.length}
-                  </strong>{" "}
-                  language{perLanguage.length === 1 ? "" : "s"}:
+                  {t("translations.translate_everything_desc", {
+                    count: grandTotal,
+                  })}
                 </p>
                 <ul className="ml-4 list-disc text-xs text-muted-foreground">
                   {perLanguage.map(({ locale, perKind, totalForLocale }) => (
@@ -260,7 +273,8 @@ export function TranslateEverythingButton({
                       <span className="font-medium text-foreground">
                         {locale.display_name}
                       </span>{" "}
-                      — {totalForLocale} total
+                      —{" "}
+                      {t("translations.total_count", { count: totalForLocale })}
                       {/* Per-kind breakdown nested under the locale —
                           gives the merchant a sense of where the work
                           lives ("3 items, 2 categories, 5 variations"). */}
@@ -269,7 +283,7 @@ export function TranslateEverythingButton({
                         {perKind
                           .map(
                             (k) =>
-                              `${k.entityIds.length} ${k.entityIds.length === 1 ? k.singularLabel : k.pluralLabel}`,
+                              `${k.entityIds.length} ${kindPlural(k.kind)}`,
                           )
                           .join(", ")}
                         )
@@ -278,15 +292,13 @@ export function TranslateEverythingButton({
                   ))}
                 </ul>
                 <p className="text-xs text-muted-foreground">
-                  Rows you&apos;ve manually edited stay untouched. To
-                  retranslate a specific row over your edit, use the row&apos;s
-                  own AI button.
+                  {t("translations.everything_note")}
                 </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={submitting}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();

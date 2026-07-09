@@ -30,6 +30,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { signOut } from "@/lib/auth/actions";
+import { useT } from "@/lib/locales/dashboard/context";
 import Link from "next/link";
 
 export function NavUser({
@@ -42,6 +43,7 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const t = useT();
 
   // Get initials from name for fallback
   const initials = user.name
@@ -94,7 +96,7 @@ export function NavUser({
               <DropdownMenuItem asChild>
                 <Link href="/dashboard">
                 <Sparkles />
-                Plans & Billing
+                {t("activation.nav.plans_billing")}
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
@@ -102,23 +104,23 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuItem>
                 <BadgeCheck />
-                Account
+                {t("activation.nav.account")}
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/dashboard">
                 <CreditCard />
-                Billing
+                {t("activation.nav.billing")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Bell />
-                Notifications
+                {t("activation.nav.notifications")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => signOut()}>
               <LogOut />
-              Log out
+              {t("activation.nav.logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

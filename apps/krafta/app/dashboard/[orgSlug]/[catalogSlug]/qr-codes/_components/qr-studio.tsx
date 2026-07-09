@@ -52,6 +52,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/dashboard/context";
 
 import {
   EYE_INNER_SHAPES,
@@ -66,26 +67,6 @@ import {
   saveQrStyle,
   uploadQrLogo,
 } from "@/lib/qr/actions";
-
-// =========================================================================
-// Module-shape preset chips
-// =========================================================================
-
-const MODULE_LABELS: Record<(typeof MODULE_SHAPES)[number], string> = {
-  square: "Square",
-  dots: "Dots",
-  rounded: "Rounded",
-};
-const EYE_OUTER_LABELS: Record<(typeof EYE_OUTER_SHAPES)[number], string> = {
-  square: "Square",
-  rounded: "Rounded",
-  circle: "Circle",
-};
-const EYE_INNER_LABELS: Record<(typeof EYE_INNER_SHAPES)[number], string> = {
-  square: "Square",
-  rounded: "Rounded",
-  circle: "Circle",
-};
 
 // =========================================================================
 // Color presets — quick swatches the merchant can tap before reaching
@@ -123,6 +104,22 @@ export function QrStudio({
   initialStyle,
   previewUrl,
 }: QrStudioProps) {
+  const t = useT();
+  const MODULE_LABELS: Record<(typeof MODULE_SHAPES)[number], string> = {
+    square: t("qr.shape_square"),
+    dots: t("qr.shape_dots"),
+    rounded: t("qr.shape_rounded"),
+  };
+  const EYE_OUTER_LABELS: Record<(typeof EYE_OUTER_SHAPES)[number], string> = {
+    square: t("qr.shape_square"),
+    rounded: t("qr.shape_rounded"),
+    circle: t("qr.shape_circle"),
+  };
+  const EYE_INNER_LABELS: Record<(typeof EYE_INNER_SHAPES)[number], string> = {
+    square: t("qr.shape_square"),
+    rounded: t("qr.shape_rounded"),
+    circle: t("qr.shape_circle"),
+  };
   const [draft, setDraft] = React.useState<QrStyleConfig>(initialStyle);
   const [previewSvg, setPreviewSvg] = React.useState<string>("");
   const [isPending, startTransition] = useTransition();
@@ -180,7 +177,7 @@ export function QrStudio({
         toast.error(result.error);
         return;
       }
-      toast.success("QR style saved.");
+      toast.success(t("qr.style_saved"));
     });
   };
 
@@ -195,20 +192,20 @@ export function QrStudio({
         return;
       }
       setDraft(result.style);
-      toast.success("Reset to default style.");
+      toast.success(t("qr.reset_done"));
     });
   };
 
   const onUploadLogo = (file: File) => {
     if (file.size > 512 * 1024) {
-      toast.error("Logo must be 512 KB or smaller.");
+      toast.error(t("qr.logo_too_large"));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = String(reader.result ?? "");
       if (!dataUrl) {
-        toast.error("Couldn't read the file.");
+        toast.error(t("qr.file_read_error"));
         return;
       }
       setIsUploading(true);
@@ -223,11 +220,11 @@ export function QrStudio({
             size: draft.logo?.size ?? 0.22,
             margin: draft.logo?.margin ?? 1,
           });
-          toast.success("Logo added.");
+          toast.success(t("qr.logo_added"));
         })
         .finally(() => setIsUploading(false));
     };
-    reader.onerror = () => toast.error("Couldn't read the file.");
+    reader.onerror = () => toast.error(t("qr.file_read_error"));
     reader.readAsDataURL(file);
   };
 
@@ -237,11 +234,10 @@ export function QrStudio({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              QR studio
+              {t("qr.studio_title")}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Style every QR for this catalog — mode tiles, table tents,
-              and the bulk-download set all use this look.
+              {t("qr.studio_subtitle")}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -257,7 +253,7 @@ export function QrStudio({
               ) : (
                 <RotateCcw className="size-3.5" aria-hidden />
               )}
-              Reset
+              {t("qr.reset")}
             </Button>
             <Button
               size="sm"
@@ -267,10 +263,10 @@ export function QrStudio({
               {isPending ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                  Saving…
+                  {t("common.saving")}
                 </>
               ) : (
-                "Save style"
+                t("qr.save_style")
               )}
             </Button>
           </div>
@@ -287,40 +283,40 @@ export function QrStudio({
           <div
             className="grid aspect-square w-full max-w-[320px] place-items-center overflow-hidden rounded-md border bg-white p-3 [&>svg]:h-full [&>svg]:max-h-full [&>svg]:w-full [&>svg]:max-w-full"
             role="img"
-            aria-label="QR style preview"
+            aria-label={t("qr.preview_aria")}
             dangerouslySetInnerHTML={{ __html: previewSvg }}
           />
           <p className="text-center text-xs text-muted-foreground">
-            Preview — the saved style applies to every QR below.
+            {t("qr.preview_caption")}
           </p>
         </div>
 
         {/* Controls */}
         <Tabs defaultValue="style" className="flex flex-col gap-3">
           <TabsList className="self-start">
-            <TabsTrigger value="style">Style</TabsTrigger>
-            <TabsTrigger value="brand">Brand</TabsTrigger>
-            <TabsTrigger value="frame">Frame</TabsTrigger>
+            <TabsTrigger value="style">{t("qr.tab_style")}</TabsTrigger>
+            <TabsTrigger value="brand">{t("qr.tab_brand")}</TabsTrigger>
+            <TabsTrigger value="frame">{t("qr.tab_frame")}</TabsTrigger>
           </TabsList>
 
           {/* -------------------------------------------------- Style tab */}
           <TabsContent value="style" className="flex flex-col gap-5 pt-2">
             <ShapeSelectGroup
-              label="Module shape"
+              label={t("qr.module_shape")}
               options={MODULE_SHAPES}
               labels={MODULE_LABELS}
               value={draft.moduleShape}
               onChange={(value) => update("moduleShape", value)}
             />
             <ShapeSelectGroup
-              label="Eye outer"
+              label={t("qr.eye_outer")}
               options={EYE_OUTER_SHAPES}
               labels={EYE_OUTER_LABELS}
               value={draft.eyeOuterShape}
               onChange={(value) => update("eyeOuterShape", value)}
             />
             <ShapeSelectGroup
-              label="Eye inner"
+              label={t("qr.eye_inner")}
               options={EYE_INNER_SHAPES}
               labels={EYE_INNER_LABELS}
               value={draft.eyeInnerShape}
@@ -333,13 +329,13 @@ export function QrStudio({
                 off to get the picker back. */}
             {!draft.fgGradient ? (
               <ColorRow
-                label="Foreground color"
+                label={t("qr.fg_color")}
                 value={draft.fgColor}
                 onChange={(value) => update("fgColor", value)}
               />
             ) : null}
             <ColorRow
-              label="Background color"
+              label={t("qr.bg_color")}
               value={draft.bgColor}
               onChange={(value) => update("bgColor", value)}
               allowTransparent
@@ -356,7 +352,7 @@ export function QrStudio({
           <TabsContent value="brand" className="flex flex-col gap-5 pt-2">
             <div className="flex flex-col gap-2">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Wordmark
+                {t("qr.wordmark")}
               </Label>
               <div className="flex flex-col gap-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -380,20 +376,18 @@ export function QrStudio({
                     onClick={() => update("wordmark", "")}
                     className="self-start text-muted-foreground"
                   >
-                    Hide
+                    {t("qr.hide")}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Leave empty for the default Krafta wordmark, type your
-                  own brand (e.g. <span className="font-mono">My Café</span>
-                  ), or hide it. Logos override wordmarks.
+                  {t("qr.wordmark_help")}
                 </p>
               </div>
             </div>
 
             <div className="flex flex-col gap-2">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Logo
+                {t("qr.logo")}
               </Label>
               {draft.logo ? (
                 <div className="flex flex-col gap-3 rounded-md border p-3">
@@ -403,16 +397,16 @@ export function QrStudio({
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={draft.logo.src}
-                          alt="Logo"
+                          alt={t("qr.logo_alt")}
                           className="size-10 object-contain"
                         />
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">
-                          Logo attached
+                          {t("qr.logo_attached")}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          Centered with a white halo.
+                          {t("qr.logo_centered_hint")}
                         </p>
                       </div>
                     </div>
@@ -420,18 +414,16 @@ export function QrStudio({
                       variant="ghost"
                       size="icon"
                       onClick={() => update("logo", null)}
-                      aria-label="Remove logo"
+                      aria-label={t("qr.remove_logo_aria")}
                     >
                       <X className="size-4" />
                     </Button>
                   </div>
                   <div className="flex flex-col gap-2">
                     <Label className="text-xs text-muted-foreground">
-                      Size:{" "}
-                      <span className="font-mono text-foreground">
-                        {Math.round(draft.logo.size * 100)}%
-                      </span>{" "}
-                      of QR
+                      {t("qr.logo_size", {
+                        value: Math.round(draft.logo.size * 100),
+                      })}
                     </Label>
                     <Slider
                       min={10}
@@ -461,10 +453,9 @@ export function QrStudio({
           <TabsContent value="frame" className="flex flex-col gap-5 pt-2">
             <div className="flex items-center justify-between gap-3 rounded-md border p-3">
               <div>
-                <p className="text-sm font-medium">Frame label</p>
+                <p className="text-sm font-medium">{t("qr.frame_label_title")}</p>
                 <p className="text-xs text-muted-foreground">
-                  Adds a short caption below the QR — like
-                  &ldquo;Scan to order&rdquo; or a table number.
+                  {t("qr.frame_hint")}
                 </p>
               </div>
               <Switch
@@ -472,17 +463,19 @@ export function QrStudio({
                 onCheckedChange={(checked) =>
                   update(
                     "frame",
-                    checked ? { text: "Scan to order", color: null } : null,
+                    checked
+                      ? { text: t("qr.frame_default_text"), color: null }
+                      : null,
                   )
                 }
-                aria-label="Toggle frame label"
+                aria-label={t("qr.toggle_frame_aria")}
               />
             </div>
             {draft.frame ? (
               <div className="flex flex-col gap-3 rounded-md border p-3">
                 <div className="flex flex-col gap-2">
                   <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Text
+                    {t("qr.frame_text_label")}
                   </Label>
                   <Input
                     value={draft.frame.text}
@@ -495,11 +488,11 @@ export function QrStudio({
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    Up to 24 characters fits the print scale cleanly.
+                    {t("qr.frame_text_hint")}
                   </p>
                 </div>
                 <ColorRow
-                  label="Frame color"
+                  label={t("qr.frame_color")}
                   value={draft.frame.color ?? draft.fgColor}
                   onChange={(value) =>
                     update("frame", { ...draft.frame!, color: value })
@@ -575,6 +568,7 @@ function ColorRow({
   allowTransparent?: boolean;
   onTransparent?: () => void;
 }) {
+  const t = useT();
   const isTransparent = value === "transparent";
   return (
     <div className="flex flex-col gap-2">
@@ -588,7 +582,7 @@ function ColorRow({
           onChange={(e) => onChange(e.target.value.toUpperCase())}
           disabled={disabled || isTransparent}
           className="h-9 w-12 cursor-pointer rounded-md border bg-background p-0 disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label={`${label} picker`}
+          aria-label={t("qr.color_picker_aria", { label })}
         />
         <Input
           value={value}
@@ -610,7 +604,7 @@ function ColorRow({
                 disabled && "cursor-not-allowed opacity-40",
               )}
               style={{ backgroundColor: preset }}
-              aria-label={`Pick ${preset}`}
+              aria-label={t("qr.color_pick_aria", { color: preset })}
             />
           ))}
         </div>
@@ -627,7 +621,7 @@ function ColorRow({
             disabled={disabled}
             className="text-xs text-muted-foreground"
           >
-            {isTransparent ? "Use a color" : "Transparent"}
+            {isTransparent ? t("qr.use_color") : t("qr.transparent")}
           </Button>
         ) : null}
       </div>
@@ -645,6 +639,7 @@ function GradientRow({
   gradient: QrStyleConfig["fgGradient"];
   onChange: (next: QrStyleConfig["fgGradient"]) => void;
 }) {
+  const t = useT();
   const enabled = !!gradient;
   const stop0 = gradient?.stops?.[0]?.color ?? "#000000";
   const stop1 = gradient?.stops?.[1]?.color ?? "#FF5500";
@@ -655,10 +650,9 @@ function GradientRow({
     <div className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium">Gradient</p>
+          <p className="text-sm font-medium">{t("qr.gradient_title")}</p>
           <p className="text-xs text-muted-foreground">
-            Two-stop gradient for the dark modules. Overrides the
-            foreground color.
+            {t("qr.gradient_hint")}
           </p>
         </div>
         <Switch
@@ -677,14 +671,14 @@ function GradientRow({
               ],
             });
           }}
-          aria-label="Toggle gradient"
+          aria-label={t("qr.toggle_gradient_aria")}
         />
       </div>
       {enabled ? (
         <div className="mt-1 flex flex-col gap-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Label className="text-xs text-muted-foreground sm:w-24">
-              Type
+              {t("qr.gradient_type")}
             </Label>
             <Select
               value={type}
@@ -703,16 +697,15 @@ function GradientRow({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="linear">Linear</SelectItem>
-                <SelectItem value="radial">Radial</SelectItem>
+                <SelectItem value="linear">{t("qr.gradient_linear")}</SelectItem>
+                <SelectItem value="radial">{t("qr.gradient_radial")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           {type === "linear" ? (
             <div className="flex flex-col gap-2">
               <Label className="text-xs text-muted-foreground">
-                Rotation:{" "}
-                <span className="font-mono text-foreground">{rotation}°</span>
+                {t("qr.gradient_rotation", { value: rotation })}
               </Label>
               <Slider
                 min={0}
@@ -733,7 +726,7 @@ function GradientRow({
             </div>
           ) : null}
           <ColorRow
-            label="From"
+            label={t("qr.gradient_from")}
             value={stop0}
             onChange={(value) =>
               onChange({
@@ -747,7 +740,7 @@ function GradientRow({
             }
           />
           <ColorRow
-            label="To"
+            label={t("qr.gradient_to")}
             value={stop1}
             onChange={(value) =>
               onChange({
@@ -773,6 +766,7 @@ function LogoUploadButton({
   onFile: (file: File) => void;
   isUploading: boolean;
 }) {
+  const t = useT();
   const inputRef = React.useRef<HTMLInputElement>(null);
   return (
     <TooltipProvider delayDuration={150}>
@@ -790,7 +784,7 @@ function LogoUploadButton({
             ) : (
               <Upload className="size-4" aria-hidden />
             )}
-            {isUploading ? "Uploading…" : "Upload logo"}
+            {isUploading ? t("common.uploading") : t("qr.upload_logo")}
             <input
               ref={inputRef}
               type="file"
@@ -805,7 +799,7 @@ function LogoUploadButton({
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          PNG, JPEG, SVG, or WEBP. Up to 512 KB. Square logos work best.
+          {t("qr.logo_upload_tooltip")}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

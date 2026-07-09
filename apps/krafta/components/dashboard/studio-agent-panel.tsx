@@ -29,6 +29,8 @@ import {
 import { Suggestion } from "@/components/ai-elements/suggestion";
 import { Loader } from "@/components/ai-elements/loader";
 import type { DesignPatch } from "@/lib/tools/studio-design-tools";
+import { useT } from "@/lib/locales/dashboard/context";
+import type { DashboardMessageKey } from "@/lib/locales/dashboard/messages";
 
 type StudioAgentPanelProps = {
   catalogId: string;
@@ -40,17 +42,20 @@ type StudioAgentPanelProps = {
   onApplyDesign?: (patch: DesignPatch) => void;
 };
 
-const SUGGESTIONS = [
-  "Review my shop and suggest improvements",
-  "Switch my product cards to big photos",
-  "Use a centered header",
-  "Turn the grid to 3 columns",
+const SUGGESTION_KEYS: DashboardMessageKey[] = [
+  "studio.agent_suggestion_review",
+  "studio.agent_suggestion_big_photos",
+  "studio.agent_suggestion_centered_header",
+  "studio.agent_suggestion_three_columns",
 ];
 
-const TOOL_LABELS: Record<string, { label: string; icon: typeof Search }> = {
-  "tool-getCatalogOverview": { label: "Read your shop", icon: LayoutDashboard },
-  "tool-applyDesign": { label: "Updated your design", icon: Wand2 },
-  "tool-searchCatalog": { label: "Searched your menu", icon: Search },
+const TOOL_LABELS: Record<
+  string,
+  { labelKey: DashboardMessageKey; icon: typeof Search }
+> = {
+  "tool-getCatalogOverview": { labelKey: "studio.tool_read_shop", icon: LayoutDashboard },
+  "tool-applyDesign": { labelKey: "studio.tool_updated_design", icon: Wand2 },
+  "tool-searchCatalog": { labelKey: "studio.tool_searched_menu", icon: Search },
 };
 
 export function StudioAgentPanel({
@@ -59,6 +64,7 @@ export function StudioAgentPanel({
   catalogName,
   onApplyDesign,
 }: StudioAgentPanelProps) {
+  const t = useT();
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -120,11 +126,11 @@ export function StudioAgentPanel({
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-medium">Krafta Studio</h2>
               <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Beta
+                {t("studio.beta")}
               </span>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Your AI design partner for {catalogName}
+              {t("studio.agent_subtitle", { name: catalogName })}
             </p>
           </div>
         </div>
@@ -139,19 +145,17 @@ export function StudioAgentPanel({
               </span>
               <div className="space-y-1">
                 <h3 className="text-base font-medium">
-                  Let&apos;s shape your shop
+                  {t("studio.agent_empty_title")}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Ask about your layout, categories, branding, or how to
-                  merchandise your items. I read your live shop and give advice
-                  specific to it.
+                  {t("studio.agent_empty_desc")}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2">
-                {SUGGESTIONS.map((suggestion) => (
+                {SUGGESTION_KEYS.map((key) => (
                   <Suggestion
-                    key={suggestion}
-                    suggestion={suggestion}
+                    key={key}
+                    suggestion={t(key)}
                     onClick={send}
                   />
                 ))}
@@ -186,7 +190,7 @@ export function StudioAgentPanel({
                             className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground"
                           >
                             <Icon className="size-3" aria-hidden />
-                            {meta.label}
+                            {t(meta.labelKey)}
                           </span>
                         );
                       })}
@@ -210,7 +214,7 @@ export function StudioAgentPanel({
             <Message from="assistant">
               <MessageContent>
                 <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader size={14} /> Thinking…
+                  <Loader size={14} /> {t("studio.thinking")}
                 </span>
               </MessageContent>
             </Message>
@@ -222,16 +226,16 @@ export function StudioAgentPanel({
       <div className="border-t border-border p-3">
         {error ? (
           <p className="mb-2 px-1 text-xs text-destructive">
-            Something went wrong. Please try again.
+            {t("common.error_generic")}
           </p>
         ) : null}
         <PromptInput onSubmit={handleSubmit}>
           <PromptInputBody>
-            <PromptInputTextarea placeholder="Ask Krafta Studio about your shop…" />
+            <PromptInputTextarea placeholder={t("studio.agent_input_placeholder")} />
           </PromptInputBody>
           <PromptInputFooter>
             <span className="px-1 text-xs text-muted-foreground">
-              Beta · I can restyle your shop — review in preview, then Save.
+              {t("studio.agent_footer_note")}
             </span>
             <PromptInputSubmit status={status} disabled={busy} />
           </PromptInputFooter>
