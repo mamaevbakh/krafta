@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock3 } from "lucide-react";
+import { Clock3, ShieldCheck } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/locales/dashboard/context";
 import { formatMoney } from "@/lib/billing/format";
 import type { KraftaPayPlan } from "@/lib/billing/pay-client";
+import { SecureAccountDialog } from "../../_components/secure-account-dialog";
 
 type EntitlementLite = {
   planId: string | null;
@@ -24,6 +27,10 @@ type PlansBrowserProps = {
   orgSlug: string;
   catalogSlug: string;
   upgradeAction: (formData: FormData) => void | Promise<void>;
+  // Anonymous onboarding sessions must register before paying — plan buttons
+  // open the secure-account flow instead of submitting the checkout.
+  isAnonymous: boolean;
+  telegramBotUsername: string | null;
 };
 
 /**
@@ -59,8 +66,11 @@ export function PlansBrowser({
   orgSlug,
   catalogSlug,
   upgradeAction,
+  isAnonymous,
+  telegramBotUsername,
 }: PlansBrowserProps) {
   const t = useT();
+  const [secureOpen, setSecureOpen] = useState(false);
 
   const heading = (
     <div>
@@ -68,6 +78,29 @@ export function PlansBrowser({
       <p className="text-sm text-muted-foreground">{t("billing.plans_subtitle")}</p>
     </div>
   );
+
+  // Shown above the plans for anonymous onboarding sessions: they can browse
+  // pricing, but any plan button opens the register flow first.
+  const anonNotice = isAnonymous ? (
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background">
+          <ShieldCheck className="size-4 text-muted-foreground" aria-hidden />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">{t("billing.anon.title")}</p>
+          <p className="text-sm text-muted-foreground">{t("billing.anon.desc")}</p>
+        </div>
+      </div>
+      <Button
+        type="button"
+        onClick={() => setSecureOpen(true)}
+        className="w-full sm:w-auto"
+      >
+        {t("billing.anon.cta")}
+      </Button>
+    </div>
+  ) : null;
 
   if (plansError) {
     return (
@@ -167,15 +200,25 @@ export function PlansBrowser({
           ) : null}
 
           <div className="mt-auto">
-            <form action={upgradeAction}>
-              <input type="hidden" name="customerOrgId" value={orgId} />
-              <input type="hidden" name="orgSlug" value={orgSlug} />
-              <input type="hidden" name="catalogSlug" value={catalogSlug} />
-              <input type="hidden" name="planId" value={plan.id} />
-              <Button type="submit" disabled={isCurrentPlan} className="w-full">
+            {isAnonymous ? (
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => setSecureOpen(true)}
+              >
                 {actionLabel}
               </Button>
-            </form>
+            ) : (
+              <form action={upgradeAction}>
+                <input type="hidden" name="customerOrgId" value={orgId} />
+                <input type="hidden" name="orgSlug" value={orgSlug} />
+                <input type="hidden" name="catalogSlug" value={catalogSlug} />
+                <input type="hidden" name="planId" value={plan.id} />
+                <Button type="submit" disabled={isCurrentPlan} className="w-full">
+                  {actionLabel}
+                </Button>
+              </form>
+            )}
           </div>
         </div>
       </div>
@@ -192,11 +235,23 @@ export function PlansBrowser({
   const annualPlans = plans.filter((p) => p.interval_count > 1);
   const showToggle = monthlyPlans.length > 0 && annualPlans.length > 0;
 
+  const secureDialog = isAnonymous ? (
+    <SecureAccountDialog
+      orgSlug={orgSlug}
+      catalogSlug={catalogSlug}
+      telegramBotUsername={telegramBotUsername}
+      open={secureOpen}
+      onOpenChange={setSecureOpen}
+    />
+  ) : null;
+
   if (!showToggle) {
     return (
       <div className="space-y-4">
         {heading}
+        {anonNotice}
         {renderGrid(plans, false)}
+        {secureDialog}
       </div>
     );
   }
@@ -214,26 +269,30 @@ export function PlansBrowser({
   const maxSavings = savingsValues.length ? Math.max(...savingsValues) : null;
 
   return (
-    <Tabs defaultValue={defaultPeriod} className="gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        {heading}
-        <TabsList>
-          <TabsTrigger value="monthly">{t("billing.period.monthly")}</TabsTrigger>
-          <TabsTrigger value="annual">
-            {t("billing.period.annual")}
-            {maxSavings ? (
-              <Badge
-                variant="secondary"
-                className="rounded-full px-1.5 py-0 font-mono text-[11px] leading-4 tabular-nums"
-              >
-                −{maxSavings}%
-              </Badge>
-            ) : null}
-          </TabsTrigger>
-        </TabsList>
-      </div>
-      <TabsContent value="monthly">{renderGrid(monthlyPlans, false)}</TabsContent>
-      <TabsContent value="annual">{renderGrid(annualPlans, true)}</TabsContent>
-    </Tabs>
+    <div className="space-y-4">
+      {anonNotice}
+      <Tabs defaultValue={defaultPeriod} className="gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          {heading}
+          <TabsList>
+            <TabsTrigger value="monthly">{t("billing.period.monthly")}</TabsTrigger>
+            <TabsTrigger value="annual">
+              {t("billing.period.annual")}
+              {maxSavings ? (
+                <Badge
+                  variant="secondary"
+                  className="rounded-full px-1.5 py-0 font-mono text-[11px] leading-4 tabular-nums"
+                >
+                  −{maxSavings}%
+                </Badge>
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="monthly">{renderGrid(monthlyPlans, false)}</TabsContent>
+        <TabsContent value="annual">{renderGrid(annualPlans, true)}</TabsContent>
+      </Tabs>
+      {secureDialog}
+    </div>
   );
 }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getRequestOrigin } from "@/lib/auth/redirect";
 import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
+import { telegramLoginConfigured } from "@/lib/auth/telegram-bridge";
 import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
 import { changeKraftaSubscriptionPlan } from "@/lib/payments/pay-internal";
 import { getCatalogBillingEntitlement } from "@/lib/billing/entitlement";
@@ -111,6 +112,17 @@ async function startUpgradeAction(formData: FormData) {
       redirect(`/auth/sso/start?next=${encodeURIComponent(next)}`);
     }
     redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
+
+  // Onboarding runs on an anonymous session that lives only in a cookie. Paying
+  // before registering would strand the subscription in an unrecoverable
+  // account and skips the same registration gate publish_shop enforces, so
+  // require a real identity first. The billing UI prompts the secure-account
+  // flow; this is the server-side backstop.
+  if (authUser.is_anonymous) {
+    redirect(
+      `/dashboard/${orgSlug}/${catalogSlug}/billing?error=${encodeURIComponent(t("billing.error.registration_required"))}`,
+    );
   }
 
   const { data: membership, error: membershipErr } = await supabase
@@ -226,6 +238,14 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
   const t = await getDashboardT();
 
   const supabase = await createClient();
+  // Anonymous onboarding sessions can reach this page but must register before
+  // paying (see startUpgradeAction's backstop). Surface the secure-account
+  // prompt inline so they can convert without leaving billing.
+  const { user: viewerUser } = await getUserSafely(supabase);
+  const isAnonymous = viewerUser?.is_anonymous === true;
+  const telegramBotUsername = telegramLoginConfigured()
+    ? (process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "") ?? null)
+    : null;
   const { data: orgRecord, error: orgErr } = await supabase
     .from("organizations")
     .select("id, name")
@@ -412,6 +432,8 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
             orgSlug={orgSlug}
             catalogSlug={catalogSlug}
             upgradeAction={startUpgradeAction}
+            isAnonymous={isAnonymous}
+            telegramBotUsername={telegramBotUsername}
           />
         </section>
       </div>

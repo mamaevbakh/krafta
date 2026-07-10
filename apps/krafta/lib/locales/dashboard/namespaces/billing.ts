@@ -67,8 +67,13 @@ export const billing = {
     "billing.period.annual": "Annual",
     "billing.period.save": "Save {pct}%",
 
+    "billing.anon.title": "Register to subscribe",
+    "billing.anon.desc": "Your shop is on an unregistered session. Secure it with Telegram, email, or Google to add a plan.",
+    "billing.anon.cta": "Secure account",
+
     "billing.error.missing_fields": "Missing required fields",
     "billing.error.forbidden": "Forbidden",
+    "billing.error.registration_required": "Register your account before subscribing.",
     "billing.error.already_on_plan": "You are already on this plan. Use Manage Billing for payment method or cancellation changes.",
     "billing.error.https_required": "Uzum requires HTTPS return URLs. Set KRAFTA_APP_URL to an https:// domain (e.g. tunnel or production URL).",
     "billing.error.checkout_failed": "Failed to create checkout session",
@@ -133,8 +138,13 @@ export const billing = {
     "billing.period.annual": "Ежегодно",
     "billing.period.save": "Экономия {pct}%",
 
+    "billing.anon.title": "Зарегистрируйтесь для оплаты",
+    "billing.anon.desc": "Ваш магазин работает в незарегистрированной сессии. Привяжите Telegram, email или Google, чтобы подключить тариф.",
+    "billing.anon.cta": "Защитить аккаунт",
+
     "billing.error.missing_fields": "Заполнены не все обязательные поля",
     "billing.error.forbidden": "Доступ запрещён",
+    "billing.error.registration_required": "Зарегистрируйте аккаунт перед оформлением подписки.",
     "billing.error.already_on_plan": "Вы уже на этом тарифе. Для смены способа оплаты или отмены откройте «Управление оплатой».",
     "billing.error.https_required": "Uzum требует HTTPS для адресов возврата. Укажите в KRAFTA_APP_URL домен с https:// (например, туннель или продакшн-URL).",
     "billing.error.checkout_failed": "Не удалось создать сессию оплаты",
@@ -199,8 +209,13 @@ export const billing = {
     "billing.period.annual": "Yillik",
     "billing.period.save": "{pct}% tejash",
 
+    "billing.anon.title": "Obuna uchun ro‘yxatdan o‘ting",
+    "billing.anon.desc": "Do‘koningiz ro‘yxatdan o‘tmagan seansda ishlayapti. Tarif ulash uchun Telegram, email yoki Google orqali hisobingizni himoyalang.",
+    "billing.anon.cta": "Hisobni himoyalash",
+
     "billing.error.missing_fields": "Majburiy maydonlar to‘ldirilmagan",
     "billing.error.forbidden": "Ruxsat yo‘q",
+    "billing.error.registration_required": "Obuna bo‘lishdan oldin hisobingizni ro‘yxatdan o‘tkazing.",
     "billing.error.already_on_plan": "Siz allaqachon shu tarifdasiz. To‘lov usulini o‘zgartirish yoki bekor qilish uchun «To‘lovni boshqarish»ni oching.",
     "billing.error.https_required": "Uzum qaytish manzillari uchun HTTPS talab qiladi. KRAFTA_APP_URL’ga https:// domenini kiriting (masalan, tunnel yoki prod URL).",
     "billing.error.checkout_failed": "To‘lov sessiyasini yaratib bo‘lmadi",
