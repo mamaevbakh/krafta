@@ -9,7 +9,6 @@
 
 export const billing = {
   en: {
-    "billing.badge": "Billing",
     "billing.heading": "Subscription & plan management",
     "billing.catalog_label": "Catalog {slug}",
     "billing.org_not_found": "Organization not found.",
@@ -73,7 +72,6 @@ export const billing = {
     "billing.error.plans_load_failed": "Couldn't load plans right now.",
   },
   ru: {
-    "billing.badge": "Оплата",
     "billing.heading": "Подписка и тариф",
     "billing.catalog_label": "Каталог {slug}",
     "billing.org_not_found": "Организация не найдена.",
@@ -137,7 +135,6 @@ export const billing = {
     "billing.error.plans_load_failed": "Не удалось загрузить тарифы.",
   },
   "uz-Latn": {
-    "billing.badge": "To‘lov",
     "billing.heading": "Obuna va tarif",
     "billing.catalog_label": "Katalog {slug}",
     "billing.org_not_found": "Tashkilot topilmadi.",
