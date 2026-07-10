@@ -46,7 +46,6 @@ export const billing = {
 
     "billing.plans_heading": "Plans",
     "billing.plans_subtitle": "Choose a plan for this organization. The current plan is clearly marked and cannot be re-purchased.",
-    "billing.current_badge": "Current: {name}",
     "billing.no_plans": "No active plans available right now.",
 
     "billing.action.current": "Current plan",
@@ -63,6 +62,10 @@ export const billing = {
 
     "billing.interval.monthly": "monthly",
     "billing.interval.every_months": "every {count} months",
+
+    "billing.period.monthly": "Monthly",
+    "billing.period.annual": "Annual",
+    "billing.period.save": "Save {pct}%",
 
     "billing.error.missing_fields": "Missing required fields",
     "billing.error.forbidden": "Forbidden",
@@ -109,7 +112,6 @@ export const billing = {
 
     "billing.plans_heading": "Тарифы",
     "billing.plans_subtitle": "Выберите тариф для этой организации. Текущий тариф отмечен и не может быть куплен повторно.",
-    "billing.current_badge": "Текущий: {name}",
     "billing.no_plans": "Сейчас нет доступных тарифов.",
 
     "billing.action.current": "Текущий тариф",
@@ -126,6 +128,10 @@ export const billing = {
 
     "billing.interval.monthly": "ежемесячно",
     "billing.interval.every_months": "каждые {count} мес.",
+
+    "billing.period.monthly": "Помесячно",
+    "billing.period.annual": "Ежегодно",
+    "billing.period.save": "Экономия {pct}%",
 
     "billing.error.missing_fields": "Заполнены не все обязательные поля",
     "billing.error.forbidden": "Доступ запрещён",
@@ -172,7 +178,6 @@ export const billing = {
 
     "billing.plans_heading": "Tariflar",
     "billing.plans_subtitle": "Bu tashkilot uchun tarif tanlang. Joriy tarif belgilangan va uni qayta sotib bo‘lmaydi.",
-    "billing.current_badge": "Joriy: {name}",
     "billing.no_plans": "Hozircha mavjud tariflar yo‘q.",
 
     "billing.action.current": "Joriy tarif",
@@ -189,6 +194,10 @@ export const billing = {
 
     "billing.interval.monthly": "oylik",
     "billing.interval.every_months": "har {count} oyda",
+
+    "billing.period.monthly": "Oylik",
+    "billing.period.annual": "Yillik",
+    "billing.period.save": "{pct}% tejash",
 
     "billing.error.missing_fields": "Majburiy maydonlar to‘ldirilmagan",
     "billing.error.forbidden": "Ruxsat yo‘q",

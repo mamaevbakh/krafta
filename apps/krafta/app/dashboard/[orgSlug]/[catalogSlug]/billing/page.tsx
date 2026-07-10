@@ -11,8 +11,10 @@ import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
 import { createPaySubscriptionCheckout, listKraftaPayPlans } from "@/lib/billing/pay-client";
 import { changeKraftaSubscriptionPlan } from "@/lib/payments/pay-internal";
 import { getCatalogBillingEntitlement } from "@/lib/billing/entitlement";
+import { formatMoney } from "@/lib/billing/format";
 import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { SubscriptionManager } from "./_components/subscription-manager";
+import { PlansBrowser } from "./_components/plans-browser";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -37,20 +39,6 @@ function formatDateTime(value: string | null | undefined) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "n/a";
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
-
-function formatMoney(amountMinor: number, currency: string) {
-  try {
-    const hasNoCents = amountMinor % 100 === 0;
-    return new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: currency.toUpperCase(),
-      minimumFractionDigits: hasNoCents ? 0 : 2,
-      maximumFractionDigits: hasNoCents ? 0 : 2,
-    }).format(amountMinor / 100);
-  } catch {
-    return `${amountMinor} ${currency.toUpperCase()}`;
-  }
 }
 
 type DashboardT = Awaited<ReturnType<typeof getDashboardT>>;
@@ -404,112 +392,19 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
         </section>
 
         <section id="plans" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">{t("billing.plans_heading")}</h2>
-              <p className="text-sm text-muted-foreground">
-                {t("billing.plans_subtitle")}
-              </p>
-            </div>
-            {currentPlan ? (
-              <Badge variant="outline" className="rounded-full px-3 py-1">
-                {t("billing.current_badge", { name: currentPlan.name })}
-              </Badge>
-            ) : null}
-          </div>
-          {plansErr ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {plansErr}
-            </div>
-          ) : sortedPlans.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              {t("billing.no_plans")}
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2">
-              {sortedPlans.map((plan) => {
-                const isCurrentPlan = Boolean(
-                  entitlement.planId &&
-                  (entitlement.status === "active" || entitlement.status === "grace") &&
-                  entitlement.planId === plan.id,
-                );
-                const actionLabel =
-                  isCurrentPlan
-                    ? t("billing.action.current")
-                    : entitlement.status === "locked"
-                      ? t("billing.action.choose", { name: plan.name })
-                      : t("billing.action.switch", { name: plan.name });
-
-                return (
-                  <div
-                    key={plan.id}
-                    className={cn(
-                      "rounded-lg border bg-card p-5",
-                      isCurrentPlan ? "border-foreground/50" : "border-border",
-                    )}
-                  >
-                    <div className="flex h-full flex-col gap-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold tracking-tight">{plan.name}</p>
-                            {isCurrentPlan ? (
-                              <Badge variant="secondary" className="rounded-full">
-                                {t("billing.current")}
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {plan.code}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono text-lg font-semibold tracking-tight tabular-nums">
-                            {formatMoney(plan.amount_minor, plan.currency)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatPlanInterval(t, plan.interval_count)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-2 text-sm">
-                        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
-                          <span className="text-muted-foreground">{t("billing.cadence")}</span>
-                          <span className="font-medium">{t("billing.months_count", { count: plan.interval_count })}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
-                          <span className="text-muted-foreground">{t("billing.trial")}</span>
-                          <span className="font-medium">
-                            {plan.trial_days > 0 ? t("billing.trial_days", { days: plan.trial_days }) : t("billing.no_trial")}
-                          </span>
-                        </div>
-                      </div>
-
-                      {isCurrentPlan && entitlement.cancelAtPeriodEnd ? (
-                        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                          <Clock3 className="mt-0.5 size-4 shrink-0" />
-                          <span>{t("billing.cancel_note")}</span>
-                        </div>
-                      ) : null}
-
-                      <div className="mt-auto">
-                        <form action={startUpgradeAction}>
-                          <input type="hidden" name="customerOrgId" value={orgRecord.id} />
-                          <input type="hidden" name="orgSlug" value={orgSlug} />
-                          <input type="hidden" name="catalogSlug" value={catalogSlug} />
-                          <input type="hidden" name="planId" value={plan.id} />
-                          <Button type="submit" disabled={isCurrentPlan} className="w-full">
-                            {actionLabel}
-                          </Button>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <PlansBrowser
+            plans={sortedPlans}
+            plansError={plansErr}
+            entitlement={{
+              planId: entitlement.planId,
+              status: entitlement.status,
+              cancelAtPeriodEnd: entitlement.cancelAtPeriodEnd,
+            }}
+            orgId={orgRecord.id}
+            orgSlug={orgSlug}
+            catalogSlug={catalogSlug}
+            upgradeAction={startUpgradeAction}
+          />
         </section>
       </div>
     </main>
