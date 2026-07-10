@@ -289,7 +289,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
   return (
     <main className="w-full">
       <div className="w-full border-b">
-        <div className="mx-auto flex h-[120px] max-w-[1248px] flex-wrap items-center justify-between gap-3 px-6">
+        <div className="mx-auto flex min-h-[120px] max-w-[1248px] flex-wrap items-center justify-between gap-3 px-6 py-4">
           <div className="space-y-1">
             <h1 className="text-[32px] font-semibold tracking-tight">
               {t("billing.heading")}
