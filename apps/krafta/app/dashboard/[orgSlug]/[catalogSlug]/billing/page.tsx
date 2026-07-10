@@ -273,6 +273,12 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
   const canOpenBillingPortal = Boolean(entitlement.subscriptionId || entitlement.subscriptionStatus);
   const entitlementLabel = getEntitlementLabel(t, entitlement.status);
   const entitlementDescription = getEntitlementDescription(t, entitlement);
+  // The account summary (status + metrics + manage actions) only says
+  // something once there's a subscription to describe. With no active access
+  // it's four empty cells and a redundant CTA, so hide it and let the plans
+  // picker below carry the "choose a plan" message.
+  const showAccountSummary =
+    entitlement.status === "active" || entitlement.status === "grace";
 
   return (
     <main className="w-full">
@@ -321,6 +327,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
           />
         ) : null}
 
+        {showAccountSummary ? (
         <section className="rounded-lg border border-border bg-card p-5 md:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <p className="max-w-2xl text-sm text-muted-foreground">
@@ -390,6 +397,7 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
             />
           </div>
         </section>
+        ) : null}
 
         <section id="plans" className="space-y-4">
           <PlansBrowser
