@@ -142,6 +142,17 @@ Defined in `packages/theme/src/styles.css` under `.dark`. Dark mode is **not** a
 
 Chart colors are explicitly **not** for UI accents, badges, or marketing. If a UI element needs color emphasis, use `--primary` or `--destructive`. New "status" colors (warning, info, success) must be discussed and added to the table above before use.
 
+### Status colors (ratified 2026-07-12)
+
+`success` and `warning` are the two ratified status tokens, for status pills/badges only (e.g. "Активна"/"Оплачено" = success, "Просрочена"/"Отменяется" = warning). They are **muted and desaturated** — soft-bg pills (`bg-success/10 text-success`), never saturated fills — so they read as calm state, not decoration, and never compete with `--destructive` for action semantics. First shipped in **Krafta Pay** (`apps/krafta-pay/app/globals.css`, neutral base):
+
+| Token | Light | Dark |
+|---|---|---|
+| `--success` | `oklch(0.52 0.13 152)` | `oklch(0.72 0.15 158)` |
+| `--warning` | `oklch(0.55 0.12 62)` | `oklch(0.80 0.14 78)` |
+
+Not yet added to `packages/theme` (the main app) — do that only when a main-app surface needs them. `info` is still unratified.
+
 ### Selection (intentional bold choice)
 
 Text selection is **pure black on white** in light mode and **pure white on black** in dark mode (`packages/theme/src/styles.css:139-158`). This is a deliberate minimalist statement — most products use a translucent accent. Do not change without explicit user approval.
@@ -269,6 +280,7 @@ A design choice that violates any of these is a regression. Reject in code revie
 | 2026-05-20 | Iter 2 D4 + Pass 1 D1A — collapsible categories + subordinate-inset rail | Each CategorySection gets a chevron toggle; collapse state persists per (catalog, category) in localStorage. New CategoryRail (180px sticky list of category names, click to scroll) lives in the canvas page's left padding — no border-r, no separate surface color, so it reads as "document gutter" rather than competing with the dashboard sidebar. Hidden ≤ xl (1280px). |
 | 2026-05-22 | Square POS dashboard adopted as canonical design reference | When designing merchant-facing catalog / POS / editor surfaces, look at Square's equivalent screen FIRST. Generic shadcn defaults are the floor; Square's patterns are the ceiling. Concrete patterns absorbed listed in the "Design references" section below. |
 | 2026-06-09 | Telegram Mini App storefront chrome: progressive blur + frosted dock, no Liquid Glass | Customer storefront in the TMA gets an iOS-style **progressive (gradient) blur** behind the sticky category nav (`components/catalogs/progressive-blur.tsx` — stacked backdrop-filter layers masked to a top-down falloff; alpha falloff, not a color gradient) instead of a hard uniform `backdrop-blur` edge. The bottom dock becomes a clean **frosted** surface (border + strong blur, no decorative shadow). Deliberately did NOT chase iOS 26 "Liquid Glass": a Mini App is a webview (no native tabs possible) and a glossy translucent skin fights the "brutally minimal, withholding" system. Decided via /design-consultation. |
+| 2026-07-12 | Ratified `--success` / `--warning` status tokens; Krafta Pay customer portal redesigned to a Stripe-style two-panel hosted "Manage Billing" page | Muted/desaturated `success`+`warning` added to `apps/krafta-pay/app/globals.css` (values in §Color › Status colors) for status pills only — the first ratified status colors, needed so the hosted billing portal could show calm "Оплачено"/"Активна" pills instead of raw text. The portal (`apps/krafta-pay/app/portal/[session_token]/page.tsx`) adopts a **persistent dark brand rail + light content** two-panel shell — DESIGN.md-compliant (solid inverted surface, no gradient/blob/shadow). RU-first, responsive, light/dark. Full spec: `docs/krafta-pay-customer-portal.md`. |
 
 ## Design references
 

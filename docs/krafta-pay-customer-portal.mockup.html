@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krafta Pay — Управление подпиской</title>
+<style>html,body{margin:0;padding:0}</style>
+</head>
+<body>
+<style>
+  .kp-portal {
+    /* ---- LIGHT TOKENS ---- */
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.141 0.005 285.823);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.141 0.005 285.823);
+    --muted: oklch(0.967 0.001 286.375);
+    --muted-foreground: oklch(0.552 0.016 285.938);
+    --primary: oklch(0.21 0.006 285.885);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --accent: oklch(0.967 0.001 286.375);
+    --accent-foreground: oklch(0.21 0.006 285.885);
+    --border: oklch(0.92 0.004 286.32);
+    --input: oklch(0.92 0.004 286.32);
+    --ring: oklch(0.705 0.015 286.067);
+    --destructive: oklch(0.577 0.245 27.325);
+    --radius: 0.625rem;
+
+    /* ---- provisional status tokens ---- */
+    --success: oklch(0.55 0.10 155);
+    --success-subtle-bg: oklch(0.95 0.03 155);
+    --warning: oklch(0.68 0.12 75);
+    --warning-subtle-bg: oklch(0.96 0.04 85);
+
+    /* ---- the brand rail (inverted, even in light) ---- */
+    --rail-bg: oklch(0.141 0.005 285.823);
+    --rail-fg: oklch(0.985 0 0);
+    --rail-muted: oklch(0.705 0.015 286.067);
+    --rail-border: oklch(1 0 0 / 10%);
+    --rail-hover: oklch(1 0 0 / 6%);
+
+    --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+
+    font-family: var(--font-sans);
+    color: var(--foreground);
+    background: var(--background);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100%;
+  }
+
+  /* ---- DARK via system preference ---- */
+  @media (prefers-color-scheme: dark) {
+    .kp-portal {
+      --background: oklch(0.141 0.005 285.823);
+      --foreground: oklch(0.985 0 0);
+      --card: oklch(0.21 0.006 285.885);
+      --card-foreground: oklch(0.985 0 0);
+      --muted: oklch(0.274 0.006 286.033);
+      --muted-foreground: oklch(0.705 0.015 286.067);
+      --primary: oklch(0.985 0 0);
+      --primary-foreground: oklch(0.21 0.006 285.885);
+      --secondary: oklch(0.274 0.006 286.033);
+      --secondary-foreground: oklch(0.985 0 0);
+      --accent: oklch(0.274 0.006 286.033);
+      --accent-foreground: oklch(0.985 0 0);
+      --border: oklch(1 0 0 / 10%);
+      --input: oklch(1 0 0 / 15%);
+      --ring: oklch(0.552 0.016 285.938);
+      --destructive: oklch(0.704 0.191 22.216);
+
+      --success: oklch(0.70 0.13 160);
+      --success-subtle-bg: oklch(0.27 0.05 160);
+      --warning: oklch(0.80 0.13 80);
+      --warning-subtle-bg: oklch(0.30 0.06 80);
+
+      --rail-bg: oklch(0 0 0);
+      --rail-fg: oklch(0.985 0 0);
+      --rail-muted: oklch(0.705 0.015 286.067);
+      --rail-border: oklch(1 0 0 / 10%);
+      --rail-hover: oklch(1 0 0 / 8%);
+    }
+  }
+
+  /* ---- DARK via explicit attribute (wins) ---- */
+  :root[data-theme="dark"] .kp-portal,
+  .kp-portal[data-theme="dark"] {
+    --background: oklch(0.141 0.005 285.823);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.21 0.006 285.885);
+    --card-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.274 0.006 286.033);
+    --muted-foreground: oklch(0.705 0.015 286.067);
+    --primary: oklch(0.985 0 0);
+    --primary-foreground: oklch(0.21 0.006 285.885);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --accent: oklch(0.274 0.006 286.033);
+    --accent-foreground: oklch(0.985 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.552 0.016 285.938);
+    --destructive: oklch(0.704 0.191 22.216);
+    --success: oklch(0.70 0.13 160);
+    --success-subtle-bg: oklch(0.27 0.05 160);
+    --warning: oklch(0.80 0.13 80);
+    --warning-subtle-bg: oklch(0.30 0.06 80);
+    --rail-bg: oklch(0 0 0);
+    --rail-fg: oklch(0.985 0 0);
+    --rail-muted: oklch(0.705 0.015 286.067);
+    --rail-border: oklch(1 0 0 / 10%);
+    --rail-hover: oklch(1 0 0 / 8%);
+  }
+
+  /* ---- LIGHT via explicit attribute (wins over media query) ---- */
+  :root[data-theme="light"] .kp-portal,
+  .kp-portal[data-theme="light"] {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.141 0.005 285.823);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.141 0.005 285.823);
+    --muted: oklch(0.967 0.001 286.375);
+    --muted-foreground: oklch(0.552 0.016 285.938);
+    --primary: oklch(0.21 0.006 285.885);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --accent: oklch(0.967 0.001 286.375);
+    --accent-foreground: oklch(0.21 0.006 285.885);
+    --border: oklch(0.92 0.004 286.32);
+    --input: oklch(0.92 0.004 286.32);
+    --ring: oklch(0.705 0.015 286.067);
+    --destructive: oklch(0.577 0.245 27.325);
+    --success: oklch(0.55 0.10 155);
+    --success-subtle-bg: oklch(0.95 0.03 155);
+    --warning: oklch(0.68 0.12 75);
+    --warning-subtle-bg: oklch(0.96 0.04 85);
+    --rail-bg: oklch(0.141 0.005 285.823);
+    --rail-fg: oklch(0.985 0 0);
+    --rail-muted: oklch(0.705 0.015 286.067);
+    --rail-border: oklch(1 0 0 / 10%);
+    --rail-hover: oklch(1 0 0 / 6%);
+  }
+
+  .kp-portal *,
+  .kp-portal *::before,
+  .kp-portal *::after { box-sizing: border-box; }
+
+  .kp-portal { line-height: 1.5; }
+
+  /* ============ LAYOUT ============ */
+  .kp-portal {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    align-items: stretch;
+    min-height: 100vh;
+    width: 100%;
+  }
+
+  /* ============ LEFT RAIL ============ */
+  .kp-rail {
+    background: var(--rail-bg);
+    color: var(--rail-fg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .kp-rail__inner {
+    padding: 40px 36px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    position: sticky;
+    top: 0;
+    min-height: 100vh;
+  }
+  .kp-rail__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .kp-rail__mark {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: var(--rail-fg);
+    color: var(--rail-bg);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+  }
+  .kp-rail__mark svg { width: 18px; height: 18px; }
+  .kp-rail__wordmark {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .kp-rail__trust {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--rail-muted);
+    max-width: 26ch;
+    margin-bottom: 28px;
+  }
+  .kp-rail__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--rail-fg);
+    text-decoration: none;
+    padding: 9px 12px 9px 10px;
+    margin-left: -10px;
+    border-radius: var(--radius);
+    transition: background .15s ease;
+    width: fit-content;
+  }
+  .kp-rail__back:hover { background: var(--rail-hover); }
+  .kp-rail__back svg { width: 16px; height: 16px; }
+  .kp-rail__spacer { flex: 1 1 auto; }
+  .kp-rail__foot {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--rail-muted);
+    padding-top: 24px;
+    border-top: 1px solid var(--rail-border);
+  }
+  .kp-rail__foot a {
+    color: var(--rail-muted);
+    text-decoration: none;
+  }
+  .kp-rail__foot a:hover { color: var(--rail-fg); }
+  .kp-rail__dot { opacity: .5; padding: 0 3px; }
+
+  /* ============ CONTENT ============ */
+  .kp-content-wrap {
+    background: var(--background);
+    padding: 40px 48px 72px;
+    display: flex;
+    justify-content: flex-start;
+  }
+  .kp-content {
+    width: 100%;
+    max-width: 560px;
+  }
+  .kp-topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .kp-page-title {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 2px;
+  }
+  .kp-page-sub {
+    font-size: 14px;
+    color: var(--muted-foreground);
+    margin: 0;
+  }
+  .kp-theme-toggle {
+    flex-shrink: 0;
+    width: 38px; height: 38px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    border-radius: var(--radius);
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .kp-theme-toggle:hover { background: var(--accent); }
+  .kp-theme-toggle svg { width: 18px; height: 18px; }
+  .kp-theme-toggle .kp-moon { display: none; }
+  :root[data-theme="dark"] .kp-portal .kp-theme-toggle .kp-sun,
+  .kp-portal[data-theme="dark"] .kp-theme-toggle .kp-sun { display: none; }
+  :root[data-theme="dark"] .kp-portal .kp-theme-toggle .kp-moon,
+  .kp-portal[data-theme="dark"] .kp-theme-toggle .kp-moon { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .kp-portal .kp-theme-toggle .kp-sun { display: none; }
+    :root:not([data-theme="light"]) .kp-portal .kp-theme-toggle .kp-moon { display: block; }
+  }
+
+  /* ---- section ---- */
+  .kp-section {
+    padding: 28px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .kp-section:last-of-type { border-bottom: none; }
+  .kp-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    margin: 0 0 16px;
+  }
+
+  /* ---- current subscription ---- */
+  .kp-plan-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .kp-plan-name {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .kp-price {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 10px 0 4px;
+  }
+  .kp-price__amt {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .kp-price__int {
+    font-size: 14px;
+    color: var(--muted-foreground);
+  }
+  .kp-swap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+    margin-top: 2px;
+  }
+  .kp-swap svg { width: 13px; height: 13px; flex: none; }
+
+  /* collapsible details */
+  .kp-details { margin-top: 16px; }
+  .kp-details > summary {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--foreground);
+    user-select: none;
+    padding: 4px 0;
+  }
+  .kp-details > summary::-webkit-details-marker { display: none; }
+  .kp-details > summary .kp-chev {
+    width: 15px; height: 15px;
+    transition: transform .18s ease;
+    color: var(--muted-foreground);
+  }
+  .kp-details[open] > summary .kp-chev { transform: rotate(90deg); }
+  .kp-detail-body {
+    margin-top: 12px;
+    display: grid;
+    gap: 10px;
+  }
+  .kp-drow {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 13.5px;
+    padding: 3px 0;
+  }
+  .kp-drow__k { color: var(--muted-foreground); }
+  .kp-drow__v {
+    color: var(--foreground);
+    text-align: right;
+  }
+  .kp-drow__v--num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .kp-nextbill {
+    margin-top: 16px;
+    font-size: 13.5px;
+    color: var(--muted-foreground);
+  }
+  .kp-nextbill strong {
+    color: var(--foreground);
+    font-weight: 500;
+  }
+
+  /* ---- compact card-on-file line (inside subscription) ---- */
+  .kp-onfile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 13.5px;
+  }
+  .kp-onfile__chip {
+    width: 32px; height: 22px;
+    border-radius: 4px;
+    background: #1434CB;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    border: 1px solid oklch(1 0 0 / 12%);
+  }
+  .kp-onfile__chip svg { height: 9px; width: auto; display: block; }
+  .kp-onfile__mask {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .kp-plan-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  /* buttons */
+  .kp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 0 15px;
+    height: 38px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background .15s ease, border-color .15s ease, color .15s ease, opacity .15s ease;
+  }
+  .kp-btn svg { width: 15px; height: 15px; }
+  .kp-btn--primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .kp-btn--primary:hover { opacity: .9; }
+  .kp-btn--outline {
+    background: var(--card);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+  .kp-btn--outline:hover { background: var(--accent); }
+  .kp-btn--ghost-destructive {
+    background: transparent;
+    color: var(--destructive);
+  }
+  .kp-btn--ghost-destructive:hover {
+    background: color-mix(in oklch, var(--destructive) 10%, transparent);
+  }
+
+  /* pills */
+  .kp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 5px 10px 5px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .kp-pill__dot {
+    width: 6px; height: 6px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  .kp-pill--success {
+    background: var(--success-subtle-bg);
+    color: var(--success);
+  }
+  .kp-pill--success .kp-pill__dot { background: var(--success); }
+
+  .kp-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    border: 1px solid var(--border);
+  }
+
+  /* ---- payment method surface ---- */
+  .kp-card-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--card);
+  }
+  .kp-card-row + .kp-card-row { margin-top: 10px; }
+  .kp-brand-chip {
+    width: 42px; height: 28px;
+    border-radius: 5px;
+    background: #1434CB;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    border: 1px solid oklch(1 0 0 / 12%);
+  }
+  .kp-brand-chip svg { height: 11px; width: auto; display: block; }
+  .kp-card-info { min-width: 0; flex: 1 1 auto; }
+  .kp-card-num {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    flex-wrap: wrap;
+  }
+  .kp-card-num__digits {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .kp-card-exp {
+    font-size: 12.5px;
+    color: var(--muted-foreground);
+    margin-top: 3px;
+  }
+  .kp-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .kp-icon-btn {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border: none;
+    background: transparent;
+    color: var(--muted-foreground);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+  .kp-icon-btn:hover { background: var(--accent); color: var(--foreground); }
+  .kp-icon-btn svg { width: 16px; height: 16px; }
+  .kp-icon-btn--danger:hover {
+    background: color-mix(in oklch, var(--destructive) 10%, transparent);
+    color: var(--destructive);
+  }
+  .kp-add-method {
+    margin-top: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--foreground);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 0;
+  }
+  .kp-add-method svg { width: 16px; height: 16px; }
+  .kp-add-method:hover { color: var(--muted-foreground); }
+
+  /* ---- billing info rows ---- */
+  .kp-info-grid {
+    display: grid;
+    gap: 2px;
+  }
+  .kp-inforow {
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    gap: 16px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .kp-inforow:last-child { border-bottom: none; }
+  .kp-inforow__k { color: var(--muted-foreground); }
+  .kp-inforow__v { color: var(--foreground); }
+  .kp-inforow__v--mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .kp-update-link {
+    margin-top: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--foreground);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 0;
+  }
+  .kp-update-link svg { width: 15px; height: 15px; }
+  .kp-update-link:hover { color: var(--muted-foreground); }
+
+  /* ---- invoice table ---- */
+  .kp-table-scroll {
+    overflow-x: auto;
+    margin: 0 -4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .kp-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 460px;
+  }
+  .kp-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    padding: 0 12px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .kp-table th.kp-num,
+  .kp-table td.kp-num { text-align: right; }
+  .kp-table th.kp-center,
+  .kp-table td.kp-center { text-align: center; width: 44px; }
+  .kp-table td {
+    padding: 13px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .kp-table tbody tr { transition: background .12s ease; }
+  .kp-table tbody tr:hover { background: var(--muted); }
+  .kp-table tbody tr:last-child td { border-bottom: none; }
+  .kp-td-date {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--foreground);
+  }
+  .kp-td-amt {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+  .kp-td-amt .kp-swapmini {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 6px;
+    color: var(--muted-foreground);
+  }
+  .kp-td-amt .kp-swapmini svg { width: 12px; height: 12px; }
+  .kp-td-plan { color: var(--muted-foreground); }
+
+  /* footer note in content on mobile */
+  .kp-mobile-foot { display: none; }
+
+  /* ============ TOP BAR (mobile rail collapse) ============ */
+  .kp-topmobile { display: none; }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 1023px) {
+    .kp-portal {
+      display: block;
+      min-height: 100vh;
+    }
+    .kp-rail { display: none; }
+    .kp-topmobile {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--rail-bg);
+      color: var(--rail-fg);
+      padding: 14px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .kp-topmobile__brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .kp-topmobile__mark {
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      background: var(--rail-fg);
+      color: var(--rail-bg);
+      display: grid; place-items: center;
+    }
+    .kp-topmobile__mark svg { width: 15px; height: 15px; }
+    .kp-topmobile__word {
+      font-size: 17px; font-weight: 600; letter-spacing: -0.02em;
+    }
+    .kp-topmobile__back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--rail-fg);
+      text-decoration: none;
+      opacity: .85;
+      min-height: 44px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+      margin-top: -10px;
+      margin-bottom: -10px;
+    }
+    .kp-topmobile__back svg { width: 15px; height: 15px; }
+    .kp-content-wrap {
+      padding: 24px 20px 48px;
+    }
+    .kp-mobile-foot {
+      display: block;
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted-foreground);
+    }
+    .kp-mobile-foot a { color: var(--muted-foreground); text-decoration: none; }
+    .kp-mobile-foot .kp-dot { opacity: .5; padding: 0 3px; }
+
+    /* comfortable touch targets on all non-desktop widths */
+    .kp-btn { height: 44px; }
+    .kp-icon-btn { width: 44px; height: 44px; }
+    .kp-add-method, .kp-update-link { min-height: 44px; }
+    .kp-details > summary { min-height: 44px; }
+  }
+
+  @media (max-width: 560px) {
+    .kp-content-wrap { padding: 20px 16px 44px; }
+    .kp-page-title { font-size: 21px; }
+    .kp-price__amt { font-size: 25px; }
+    .kp-inforow {
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+    .kp-inforow__k { font-size: 12.5px; }
+    .kp-plan-actions { flex-direction: column; align-items: stretch; }
+  }
+</style>
+
+<div class="kp-portal" id="kpPortal">
+
+  <!-- ============ LEFT RAIL ============ -->
+  <aside class="kp-rail">
+   <div class="kp-rail__inner">
+    <div class="kp-rail__brand">
+      <span class="kp-rail__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16"/><path d="M18 4 8 12l10 8"/></svg>
+      </span>
+      <span class="kp-rail__wordmark">Krafta</span>
+    </div>
+
+    <p class="kp-rail__trust">Krafta использует Krafta&nbsp;Pay для выставления счетов и управления подпиской.</p>
+
+    <a class="kp-rail__back" href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Вернуться в Krafta
+    </a>
+
+    <div class="kp-rail__spacer"></div>
+
+    <div class="kp-rail__foot">
+      Обработка платежей — Krafta&nbsp;Pay
+      <span class="kp-rail__dot">·</span><a href="#">Условия</a>
+      <span class="kp-rail__dot">·</span><a href="#">Конфиденциальность</a>
+    </div>
+   </div>
+  </aside>
+
+  <!-- ============ MOBILE TOP BAR ============ -->
+  <div class="kp-topmobile">
+    <div class="kp-topmobile__brand">
+      <span class="kp-topmobile__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v16"/><path d="M18 4 8 12l10 8"/></svg>
+      </span>
+      <span class="kp-topmobile__word">Krafta</span>
+    </div>
+    <a class="kp-topmobile__back" href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Вернуться
+    </a>
+  </div>
+
+  <!-- ============ CONTENT ============ -->
+  <div class="kp-content-wrap">
+    <div class="kp-content">
+
+      <div class="kp-topbar">
+        <div>
+          <h1 class="kp-page-title">Управление подпиской</h1>
+          <p class="kp-page-sub">Кофейня «Нон» · non.coffee@gmail.com</p>
+        </div>
+        <button class="kp-theme-toggle" id="kpThemeToggle" type="button" aria-label="Переключить тему">
+          <svg class="kp-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+          <svg class="kp-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+      </div>
+
+      <!-- ==== ТЕКУЩАЯ ПОДПИСКА ==== -->
+      <section class="kp-section">
+        <h2 class="kp-eyebrow">Текущая подписка</h2>
+
+        <div class="kp-plan-head">
+          <span class="kp-plan-name">Krafta Pro</span>
+          <span class="kp-pill kp-pill--success"><span class="kp-pill__dot"></span>Активна</span>
+        </div>
+
+        <div class="kp-price">
+          <span class="kp-price__amt">299,000&nbsp;UZS</span>
+          <span class="kp-price__int">/ мес</span>
+        </div>
+        <div class="kp-swap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 6h18"/><path d="m7 22-4-4 4-4"/><path d="M21 18H3"/></svg>
+          Списание в UZS по курсу на дату счёта
+        </div>
+
+        <details class="kp-details">
+          <summary>
+            <svg class="kp-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            Показать подробности
+          </summary>
+          <div class="kp-detail-body">
+            <div class="kp-drow"><span class="kp-drow__k">Тариф</span><span class="kp-drow__v">Krafta Pro</span></div>
+            <div class="kp-drow"><span class="kp-drow__k">Стоимость</span><span class="kp-drow__v kp-drow__v--num">299,000 UZS / мес</span></div>
+            <div class="kp-drow"><span class="kp-drow__k">Начало периода</span><span class="kp-drow__v kp-drow__v--num">19 июл. 2026</span></div>
+            <div class="kp-drow"><span class="kp-drow__k">Окончание периода</span><span class="kp-drow__v kp-drow__v--num">18 авг. 2026</span></div>
+          </div>
+        </details>
+
+        <p class="kp-nextbill">Следующее списание: <strong>19 августа 2026 г.</strong></p>
+
+        <!-- compact card-on-file line (grafted from stripe-faithful) -->
+        <div class="kp-onfile">
+          <span class="kp-onfile__chip" aria-hidden="true">
+            <svg viewBox="0 0 48 15" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Visa">
+              <path fill="#ffffff" d="M20.7 14.6h-3.9L19.2.5h3.9zM13.5.5l-3.7 9.7-.44-2.2L8 1.4S7.8.5 6.6.5H.5L.4.9c1.5.38 3 .95 4.3 1.7l3.4 12h4L18.2.5zM43.9 14.6h3.6L44.3.5h-3.1c-1.5 0-1.8 1.1-1.8 1.1L33.5 14.6h4l.8-2.2h4.9zm-4.2-5.2 2-5.6 1.2 5.6zM33.8 4.1l.55-3.2S32.7.3 30.9.3c-1.9 0-6.5.83-6.5 4.9 0 3.8 5.3 3.9 5.3 5.9 0 2-4.8 1.6-6.3.4l-.57 3.3s1.7.83 4.4.83c2.6 0 6.6-1.4 6.6-5.1 0-3.9-5.3-4.2-5.3-5.9 0-1.7 3.8-1.5 5.2-.5z"/>
+            </svg>
+          </span>
+          <span>Visa <span class="kp-onfile__mask">•••• 4364</span></span>
+          <button class="kp-icon-btn" type="button" aria-label="Изменить карту" style="margin-left:auto;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+        </div>
+
+        <div class="kp-plan-actions">
+          <button class="kp-btn kp-btn--outline" type="button">Сменить план</button>
+          <button class="kp-btn kp-btn--ghost-destructive" type="button">Отменить подписку</button>
+        </div>
+      </section>
+
+      <!-- ==== СПОСОБ ОПЛАТЫ ==== -->
+      <section class="kp-section">
+        <h2 class="kp-eyebrow">Способ оплаты</h2>
+
+        <div class="kp-card-row">
+          <span class="kp-brand-chip" aria-hidden="true">
+            <svg viewBox="0 0 48 15" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Visa">
+              <path fill="#ffffff" d="M20.7 14.6h-3.9L19.2.5h3.9zM13.5.5l-3.7 9.7-.44-2.2L8 1.4S7.8.5 6.6.5H.5L.4.9c1.5.38 3 .95 4.3 1.7l3.4 12h4L18.2.5zM43.9 14.6h3.6L44.3.5h-3.1c-1.5 0-1.8 1.1-1.8 1.1L33.5 14.6h4l.8-2.2h4.9zm-4.2-5.2 2-5.6 1.2 5.6zM33.8 4.1l.55-3.2S32.7.3 30.9.3c-1.9 0-6.5.83-6.5 4.9 0 3.8 5.3 3.9 5.3 5.9 0 2-4.8 1.6-6.3.4l-.57 3.3s1.7.83 4.4.83c2.6 0 6.6-1.4 6.6-5.1 0-3.9-5.3-4.2-5.3-5.9 0-1.7 3.8-1.5 5.2-.5z"/>
+            </svg>
+          </span>
+          <div class="kp-card-info">
+            <div class="kp-card-num">
+              <span>Visa</span>
+              <span class="kp-card-num__digits">•••• 4364</span>
+              <span class="kp-badge">По умолчанию</span>
+            </div>
+            <div class="kp-card-exp">Срок действия: 08/2028</div>
+          </div>
+          <div class="kp-card-actions">
+            <button class="kp-icon-btn" type="button" aria-label="Изменить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+            <button class="kp-icon-btn kp-icon-btn--danger" type="button" aria-label="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button class="kp-add-method" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          Добавить способ оплаты
+        </button>
+      </section>
+
+      <!-- ==== ПЛАТЁЖНАЯ ИНФОРМАЦИЯ ==== -->
+      <section class="kp-section">
+        <h2 class="kp-eyebrow">Платёжная информация</h2>
+
+        <div class="kp-info-grid">
+          <div class="kp-inforow">
+            <span class="kp-inforow__k">Организация</span>
+            <span class="kp-inforow__v">Кофейня «Нон»</span>
+          </div>
+          <div class="kp-inforow">
+            <span class="kp-inforow__k">Электронная почта</span>
+            <span class="kp-inforow__v kp-inforow__v--mono">non.coffee@gmail.com</span>
+          </div>
+          <div class="kp-inforow">
+            <span class="kp-inforow__k">Адрес выставления счёта</span>
+            <span class="kp-inforow__v">Узбекистан (UZ)</span>
+          </div>
+        </div>
+
+        <button class="kp-update-link" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Обновить
+        </button>
+      </section>
+
+      <!-- ==== ИСТОРИЯ СЧЕТОВ ==== -->
+      <section class="kp-section">
+        <h2 class="kp-eyebrow">История счетов</h2>
+
+        <div class="kp-table-scroll">
+          <table class="kp-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th class="kp-num">Сумма</th>
+                <th>Статус</th>
+                <th>Тариф</th>
+                <th class="kp-center">Счёт</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="kp-td-date">19 июл. 2026</td>
+                <td class="kp-num kp-td-amt">299,000 UZS<span class="kp-swapmini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 6h18"/><path d="m7 22-4-4 4-4"/><path d="M21 18H3"/></svg></span></td>
+                <td><span class="kp-pill kp-pill--success"><span class="kp-pill__dot"></span>Оплачено</span></td>
+                <td class="kp-td-plan">Krafta Pro</td>
+                <td class="kp-center">
+                  <button class="kp-icon-btn" type="button" aria-label="Скачать счёт">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td class="kp-td-date">19 июн. 2026</td>
+                <td class="kp-num kp-td-amt">299,000 UZS<span class="kp-swapmini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 6h18"/><path d="m7 22-4-4 4-4"/><path d="M21 18H3"/></svg></span></td>
+                <td><span class="kp-pill kp-pill--success"><span class="kp-pill__dot"></span>Оплачено</span></td>
+                <td class="kp-td-plan">Krafta Pro</td>
+                <td class="kp-center">
+                  <button class="kp-icon-btn" type="button" aria-label="Скачать счёт">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td class="kp-td-date">19 мая 2026</td>
+                <td class="kp-num kp-td-amt">299,000 UZS<span class="kp-swapmini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 6h18"/><path d="m7 22-4-4 4-4"/><path d="M21 18H3"/></svg></span></td>
+                <td><span class="kp-pill kp-pill--success"><span class="kp-pill__dot"></span>Оплачено</span></td>
+                <td class="kp-td-plan">Krafta Pro</td>
+                <td class="kp-center">
+                  <button class="kp-icon-btn" type="button" aria-label="Скачать счёт">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="kp-mobile-foot">
+        Обработка платежей — Krafta&nbsp;Pay
+        <span class="kp-dot">·</span><a href="#">Условия</a>
+        <span class="kp-dot">·</span><a href="#">Конфиденциальность</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var toggle = document.getElementById('kpThemeToggle');
+    var root = document.documentElement;
+    if (!toggle) return;
+    toggle.addEventListener('click', function () {
+      var cur = root.getAttribute('data-theme');
+      if (!cur) {
+        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        cur = prefersDark ? 'dark' : 'light';
+      }
+      root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+    });
+  })();
+</script>
+</body>
+</html>
