@@ -25,7 +25,12 @@ export async function createCardSetupSession(
   supabase: any,
   input: {
     subscriptionId: string;
-    customerOrgId: string;
+    // Main-app path: prove ownership via the merchant-app org id.
+    customerOrgId?: string | null;
+    // Customer-portal path: the session already binds a concrete customer, so
+    // ownership is proven by (org_id, customer_id) directly.
+    customerId?: string | null;
+    merchantOrgId?: string | null;
     payBaseUrl: string;
     returnUrl?: string | null;
   },
@@ -33,10 +38,26 @@ export async function createCardSetupSession(
   const payBaseUrl = input.payBaseUrl?.replace(/\/+$/, "");
   if (!payBaseUrl) return { ok: false, error: "pay_base_url_missing" };
 
-  const sub = await resolveOwnedSubscription(supabase, {
-    subscriptionId: input.subscriptionId,
-    customerOrgId: input.customerOrgId,
-  });
+  let sub:
+    | { id: string; org_id: string; customer_id: string; plan_id: string | null }
+    | null = null;
+  if (input.customerId && input.merchantOrgId) {
+    const { data, error } = await supabase
+      .schema("payments")
+      .from("subscriptions")
+      .select("id, org_id, customer_id, plan_id")
+      .eq("id", input.subscriptionId)
+      .eq("org_id", input.merchantOrgId)
+      .eq("customer_id", input.customerId)
+      .maybeSingle();
+    if (error) throw error;
+    sub = data;
+  } else if (input.customerOrgId) {
+    sub = await resolveOwnedSubscription(supabase, {
+      subscriptionId: input.subscriptionId,
+      customerOrgId: input.customerOrgId,
+    });
+  }
   if (!sub) return { ok: false, error: "subscription_not_found" };
 
   // Currency for the (zero-amount) intent — mirror the plan's, default UZS.
@@ -59,7 +80,7 @@ export async function createCardSetupSession(
     purpose: "card_update" as const,
     subscription_id: sub.id,
     customer_id: sub.customer_id,
-    customer_org_id: input.customerOrgId,
+    customer_org_id: input.customerOrgId ?? null,
     merchant_org_id: sub.org_id,
   };
 

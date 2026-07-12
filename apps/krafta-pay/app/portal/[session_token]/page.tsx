@@ -160,14 +160,26 @@ function bannerMessage(
     "e:invalid_plan_update_request": "Could not change the plan.",
     "e:plan_not_found": "Plan unavailable.",
   };
-  const map = locale === "en" ? en : ru;
+  const uz: Record<string, string> = {
+    "s:cancel_at_period_end_set": "Obuna joriy to‘langan davr oxirida bekor qilinadi.",
+    "s:already_canceled": "Obuna allaqachon bekor qilingan.",
+    "s:payment_method_updated": "To‘lov usuli yangilandi.",
+    "s:plan_updated": "Tarif o‘zgartirildi.",
+    "s:plan_update_scheduled": "Tarifni o‘zgartirish keyingi uzaytirishga rejalashtirildi.",
+    "s:plan_unchanged": "Siz allaqachon shu tarifdasiz.",
+    "e:subscription_not_found": "Obuna topilmadi.",
+    "e:expired": "Havolaning muddati tugagan. Ilovadan portalni qayta oching.",
+    "e:payment_method_update_canceled": "Kartani yangilash bekor qilindi.",
+    "e:invalid_plan_update_request": "Tarifni o‘zgartirib bo‘lmadi.",
+    "e:plan_not_found": "Tarif mavjud emas.",
+  };
+  const map = locale === "en" ? en : locale === "uz" ? uz : ru;
   const key = `${kind === "success" ? "s" : "e"}:${code}`;
   if (map[key]) return map[key];
-  return kind === "success"
-    ? map[key] ?? code
-    : locale === "en"
-      ? "Could not complete the action. Please try again."
-      : "Не удалось выполнить действие. Попробуйте ещё раз.";
+  if (kind === "success") return code;
+  if (locale === "en") return "Could not complete the action. Please try again.";
+  if (locale === "uz") return "Amalni bajarib bo‘lmadi. Qayta urinib ko‘ring.";
+  return "Не удалось выполнить действие. Попробуйте ещё раз.";
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +372,7 @@ export default async function CustomerPortalPage({
               className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-200"
             >
               <ArrowLeft className="size-4" />
-              {locale === "en" ? "Back" : "Назад"}
+              {s.backShort}
             </Link>
           ) : null}
         </div>
@@ -649,22 +661,22 @@ export default async function CustomerPortalPage({
                   })}
                 </div>
               )}
-              <form
-                method="post"
-                action={`/portal/${encodeURIComponent(session_token)}/payment-methods/uzum/update`}
-                className="pt-1"
-              >
-                {primarySubId ? (
-                  <input type="hidden" name="subscriptionId" value={primarySubId} />
-                ) : null}
-                <button
-                  type="submit"
-                  className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5")}
+              {primarySubId ? (
+                <form
+                  method="post"
+                  action={`/portal/${encodeURIComponent(session_token)}/payment-methods/atmos/update`}
+                  className="pt-1"
                 >
-                  <Plus className="size-4" />
-                  {paymentMethods.length ? s.updateCard : s.addCard}
-                </button>
-              </form>
+                  <input type="hidden" name="subscriptionId" value={primarySubId} />
+                  <button
+                    type="submit"
+                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5")}
+                  >
+                    <Plus className="size-4" />
+                    {paymentMethods.length ? s.updateCard : s.addCard}
+                  </button>
+                </form>
+              ) : null}
             </section>
 
             {/* ============ Billing information ============ */}

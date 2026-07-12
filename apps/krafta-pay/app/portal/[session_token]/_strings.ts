@@ -1,14 +1,14 @@
 // Localized copy for the hosted customer portal. Russian is the default (the
-// primary audience is Uzbek merchants); English is the fallback. Uzbek can be
-// added as a third entry when the portal session starts carrying a UZ locale.
+// primary audience is Uzbek merchants); Uzbek (Latin) and English follow.
 //
 // The locale is resolved from the portal session metadata (`locale`) or a
 // `?lang=` query param, defaulting to `ru`.
 
-export type PortalLocale = "ru" | "en";
+export type PortalLocale = "ru" | "uz" | "en";
 
 export function resolvePortalLocale(input?: string | null): PortalLocale {
   const value = String(input ?? "").toLowerCase();
+  if (value.startsWith("uz")) return "uz";
   if (value.startsWith("en")) return "en";
   return "ru";
 }
@@ -18,31 +18,33 @@ export function getPortalStrings(locale: PortalLocale) {
 }
 
 export function localeTag(locale: PortalLocale): string {
-  return locale === "en" ? "en-GB" : "ru-RU";
+  if (locale === "en") return "en-GB";
+  if (locale === "uz") return "uz-Latn-UZ";
+  return "ru-RU";
 }
 
 type StatusTone = "success" | "warning" | "destructive" | "muted";
 
-const SUB_STATUS: Record<string, { ru: string; en: string; tone: StatusTone }> = {
-  active: { ru: "Активна", en: "Active", tone: "success" },
-  trialing: { ru: "Пробный период", en: "Trial", tone: "success" },
-  past_due: { ru: "Просрочена", en: "Past due", tone: "warning" },
-  unpaid: { ru: "Не оплачена", en: "Unpaid", tone: "warning" },
-  incomplete: { ru: "Не завершена", en: "Incomplete", tone: "warning" },
-  paused: { ru: "Приостановлена", en: "Paused", tone: "muted" },
-  canceled: { ru: "Отменена", en: "Canceled", tone: "muted" },
-  cancelled: { ru: "Отменена", en: "Canceled", tone: "muted" },
+const SUB_STATUS: Record<string, { ru: string; uz: string; en: string; tone: StatusTone }> = {
+  active: { ru: "Активна", uz: "Faol", en: "Active", tone: "success" },
+  trialing: { ru: "Пробный период", uz: "Sinov muddati", en: "Trial", tone: "success" },
+  past_due: { ru: "Просрочена", uz: "Muddati o‘tgan", en: "Past due", tone: "warning" },
+  unpaid: { ru: "Не оплачена", uz: "To‘lanmagan", en: "Unpaid", tone: "warning" },
+  incomplete: { ru: "Не завершена", uz: "Tugallanmagan", en: "Incomplete", tone: "warning" },
+  paused: { ru: "Приостановлена", uz: "To‘xtatilgan", en: "Paused", tone: "muted" },
+  canceled: { ru: "Отменена", uz: "Bekor qilingan", en: "Canceled", tone: "muted" },
+  cancelled: { ru: "Отменена", uz: "Bekor qilingan", en: "Canceled", tone: "muted" },
 };
 
-const INVOICE_STATUS: Record<string, { ru: string; en: string; tone: StatusTone }> = {
-  paid: { ru: "Оплачено", en: "Paid", tone: "success" },
-  succeeded: { ru: "Оплачено", en: "Paid", tone: "success" },
-  open: { ru: "Ожидает оплаты", en: "Open", tone: "warning" },
-  processing: { ru: "В обработке", en: "Processing", tone: "warning" },
-  draft: { ru: "Черновик", en: "Draft", tone: "muted" },
-  void: { ru: "Аннулирован", en: "Void", tone: "muted" },
-  uncollectible: { ru: "Не оплачен", en: "Uncollectible", tone: "destructive" },
-  failed: { ru: "Ошибка", en: "Failed", tone: "destructive" },
+const INVOICE_STATUS: Record<string, { ru: string; uz: string; en: string; tone: StatusTone }> = {
+  paid: { ru: "Оплачено", uz: "To‘langan", en: "Paid", tone: "success" },
+  succeeded: { ru: "Оплачено", uz: "To‘langan", en: "Paid", tone: "success" },
+  open: { ru: "Ожидает оплаты", uz: "To‘lov kutilmoqda", en: "Open", tone: "warning" },
+  processing: { ru: "В обработке", uz: "Qayta ishlanmoqda", en: "Processing", tone: "warning" },
+  draft: { ru: "Черновик", uz: "Qoralama", en: "Draft", tone: "muted" },
+  void: { ru: "Аннулирован", uz: "Bekor qilingan", en: "Void", tone: "muted" },
+  uncollectible: { ru: "Не оплачен", uz: "To‘lanmagan", en: "Uncollectible", tone: "destructive" },
+  failed: { ru: "Ошибка", uz: "Xatolik", en: "Failed", tone: "destructive" },
 };
 
 export function subStatusMeta(status: string | null | undefined, locale: PortalLocale) {
@@ -69,6 +71,7 @@ const STRINGS = {
     terms: "Условия",
     privacy: "Конфиденциальность",
     themeToggle: "Переключить тему",
+    backShort: "Назад",
 
     currentSubscription: "Текущая подписка",
     paymentMethod: "Способ оплаты",
@@ -118,6 +121,65 @@ const STRINGS = {
     sessionUnavailableBody:
       "Срок действия этой ссылки истёк или она недействительна. Откройте управление оплатой в приложении заново.",
   },
+  uz: {
+    pageTitle: "Obunani boshqarish",
+    trust: (brand: string) =>
+      `${brand} hisob-fakturalar va obunani boshqarish uchun Krafta Pay’dan foydalanadi.`,
+    backTo: (brand: string) => `${brand}ga qaytish`,
+    processedBy: "To‘lovlarni Krafta Pay amalga oshiradi",
+    terms: "Shartlar",
+    privacy: "Maxfiylik",
+    themeToggle: "Mavzuni almashtirish",
+    backShort: "Orqaga",
+
+    currentSubscription: "Joriy obuna",
+    paymentMethod: "To‘lov usuli",
+    billingInfo: "To‘lov ma’lumotlari",
+    invoiceHistory: "Hisob-fakturalar tarixi",
+
+    perMonth: "oy",
+    perMonths: (n: number) => `${n} oy`,
+    autoRenew: "Karta orqali avtomatik uzaytirish",
+    showDetails: "Batafsil ko‘rsatish",
+    planAmount: "Tarif narxi",
+    subscriptionSince: "Boshlangan",
+    currentPeriod: "To‘langan davr",
+    nextBilling: "Keyingi to‘lov",
+    cancelScheduled: (date: string) => `Obuna ${date} da bekor qilinadi`,
+    pendingPlanChange: (plan: string, date: string) =>
+      `«${plan}» tarifiga o‘tish rejalashtirilgan — ${date}`,
+
+    changePlan: "Tarifni o‘zgartirish",
+    changePlanTo: "Yangi tarif",
+    whenApply: "Qachon qo‘llanilsin",
+    applyPeriodEnd: "Joriy davr oxirida",
+    applyNow: "Hozir",
+    confirmChange: "O‘zgartirishni tasdiqlash",
+    cancelSub: "Obunani bekor qilish",
+    cancelHint: "Kirish to‘langan davr oxirigacha saqlanadi.",
+    cancelConfirm: "Ha, davr oxirida bekor qilish",
+    cancellationScheduled: "Bekor qilish rejalashtirilgan",
+
+    addCard: "To‘lov usulini qo‘shish",
+    updateCard: "To‘lov usulini o‘zgartirish",
+    defaultBadge: "Asosiy",
+    expires: "Amal qilish muddati",
+    noPaymentMethods: "Hozircha to‘lov usuli qo‘shilmagan.",
+
+    email: "Elektron pochta",
+    phone: "Telefon",
+
+    colDate: "Sana",
+    colPlan: "Tarif",
+    colAmount: "Summa",
+    colStatus: "Holat",
+    noInvoices: "Hozircha hisob-fakturalar yo‘q.",
+    noSubscriptions: "Sizda faol obuna yo‘q.",
+
+    sessionUnavailableTitle: "Sessiya mavjud emas",
+    sessionUnavailableBody:
+      "Bu havolaning muddati tugagan yoki u yaroqsiz. Ilovadan to‘lovni boshqarishni qayta oching.",
+  },
   en: {
     pageTitle: "Manage subscription",
     trust: (brand: string) =>
@@ -127,6 +189,7 @@ const STRINGS = {
     terms: "Terms",
     privacy: "Privacy",
     themeToggle: "Toggle theme",
+    backShort: "Back",
 
     currentSubscription: "Current subscription",
     paymentMethod: "Payment method",
