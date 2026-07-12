@@ -23,6 +23,29 @@ export async function POST(
         { status: 400 },
       );
     }
+
+    // Subscription checkouts are Atmos-only (first charge binds the card, renewals
+    // reuse the token). The pay page already hides Uzum for these; this is the
+    // server-side guard so a hand-crafted request can't bind a subscription to
+    // Uzum behind the UI. Non-subscription sessions (storefront/one-off) are
+    // unaffected.
+    const { data: sessionRow, error: sessionRowErr } = await supabase
+      .schema("payments")
+      .from("checkout_sessions")
+      .select("metadata")
+      .eq("public_token", public_token)
+      .maybeSingle();
+    if (sessionRowErr) throw sessionRowErr;
+    const sessionMeta = (sessionRow?.metadata ?? {}) as Record<string, unknown>;
+    const isSubscriptionSession =
+      typeof sessionMeta.subscription_id === "string" &&
+      sessionMeta.subscription_id.length > 0;
+    if (isSubscriptionSession && providerId !== "atmos") {
+      return NextResponse.json(
+        { error: "provider_not_allowed_for_subscription" },
+        { status: 400 },
+      );
+    }
     const requestedViewType =
       body.viewType === "WEB_VIEW" || body.viewType === "REDIRECT" || body.viewType === "IFRAME"
         ? body.viewType

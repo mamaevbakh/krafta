@@ -25,7 +25,7 @@ export default async function PayPage({
     .schema("payments")
     .from("checkout_sessions")
     .select(
-      "id, status, org_id, public_token, payment_intent_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at, order_id)"
+      "id, status, org_id, public_token, payment_intent_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, metadata, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at, order_id)"
     )
     .eq("public_token", public_token)
     .maybeSingle();
@@ -47,10 +47,22 @@ export default async function PayPage({
 
   if (accErr) throw accErr;
 
+  // Subscriptions are Atmos-only: the first charge binds the card (one OTP) and
+  // every renewal reuses that token off-session, so Uzum is never offered here.
+  // Detect via the subscription_id stamped on the session — not the order_id
+  // heuristic below, which would also sweep in one-off payment links.
+  const sessionMetadata = ((session as any).metadata ?? {}) as Record<string, unknown>;
+  const isSubscriptionSession =
+    typeof sessionMetadata.subscription_id === "string" &&
+    sessionMetadata.subscription_id.length > 0;
+
   const providers =
     (accounts ?? [])
       .filter((a: any) => a.providers?.is_active)
-      .filter((a: any) => a.provider_id === "uzum" || a.provider_id === "atmos")
+      .filter((a: any) =>
+        a.provider_id === "atmos" ||
+        (!isSubscriptionSession && a.provider_id === "uzum"),
+      )
       .map((a: any) => ({
         id: a.provider_id as string,
         name: a.providers.display_name as string,
