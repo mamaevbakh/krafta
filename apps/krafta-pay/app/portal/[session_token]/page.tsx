@@ -1,83 +1,178 @@
 import Link from "next/link";
+import { ArrowLeft, CreditCard, Plus, RefreshCw } from "lucide-react";
+
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { resolveActiveCustomerPortalSession } from "@/lib/customer-portal";
+import { formatMinorAmount } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { BrandWordmark } from "@/components/brand/brand-wordmark";
+import { PortalThemeToggle } from "./_theme-toggle.client";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  getPortalStrings,
+  invoiceStatusMeta,
+  localeTag,
+  resolvePortalLocale,
+  subStatusMeta,
+  type PortalLocale,
+} from "./_strings";
 
-function fmtDate(value: string | null | undefined) {
-  if (!value) return "n/a";
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+
+function fmtLongDate(value: string | null | undefined, locale: PortalLocale) {
+  if (!value) return null;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "n/a";
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(localeTag(locale), {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
     timeZone: "UTC",
   }).format(date);
 }
 
-function fmtMoney(amountMinor: number, currency: string | null | undefined) {
-  const code = (currency || "UZS").toUpperCase();
-  try {
-    return new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: 0,
-    }).format(amountMinor / 100);
-  } catch {
-    return `${amountMinor} ${code}`;
-  }
+function fmtShortDate(value: string | null | undefined, locale: PortalLocale) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(localeTag(locale), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
-function maskProviderToken(token: string | null | undefined) {
-  if (!token) return "n/a";
-  if (token.length <= 8) return token;
-  return `${token.slice(0, 4)}...${token.slice(-4)}`;
+function money(amountMinor: number | null | undefined, currency: string | null | undefined) {
+  return formatMinorAmount(amountMinor ?? 0, (currency || "UZS").toUpperCase());
 }
 
-function statusTone(status: string | null | undefined) {
-  switch (String(status ?? "").toLowerCase()) {
-    case "active":
-    case "paid":
-    case "succeeded":
-      return "text-emerald-600";
-    case "past_due":
-    case "open":
-    case "processing":
-      return "text-amber-600";
-    case "canceled":
-    case "cancelled":
-    case "uncollectible":
-    case "failed":
-      return "text-rose-600";
-    default:
-      return "text-muted-foreground";
-  }
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
-function getPendingPlanChange(metadata: unknown) {
+function getPendingPlanChange(metadata: unknown): { planId: string; effectiveAt: string | null } | null {
   if (!metadata || typeof metadata !== "object") return null;
-  const rec = metadata as Record<string, unknown>;
-  const pending =
-    rec.pending_plan_change && typeof rec.pending_plan_change === "object"
-      ? (rec.pending_plan_change as Record<string, unknown>)
-      : null;
-  if (!pending) return null;
-  const planId = typeof pending.plan_id === "string" ? pending.plan_id : null;
-  if (!planId) return null;
-  return {
-    planId,
-    fromPlanId: typeof pending.from_plan_id === "string" ? pending.from_plan_id : null,
-    requestedAt: typeof pending.requested_at === "string" ? pending.requested_at : null,
-    effectiveAt: typeof pending.effective_at === "string" ? pending.effective_at : null,
-    prorationBehavior:
-      typeof pending.proration_behavior === "string" ? pending.proration_behavior : null,
-  };
+  const pending = (metadata as Record<string, unknown>).pending_plan_change;
+  if (!pending || typeof pending !== "object") return null;
+  const planId = (pending as Record<string, unknown>).plan_id;
+  if (typeof planId !== "string") return null;
+  const effectiveAt = (pending as Record<string, unknown>).effective_at;
+  return { planId, effectiveAt: typeof effectiveAt === "string" ? effectiveAt : null };
 }
+
+// ---------------------------------------------------------------------------
+// Presentational pieces
+// ---------------------------------------------------------------------------
+
+type StatusTone = "success" | "warning" | "destructive" | "muted";
+
+const TONE_CLASS: Record<StatusTone, string> = {
+  success: "bg-success/10 text-success dark:bg-success/15",
+  warning: "bg-warning/10 text-warning dark:bg-warning/15",
+  destructive: "bg-destructive/10 text-destructive dark:bg-destructive/20",
+  muted: "bg-muted text-muted-foreground",
+};
+
+function StatusPill({ label, tone }: { label: string; tone: StatusTone }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        TONE_CLASS[tone],
+      )}
+    >
+      <span className="size-1.5 rounded-full bg-current opacity-80" aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+function CardBrandMark({ brand }: { brand: string | null | undefined }) {
+  const b = String(brand ?? "").toLowerCase();
+  if (b.includes("visa")) {
+    return (
+      <div className="flex h-[22px] w-8 shrink-0 items-center justify-center rounded bg-[#1434CB] text-[8px] font-bold tracking-tight text-white italic">
+        VISA
+      </div>
+    );
+  }
+  if (b.includes("master") || b.includes("mc")) {
+    return (
+      <div className="flex h-[22px] w-8 shrink-0 items-center justify-center rounded border border-border bg-background">
+        <span className="size-2.5 rounded-full bg-[#EB001B]" />
+        <span className="-ml-1 size-2.5 rounded-full bg-[#F79E1B]/90" />
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-[22px] w-8 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+      <CreditCard className="size-3.5" />
+    </div>
+  );
+}
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+      {children}
+    </h2>
+  );
+}
+
+const summaryButton =
+  "cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden";
+
+// ---------------------------------------------------------------------------
+// Success / error banners (localized inline; ru primary, en fallback)
+// ---------------------------------------------------------------------------
+
+function bannerMessage(
+  kind: "success" | "error",
+  code: string,
+  locale: PortalLocale,
+): string {
+  const ru: Record<string, string> = {
+    "s:cancel_at_period_end_set": "Подписка будет отменена в конце текущего оплаченного периода.",
+    "s:already_canceled": "Подписка уже отменена.",
+    "s:payment_method_updated": "Способ оплаты обновлён.",
+    "s:plan_updated": "Тариф изменён.",
+    "s:plan_update_scheduled": "Смена тарифа запланирована на следующее продление.",
+    "s:plan_unchanged": "Вы уже на этом тарифе.",
+    "e:subscription_not_found": "Подписка не найдена.",
+    "e:expired": "Срок действия ссылки истёк. Откройте портал заново из приложения.",
+    "e:payment_method_update_canceled": "Обновление карты отменено.",
+    "e:invalid_plan_update_request": "Не удалось изменить тариф.",
+    "e:plan_not_found": "Тариф недоступен.",
+  };
+  const en: Record<string, string> = {
+    "s:cancel_at_period_end_set": "Your subscription will cancel at the end of the current paid period.",
+    "s:already_canceled": "Subscription is already canceled.",
+    "s:payment_method_updated": "Payment method updated.",
+    "s:plan_updated": "Plan changed.",
+    "s:plan_update_scheduled": "Plan change scheduled for your next renewal.",
+    "s:plan_unchanged": "You are already on this plan.",
+    "e:subscription_not_found": "Subscription not found.",
+    "e:expired": "This link has expired. Open the portal again from the app.",
+    "e:payment_method_update_canceled": "Card update was canceled.",
+    "e:invalid_plan_update_request": "Could not change the plan.",
+    "e:plan_not_found": "Plan unavailable.",
+  };
+  const map = locale === "en" ? en : ru;
+  const key = `${kind === "success" ? "s" : "e"}:${code}`;
+  if (map[key]) return map[key];
+  return kind === "success"
+    ? map[key] ?? code
+    : locale === "en"
+      ? "Could not complete the action. Please try again."
+      : "Не удалось выполнить действие. Попробуйте ещё раз.";
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default async function CustomerPortalPage({
   params,
@@ -88,40 +183,51 @@ export default async function CustomerPortalPage({
 }) {
   const { session_token } = await params;
   const query = await searchParams;
-  const successParam = Array.isArray(query.success) ? query.success[0] : query.success;
-  const errorParam = Array.isArray(query.error) ? query.error[0] : query.error;
+  const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const successParam = pick(query.success);
+  const errorParam = pick(query.error);
+  const langParam = pick(query.lang);
 
   const supabase = createAdminSupabase();
   const portal = await resolveActiveCustomerPortalSession(supabase, session_token);
 
   if (!portal.ok) {
+    const locale = resolvePortalLocale(langParam);
+    const s = getPortalStrings(locale);
     return (
-      <main className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center px-6 py-16">
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle>Customer Portal Session Unavailable</CardTitle>
-            <CardDescription>
-              This portal session is {portal.reason}. Request a new portal link from the app.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center">
+        <h1 className="text-lg font-semibold">{s.sessionUnavailableTitle}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{s.sessionUnavailableBody}</p>
       </main>
     );
   }
 
   const session = portal.session;
+  const sessionMeta =
+    session.metadata && typeof session.metadata === "object"
+      ? (session.metadata as Record<string, unknown>)
+      : {};
+  const locale = resolvePortalLocale(
+    langParam ?? (typeof sessionMeta.locale === "string" ? sessionMeta.locale : null),
+  );
+  const s = getPortalStrings(locale);
+  const brandName =
+    typeof sessionMeta.brand_name === "string" && sessionMeta.brand_name.trim()
+      ? sessionMeta.brand_name.trim()
+      : "Krafta";
+
   const [customerRes, subscriptionsRes, paymentMethodsRes] = await Promise.all([
     supabase
       .schema("payments")
       .from("customers")
-      .select("id, email, phone, customer_org_id, customer_user_ref")
+      .select("id, email, phone")
       .eq("id", session.customer_id)
       .maybeSingle(),
     supabase
       .schema("payments")
       .from("subscriptions")
       .select(
-        "id, status, plan_id, cancel_at_period_end, current_period_start, current_period_end, created_at, updated_at, default_payment_method_id, metadata",
+        "id, status, plan_id, cancel_at_period_end, current_period_start, current_period_end, created_at, updated_at, metadata",
       )
       .eq("org_id", session.org_id)
       .eq("customer_id", session.customer_id)
@@ -130,8 +236,9 @@ export default async function CustomerPortalPage({
     supabase
       .schema("payments")
       .from("payment_methods")
-      .select("id, provider_id, provider_token, status, is_default, created_at")
+      .select("id, provider_id, brand, last4, exp_month, exp_year, type, status, is_default, created_at")
       .eq("customer_id", session.customer_id)
+      .order("is_default", { ascending: false })
       .order("created_at", { ascending: false }),
   ]);
   if (customerRes.error) throw customerRes.error;
@@ -139,16 +246,21 @@ export default async function CustomerPortalPage({
   if (paymentMethodsRes.error) throw paymentMethodsRes.error;
 
   const subscriptions = subscriptionsRes.data ?? [];
-  const planIds = Array.from(new Set(subscriptions.map((s) => s.plan_id).filter(Boolean)));
+  const paymentMethods = paymentMethodsRes.data ?? [];
+  const planIds = Array.from(new Set(subscriptions.map((r) => r.plan_id).filter(Boolean)));
 
   const [plansRes, availablePlansRes, invoicesRes] = await Promise.all([
     planIds.length
-      ? supabase.schema("payments").from("plans").select("id, name, amount_minor, currency").in("id", planIds)
-      : Promise.resolve({ data: [], error: null } as any),
+      ? supabase
+          .schema("payments")
+          .from("plans")
+          .select("id, name, amount_minor, currency, interval_count")
+          .in("id", planIds)
+      : Promise.resolve({ data: [], error: null } as { data: unknown[]; error: null }),
     supabase
       .schema("payments")
       .from("plans")
-      .select("id, name, code, amount_minor, currency, interval_count, is_active")
+      .select("id, name, amount_minor, currency, interval_count, is_active")
       .eq("org_id", session.org_id)
       .eq("is_active", true)
       .order("amount_minor", { ascending: true }),
@@ -156,396 +268,468 @@ export default async function CustomerPortalPage({
       ? supabase
           .schema("payments")
           .from("invoices")
-          .select(
-            "id, subscription_id, status, amount_due_minor, currency, attempt_count, due_at, paid_at, billing_period_start, billing_period_end, created_at",
-          )
-          .in(
-            "subscription_id",
-            subscriptions.map((s) => s.id),
-          )
+          .select("id, subscription_id, status, amount_due_minor, currency, created_at")
+          .in("subscription_id", subscriptions.map((r) => r.id))
           .order("created_at", { ascending: false })
-          .limit(50)
-      : Promise.resolve({ data: [], error: null } as any),
+          .limit(24)
+      : Promise.resolve({ data: [], error: null } as { data: unknown[]; error: null }),
   ]);
   if (plansRes.error) throw plansRes.error;
   if (availablePlansRes.error) throw availablePlansRes.error;
   if (invoicesRes.error) throw invoicesRes.error;
 
-  type PlanRow = { id: string; name: string | null; amount_minor: number; currency: string };
-  type AvailablePlanRow = PlanRow & {
-    code: string | null;
+  type PlanRow = {
+    id: string;
+    name: string | null;
+    amount_minor: number;
+    currency: string;
     interval_count: number | null;
-    is_active: boolean;
+    is_active?: boolean;
   };
-  type InvoiceRow = {
+  const plans = (plansRes.data ?? []) as PlanRow[];
+  const availablePlans = (availablePlansRes.data ?? []) as PlanRow[];
+  const invoices = (invoicesRes.data ?? []) as Array<{
     id: string;
     subscription_id: string;
     status: string;
     amount_due_minor: number;
     currency: string;
-    attempt_count: number;
-    due_at: string | null;
-    paid_at: string | null;
-    billing_period_start: string | null;
-    billing_period_end: string | null;
     created_at: string;
-  };
-  const typedPlans = (plansRes.data ?? []) as PlanRow[];
-  const availablePlans = (availablePlansRes.data ?? []) as AvailablePlanRow[];
-  const typedInvoices = (invoicesRes.data ?? []) as InvoiceRow[];
+  }>;
+  const plansById = new Map(plans.map((p) => [p.id, p]));
+  const availableById = new Map(availablePlans.map((p) => [p.id, p]));
+  const subPlanName = new Map(subscriptions.map((sub) => [sub.id, plansById.get(sub.plan_id)?.name ?? "—"]));
 
-  const plansById = new Map<string, PlanRow>(typedPlans.map((plan) => [plan.id, plan]));
-  const invoicesBySubscription = new Map<string, InvoiceRow[]>();
-  for (const invoice of typedInvoices) {
-    const list = invoicesBySubscription.get(invoice.subscription_id) ?? [];
-    list.push(invoice);
-    invoicesBySubscription.set(invoice.subscription_id, list);
-  }
-
-  const flowType = typeof session.flow_type === "string" ? session.flow_type : null;
-  const flowData =
-    session.flow_data && typeof session.flow_data === "object"
-      ? (session.flow_data as Record<string, unknown>)
-      : {};
   const highlightedSubscriptionId =
-    typeof flowData.subscriptionId === "string" ? flowData.subscriptionId : null;
+    session.flow_data && typeof session.flow_data === "object"
+      ? (session.flow_data as Record<string, unknown>).subscriptionId
+      : null;
+  const primarySubId = subscriptions[0]?.id ?? null;
+  const customer = customerRes.data;
+  const contactLine = customer?.email || customer?.phone || null;
+
+  const intervalLabel = (n: number | null | undefined) =>
+    !n || n === 1 ? s.perMonth : s.perMonths(n);
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs tracking-[0.14em] text-muted-foreground uppercase">
-            Krafta Pay Customer Portal
+    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[minmax(300px,360px)_1fr]">
+      {/* ---- Desktop brand rail (persistent dark surface) ---- */}
+      <aside className="hidden bg-neutral-950 text-neutral-100 lg:block dark:bg-black">
+        <div className="sticky top-0 flex min-h-screen flex-col px-9 py-10">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 items-center justify-center rounded-md bg-white text-sm font-bold text-black">
+              K
+            </span>
+            <BrandWordmark text={brandName} className="text-lg text-white dark:text-white" />
+          </div>
+          <p className="mt-7 max-w-[26ch] text-sm leading-relaxed text-neutral-400">
+            {s.trust(brandName)}
           </p>
-          <h1 className="mt-2 text-2xl font-semibold">Billing & Subscription Management</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Hosted billing portal session. Expires: {fmtDate(session.expires_at)}
+          {session.return_url ? (
+            <Link
+              href={String(session.return_url)}
+              className="mt-7 -ml-2.5 inline-flex w-fit items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-white/5"
+            >
+              <ArrowLeft className="size-4" />
+              {s.backTo(brandName)}
+            </Link>
+          ) : null}
+          <div className="flex-1" />
+          <p className="border-t border-white/10 pt-6 text-xs leading-relaxed text-neutral-500">
+            {s.processedBy}
+            <span className="px-1.5 opacity-50">·</span>
+            {s.terms}
+            <span className="px-1.5 opacity-50">·</span>
+            {s.privacy}
           </p>
-          {flowType ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              Requested flow: <span className="font-mono">{flowType}</span>
-            </p>
+        </div>
+      </aside>
+
+      <div className="flex flex-col">
+        {/* ---- Mobile top bar ---- */}
+        <div className="flex items-center justify-between gap-3 bg-neutral-950 px-4 py-3 text-neutral-100 lg:hidden dark:bg-black">
+          <div className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded bg-white text-xs font-bold text-black">
+              K
+            </span>
+            <BrandWordmark text={brandName} className="text-sm text-white dark:text-white" />
+          </div>
+          {session.return_url ? (
+            <Link
+              href={String(session.return_url)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-200"
+            >
+              <ArrowLeft className="size-4" />
+              {locale === "en" ? "Back" : "Назад"}
+            </Link>
           ) : null}
         </div>
-        {session.return_url ? (
-          <Link
-            href={String(session.return_url)}
-            className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted"
-          >
-            Return to App
-          </Link>
-        ) : null}
-      </div>
 
-      {successParam ? (
-        <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {successParam === "cancel_at_period_end_set"
-            ? "Subscription will cancel at the end of the current billing period."
-            : successParam === "already_canceled"
-              ? "Subscription is already canceled."
-              : successParam === "payment_method_updated"
-                ? "Payment method updated. The new Uzum card binding was saved for future charges."
-                : successParam === "plan_updated"
-                  ? "Subscription plan updated. No proration invoice was created (proration behavior: none)."
-                  : successParam === "plan_update_scheduled"
-                    ? "Plan change scheduled for the next renewal (apply at period end)."
-                    : successParam === "plan_unchanged"
-                      ? "Subscription is already on that plan."
-            : successParam}
-        </div>
-      ) : null}
-      {errorParam ? (
-        <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {errorParam === "subscription_not_found"
-            ? "Subscription not found for this customer portal session."
-            : errorParam === "expired"
-              ? "This portal session has expired. Request a new portal link from the app."
-              : errorParam === "payment_method_update_canceled"
-                ? "Card update flow was canceled."
-              : "Could not complete the requested action. Please try again from the app."}
-        </div>
-      ) : null}
-
-      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer</CardTitle>
-            <CardDescription>Portal session identity and contact info.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>
-              <span className="text-muted-foreground">Customer ID:</span>{" "}
-              <span className="font-mono">{session.customer_id}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Customer Org ID:</span>{" "}
-              <span className="font-mono">{customerRes.data?.customer_org_id ?? "n/a"}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Customer User Ref:</span>{" "}
-              <span className="font-mono">{customerRes.data?.customer_user_ref ?? "n/a"}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Email:</span> {customerRes.data?.email ?? "n/a"}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Phone:</span> {customerRes.data?.phone ?? "n/a"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment Methods</CardTitle>
-            <CardDescription>
-              Stored methods available for recurring billing (BYO acquirer aware).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <form
-              method="post"
-              action={`/portal/${encodeURIComponent(session_token)}/payment-methods/uzum/update`}
-              className="mb-3"
-            >
-              {highlightedSubscriptionId ? (
-                <input type="hidden" name="subscriptionId" value={highlightedSubscriptionId} />
-              ) : null}
-              <button
-                type="submit"
-                className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-base md:text-sm font-medium hover:bg-muted"
-              >
-                {paymentMethodsRes.data?.length ? "Update Uzum Card" : "Add Uzum Card"}
-              </button>
-            </form>
-            {(paymentMethodsRes.data ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No saved payment methods yet.</p>
-            ) : (
-              (paymentMethodsRes.data ?? []).map((pm) => (
-                <div
-                  key={pm.id}
-                  className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {pm.provider_id.toUpperCase()}{" "}
-                      {pm.is_default ? (
-                        <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs">Default</span>
-                      ) : null}
-                    </p>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {maskProviderToken(pm.provider_token)}
-                    </p>
-                  </div>
-                  <p className={`text-xs font-medium ${statusTone(pm.status)}`}>{pm.status}</p>
-                </div>
-              ))
-            )}
-            <p className="text-xs text-muted-foreground">
-              Uzum card updates use a bind-only hosted flow and save a new <span className="font-mono">bindingId</span>{" "}
-              for future renewals.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mt-6 grid gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Subscriptions</CardTitle>
-            <CardDescription>
-              Hosted self-service management (MVP: status visibility + cancel at period end).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {subscriptions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No subscriptions found for this customer.</p>
-            ) : (
-              subscriptions.map((subscription) => {
-                const plan = plansById.get(subscription.plan_id);
-                const invoices = invoicesBySubscription.get(subscription.id) ?? [];
-                const latestInvoice = invoices[0];
-                const isHighlighted = highlightedSubscriptionId === subscription.id;
-                const pendingPlanChange = getPendingPlanChange((subscription as any).metadata);
-                const pendingPlan = pendingPlanChange ? availablePlans.find((p) => p.id === pendingPlanChange.planId) : null;
-                return (
-                  <div
-                    key={subscription.id}
-                    className={`rounded-xl border p-4 ${
-                      isHighlighted ? "border-primary ring-2 ring-primary/15" : ""
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold">
-                          {plan?.name ?? "Subscription"}{" "}
-                          <span className={`ml-2 text-xs font-medium ${statusTone(subscription.status)}`}>
-                            {subscription.status}
-                          </span>
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground font-mono">
-                          {subscription.id}
-                        </p>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Next renewal: {fmtDate(subscription.current_period_end)}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Cancel at period end: {subscription.cancel_at_period_end ? "Yes" : "No"}
-                        </p>
-                        {plan ? (
-                          <p className="text-sm text-muted-foreground">
-                            Plan amount: {fmtMoney(plan.amount_minor, plan.currency)}
-                          </p>
-                        ) : null}
-                        {pendingPlanChange ? (
-                          <p className="text-sm text-muted-foreground">
-                            Pending plan change:{" "}
-                            <span className="font-medium text-foreground">
-                              {pendingPlan?.name ?? pendingPlanChange.planId}
-                            </span>{" "}
-                            ({pendingPlanChange.effectiveAt ?? "scheduled"}) · requested{" "}
-                            {fmtDate(pendingPlanChange.requestedAt)}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex min-w-[270px] flex-col items-end gap-2">
-                        <form
-                          method="post"
-                          action={`/portal/${encodeURIComponent(session_token)}/subscriptions/${encodeURIComponent(subscription.id)}/cancel`}
-                        >
-                          <button
-                            type="submit"
-                            className="inline-flex h-9 items-center rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
-                            disabled={
-                              subscription.cancel_at_period_end || subscription.status === "canceled"
-                            }
-                          >
-                            {subscription.cancel_at_period_end ? "Cancellation Scheduled" : "Cancel at Period End"}
-                          </button>
-                        </form>
-                        <p className="text-xs text-muted-foreground">
-                          Stripe-like portal parity: hosted cancel and plan-change flows.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 rounded-lg border bg-muted/10 p-3">
-                      <form
-                        method="post"
-                        action={`/portal/${encodeURIComponent(session_token)}/subscriptions/${encodeURIComponent(subscription.id)}/update`}
-                        className="grid gap-3 md:grid-cols-[1.4fr_1fr_auto]"
-                      >
-                        <label className="text-sm">
-                          <span className="mb-1 block text-xs text-muted-foreground">Plan</span>
-                          <select
-                            name="planId"
-                            defaultValue={pendingPlanChange?.planId ?? subscription.plan_id}
-                            className="h-9 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-                          >
-                            {availablePlans.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name ?? "Plan"} · {fmtMoney(p.amount_minor, p.currency)}
-                                {p.interval_count ? ` / ${p.interval_count} mo` : ""}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="text-sm">
-                          <span className="mb-1 block text-xs text-muted-foreground">Proration</span>
-                          <select
-                            name="prorationBehavior"
-                            defaultValue="defer_to_period_end"
-                            className="h-9 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-                          >
-                            <option value="defer_to_period_end">Apply at period end</option>
-                            <option value="none">No proration (immediate)</option>
-                          </select>
-                        </label>
-
-                        <div className="flex items-end">
-                          <button
-                            type="submit"
-                            className="inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium hover:bg-muted"
-                          >
-                            Update plan
-                          </button>
-                        </div>
-                      </form>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Proration invoices are not created yet in Krafta Pay. “No proration” changes the plan immediately;
-                        “Apply at period end” schedules the switch for the next successful renewal charge.
-                      </p>
-                    </div>
-
-                    {latestInvoice ? (
-                      <div className="mt-4 rounded-lg border bg-muted/20 px-3 py-2 text-sm">
-                        <p>
-                          Latest invoice:{" "}
-                          <span className={`font-medium ${statusTone(latestInvoice.status)}`}>
-                            {latestInvoice.status}
-                          </span>{" "}
-                          ({fmtMoney(latestInvoice.amount_due_minor, latestInvoice.currency)})
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Attempts: {latestInvoice.attempt_count} · Due: {fmtDate(latestInvoice.due_at)} · Paid:{" "}
-                          {fmtDate(latestInvoice.paid_at)}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Invoice History</CardTitle>
-            <CardDescription>
-              Recent invoices across this customer’s subscriptions.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {(invoicesRes.data ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No invoices yet.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-left text-sm">
-                  <thead className="text-xs text-muted-foreground">
-                    <tr>
-                      <th className="py-2 pr-3 font-medium">Created</th>
-                      <th className="py-2 pr-3 font-medium">Subscription</th>
-                      <th className="py-2 pr-3 font-medium">Status</th>
-                      <th className="py-2 pr-3 font-medium">Amount</th>
-                      <th className="py-2 pr-3 font-medium">Attempts</th>
-                      <th className="py-2 pr-3 font-medium">Billing Period</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {typedInvoices.map((invoice) => (
-                      <tr key={invoice.id} className="border-t">
-                        <td className="py-2 pr-3">{fmtDate(invoice.created_at)}</td>
-                        <td className="py-2 pr-3 font-mono text-xs">{invoice.subscription_id}</td>
-                        <td className={`py-2 pr-3 font-medium ${statusTone(invoice.status)}`}>
-                          {invoice.status}
-                        </td>
-                        <td className="py-2 pr-3">
-                          {fmtMoney(invoice.amount_due_minor, invoice.currency)}
-                        </td>
-                        <td className="py-2 pr-3">{invoice.attempt_count}</td>
-                        <td className="py-2 pr-3 text-xs text-muted-foreground">
-                          {fmtDate(invoice.billing_period_start)} → {fmtDate(invoice.billing_period_end)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        {/* ---- Content ---- */}
+        <main className="px-5 py-8 sm:px-8 lg:px-12 lg:py-12">
+          <div className="mx-auto flex w-full max-w-[560px] flex-col gap-10">
+            <header className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-balance">
+                  {s.pageTitle}
+                </h1>
+                {contactLine ? (
+                  <p className="mt-1 text-sm text-muted-foreground">{contactLine}</p>
+                ) : null}
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <PortalThemeToggle label={s.themeToggle} />
+            </header>
+
+            {successParam ? (
+              <div className={cn("rounded-lg px-4 py-3 text-sm", TONE_CLASS.success)}>
+                {bannerMessage("success", successParam, locale)}
+              </div>
+            ) : null}
+            {errorParam ? (
+              <div className={cn("rounded-lg px-4 py-3 text-sm", TONE_CLASS.destructive)}>
+                {bannerMessage("error", errorParam, locale)}
+              </div>
+            ) : null}
+
+            {/* ============ Current subscription ============ */}
+            <section className="flex flex-col gap-5">
+              <Eyebrow>{s.currentSubscription}</Eyebrow>
+              {subscriptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{s.noSubscriptions}</p>
+              ) : (
+                subscriptions.map((sub) => {
+                  const plan = plansById.get(sub.plan_id);
+                  const statusMeta = subStatusMeta(sub.status, locale);
+                  const nextBilling = fmtLongDate(sub.current_period_end, locale);
+                  const pending = getPendingPlanChange(sub.metadata);
+                  const pendingPlan = pending ? availableById.get(pending.planId) : null;
+                  const canManage = sub.status !== "canceled" && sub.status !== "cancelled";
+                  const isHighlighted = highlightedSubscriptionId === sub.id;
+                  const defaultCard = paymentMethods.find((pm) => pm.is_default) ?? paymentMethods[0];
+
+                  return (
+                    <div
+                      key={sub.id}
+                      className={cn(
+                        "flex flex-col gap-3",
+                        isHighlighted && "-mx-3 rounded-lg px-3 py-3 ring-1 ring-ring",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="text-lg font-semibold">{plan?.name ?? "—"}</h3>
+                        <StatusPill label={statusMeta.label} tone={statusMeta.tone} />
+                      </div>
+
+                      {plan ? (
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-mono text-2xl font-semibold tabular-nums">
+                            {money(plan.amount_minor, plan.currency)}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            / {intervalLabel(plan.interval_count)}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <RefreshCw className="size-3.5" />
+                        {s.autoRenew}
+                      </p>
+
+                      {plan ? (
+                        <details className="group">
+                          <summary
+                            className={cn(
+                              summaryButton,
+                              "inline-flex w-fit items-center gap-1 text-sm font-medium text-foreground",
+                            )}
+                          >
+                            <span className="text-muted-foreground transition-transform group-open:rotate-90">
+                              ›
+                            </span>
+                            {s.showDetails}
+                          </summary>
+                          <dl className="mt-3 divide-y divide-border border-t border-border">
+                            <div className="flex items-center justify-between gap-4 py-2.5">
+                              <dt className="text-sm text-muted-foreground">{s.planAmount}</dt>
+                              <dd className="font-mono text-sm tabular-nums">
+                                {money(plan.amount_minor, plan.currency)} / {intervalLabel(plan.interval_count)}
+                              </dd>
+                            </div>
+                            {fmtLongDate(sub.current_period_start, locale) && nextBilling ? (
+                              <div className="flex items-center justify-between gap-4 py-2.5">
+                                <dt className="text-sm text-muted-foreground">{s.currentPeriod}</dt>
+                                <dd className="text-sm">
+                                  {fmtLongDate(sub.current_period_start, locale)} — {nextBilling}
+                                </dd>
+                              </div>
+                            ) : null}
+                            {fmtLongDate(sub.created_at, locale) ? (
+                              <div className="flex items-center justify-between gap-4 py-2.5">
+                                <dt className="text-sm text-muted-foreground">{s.subscriptionSince}</dt>
+                                <dd className="text-sm">{fmtLongDate(sub.created_at, locale)}</dd>
+                              </div>
+                            ) : null}
+                          </dl>
+                        </details>
+                      ) : null}
+
+                      {nextBilling ? (
+                        <p className="text-sm text-muted-foreground">
+                          {s.nextBilling}:{" "}
+                          <span className="font-medium text-foreground">{nextBilling}</span>
+                        </p>
+                      ) : null}
+
+                      {sub.cancel_at_period_end && nextBilling ? (
+                        <p className={cn("rounded-md px-3 py-2 text-sm", TONE_CLASS.warning)}>
+                          {s.cancelScheduled(nextBilling)}
+                        </p>
+                      ) : null}
+                      {pending ? (
+                        <p className={cn("rounded-md px-3 py-2 text-sm", TONE_CLASS.warning)}>
+                          {s.pendingPlanChange(
+                            pendingPlan?.name ?? pending.planId,
+                            (pending.effectiveAt === "period_end" && nextBilling) || fmtLongDate(pending.effectiveAt, locale) || "",
+                          )}
+                        </p>
+                      ) : null}
+
+                      {defaultCard ? (
+                        <div className="flex items-center gap-2.5 border-t border-border pt-3 text-sm">
+                          <CardBrandMark brand={defaultCard.brand ?? defaultCard.provider_id} />
+                          <span className="font-medium">
+                            {defaultCard.brand ? titleCase(defaultCard.brand) : titleCase(defaultCard.provider_id)}
+                            {defaultCard.last4 ? (
+                              <span className="ml-1.5 font-mono tabular-nums text-muted-foreground">
+                                •••• {defaultCard.last4}
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {canManage ? (
+                        <div className="flex flex-col gap-2 pt-1">
+                          {availablePlans.length > 0 ? (
+                            <details className="group">
+                              <summary
+                                className={cn(
+                                  buttonVariants({ variant: "outline", size: "sm" }),
+                                  summaryButton,
+                                  "w-fit",
+                                )}
+                              >
+                                {s.changePlan}
+                              </summary>
+                              <form
+                                method="post"
+                                action={`/portal/${encodeURIComponent(session_token)}/subscriptions/${encodeURIComponent(sub.id)}/update`}
+                                className="mt-3 flex max-w-sm flex-col gap-3 rounded-lg border border-border p-3"
+                              >
+                                <label className="flex flex-col gap-1 text-sm">
+                                  <span className="text-xs text-muted-foreground">{s.changePlanTo}</span>
+                                  <select
+                                    name="planId"
+                                    defaultValue={pending?.planId ?? sub.plan_id}
+                                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                  >
+                                    {availablePlans.map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.name ?? "—"} · {money(p.amount_minor, p.currency)} / {intervalLabel(p.interval_count)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="flex flex-col gap-1 text-sm">
+                                  <span className="text-xs text-muted-foreground">{s.whenApply}</span>
+                                  <select
+                                    name="prorationBehavior"
+                                    defaultValue="defer_to_period_end"
+                                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                  >
+                                    <option value="defer_to_period_end">{s.applyPeriodEnd}</option>
+                                    <option value="none">{s.applyNow}</option>
+                                  </select>
+                                </label>
+                                <button
+                                  type="submit"
+                                  className={cn(buttonVariants({ size: "sm" }), "w-fit")}
+                                >
+                                  {s.confirmChange}
+                                </button>
+                              </form>
+                            </details>
+                          ) : null}
+
+                          {sub.cancel_at_period_end ? (
+                            <span
+                              className={cn(
+                                buttonVariants({ variant: "ghost", size: "sm" }),
+                                "pointer-events-none w-fit text-muted-foreground",
+                              )}
+                            >
+                              {s.cancellationScheduled}
+                            </span>
+                          ) : (
+                            <details className="group">
+                              <summary
+                                className={cn(
+                                  buttonVariants({ variant: "ghost", size: "sm" }),
+                                  summaryButton,
+                                  "w-fit text-destructive",
+                                )}
+                              >
+                                {s.cancelSub}
+                              </summary>
+                              <div className="mt-3 flex max-w-sm flex-col gap-3 rounded-lg border border-border p-3">
+                                <p className="text-sm text-muted-foreground">{s.cancelHint}</p>
+                                <form
+                                  method="post"
+                                  action={`/portal/${encodeURIComponent(session_token)}/subscriptions/${encodeURIComponent(sub.id)}/cancel`}
+                                >
+                                  <button
+                                    type="submit"
+                                    className={cn(buttonVariants({ variant: "destructive", size: "sm" }))}
+                                  >
+                                    {s.cancelConfirm}
+                                  </button>
+                                </form>
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </section>
+
+            {/* ============ Payment method ============ */}
+            <section className="flex flex-col gap-3 border-t border-border pt-10">
+              <Eyebrow>{s.paymentMethod}</Eyebrow>
+              {paymentMethods.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{s.noPaymentMethods}</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {paymentMethods.map((pm) => {
+                    const exp =
+                      pm.exp_month && pm.exp_year
+                        ? `${String(pm.exp_month).padStart(2, "0")}/${String(pm.exp_year).slice(-2)}`
+                        : null;
+                    return (
+                      <div
+                        key={pm.id}
+                        className="flex items-center gap-3 rounded-lg border border-border px-3 py-3"
+                      >
+                        <CardBrandMark brand={pm.brand ?? pm.provider_id} />
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                            <span>
+                              {pm.brand ? titleCase(pm.brand) : titleCase(pm.provider_id)}
+                              {pm.last4 ? (
+                                <span className="ml-1.5 font-mono tabular-nums text-muted-foreground">
+                                  •••• {pm.last4}
+                                </span>
+                              ) : null}
+                            </span>
+                            {pm.is_default ? (
+                              <StatusPill label={s.defaultBadge} tone="muted" />
+                            ) : null}
+                          </p>
+                          {exp ? (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {s.expires} {exp}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <form
+                method="post"
+                action={`/portal/${encodeURIComponent(session_token)}/payment-methods/uzum/update`}
+                className="pt-1"
+              >
+                {primarySubId ? (
+                  <input type="hidden" name="subscriptionId" value={primarySubId} />
+                ) : null}
+                <button
+                  type="submit"
+                  className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5")}
+                >
+                  <Plus className="size-4" />
+                  {paymentMethods.length ? s.updateCard : s.addCard}
+                </button>
+              </form>
+            </section>
+
+            {/* ============ Billing information ============ */}
+            {contactLine ? (
+              <section className="flex flex-col gap-3 border-t border-border pt-10">
+                <Eyebrow>{s.billingInfo}</Eyebrow>
+                <dl className="divide-y divide-border">
+                  {customer?.email ? (
+                    <div className="flex flex-col gap-0.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <dt className="text-sm text-muted-foreground">{s.email}</dt>
+                      <dd className="font-mono text-sm">{customer.email}</dd>
+                    </div>
+                  ) : null}
+                  {customer?.phone ? (
+                    <div className="flex flex-col gap-0.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <dt className="text-sm text-muted-foreground">{s.phone}</dt>
+                      <dd className="font-mono text-sm tabular-nums">{customer.phone}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </section>
+            ) : null}
+
+            {/* ============ Invoice history ============ */}
+            <section className="flex flex-col gap-3 border-t border-border pt-10">
+              <Eyebrow>{s.invoiceHistory}</Eyebrow>
+              {invoices.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{s.noInvoices}</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[440px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-xs tracking-wide text-muted-foreground uppercase">
+                        <th className="py-2 pr-3 font-medium">{s.colDate}</th>
+                        <th className="py-2 pr-3 font-medium">{s.colPlan}</th>
+                        <th className="py-2 pr-3 text-right font-medium">{s.colAmount}</th>
+                        <th className="py-2 font-medium">{s.colStatus}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoices.map((inv) => {
+                        const meta = invoiceStatusMeta(inv.status, locale);
+                        return (
+                          <tr key={inv.id} className="border-b border-border last:border-0">
+                            <td className="py-3 pr-3 font-mono whitespace-nowrap tabular-nums text-muted-foreground">
+                              {fmtShortDate(inv.created_at, locale)}
+                            </td>
+                            <td className="py-3 pr-3">{subPlanName.get(inv.subscription_id) ?? "—"}</td>
+                            <td className="py-3 pr-3 text-right font-mono tabular-nums">
+                              {money(inv.amount_due_minor, inv.currency)}
+                            </td>
+                            <td className="py-3">
+                              <StatusPill label={meta.label} tone={meta.tone} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+        </main>
       </div>
-    </main>
+    </div>
   );
 }
