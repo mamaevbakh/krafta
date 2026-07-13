@@ -1,9 +1,9 @@
-import { Button } from "@/components/ui/button";
 import { CreditCard, Clock3 } from "lucide-react";
 import {
   cancelSubscriptionAction,
   changeSubscriptionCardAction,
 } from "./subscription-actions";
+import { SubmitButton } from "./submit-button";
 
 /**
  * SubscriptionManager — first-party "change card" + "cancel/resume" controls on
@@ -40,22 +40,21 @@ export function SubscriptionManager({
     <div className="flex flex-col gap-2 sm:flex-row">
       <form action={changeSubscriptionCardAction}>
         {hidden}
-        <Button type="submit" variant="outline" className="w-full sm:w-auto">
+        <SubmitButton variant="outline" className="w-full sm:w-auto">
           <CreditCard className="size-4" />
           Change card
-        </Button>
+        </SubmitButton>
       </form>
       <form action={cancelSubscriptionAction}>
         {hidden}
         <input type="hidden" name="resume" value={cancelAtPeriodEnd ? "true" : "false"} />
-        <Button
-          type="submit"
+        <SubmitButton
           variant={cancelAtPeriodEnd ? "default" : "outline"}
           className="w-full sm:w-auto"
         >
           <Clock3 className="size-4" />
           {cancelAtPeriodEnd ? "Resume subscription" : "Cancel subscription"}
-        </Button>
+        </SubmitButton>
       </form>
     </div>
   );

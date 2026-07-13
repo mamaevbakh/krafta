@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { createUzumRecurringCharge, extractUzumChargeProviderRefs } from "./providers/uzum";
 import { createAtmosRecurringCharge, extractAtmosChargeProviderRefs } from "./providers/atmos";
+import type { AtmosCardDetails } from "./providers/atmos";
 import { redactSensitive } from "./redact";
 
 const RETRY_SCHEDULE_DAYS = [3, 7, 14] as const;
@@ -831,6 +832,7 @@ type PersistBindingPaymentMethodInput = {
   providerId: string;
   bindingId: string;
   orgProviderAccountId: string;
+  cardDetails?: AtmosCardDetails | null;
 };
 
 type PersistBindingPaymentMethodForCustomerInput = {
@@ -839,6 +841,7 @@ type PersistBindingPaymentMethodForCustomerInput = {
   bindingId: string;
   orgProviderAccountId: string;
   setDefaultForSubscriptionId?: string | null;
+  cardDetails?: AtmosCardDetails | null;
 };
 
 export async function persistBindingPaymentMethodForCustomer(
@@ -870,8 +873,12 @@ export async function persistBindingPaymentMethodForCustomer(
         type: "card_binding",
         status: "active",
         is_default: true,
+        brand: input.cardDetails?.brand ?? null,
+        last4: input.cardDetails?.last4 ?? null,
+        exp_month: input.cardDetails?.expMonth ?? null,
+        exp_year: input.cardDetails?.expYear ?? null,
         metadata: {
-          source: "uzum_binding",
+          source: `${input.providerId}_binding`,
         },
       })
       .select("id")
@@ -879,6 +886,23 @@ export async function persistBindingPaymentMethodForCustomer(
     if (createPaymentMethodErr) throw createPaymentMethodErr;
     paymentMethodId = createdPaymentMethod.id;
     created = true;
+  } else if (input.cardDetails) {
+    // Re-binding a card already on file (same provider token): refresh the
+    // stored brand/last4 + expiry. A card's expiry changes when the bank
+    // reissues it, and a card first saved before these columns existed would
+    // otherwise stay detail-less forever — which would also feed stale expiry
+    // to the proactive card-expiry warning.
+    const { error: refreshErr } = await supabase
+      .schema("payments")
+      .from("payment_methods")
+      .update({
+        brand: input.cardDetails.brand ?? null,
+        last4: input.cardDetails.last4 ?? null,
+        exp_month: input.cardDetails.expMonth ?? null,
+        exp_year: input.cardDetails.expYear ?? null,
+      })
+      .eq("id", paymentMethodId);
+    if (refreshErr) throw refreshErr;
   }
 
   let setAsDefault = false;
@@ -908,6 +932,21 @@ export async function persistBindingPaymentMethodForCustomer(
     } else {
       subscriptionId = null;
     }
+  }
+
+  // A payment method is only ever inserted with is_default:true (above) or
+  // promoted here because it just became a subscription's default — in both
+  // cases every OTHER payment_methods row for this customer must flip to
+  // is_default:false in the same atomic statement, or two rows can end up
+  // is_default:true at once (they did, in production, before this fix).
+  if (created || setAsDefault) {
+    const { error: setDefaultFlagErr } = await supabase
+      .schema("payments")
+      .rpc("set_default_payment_method", {
+        p_customer_id: input.customerId,
+        p_payment_method_id: paymentMethodId,
+      });
+    if (setDefaultFlagErr) throw setDefaultFlagErr;
   }
 
   return {
@@ -953,6 +992,7 @@ export async function persistBindingPaymentMethodForPaymentIntent(
     bindingId: input.bindingId,
     orgProviderAccountId: input.orgProviderAccountId,
     setDefaultForSubscriptionId: subscription.id,
+    cardDetails: input.cardDetails,
   });
 
   return {
@@ -1428,7 +1468,7 @@ async function ensureRenewalInvoice(
   const { data: existingInvoice, error: existingInvoiceErr } = await supabase
     .schema("payments")
     .from("invoices")
-    .select("id, payment_intent_id")
+    .select("id, payment_intent_id, status, due_at")
     .eq("subscription_id", params.subscriptionId)
     .eq("billing_period_start", params.periodStartIso)
     .eq("billing_period_end", params.periodEndIso)
@@ -1439,6 +1479,8 @@ async function ensureRenewalInvoice(
       invoiceId: existingInvoice.id,
       paymentIntentId: existingInvoice.payment_intent_id,
       created: false,
+      status: (existingInvoice.status as string | null) ?? "open",
+      dueAt: (existingInvoice.due_at as string | null) ?? null,
     };
   }
 
@@ -1494,6 +1536,8 @@ async function ensureRenewalInvoice(
     invoiceId: invoice.id,
     paymentIntentId: intent.id,
     created: true,
+    status: "open" as string,
+    dueAt: null as string | null,
   };
 }
 
@@ -1617,6 +1661,22 @@ export async function chargeRenewal(
     periodStartIso,
     periodEndIso,
   });
+
+  // Respect the dunning schedule + terminal invoice states. The primary renewal
+  // loop re-selects a subscription every cron tick while current_period_end
+  // stays in the past (it only advances on success), so without these guards a
+  // declined card would be re-charged every hour — collapsing the 3/7/14-day
+  // dunning window to a few hours — and an exhausted (uncollectible) or already
+  // paid invoice would be charged again forever. Only charge a freshly created
+  // invoice, or an existing still-OPEN invoice whose due_at has arrived.
+  if (!renewal.created) {
+    if (renewal.status !== "open") {
+      return { skipped: true, reason: "invoice_not_collectible" as const };
+    }
+    if (renewal.dueAt && new Date(renewal.dueAt) > now) {
+      return { skipped: true, reason: "retry_not_due" as const };
+    }
+  }
 
   if (!subscription.default_payment_method_id) {
     await markPaymentFailed(supabase, {
@@ -1801,6 +1861,7 @@ export async function runRenewalCycle(
 
   let charged = 0;
   let canceled = 0;
+  let errored = 0;
   for (const row of dueSubscriptions ?? []) {
     const { data: subscription, error: subscriptionErr } = await supabase
       .schema("payments")
@@ -1825,8 +1886,18 @@ export async function runRenewalCycle(
       continue;
     }
 
-    await chargeRenewal(supabase, { subscriptionId: subscription.id });
-    charged += 1;
+    // Per-subscription isolation: a single subscription whose charge throws
+    // (e.g. Atmos create/pre-apply errors, a deleted plan) must NOT abort the
+    // whole batch and starve every other due subscription. Record the failure
+    // against just that subscription (so it backs off per the dunning schedule
+    // instead of retrying every hour) and move on.
+    try {
+      await chargeRenewal(supabase, { subscriptionId: subscription.id });
+      charged += 1;
+    } catch {
+      errored += 1;
+      await markOpenInvoiceFailedBestEffort(supabase, subscription.id);
+    }
   }
 
   const { data: retryInvoices, error: retryInvoicesErr } = await supabase
@@ -1840,13 +1911,50 @@ export async function runRenewalCycle(
 
   let retried = 0;
   for (const invoice of retryInvoices ?? []) {
-    await chargeRenewal(supabase, { subscriptionId: invoice.subscription_id });
-    retried += 1;
+    try {
+      await chargeRenewal(supabase, { subscriptionId: invoice.subscription_id });
+      retried += 1;
+    } catch {
+      errored += 1;
+      await markOpenInvoiceFailedBestEffort(supabase, invoice.subscription_id);
+    }
   }
 
   return {
     chargedSubscriptions: charged,
     canceledSubscriptions: canceled,
     retriedInvoices: retried,
+    erroredSubscriptions: errored,
   };
+}
+
+/**
+ * On a thrown renewal charge, push the subscription's current open invoice
+ * through the normal failure path so it backs off per the 3/7/14-day schedule
+ * instead of being retried every cron tick. Best-effort: never throws (the
+ * caller is already in a catch handler and must keep processing the batch).
+ */
+async function markOpenInvoiceFailedBestEffort(
+  supabase: SupabaseClient,
+  subscriptionId: string,
+): Promise<void> {
+  try {
+    const { data: invoice } = await supabase
+      .schema("payments")
+      .from("invoices")
+      .select("payment_intent_id")
+      .eq("subscription_id", subscriptionId)
+      .eq("status", "open")
+      .not("payment_intent_id", "is", null)
+      .order("created_at", { ascending: false })
+      .maybeSingle();
+    if (invoice?.payment_intent_id) {
+      await markPaymentFailed(supabase, {
+        paymentIntentId: String(invoice.payment_intent_id),
+        providerId: "unknown",
+      });
+    }
+  } catch {
+    // swallow — batch processing must continue
+  }
 }

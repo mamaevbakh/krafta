@@ -1129,6 +1129,24 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_payment_notifications: {
+        Row: {
+          event_type: string
+          notified_at: string
+          subscription_id: string
+        }
+        Insert: {
+          event_type: string
+          notified_at?: string
+          subscription_id: string
+        }
+        Update: {
+          event_type?: string
+          notified_at?: string
+          subscription_id?: string
+        }
+        Relationships: []
+      }
       table_sessions: {
         Row: {
           bill_requested_at: string | null

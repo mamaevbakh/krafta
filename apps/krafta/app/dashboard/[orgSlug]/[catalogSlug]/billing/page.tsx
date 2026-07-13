@@ -16,12 +16,19 @@ import { formatMoney } from "@/lib/billing/format";
 import { getDashboardT } from "@/lib/locales/dashboard/server";
 import { SubscriptionManager } from "./_components/subscription-manager";
 import { PlansBrowser } from "./_components/plans-browser";
+import { SubmitButton } from "./_components/submit-button";
+import { CheckoutConfirming } from "./_components/checkout-confirming";
+import {
+  changeSubscriptionCardAction,
+  retrySubscriptionPaymentAction,
+} from "./_components/subscription-actions";
 import {
   AlertCircle,
   ArrowUpRight,
   CheckCircle2,
   Clock3,
   CreditCard,
+  RefreshCw,
   Sparkles,
 } from "lucide-react";
 
@@ -171,10 +178,16 @@ async function startUpgradeAction(formData: FormData) {
     const allPlans = await listKraftaPayPlans().catch(() => []);
     const current = allPlans.find((p) => p.id === entitlement.planId) ?? null;
     const target = allPlans.find((p) => p.id === planId) ?? null;
+    // Fail safe: if we can't resolve both plans (plans fetch failed, or the
+    // current plan is no longer active), we can't tell an upgrade from a
+    // downgrade — and defaulting to an immediate change would drop a paying
+    // merchant a tier mid-cycle on a downgrade. Ask them to retry instead of
+    // guessing.
+    if (!current || !target) {
+      redirect(`${backTo}?error=${encodeURIComponent(t("billing.error.plan_change_unavailable"))}`);
+    }
     const prorationBehavior =
-      current && target && target.amount_minor < current.amount_minor
-        ? "defer_to_period_end"
-        : "none";
+      target.amount_minor < current.amount_minor ? "defer_to_period_end" : "none";
     const res = await changeKraftaSubscriptionPlan({
       customerOrgId,
       subscriptionId: entitlement.subscriptionId,
@@ -299,6 +312,15 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
   // picker below carry the "choose a plan" message.
   const showAccountSummary =
     entitlement.status === "active" || entitlement.status === "grace";
+  // A subscription whose most recent charge failed shows here instead of the
+  // (hidden, since status isn't active/grace) account summary above — split
+  // into two cases because they need different explanations: "incomplete" is
+  // a signup that never went through; "past_due"/"unpaid" is a paying
+  // customer whose renewal was declined and who has now lost access.
+  const isIncompletePayment = entitlement.subscriptionStatus === "incomplete";
+  const isPastDuePayment = entitlement.access === "past_due";
+  const showPaymentRetryBanner =
+    Boolean(entitlement.subscriptionId) && (isIncompletePayment || isPastDuePayment);
 
   return (
     <main className="w-full">
@@ -322,13 +344,20 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
       </div>
 
       <div className="mx-auto max-w-[1248px] space-y-8 px-6 py-8">
-        {sp.checkout === "success" ? (
+        {sp.checkout === "success" && showAccountSummary ? (
           <StatusBanner
             variant="neutral"
             icon={CheckCircle2}
             title={t("billing.banner.success_title")}
             description={t("billing.banner.success_desc")}
           />
+        ) : null}
+        {sp.checkout === "success" && !showAccountSummary && !showPaymentRetryBanner ? (
+          // Paid, but no active subscription row has shown up yet — poll for the
+          // write to land instead of showing stale "not subscribed" data. If the
+          // row exists but is incomplete/past_due, the retry banner below owns
+          // that case instead (a known failure, not a pending write).
+          <CheckoutConfirming />
         ) : null}
         {sp.checkout === "cancel" ? (
           <StatusBanner
@@ -345,6 +374,50 @@ export default async function BillingPage({ params, searchParams }: BillingPageP
             title={t("billing.banner.error_title")}
             description={sp.error}
           />
+        ) : null}
+
+        {showPaymentRetryBanner ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-2 text-destructive">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <div>
+                  <p className="font-medium">
+                    {isPastDuePayment
+                      ? t("billing.banner.past_due_title")
+                      : t("billing.banner.incomplete_title")}
+                  </p>
+                  <p className="mt-0.5 text-sm text-destructive/90">
+                    {isPastDuePayment
+                      ? t("billing.banner.past_due_desc")
+                      : t("billing.banner.incomplete_desc")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <form action={retrySubscriptionPaymentAction}>
+                  <input type="hidden" name="customerOrgId" value={orgRecord.id} />
+                  <input type="hidden" name="orgSlug" value={orgSlug} />
+                  <input type="hidden" name="catalogSlug" value={catalogSlug} />
+                  <input type="hidden" name="subscriptionId" value={entitlement.subscriptionId ?? ""} />
+                  <SubmitButton variant="default" className="w-full sm:w-auto">
+                    <RefreshCw className="size-4" />
+                    {t("billing.action.retry_payment")}
+                  </SubmitButton>
+                </form>
+                <form action={changeSubscriptionCardAction}>
+                  <input type="hidden" name="customerOrgId" value={orgRecord.id} />
+                  <input type="hidden" name="orgSlug" value={orgSlug} />
+                  <input type="hidden" name="catalogSlug" value={catalogSlug} />
+                  <input type="hidden" name="subscriptionId" value={entitlement.subscriptionId ?? ""} />
+                  <SubmitButton variant="outline" className="w-full sm:w-auto">
+                    <CreditCard className="size-4" />
+                    {t("billing.action.update_card")}
+                  </SubmitButton>
+                </form>
+              </div>
+            </div>
+          </div>
         ) : null}
 
         {showAccountSummary ? (

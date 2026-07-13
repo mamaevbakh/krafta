@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/internal/billing/notify-past-due",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
