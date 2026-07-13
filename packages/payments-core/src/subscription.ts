@@ -886,6 +886,23 @@ export async function persistBindingPaymentMethodForCustomer(
     if (createPaymentMethodErr) throw createPaymentMethodErr;
     paymentMethodId = createdPaymentMethod.id;
     created = true;
+  } else if (input.cardDetails) {
+    // Re-binding a card already on file (same provider token): refresh the
+    // stored brand/last4 + expiry. A card's expiry changes when the bank
+    // reissues it, and a card first saved before these columns existed would
+    // otherwise stay detail-less forever — which would also feed stale expiry
+    // to the proactive card-expiry warning.
+    const { error: refreshErr } = await supabase
+      .schema("payments")
+      .from("payment_methods")
+      .update({
+        brand: input.cardDetails.brand ?? null,
+        last4: input.cardDetails.last4 ?? null,
+        exp_month: input.cardDetails.expMonth ?? null,
+        exp_year: input.cardDetails.expYear ?? null,
+      })
+      .eq("id", paymentMethodId);
+    if (refreshErr) throw refreshErr;
   }
 
   let setAsDefault = false;

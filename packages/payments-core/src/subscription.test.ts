@@ -150,10 +150,27 @@ function fakePersistPaymentMethodSupabase(seed: FakePaymentMethodRow[]) {
 
   function paymentMethodsBuilder() {
     const filters: Record<string, unknown> = {};
-    const b = {
+    let pendingUpdate: Record<string, unknown> | null = null;
+    const b: Record<string, unknown> = {
       select: () => b,
       eq: (col: string, val: unknown) => {
         filters[col] = val;
+        return b;
+      },
+      // Awaited only by the reuse-backfill UPDATE (`.update(...).eq("id", ...)`);
+      // applies the patch to the row matching the accumulated filters.
+      then: (resolve: (v: { error: null }) => unknown) => {
+        if (pendingUpdate) {
+          const match = paymentMethods.find((row) =>
+            Object.entries(filters).every(([k, v]) => (row as Record<string, unknown>)[k] === v),
+          );
+          if (match) Object.assign(match, pendingUpdate);
+          pendingUpdate = null;
+        }
+        return Promise.resolve({ error: null }).then(resolve);
+      },
+      update: (values: Record<string, unknown>) => {
+        pendingUpdate = values;
         return b;
       },
       maybeSingle: () => {
@@ -270,6 +287,46 @@ describe("persistBindingPaymentMethodForCustomer", () => {
 
     const previousCard = paymentMethods.find((row) => row.id === "pm_existing");
     expect(previousCard?.is_default).toBe(false);
+  });
+
+  it("backfills brand/last4/expiry when re-binding a card already on file (same token)", async () => {
+    // A card first saved before these columns existed (or with a now-stale
+    // expiry) must be refreshed on re-bind — not left detail-less, which would
+    // also feed a stale expiry to the proactive card-expiry warning.
+    const { supabase, paymentMethods } = fakePersistPaymentMethodSupabase([
+      {
+        id: "pm_reused",
+        customer_id: "cust1",
+        org_provider_account_id: "opa1",
+        provider_id: "atmos",
+        provider_token: "same_card_token",
+        is_default: true,
+        brand: null,
+        last4: null,
+        exp_month: null,
+        exp_year: null,
+        metadata: { source: "uzum_binding" },
+      },
+    ]);
+
+    const result = await persistBindingPaymentMethodForCustomer(supabase, {
+      customerId: "cust1",
+      providerId: "atmos",
+      bindingId: "same_card_token", // matches the existing row → reuse path
+      orgProviderAccountId: "opa1",
+      cardDetails: { brand: "humo", last4: "4364", expMonth: 2, expYear: 2028 },
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.paymentMethodId).toBe("pm_reused");
+    expect(paymentMethods).toHaveLength(1); // no duplicate row
+    expect(paymentMethods[0]).toMatchObject({
+      id: "pm_reused",
+      brand: "humo",
+      last4: "4364",
+      exp_month: 2,
+      exp_year: 2028,
+    });
   });
 });
 
