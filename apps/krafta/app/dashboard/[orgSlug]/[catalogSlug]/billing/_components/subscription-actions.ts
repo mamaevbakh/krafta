@@ -6,7 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { getRequestOrigin } from "@/lib/auth/redirect";
 import { hasSsoRuntimeConfig } from "@/lib/auth/sso";
+import { getDashboardT } from "@/lib/locales/dashboard/server";
 import {
+  retryKraftaSubscriptionPayment,
   setKraftaSubscriptionCancel,
   startKraftaCardChange,
 } from "@/lib/payments/pay-internal";
@@ -66,6 +68,31 @@ export async function cancelSubscriptionAction(formData: FormData) {
   });
   if (!res.ok) {
     redirect(`${back}?error=${encodeURIComponent(res.error ?? "cancel_failed")}`);
+  }
+  redirect(`${back}?checkout=success`);
+}
+
+export async function retrySubscriptionPaymentAction(formData: FormData) {
+  const customerOrgId = String(formData.get("customerOrgId") ?? "");
+  const orgSlug = String(formData.get("orgSlug") ?? "");
+  const catalogSlug = String(formData.get("catalogSlug") ?? "");
+  const subscriptionId = String(formData.get("subscriptionId") ?? "");
+  const back = `/dashboard/${orgSlug}/${catalogSlug}/billing`;
+  if (!customerOrgId || !subscriptionId) {
+    redirect(`${back}?error=Missing+required+fields`);
+  }
+  const user = await requireOrgMember(customerOrgId, back);
+  const t = await getDashboardT();
+  const res = await retryKraftaSubscriptionPayment({
+    customerOrgId,
+    subscriptionId,
+    initiatedByUserId: user.id,
+  });
+  if (!res.ok) {
+    redirect(`${back}?error=${encodeURIComponent(res.error ?? t("billing.error.retry_failed"))}`);
+  }
+  if (res.status === "failed") {
+    redirect(`${back}?error=${encodeURIComponent(t("billing.error.retry_declined"))}`);
   }
   redirect(`${back}?checkout=success`);
 }

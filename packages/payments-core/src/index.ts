@@ -14,10 +14,11 @@ export {
   extractAtmosChargeProviderRefs,
   atmosBindInit,
   atmosBindConfirm,
+  atmosCardDetailsFromBindResult,
   atmosGet,
   loadAtmosCredentials,
   parseAtmosCredentials,
   verifyAtmosCredentials,
   AtmosError,
 } from "./providers/atmos";
-export type { AtmosVerifyResult, AtmosCredentials } from "./providers/atmos";
+export type { AtmosVerifyResult, AtmosCredentials, AtmosCardDetails } from "./providers/atmos";

@@ -230,6 +230,52 @@ export async function atmosBindConfirm(
   };
 }
 
+export type AtmosCardDetails = {
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+};
+
+// BIN ranges for the card networks Atmos settles: Uzcard/Humo (UZ domestic
+// rails) plus international Visa/Mastercard. `pan` from bind-card/confirm is
+// already partner-masked (e.g. "986009******1840") but keeps the leading
+// digits, so this works on both masked and unmasked values.
+function detectCardBrandFromPan(pan: string | null | undefined): string | null {
+  if (!pan) return null;
+  const digits = pan.replace(/\D/g, "");
+  if (digits.startsWith("8600")) return "uzcard";
+  if (digits.startsWith("9860")) return "humo";
+  if (digits.startsWith("4")) return "visa";
+  if (/^5[1-5]/.test(digits) || /^2(2[2-9]|[3-6]\d|7[01])/.test(digits)) return "mastercard";
+  return null;
+}
+
+// Atmos's `expiry` field is documented as "YYmm" (e.g. "2505" = May 2025),
+// NOT "MM/YY" — confirmed against the bind-card/confirm sample response.
+function parseAtmosExpiry(expiry: string | null | undefined): {
+  expMonth: number | null;
+  expYear: number | null;
+} {
+  const digits = (expiry ?? "").replace(/\D/g, "");
+  if (digits.length !== 4) return { expMonth: null, expYear: null };
+  const yy = Number(digits.slice(0, 2));
+  const mm = Number(digits.slice(2, 4));
+  if (!Number.isInteger(mm) || mm < 1 || mm > 12) return { expMonth: null, expYear: null };
+  return { expMonth: mm, expYear: 2000 + yy };
+}
+
+export function atmosCardDetailsFromBindResult(bind: AtmosBindConfirmResult): AtmosCardDetails {
+  const { expMonth, expYear } = parseAtmosExpiry(bind.expiry);
+  const last4 = bind.pan ? bind.pan.replace(/\D/g, "").slice(-4) : "";
+  return {
+    brand: detectCardBrandFromPan(bind.pan),
+    last4: last4 || null,
+    expMonth,
+    expYear,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Payment (create -> pre-apply -> apply) and status.
 // ---------------------------------------------------------------------------

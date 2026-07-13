@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { finalizeInitialPayment } from "./subscription";
+import {
+  chargeRenewal,
+  finalizeInitialPayment,
+  persistBindingPaymentMethodForCustomer,
+  runRenewalCycle,
+} from "./subscription";
 
 // Minimal chainable Supabase fake: reads return canned rows per table; writes
 // (update/insert) are recorded so a test can assert whether side effects ran.
@@ -115,5 +120,271 @@ describe("finalizeInitialPayment idempotency (double-finalize guard)", () => {
     expect(mutations).not.toContain("update:invoices");
     expect(mutations).not.toContain("update:subscriptions");
     expect(mutations).not.toContain("insert:subscription_events");
+  });
+});
+
+// Fake modeling just enough of payments.payment_methods + the
+// set_default_payment_method RPC (supabase/migrations/20260712120000) to
+// exercise persistBindingPaymentMethodForCustomer without a real DB. The rpc()
+// stub mirrors the RPC's own atomic "one true default" semantics so these
+// tests catch a regression in either the JS call site or a future rewrite
+// of the SQL that stops being atomic-equivalent.
+type FakePaymentMethodRow = {
+  id: string;
+  customer_id: string;
+  org_provider_account_id: string;
+  provider_id: string;
+  provider_token: string;
+  is_default: boolean;
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  metadata: Record<string, unknown>;
+};
+
+function fakePersistPaymentMethodSupabase(seed: FakePaymentMethodRow[]) {
+  const paymentMethods = seed;
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  let nextId = 1;
+
+  function paymentMethodsBuilder() {
+    const filters: Record<string, unknown> = {};
+    const b = {
+      select: () => b,
+      eq: (col: string, val: unknown) => {
+        filters[col] = val;
+        return b;
+      },
+      maybeSingle: () => {
+        const match = paymentMethods.find((row) =>
+          Object.entries(filters).every(([k, v]) => (row as Record<string, unknown>)[k] === v),
+        );
+        return Promise.resolve({ data: match ? { id: match.id } : null, error: null });
+      },
+      insert: (values: Record<string, unknown>) => {
+        const row: FakePaymentMethodRow = {
+          id: `pm_new_${nextId++}`,
+          customer_id: values.customer_id as string,
+          org_provider_account_id: values.org_provider_account_id as string,
+          provider_id: values.provider_id as string,
+          provider_token: values.provider_token as string,
+          is_default: values.is_default as boolean,
+          brand: (values.brand as string | null) ?? null,
+          last4: (values.last4 as string | null) ?? null,
+          exp_month: (values.exp_month as number | null) ?? null,
+          exp_year: (values.exp_year as number | null) ?? null,
+          metadata: (values.metadata as Record<string, unknown>) ?? {},
+        };
+        paymentMethods.push(row);
+        return {
+          select: () => ({
+            single: () => Promise.resolve({ data: { id: row.id }, error: null }),
+          }),
+        };
+      },
+    };
+    return b;
+  }
+
+  const schemaClient = {
+    from: (table: string) => {
+      if (table === "payment_methods") return paymentMethodsBuilder();
+      throw new Error(`fakePersistPaymentMethodSupabase: unexpected table ${table}`);
+    },
+    rpc: (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      if (name === "set_default_payment_method") {
+        const customerId = args.p_customer_id;
+        const targetId = args.p_payment_method_id;
+        for (const row of paymentMethods) {
+          if (row.customer_id === customerId) row.is_default = row.id === targetId;
+        }
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+
+  return {
+    supabase: { schema: () => schemaClient } as never,
+    paymentMethods,
+    rpcCalls,
+  };
+}
+
+describe("persistBindingPaymentMethodForCustomer", () => {
+  it("writes brand/last4/exp_month/exp_year on the new row (was hardcoded null — bug 1)", async () => {
+    const { supabase, paymentMethods } = fakePersistPaymentMethodSupabase([]);
+
+    const result = await persistBindingPaymentMethodForCustomer(supabase, {
+      customerId: "cust1",
+      providerId: "atmos",
+      bindingId: "card_token_abc",
+      orgProviderAccountId: "opa1",
+      cardDetails: { brand: "humo", last4: "4364", expMonth: 2, expYear: 2028 },
+    });
+
+    expect(result.created).toBe(true);
+    expect(paymentMethods).toHaveLength(1);
+    expect(paymentMethods[0]).toMatchObject({
+      brand: "humo",
+      last4: "4364",
+      exp_month: 2,
+      exp_year: 2028,
+    });
+    // Bug 1 also hardcoded metadata.source to "uzum_binding" regardless of provider.
+    expect(paymentMethods[0].metadata).toEqual({ source: "atmos_binding" });
+  });
+
+  it("flips the customer's previous default card to is_default:false when a second is bound (bug 2)", async () => {
+    const { supabase, paymentMethods } = fakePersistPaymentMethodSupabase([
+      {
+        id: "pm_existing",
+        customer_id: "cust1",
+        org_provider_account_id: "opa1",
+        provider_id: "atmos",
+        provider_token: "old_card_token",
+        is_default: true,
+        brand: "visa",
+        last4: "1111",
+        exp_month: 1,
+        exp_year: 2027,
+        metadata: { source: "atmos_binding" },
+      },
+    ]);
+
+    const result = await persistBindingPaymentMethodForCustomer(supabase, {
+      customerId: "cust1",
+      providerId: "atmos",
+      bindingId: "new_card_token",
+      orgProviderAccountId: "opa1",
+      cardDetails: { brand: "humo", last4: "4364", expMonth: 2, expYear: 2028 },
+    });
+
+    expect(result.created).toBe(true);
+    expect(paymentMethods).toHaveLength(2);
+
+    const defaults = paymentMethods.filter((row) => row.is_default);
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0].id).toBe(result.paymentMethodId);
+
+    const previousCard = paymentMethods.find((row) => row.id === "pm_existing");
+    expect(previousCard?.is_default).toBe(false);
+  });
+});
+
+// Richer fake for the renewal cron: singles[table] answers maybeSingle/single,
+// lists[table] answers an awaited (thenable) query, and every mutation is
+// recorded. Supports the extra chain methods the cron uses (.in/.lte/.not).
+function fakeRenewalSupabase(opts: {
+  singles?: Record<string, unknown>;
+  lists?: Record<string, unknown[]>;
+  mutations: string[];
+}) {
+  const singles = opts.singles ?? {};
+  const lists = opts.lists ?? {};
+  function builder(table: string): Record<string, unknown> {
+    const b: Record<string, unknown> = {
+      select: () => b,
+      eq: () => b,
+      in: () => b,
+      lte: () => b,
+      gte: () => b,
+      not: () => b,
+      order: () => b,
+      limit: () => b,
+      update: () => {
+        opts.mutations.push(`update:${table}`);
+        return b;
+      },
+      insert: () => {
+        opts.mutations.push(`insert:${table}`);
+        return b;
+      },
+      maybeSingle: () => Promise.resolve({ data: singles[table] ?? null, error: null }),
+      single: () => Promise.resolve({ data: singles[table] ?? null, error: null }),
+      then: (resolve: (v: { data: unknown; error: null }) => unknown) =>
+        Promise.resolve({ data: lists[table] ?? [], error: null }).then(resolve),
+    };
+    return b;
+  }
+  return { schema: () => ({ from: (table: string) => builder(table) }) } as never;
+}
+
+const PAST = new Date(Date.now() - 86_400_000).toISOString();
+const FUTURE = new Date(Date.now() + 3 * 86_400_000).toISOString();
+
+const ACTIVE_SUB = {
+  id: "sub1",
+  org_id: "org1",
+  status: "active",
+  customer_id: "cust1",
+  plan_id: "plan1",
+  default_payment_method_id: "pm1",
+  current_period_end: PAST,
+  cancel_at_period_end: false,
+  metadata: {},
+};
+const PLAN = { amount_minor: 250000, currency: "UZS", interval_count: 1, name: "Pro", metadata: {} };
+
+describe("chargeRenewal dunning + terminal-invoice guards", () => {
+  it("does NOT re-charge an open invoice whose due_at is still in the future (respects 3/7/14 spacing)", async () => {
+    const mutations: string[] = [];
+    const supa = fakeRenewalSupabase({
+      singles: {
+        subscriptions: ACTIVE_SUB,
+        plans: PLAN,
+        invoices: { id: "inv1", payment_intent_id: "pi1", status: "open", due_at: FUTURE },
+      },
+      mutations,
+    });
+
+    const result = await chargeRenewal(supa, { subscriptionId: "sub1" });
+
+    expect(result).toEqual({ skipped: true, reason: "retry_not_due" });
+    // No charge was attempted: a payment_attempt insert is the charge signal.
+    expect(mutations).not.toContain("insert:payment_attempts");
+  });
+
+  it("does NOT charge an uncollectible invoice (stops re-charging a dead card forever)", async () => {
+    const mutations: string[] = [];
+    const supa = fakeRenewalSupabase({
+      singles: {
+        subscriptions: ACTIVE_SUB,
+        plans: PLAN,
+        invoices: { id: "inv1", payment_intent_id: "pi1", status: "uncollectible", due_at: PAST },
+      },
+      mutations,
+    });
+
+    const result = await chargeRenewal(supa, { subscriptionId: "sub1" });
+
+    expect(result).toEqual({ skipped: true, reason: "invoice_not_collectible" });
+    expect(mutations).not.toContain("insert:payment_attempts");
+  });
+});
+
+describe("runRenewalCycle per-subscription error isolation", () => {
+  it("does not let one throwing subscription abort the whole batch", async () => {
+    const mutations: string[] = [];
+    // Two due subs; chargeRenewal throws plan_not_found for both (plans single = null),
+    // reached only after the active-status guard passes. The batch must still resolve.
+    const supa = fakeRenewalSupabase({
+      singles: {
+        subscriptions: ACTIVE_SUB, // status active → chargeRenewal proceeds to plan lookup
+        plans: null, // → chargeRenewal throws "plan_not_found"
+        invoices: null,
+      },
+      lists: {
+        subscriptions: [{ id: "sub1" }, { id: "sub2" }],
+        invoices: [],
+      },
+      mutations,
+    });
+
+    const result = await runRenewalCycle(supa, new Date());
+
+    expect(result.erroredSubscriptions).toBe(2);
+    expect(result.chargedSubscriptions).toBe(0);
   });
 });

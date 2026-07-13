@@ -3,6 +3,7 @@ import { createAdminSupabase } from "@/lib/supabase-admin";
 import {
   loadAtmosCredentials,
   atmosBindConfirm,
+  atmosCardDetailsFromBindResult,
   createAtmosRecurringCharge,
   extractAtmosChargeProviderRefs,
   persistBindingPaymentMethodForPaymentIntent,
@@ -149,6 +150,7 @@ export async function POST(
         bindingId: bind.cardToken,
         orgProviderAccountId,
         setDefaultForSubscriptionId: subscriptionId,
+        cardDetails: atmosCardDetailsFromBindResult(bind),
       });
 
       await supabase
@@ -188,6 +190,7 @@ export async function POST(
       providerId: "atmos",
       bindingId: bind.cardToken,
       orgProviderAccountId,
+      cardDetails: atmosCardDetailsFromBindResult(bind),
     });
 
     await writePaymentDebugLog(supabase, {

@@ -12,6 +12,7 @@ import { useT } from "@/lib/locales/dashboard/context";
 import { formatMoney } from "@/lib/billing/format";
 import type { KraftaPayPlan } from "@/lib/billing/pay-client";
 import { SecureAccountDialog } from "../../_components/secure-account-dialog";
+import { SubmitButton } from "./submit-button";
 
 type EntitlementLite = {
   planId: string | null;
@@ -214,9 +215,9 @@ export function PlansBrowser({
                 <input type="hidden" name="orgSlug" value={orgSlug} />
                 <input type="hidden" name="catalogSlug" value={catalogSlug} />
                 <input type="hidden" name="planId" value={plan.id} />
-                <Button type="submit" disabled={isCurrentPlan} className="w-full">
+                <SubmitButton disabled={isCurrentPlan} className="w-full">
                   {actionLabel}
-                </Button>
+                </SubmitButton>
               </form>
             )}
           </div>

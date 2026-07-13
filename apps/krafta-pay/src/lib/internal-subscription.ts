@@ -16,6 +16,7 @@ export type OwnedSubscription = {
   plan_id: string | null;
   org_id: string;
   customer_id: string;
+  default_payment_method_id: string | null;
   metadata: Record<string, unknown> | null;
 };
 
@@ -32,7 +33,7 @@ export async function resolveOwnedSubscription(
     .schema("payments")
     .from("subscriptions")
     .select(
-      "id, status, cancel_at_period_end, current_period_end, plan_id, org_id, customer_id, metadata, customers!inner(customer_org_id)",
+      "id, status, cancel_at_period_end, current_period_end, plan_id, org_id, customer_id, default_payment_method_id, metadata, customers!inner(customer_org_id)",
     )
     .eq("id", input.subscriptionId)
     .eq("customers.customer_org_id", input.customerOrgId)
@@ -47,6 +48,7 @@ export async function resolveOwnedSubscription(
     plan_id: (data.plan_id as string | null) ?? null,
     org_id: data.org_id as string,
     customer_id: data.customer_id as string,
+    default_payment_method_id: (data.default_payment_method_id as string | null) ?? null,
     metadata:
       data.metadata && typeof data.metadata === "object"
         ? (data.metadata as Record<string, unknown>)

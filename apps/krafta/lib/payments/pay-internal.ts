@@ -233,6 +233,25 @@ export async function changeKraftaSubscriptionPlan(
 }
 
 /**
+ * Retry the subscription's current failed invoice against its already-saved
+ * card. Covers both an `incomplete` subscription (the signup charge itself
+ * failed — chargeRenewal() refuses to touch anything but active/past_due, so
+ * this is the only recovery path) and a `past_due` one (a later renewal
+ * failed and dunning is exhausted). No new OTP, no new invoice.
+ */
+export async function retryKraftaSubscriptionPayment(
+  input: SubscriptionLifecycleInput,
+): Promise<{ ok: true; status: string } | { ok: false; error: string }> {
+  const { ok, json } = await signedFetch(
+    "/api/internal/subscriptions/retry-payment",
+    "POST",
+    { ...input },
+  );
+  if (ok && json?.ok) return { ok: true, status: String(json.status ?? json.paymentIntentStatus) };
+  return { ok: false, error: json?.error ?? "unknown" };
+}
+
+/**
  * Start an Atmos card-change for a subscription. Returns a pay.krafta.uz URL
  * hosting the inline Atmos card form in "setup" mode (bind a new card, set it as
  * the renewal default — no charge). The merchant is redirected there and bounced
