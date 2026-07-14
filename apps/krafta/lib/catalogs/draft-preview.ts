@@ -18,10 +18,12 @@ import "server-only";
 // because a fresh shop's venue is paused until it goes live.
 
 import { createClient } from "@/lib/supabase/server";
+import { groupGalleryByItem } from "./media";
 import type {
   PublicCatalog,
   PublicCategoryWithItems,
   PublicItem,
+  PublicItemImage,
   PublicModifier,
   PublicModifierList,
 } from "./types";
@@ -180,6 +182,23 @@ export async function getOwnedDraftCatalogRender(
     modListsByItem.set(link.item_id, arr);
   }
 
+  // Full galleries for the draft preview — createItem registers
+  // item_media rows for multi-photo drafts, so previewing only
+  // image_path would hide every photo but the cover until publish.
+  // Owner-session client: the org-member RLS select policy applies.
+  const draftItemIds = (itemsRes.data ?? []).map((it) => it.id);
+  const { data: mediaRows } = draftItemIds.length
+    ? await supabase
+        .from("item_media")
+        .select("item_id, storage_path, alt, is_primary, position")
+        .in("item_id", draftItemIds)
+        .order("position", { ascending: true })
+        .order("id", { ascending: true })
+    : { data: [] as never[] };
+  const imagesByItemId: Map<string, PublicItemImage[]> = groupGalleryByItem(
+    mediaRows ?? [],
+  );
+
   const itemsByCategory = new Map<string, PublicItem[]>();
   for (const it of itemsRes.data ?? []) {
     if (!it.category_id) continue;
@@ -193,6 +212,11 @@ export async function getOwnedDraftCatalogRender(
       description: it.description,
       image_path: it.image_path,
       image_alt: it.image_alt,
+      // Media rows are the source of truth; wizard-created shops that
+      // only stamped image_path fall back to a one-photo gallery.
+      images:
+        imagesByItemId.get(it.id) ??
+        (it.image_path ? [{ path: it.image_path, alt: null }] : []),
       position: it.position,
       price_cents: def?.price_cents ?? 0,
       variations: vs.map((v) => ({
