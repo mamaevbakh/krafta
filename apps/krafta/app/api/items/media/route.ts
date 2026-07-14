@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
 import { revalidateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
+import { requireItemMediaRole } from "./_lib/authorize";
 
 const BUCKET_NAME = "public-assets";
 
@@ -46,17 +47,12 @@ export async function POST(request: Request) {
     auth: { persistSession: false },
   });
 
-  const { data: item, error: itemError } = await supabase
-    .from("items")
-    .select("id, catalog_id")
-    .eq("id", itemId)
-    .maybeSingle();
-
-  if (itemError || !item) {
-    return NextResponse.json(
-      { error: itemError?.message ?? "Item not found." },
-      { status: 404 },
-    );
+  // Service-role writes below bypass RLS, so the caller must be authorized
+  // here: signed in + owner/admin on the org owning the item's catalog
+  // (the same gate the item_media RLS policies enforce).
+  const auth = await requireItemMediaRole(supabase, itemId);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const { data: lastMedia } = await supabase
@@ -130,7 +126,7 @@ export async function POST(request: Request) {
   // client triggers an RSC re-render but the underlying cached fetch
   // serves stale data — the photo shows up on the customer page (which
   // reads via a different cache path) but not in the dashboard canvas.
-  await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+  await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
   return NextResponse.json({ ok: true, media: insertRows });
 }
@@ -165,6 +161,12 @@ export async function DELETE(request: Request) {
   const supabase = createClient<Database>(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
+
+  // Same gate as POST — service-role writes need explicit authorization.
+  const auth = await requireItemMediaRole(supabase, itemId);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
 
   const { data: mediaRows, error: fetchError } = await supabase
     .from("item_media")
@@ -218,23 +220,12 @@ export async function DELETE(request: Request) {
     .eq("item_id", itemId)
     .order("position", { ascending: true });
 
-  // Lookup the item's catalog_id once — used for the cache-bust at the
-  // end. Returns early with cache-bust if the item is gone (unexpected,
-  // but be defensive).
-  const { data: item } = await supabase
-    .from("items")
-    .select("catalog_id")
-    .eq("id", itemId)
-    .maybeSingle();
-
   if (!remainingMedia?.length) {
     await supabase
       .from("items")
       .update({ image_path: null, image_alt: null })
       .eq("id", itemId);
-    if (item?.catalog_id) {
-      await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
-    }
+    await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
     return NextResponse.json({ ok: true, count: mediaRows.length });
   }
 
@@ -268,9 +259,7 @@ export async function DELETE(request: Request) {
   // Bust the catalog cache so the dashboard re-fetches with the
   // deleted-media state reflected. See POST handler comment above for
   // why this is required.
-  if (item?.catalog_id) {
-    await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
-  }
+  await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
   return NextResponse.json({ ok: true, count: mediaRows.length });
 }
@@ -334,11 +323,11 @@ export async function PATCH(request: Request) {
     auth: { persistSession: false },
   });
 
-  const { data: item } = await supabase
-    .from("items")
-    .select("catalog_id")
-    .eq("id", itemId)
-    .maybeSingle();
+  // Same gate as POST — service-role writes need explicit authorization.
+  const auth = await requireItemMediaRole(supabase, itemId);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
 
   // ----- REORDER MODE -------------------------------------------------
   if (positions && positions.length > 0) {
@@ -365,9 +354,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    if (item?.catalog_id) {
-      await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
-    }
+    await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
     return NextResponse.json({ ok: true });
   }
@@ -416,9 +403,7 @@ export async function PATCH(request: Request) {
 
   // Bust the catalog cache so the dashboard reflects the new primary.
   // See POST handler comment for why this is required.
-  if (item?.catalog_id) {
-    await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
-  }
+  await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
   return NextResponse.json({ ok: true });
 }

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
+import { mediaPathOrgId, requireOrgMediaRole } from "../_lib/authorize";
+
+const BUCKET_NAME = "public-assets";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
@@ -15,6 +18,30 @@ export async function POST(request: Request) {
       { error: "Missing cleanup data." },
       { status: 400 },
     );
+  }
+
+  // This route deletes storage objects with the service-role client, so it
+  // only accepts paths the upload-url route mints (org/<orgId>/catalog/…)
+  // inside the media bucket — anything else is silently skipped, same as
+  // the pre-existing behavior for malformed entries. The org id embedded
+  // in each path decides who may delete it.
+  const paths: string[] = [];
+  const orgIds = new Set<string>();
+  entries.forEach((entry) => {
+    if (entry.bucket !== BUCKET_NAME || !entry.storage_path) return;
+    const orgId = mediaPathOrgId(entry.storage_path);
+    if (!orgId) return;
+    orgIds.add(orgId);
+    paths.push(entry.storage_path);
+  });
+
+  if (!paths.length) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const auth = await requireOrgMediaRole([...orgIds]);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const supabaseUrl =
@@ -32,18 +59,7 @@ export async function POST(request: Request) {
     auth: { persistSession: false },
   });
 
-  const grouped: Record<string, string[]> = {};
-  entries.forEach((entry) => {
-    if (!entry.bucket || !entry.storage_path) return;
-    if (!grouped[entry.bucket]) grouped[entry.bucket] = [];
-    grouped[entry.bucket].push(entry.storage_path);
-  });
-
-  await Promise.all(
-    Object.entries(grouped).map(([bucket, paths]) =>
-      supabase.storage.from(bucket).remove(paths),
-    ),
-  );
+  await supabase.storage.from(BUCKET_NAME).remove(paths);
 
   return NextResponse.json({ ok: true });
 }
