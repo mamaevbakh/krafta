@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
+import { requireOrgMediaRole } from "../_lib/authorize";
 
 const BUCKET_NAME = "public-assets";
 
@@ -34,6 +35,15 @@ export async function POST(request: Request) {
       { error: "Missing required upload data." },
       { status: 400 },
     );
+  }
+
+  // The signed upload URLs below are minted with the service-role client,
+  // so authorize first: the caller must be signed in and hold owner/admin
+  // on the org they claim (the catalog-ownership check further down then
+  // pins the catalog to that same org).
+  const auth = await requireOrgMediaRole([orgId]);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const supabaseUrl =
