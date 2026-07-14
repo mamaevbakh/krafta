@@ -391,7 +391,7 @@ Two primary schemas in PostgreSQL:
 | `catalog_category_translations` | Localized category content |
 | `items` | Products/services |
 | `item_translations` | Localized item content |
-| `item_media` | Item images/media |
+| `item_media` | Item photo galleries — ordered multi-photo; the first photo is the main photo, mirrored onto `items.image_path` |
 
 ### `payments` Schema (Transactions)
 
