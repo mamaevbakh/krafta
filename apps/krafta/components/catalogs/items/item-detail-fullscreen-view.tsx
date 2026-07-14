@@ -9,17 +9,17 @@
  *   │ Sticky header — Share, Close        │  ← always reachable, no
  *   ├─────────────────────────────────────┤    contrast issue
  *   │                                     │
- *   │   Image (capped at 55dvh)           │  ← cropped via object-cover
- *   │                                     │    to keep title+price above
- *   │                                     │    the fold for any aspect
- *   │                                     │    ratio. Hidden entirely
- *   ├─────────────────────────────────────┤    when no imageUrl.
- *   │ Category eyebrow                    │  ← title was overlaid on
- *   │ Item title                          │    the image in v1; moved
- *   │ Price (mono tabular-nums)           │    into the body so it
- *   │ Description (if present)            │    works for no-image items
- *   │ Modifier picker (if any)            │    and stays legible over
- *   │                                     │    any product photo.
+ *   │   Photo gallery (capped at 55dvh)   │  ← ItemPhotoCarousel: all
+ *   │   ● ○ ○                             │    photos, main first, dots
+ *   │                                     │    + desktop arrows. Tap any
+ *   │                                     │    photo → ItemPhotoViewer
+ *   ├─────────────────────────────────────┤    (fullscreen, Telegram-
+ *   │ Category eyebrow                    │    style). Hidden entirely
+ *   │ Item title                          │    when the item has no
+ *   │ Price (mono tabular-nums)           │    photos (galleryImages
+ *   │ Description (if present)            │    empty).
+ *   │ Modifier picker (if any)            │
+ *   │                                     │
  *   ├─────────────────────────────────────┤
  *   │ Sticky CTA bar — Add to cart        │
  *   └─────────────────────────────────────┘
@@ -104,10 +104,9 @@
  *     lands.
  */
 
-import Image from "next/image";
 import Link from "next/link";
 import { Share2, ShoppingCart, XIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -123,6 +122,9 @@ import {
   type ModifierPickerChange,
 } from "@/components/catalogs/items/modifier-picker";
 import { VariationSelector } from "@/components/catalogs/items/variation-selector";
+import { ItemPhotoCarousel } from "@/components/catalogs/items/item-photo-carousel";
+import { ItemPhotoViewer } from "@/components/catalogs/items/item-photo-viewer";
+import type { CarouselApi } from "@/components/ui/carousel";
 import { cn } from "@/lib/utils";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
@@ -147,6 +149,7 @@ export function ItemDetailFullscreen({
   item,
   category,
   imageUrl,
+  images,
   itemAspectRatio,
   backHref,
   onClose,
@@ -197,6 +200,85 @@ export function ItemDetailFullscreen({
     : null;
   const ratio = itemAspectRatio ?? 4 / 5;
   const cart = useOptionalCart();
+
+  // Gallery for the carousel + fullscreen viewer. Prefer the full
+  // `images` gallery (controller resolves it main-photo-first); callers
+  // that still pass only `imageUrl` get a one-photo gallery. Per-photo
+  // alt from item_media wins; the item-level localized image_alt covers
+  // the main photo; the localized name is the last-resort alt.
+  const galleryImages = useMemo(() => {
+    const source =
+      images && images.length > 0
+        ? images
+        : imageUrl
+          ? [{ url: imageUrl, alt: null }]
+          : [];
+    return source.map((image, index) => ({
+      url: image.url,
+      alt:
+        image.alt ??
+        (index === 0 ? localizedImageAlt : null) ??
+        localizedName,
+    }));
+  }, [images, imageUrl, localizedImageAlt, localizedName]);
+
+  // Fullscreen viewer state — the index of the tapped photo, null when
+  // closed. On close, the inline carousel is synced to the photo the
+  // viewer was on (Telegram returns you to the photo you were viewing).
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const carouselApiRef = useRef<CarouselApi>(undefined);
+  const viewerSelectedRef = useRef(0);
+  const handleCarouselApi = useCallback((carouselApi: CarouselApi) => {
+    carouselApiRef.current = carouselApi;
+  }, []);
+  const handleViewerSelectedChange = useCallback((index: number) => {
+    viewerSelectedRef.current = index;
+  }, []);
+
+  // Browser/hardware Back closes the viewer FIRST — mirroring the
+  // Telegram LIFO behavior on the mobile web, where Android back is
+  // history.back(). Opening the viewer pushes ONE same-URL history
+  // entry (in the tap handler, not a mount effect — StrictMode
+  // double-fires mount effects and a push/back pair there self-closes
+  // the viewer); the matching popstate closes only the viewer. Closing
+  // any other way (X, Escape, swipe-down, Telegram back) consumes the
+  // entry via history.back(), which lands in the same popstate path.
+  // Guards the async window between calling history.back() and the
+  // popstate landing: a second close signal in that window (held
+  // Escape, double-tapped X, swipe completing over a tap) must NOT
+  // fire another back() — stacked backs would pop the item entry and
+  // then the catalog entry, navigating the customer out entirely.
+  const viewerClosingRef = useRef(false);
+  const closeViewerNow = useCallback(() => {
+    viewerClosingRef.current = false;
+    setViewerIndex(null);
+    carouselApiRef.current?.scrollTo(viewerSelectedRef.current, true);
+  }, []);
+  const handleOpenViewer = useCallback((index: number) => {
+    viewerClosingRef.current = false;
+    setViewerIndex(index);
+    viewerSelectedRef.current = index;
+    // `{ __NA: true }` keeps Next 16's patched pushState from
+    // re-rendering the route — same convention as the item-detail
+    // controller's own history writes.
+    window.history.pushState({ __NA: true, __photoViewer: true }, "");
+  }, []);
+  const handleViewerClose = useCallback(() => {
+    if (viewerClosingRef.current) return;
+    if (window.history.state?.__photoViewer) {
+      // Consume our entry; the popstate listener below does the close.
+      viewerClosingRef.current = true;
+      window.history.back();
+    } else {
+      closeViewerNow();
+    }
+  }, [closeViewerNow]);
+  useEffect(() => {
+    if (viewerIndex === null) return;
+    const handlePopState = () => closeViewerNow();
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [viewerIndex, closeViewerNow]);
   const t = (
     key: Parameters<typeof getStorefrontMessage>[0],
     vars?: Record<string, string | number>,
@@ -410,33 +492,34 @@ export function ItemDetailFullscreen({
         </div>
       </div>
 
-      {/* Image — strict catalog aspect ratio (raw CSS aspect-ratio so
-          min/max-height actually clamp; the shadcn AspectRatio
-          primitive uses padding-bottom and won't respect those). The
-          container is always the merchant's configured shape (3:4,
-          4:5, 1:1, 16:9, whatever). The IMAGE uses object-contain so
-          the full photo is always visible — bg-muted bars fill any
-          gap when the photo's natural ratio doesn't match the
-          container's. The min/max-height pair clamps the area to
-          35-55% of the viewport. */}
-      {imageUrl && (
-        <div
-          className="relative w-full overflow-hidden bg-muted"
-          style={{
-            aspectRatio: ratio,
-            minHeight: "35dvh",
-            maxHeight: "55dvh",
-          }}
-        >
-          <Image
-            src={imageUrl}
-            alt={localizedImageAlt ?? localizedName}
-            fill
-            sizes="(max-width: 640px) 100vw, 480px"
-            className="h-full w-full object-contain"
-            priority
-          />
-        </div>
+      {/* Photo gallery — every photo keeps the single-image band's
+          contract (catalog aspect ratio, 35-55dvh clamp, object-contain
+          with bg-muted letterbox bars; see item-photo-carousel.tsx).
+          Multiple photos swipe horizontally with dot indicators;
+          tapping any photo opens the Telegram-style fullscreen
+          viewer at that photo. */}
+      {galleryImages.length > 0 && (
+        <ItemPhotoCarousel
+          images={galleryImages}
+          fallbackAlt={localizedName}
+          aspectRatio={ratio}
+          onOpenViewer={handleOpenViewer}
+          onApi={handleCarouselApi}
+          activeLocale={activeLocale}
+          defaultLocale={defaultLocale}
+        />
+      )}
+
+      {viewerIndex !== null && galleryImages.length > 0 && (
+        <ItemPhotoViewer
+          images={galleryImages}
+          initialIndex={Math.min(viewerIndex, galleryImages.length - 1)}
+          fallbackAlt={localizedName}
+          onClose={handleViewerClose}
+          onSelectedChange={handleViewerSelectedChange}
+          activeLocale={activeLocale}
+          defaultLocale={defaultLocale}
+        />
       )}
 
       {/* Body — title, price, description, modifiers. pb-28 reserves
