@@ -122,7 +122,7 @@ describe("requireItemMediaRole", () => {
     signedIn();
     rpc.mockResolvedValue({ data: true, error: null });
     const auth = await requireItemMediaRole(service(), "item-1");
-    expect(auth).toEqual({ ok: true, catalogId: "catalog-1" });
+    expect(auth).toEqual({ ok: true, catalogId: "catalog-1", orgId: ORG_ID });
     expect(rpc).toHaveBeenCalledWith("is_org_role", {
       _org_id: ORG_ID,
       _roles: ["owner", "admin"],

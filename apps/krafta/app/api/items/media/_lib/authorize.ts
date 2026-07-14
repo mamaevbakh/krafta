@@ -33,7 +33,9 @@ export type MediaAuthFailure = {
 };
 
 export type OrgMediaAuth = { ok: true } | MediaAuthFailure;
-export type ItemMediaAuth = { ok: true; catalogId: string } | MediaAuthFailure;
+export type ItemMediaAuth =
+  | { ok: true; catalogId: string; orgId: string }
+  | MediaAuthFailure;
 
 function fail(status: MediaAuthFailure["status"], error: string): MediaAuthFailure {
   return { ok: false, status, error };
@@ -77,8 +79,9 @@ export async function requireOrgMediaRole(orgIds: string[]): Promise<OrgMediaAut
  * lookups since the caller may not be able to SELECT the row) and require
  * owner/admin on it. Session is checked before the item lookup so
  * unauthenticated probes can't distinguish which item ids exist.
- * On success returns the item's catalogId, saving callers the re-fetch
- * they all need for cache revalidation.
+ * On success returns the item's catalogId (for cache revalidation) and
+ * the owning orgId (for storage-path ownership checks against
+ * mediaPathOrgId below), saving callers the re-fetch they all need.
  */
 export async function requireItemMediaRole(
   service: ServiceClient,
@@ -107,7 +110,7 @@ export async function requireItemMediaRole(
     return fail(403, "You do not have permission to manage this item's media.");
   }
 
-  return { ok: true, catalogId: item.catalog_id };
+  return { ok: true, catalogId: item.catalog_id, orgId: catalog.org_id };
 }
 
 /**
