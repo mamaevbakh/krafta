@@ -9,17 +9,17 @@
  *   │ Sticky header — Share, Close        │  ← always reachable, no
  *   ├─────────────────────────────────────┤    contrast issue
  *   │                                     │
- *   │   Photo gallery (capped at 55dvh)   │  ← ItemPhotoCarousel: all
- *   │   ● ○ ○                             │    photos, main first, dots
- *   │                                     │    + desktop arrows. Tap any
- *   │                                     │    photo → ItemPhotoViewer
- *   ├─────────────────────────────────────┤    (fullscreen, Telegram-
- *   │ Category eyebrow                    │    style). Hidden entirely
- *   │ Item title                          │    when the item has no
- *   │ Price (mono tabular-nums)           │    photos (galleryImages
- *   │ Description (if present)            │    empty).
- *   │ Modifier picker (if any)            │
- *   │                                     │
+ *   │   Image (capped at 55dvh)           │  ← cropped via object-cover
+ *   │                                     │    to keep title+price above
+ *   │                                     │    the fold for any aspect
+ *   │                                     │    ratio. Hidden entirely
+ *   ├─────────────────────────────────────┤    when no imageUrl.
+ *   │ Category eyebrow                    │  ← title was overlaid on
+ *   │ Item title                          │    the image in v1; moved
+ *   │ Price (mono tabular-nums)           │    into the body so it
+ *   │ Description (if present)            │    works for no-image items
+ *   │ Modifier picker (if any)            │    and stays legible over
+ *   │                                     │    any product photo.
  *   ├─────────────────────────────────────┤
  *   │ Sticky CTA bar — Add to cart        │
  *   └─────────────────────────────────────┘
@@ -106,7 +106,7 @@
 
 import Link from "next/link";
 import { Share2, ShoppingCart, XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -124,7 +124,6 @@ import {
 import { VariationSelector } from "@/components/catalogs/items/variation-selector";
 import { ItemPhotoCarousel } from "@/components/catalogs/items/item-photo-carousel";
 import { ItemPhotoViewer } from "@/components/catalogs/items/item-photo-viewer";
-import type { CarouselApi } from "@/components/ui/carousel";
 import { cn } from "@/lib/utils";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
@@ -223,62 +222,8 @@ export function ItemDetailFullscreen({
   }, [images, imageUrl, localizedImageAlt, localizedName]);
 
   // Fullscreen viewer state — the index of the tapped photo, null when
-  // closed. On close, the inline carousel is synced to the photo the
-  // viewer was on (Telegram returns you to the photo you were viewing).
+  // closed.
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const carouselApiRef = useRef<CarouselApi>(undefined);
-  const viewerSelectedRef = useRef(0);
-  const handleCarouselApi = useCallback((carouselApi: CarouselApi) => {
-    carouselApiRef.current = carouselApi;
-  }, []);
-  const handleViewerSelectedChange = useCallback((index: number) => {
-    viewerSelectedRef.current = index;
-  }, []);
-
-  // Browser/hardware Back closes the viewer FIRST — mirroring the
-  // Telegram LIFO behavior on the mobile web, where Android back is
-  // history.back(). Opening the viewer pushes ONE same-URL history
-  // entry (in the tap handler, not a mount effect — StrictMode
-  // double-fires mount effects and a push/back pair there self-closes
-  // the viewer); the matching popstate closes only the viewer. Closing
-  // any other way (X, Escape, swipe-down, Telegram back) consumes the
-  // entry via history.back(), which lands in the same popstate path.
-  // Guards the async window between calling history.back() and the
-  // popstate landing: a second close signal in that window (held
-  // Escape, double-tapped X, swipe completing over a tap) must NOT
-  // fire another back() — stacked backs would pop the item entry and
-  // then the catalog entry, navigating the customer out entirely.
-  const viewerClosingRef = useRef(false);
-  const closeViewerNow = useCallback(() => {
-    viewerClosingRef.current = false;
-    setViewerIndex(null);
-    carouselApiRef.current?.scrollTo(viewerSelectedRef.current, true);
-  }, []);
-  const handleOpenViewer = useCallback((index: number) => {
-    viewerClosingRef.current = false;
-    setViewerIndex(index);
-    viewerSelectedRef.current = index;
-    // `{ __NA: true }` keeps Next 16's patched pushState from
-    // re-rendering the route — same convention as the item-detail
-    // controller's own history writes.
-    window.history.pushState({ __NA: true, __photoViewer: true }, "");
-  }, []);
-  const handleViewerClose = useCallback(() => {
-    if (viewerClosingRef.current) return;
-    if (window.history.state?.__photoViewer) {
-      // Consume our entry; the popstate listener below does the close.
-      viewerClosingRef.current = true;
-      window.history.back();
-    } else {
-      closeViewerNow();
-    }
-  }, [closeViewerNow]);
-  useEffect(() => {
-    if (viewerIndex === null) return;
-    const handlePopState = () => closeViewerNow();
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [viewerIndex, closeViewerNow]);
   const t = (
     key: Parameters<typeof getStorefrontMessage>[0],
     vars?: Record<string, string | number>,
@@ -503,8 +448,7 @@ export function ItemDetailFullscreen({
           images={galleryImages}
           fallbackAlt={localizedName}
           aspectRatio={ratio}
-          onOpenViewer={handleOpenViewer}
-          onApi={handleCarouselApi}
+          onOpenViewer={setViewerIndex}
           activeLocale={activeLocale}
           defaultLocale={defaultLocale}
         />
@@ -515,8 +459,7 @@ export function ItemDetailFullscreen({
           images={galleryImages}
           initialIndex={Math.min(viewerIndex, galleryImages.length - 1)}
           fallbackAlt={localizedName}
-          onClose={handleViewerClose}
-          onSelectedChange={handleViewerSelectedChange}
+          onClose={() => setViewerIndex(null)}
           activeLocale={activeLocale}
           defaultLocale={defaultLocale}
         />

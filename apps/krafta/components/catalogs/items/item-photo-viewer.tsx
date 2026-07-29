@@ -7,22 +7,17 @@
  * follows Telegram's media viewer, adapted to Krafta's minimal chrome:
  *
  *   • Opaque black canvas, photo centered with object-contain.
- *   • Top bar: "2 / 3" counter (font-mono tabular-nums per DESIGN.md
+ *   • Top bar: "2 / 5" counter (font-mono tabular-nums per DESIGN.md
  *     numerals rule) left, close button right, over a functional
  *     legibility scrim. Respects the Telegram Mini App safe-area.
  *   • Horizontal swipe (embla) between photos, starting at the photo
- *     the customer tapped. Desktop gets arrows + arrow keys.
+ *     the customer tapped. Desktop gets hover arrows + arrow keys.
  *   • Swipe DOWN to dismiss — the photo follows the finger and the
  *     backdrop fades, Telegram's signature gesture. Releasing past the
- *     threshold closes; otherwise it springs back. The drag is applied
- *     IMPERATIVELY (style writes on refs, no per-touchmove setState) so
- *     low-end Android phones don't re-render N full-viewport images at
- *     touch-event rate.
- *   • Escape closes; Tab cycles inside the viewer (lightweight focus
- *     trap — the content behind the opaque backdrop is unreachable).
- *     Inside Telegram, the native Back button closes the viewer first
- *     (pushBackHandler is a LIFO stack, so the item detail's Back
- *     handler resumes after).
+ *     threshold closes; otherwise it springs back.
+ *   • Escape closes. Inside Telegram, the native Back button closes
+ *     the viewer first (pushBackHandler is a LIFO stack, so the item
+ *     detail's Back handler resumes after).
  *
  * Rendered through a portal to <body> so the fixed overlay can't be
  * trapped by the item modal's scroll/stacking context. z-[60] sits
@@ -38,7 +33,6 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  useCarouselSelectedIndex,
   type CarouselApi,
 } from "@/components/ui/carousel";
 import { cn } from "@/lib/utils";
@@ -50,22 +44,12 @@ import { useTelegramBackButton } from "@/components/telegram/telegram-back-butto
 const DISMISS_THRESHOLD_PX = 90;
 /** Vertical intent gate: dy must beat dx by this factor to engage. */
 const VERTICAL_INTENT_RATIO = 1.2;
-/** Movement (px) below which a touch is still an undecided tap. */
-const INTENT_SLOP_PX = 10;
-/** Drag distance over which the backdrop fades toward its floor. */
-const BACKDROP_FADE_DISTANCE_PX = 400;
-/** The backdrop never fades below this opacity mid-drag. */
-const BACKDROP_MIN_OPACITY = 0.5;
 
 export type ItemPhotoViewerProps = {
   images: ItemGalleryImage[];
   initialIndex: number;
   fallbackAlt: string;
   onClose: () => void;
-  /** Reports the photo the customer is currently viewing — lets the
-   *  parent sync the inline carousel to it on close (Telegram returns
-   *  you to the photo you were viewing). */
-  onSelectedChange?: (index: number) => void;
   activeLocale: string;
   defaultLocale: string | null;
 };
@@ -75,7 +59,6 @@ export function ItemPhotoViewer({
   initialIndex,
   fallbackAlt,
   onClose,
-  onSelectedChange,
   activeLocale,
   defaultLocale,
 }: ItemPhotoViewerProps) {
@@ -85,71 +68,36 @@ export function ItemPhotoViewer({
   ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
   const [api, setApi] = React.useState<CarouselApi>();
-  const selected = useCarouselSelectedIndex(api, initialIndex);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const backdropRef = React.useRef<HTMLDivElement | null>(null);
-  const stripRef = React.useRef<HTMLDivElement | null>(null);
+  const [selected, setSelected] = React.useState(initialIndex);
   const closeButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
   // Inside Telegram, the hardware-style Back closes the viewer (stacked
   // above the item detail's own Back handler).
   useTelegramBackButton(true, onClose);
 
-  // Report the current photo to the parent (carousel sync on close).
-  // The browser-back-closes-the-viewer-first behavior lives in the
-  // PARENT (item-detail-fullscreen-view): the history entry is pushed
-  // in the open ACTION, not in a mount effect — a mount-effect push
-  // double-fires under React StrictMode and self-closes the viewer.
   React.useEffect(() => {
-    onSelectedChange?.(selected);
-  }, [selected, onSelectedChange]);
+    if (!api) return;
+    const onSelect = () => setSelected(api.selectedScrollSnap());
+    onSelect();
+    api.on("select", onSelect);
+    api.on("reInit", onSelect);
+    return () => {
+      api.off("select", onSelect);
+      api.off("reInit", onSelect);
+    };
+  }, [api]);
 
-  // Keyboard: Escape closes, arrows navigate, Tab cycles inside the
-  // viewer. Window-level because the viewer isn't a Radix dialog; the
-  // Tab handling is the focus trap (everything behind the opaque
-  // backdrop is visually unreachable, so focus must not walk out).
+  // Keyboard: Escape closes, arrows navigate. Window-level because the
+  // viewer isn't a focus-trapping dialog primitive.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        // Ignore key auto-repeat — a held Escape must close ONCE (the
-        // parent's close path consumes a history entry per call).
-        if (event.repeat) return;
         event.stopPropagation();
         onClose();
       } else if (event.key === "ArrowLeft") {
         api?.scrollPrev();
       } else if (event.key === "ArrowRight") {
         api?.scrollNext();
-      } else if (event.key === "Tab") {
-        const container = containerRef.current;
-        if (!container) return;
-        const focusable = Array.from(
-          container.querySelectorAll<HTMLButtonElement>(
-            "button:not(:disabled)",
-          ),
-          // display:none buttons (the md-only arrows on phones) must not
-          // count — an invisible `last` would let Tab walk out of the
-          // viewer. offsetParent is null for display:none elements.
-        ).filter((el) => el.offsetParent !== null);
-        if (focusable.length === 0) {
-          event.preventDefault();
-          return;
-        }
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        const active = document.activeElement;
-        const inside =
-          active instanceof HTMLElement && container.contains(active);
-        if (!inside) {
-          event.preventDefault();
-          first.focus();
-        } else if (event.shiftKey && active === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && active === last) {
-          event.preventDefault();
-          first.focus();
-        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -160,71 +108,23 @@ export function ItemPhotoViewer({
     closeButtonRef.current?.focus({ preventScroll: true });
   }, []);
 
-  // Chrome Android's pull-to-refresh fires on exactly our signature
-  // gesture (downward drag at scroll-top). overscroll-behavior on the
-  // viewer itself wouldn't help — P2R is governed by the root scroller,
-  // so suppress it there while the viewer is open.
-  React.useEffect(() => {
-    const root = document.documentElement;
-    const previous = root.style.overscrollBehaviorY;
-    root.style.overscrollBehaviorY = "none";
-    return () => {
-      root.style.overscrollBehaviorY = previous;
-    };
-  }, []);
-
   // ── Swipe-down to dismiss ────────────────────────────────────────────
   // Touch-only. The gesture engages once movement is clearly vertical-
   // downward (embla owns horizontal); the photo strip then follows the
-  // finger and the backdrop fades. Applied via direct style writes on
-  // refs — a setState per touchmove would re-render every full-viewport
-  // slide at touch-event rate (60-120Hz), visible jank on the low-end
-  // Android phones common in the customer base. No preventDefault
-  // needed: the body is scroll-locked under the item modal, so vertical
-  // touchmove has no native effect to suppress.
+  // finger and the backdrop fades. No preventDefault needed: the body
+  // is scroll-locked under the item modal, so vertical touchmove has no
+  // native effect to suppress.
+  const [dragY, setDragY] = React.useState(0);
+  const [snapBack, setSnapBack] = React.useState(false);
   const gesture = React.useRef<{
     startX: number;
     startY: number;
     tracking: boolean;
     engaged: boolean;
-    dragY: number;
   } | null>(null);
-
-  const applyDrag = (dragY: number) => {
-    const strip = stripRef.current;
-    const backdrop = backdropRef.current;
-    if (strip) {
-      strip.style.transition = "none";
-      strip.style.transform = dragY ? `translateY(${dragY}px)` : "";
-    }
-    if (backdrop) {
-      backdrop.style.transition = "none";
-      backdrop.style.opacity = String(
-        1 -
-          Math.min(dragY / BACKDROP_FADE_DISTANCE_PX, 1 - BACKDROP_MIN_OPACITY),
-      );
-    }
-  };
-
-  const snapBack = () => {
-    const strip = stripRef.current;
-    const backdrop = backdropRef.current;
-    if (strip) {
-      strip.style.transition = "transform 200ms ease-out";
-      strip.style.transform = "";
-    }
-    if (backdrop) {
-      backdrop.style.transition = "opacity 200ms ease-out";
-      backdrop.style.opacity = "1";
-    }
-  };
 
   const handleTouchStart = (event: React.TouchEvent) => {
     if (event.touches.length !== 1) {
-      // A second finger (palm edge, stray tap) aborts the gesture — but
-      // an ENGAGED drag must snap back first, or the strip stays frozen
-      // half-dismissed with no touch state left to recover it.
-      if (gesture.current?.engaged) snapBack();
       gesture.current = null;
       return;
     }
@@ -233,8 +133,8 @@ export function ItemPhotoViewer({
       startY: event.touches[0].clientY,
       tracking: true,
       engaged: false,
-      dragY: 0,
     };
+    setSnapBack(false);
   };
 
   const handleTouchMove = (event: React.TouchEvent) => {
@@ -245,40 +145,38 @@ export function ItemPhotoViewer({
 
     if (!g.engaged) {
       // Horizontal intent → embla's swipe; stop tracking entirely.
-      if (Math.abs(dx) > INTENT_SLOP_PX && Math.abs(dx) >= Math.abs(dy)) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) >= Math.abs(dy)) {
         g.tracking = false;
         return;
       }
-      if (
-        dy > INTENT_SLOP_PX &&
-        Math.abs(dy) > Math.abs(dx) * VERTICAL_INTENT_RATIO
-      ) {
+      if (dy > 10 && Math.abs(dy) > Math.abs(dx) * VERTICAL_INTENT_RATIO) {
         g.engaged = true;
       } else {
         return;
       }
     }
 
-    g.dragY = Math.max(0, dy);
-    applyDrag(g.dragY);
+    setDragY(Math.max(0, dy));
   };
 
   const handleTouchEnd = () => {
     const g = gesture.current;
     gesture.current = null;
     if (!g?.engaged) return;
-    if (g.dragY > DISMISS_THRESHOLD_PX) {
+    if (dragY > DISMISS_THRESHOLD_PX) {
       onClose();
       return;
     }
-    snapBack();
+    setSnapBack(true);
+    setDragY(0);
   };
+
+  const backdropOpacity = 1 - Math.min(dragY / 400, 0.5);
 
   if (typeof document === "undefined") return null;
 
   return createPortal(
     <div
-      ref={containerRef}
       role="dialog"
       aria-modal="true"
       aria-label={t("gallery.open_photo")}
@@ -290,13 +188,19 @@ export function ItemPhotoViewer({
     >
       {/* Backdrop — fades as the swipe-down progresses. */}
       <div
-        ref={backdropRef}
         className="absolute inset-0 bg-black"
+        style={{ opacity: backdropOpacity }}
         aria-hidden
       />
 
       {/* Photo strip — follows the finger during swipe-down. */}
-      <div ref={stripRef} className="relative flex h-full w-full flex-col">
+      <div
+        className="relative flex h-full w-full flex-col"
+        style={{
+          transform: dragY ? `translateY(${dragY}px)` : undefined,
+          transition: snapBack ? "transform 200ms ease-out" : undefined,
+        }}
+      >
         <Carousel
           setApi={setApi}
           opts={{ startIndex: initialIndex }}
@@ -351,22 +255,17 @@ export function ItemPhotoViewer({
         </div>
       </div>
 
-      {/* Desktop arrows — hidden on touch; swipe is the touch
-          affordance. `disabled` at the ends so the invisible button
-          also leaves the tab order. */}
+      {/* Desktop arrows — hidden on touch; swipe is the touch affordance. */}
       {images.length > 1 && (
         <>
           <button
             type="button"
             onClick={() => api?.scrollPrev()}
-            disabled={selected === 0}
             aria-label={t("gallery.prev_photo")}
             className={cn(
               "absolute left-4 top-1/2 z-10 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full",
-              "text-white outline-none transition-colors hover:bg-white/10",
-              "focus-visible:ring-2 focus-visible:ring-white/60",
-              "disabled:pointer-events-none disabled:opacity-0",
-              "md:flex",
+              "text-white transition-colors hover:bg-white/10 md:flex",
+              selected === 0 && "pointer-events-none opacity-0",
             )}
           >
             <ChevronLeft className="size-6" />
@@ -374,14 +273,11 @@ export function ItemPhotoViewer({
           <button
             type="button"
             onClick={() => api?.scrollNext()}
-            disabled={selected === images.length - 1}
             aria-label={t("gallery.next_photo")}
             className={cn(
               "absolute right-4 top-1/2 z-10 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full",
-              "text-white outline-none transition-colors hover:bg-white/10",
-              "focus-visible:ring-2 focus-visible:ring-white/60",
-              "disabled:pointer-events-none disabled:opacity-0",
-              "md:flex",
+              "text-white transition-colors hover:bg-white/10 md:flex",
+              selected === images.length - 1 && "pointer-events-none opacity-0",
             )}
           >
             <ChevronRight className="size-6" />

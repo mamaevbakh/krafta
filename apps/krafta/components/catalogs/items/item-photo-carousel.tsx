@@ -36,7 +36,6 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  useCarouselSelectedIndex,
   type CarouselApi,
 } from "@/components/ui/carousel";
 import { cn } from "@/lib/utils";
@@ -51,17 +50,9 @@ export type ItemPhotoCarouselProps = {
   /** Catalog's configured card ratio — every slide renders this shape. */
   aspectRatio: number;
   onOpenViewer: (index: number) => void;
-  /** Exposes the embla api so the parent can sync the carousel to the
-   *  photo the fullscreen viewer was on when it closed. */
-  onApi?: (api: CarouselApi) => void;
   activeLocale: string;
   defaultLocale: string | null;
 };
-
-/** Above this many photos the dot strip would overflow a 375px
- *  viewport (each dot carries a ~22px hit area) — show a counter pill
- *  instead, like Telegram does for long albums. */
-const MAX_DOTS = 8;
 
 /** Shared slide sizing — the 35–55dvh clamp from the single-photo band. */
 const slideStyle = (ratio: number): React.CSSProperties => ({
@@ -75,7 +66,6 @@ export function ItemPhotoCarousel({
   fallbackAlt,
   aspectRatio,
   onOpenViewer,
-  onApi,
   activeLocale,
   defaultLocale,
 }: ItemPhotoCarouselProps) {
@@ -85,11 +75,19 @@ export function ItemPhotoCarousel({
   ) => getStorefrontMessage(key, { activeLocale, defaultLocale, vars });
 
   const [api, setApi] = React.useState<CarouselApi>();
-  const selected = useCarouselSelectedIndex(api);
+  const [selected, setSelected] = React.useState(0);
 
   React.useEffect(() => {
-    if (api) onApi?.(api);
-  }, [api, onApi]);
+    if (!api) return;
+    const onSelect = () => setSelected(api.selectedScrollSnap());
+    onSelect();
+    api.on("select", onSelect);
+    api.on("reInit", onSelect);
+    return () => {
+      api.off("select", onSelect);
+      api.off("reInit", onSelect);
+    };
+  }, [api]);
 
   // Single photo — no carousel machinery, just the tappable band.
   if (images.length === 1) {
@@ -138,20 +136,16 @@ export function ItemPhotoCarousel({
         ))}
       </CarouselContent>
 
-      {/* Desktop arrows — glass chrome, inside the band. Touch users
-          swipe. `disabled` (not opacity-only hiding) at the ends so the
-          invisible button also leaves the tab order. */}
+      {/* Desktop arrows — glass chrome, inside the band. Touch users swipe. */}
       <button
         type="button"
         onClick={() => api?.scrollPrev()}
-        disabled={selected === 0}
         aria-label={t("gallery.prev_photo")}
         className={cn(
           "absolute left-2 top-1/2 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-full",
           "border border-white/15 bg-black/50 text-white shadow-md backdrop-blur-md transition-opacity hover:bg-black/65",
-          "outline-none focus-visible:ring-2 focus-visible:ring-white/60",
-          "disabled:pointer-events-none disabled:opacity-0",
           "md:flex",
+          selected === 0 && "pointer-events-none opacity-0",
         )}
       >
         <ChevronLeft className="size-5" />
@@ -159,52 +153,34 @@ export function ItemPhotoCarousel({
       <button
         type="button"
         onClick={() => api?.scrollNext()}
-        disabled={selected === images.length - 1}
         aria-label={t("gallery.next_photo")}
         className={cn(
           "absolute right-2 top-1/2 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-full",
           "border border-white/15 bg-black/50 text-white shadow-md backdrop-blur-md transition-opacity hover:bg-black/65",
-          "outline-none focus-visible:ring-2 focus-visible:ring-white/60",
-          "disabled:pointer-events-none disabled:opacity-0",
           "md:flex",
+          selected === images.length - 1 && "pointer-events-none opacity-0",
         )}
       >
         <ChevronRight className="size-5" />
       </button>
 
-      {/* Dot indicators — dark pill so they read over light letterbox
-          bars. The visual dot stays 6px; the padded button around it
-          gives each dot a ~22px hit area so adjacent-dot mistaps on
-          375px phones stay rare. Past MAX_DOTS the strip would overflow
-          the viewport, so a mono counter takes its place. */}
+      {/* Dot indicators — dark pill so they read over light letterbox bars. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center">
-        {images.length <= MAX_DOTS ? (
-          <div className="pointer-events-auto flex items-center rounded-full bg-black/35 px-1 backdrop-blur-sm">
-            {images.map((_, index) => (
-              <button
-                key={index}
-                type="button"
-                onClick={() => api?.scrollTo(index)}
-                aria-label={t("gallery.go_to_photo", { index: index + 1 })}
-                aria-current={index === selected}
-                className="group/dot flex items-center justify-center rounded-full p-2 outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-              >
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full transition-colors duration-150",
-                    index === selected
-                      ? "bg-white"
-                      : "bg-white/40 group-hover/dot:bg-white/60",
-                  )}
-                />
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span className="rounded-full bg-black/35 px-2.5 py-1 font-mono text-xs font-medium tabular-nums text-white/90 backdrop-blur-sm">
-            {selected + 1} / {images.length}
-          </span>
-        )}
+        <div className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-black/35 px-2.5 py-2 backdrop-blur-sm">
+          {images.map((_, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => api?.scrollTo(index)}
+              aria-label={t("gallery.go_to_photo", { index: index + 1 })}
+              aria-current={index === selected}
+              className={cn(
+                "size-1.5 rounded-full transition-colors duration-150",
+                index === selected ? "bg-white" : "bg-white/40 hover:bg-white/60",
+              )}
+            />
+          ))}
+        </div>
       </div>
     </Carousel>
   );
