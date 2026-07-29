@@ -419,29 +419,41 @@ export async function CatalogLayout({
   const cardPaymentEnabled = await getCatalogCardPaymentEnabled(venue.org_id, catalog.id);
 
   return (
-    <CartProvider
-      orgId={venue.org_id}
-      venueId={venue.id}
-      catalogPath={hrefBase}
-      modes={venueModes}
-      allowDineIn={dineInAllowed}
-      taxes={taxes}
-      initialSummary={initialSummary}
+    // CartDrawer + TableCheck render as SIBLINGS of `tree`, so they sit outside
+    // the StorefrontLocaleProvider that `tree` carries internally. Wrap the
+    // whole cart subtree in the provider too — otherwise useStorefrontLocale()
+    // in the cart/checkout chrome resolves to the empty sentinel and every
+    // label falls back to English regardless of the selected ?lang= (e.g. the
+    // cart title shows "Your cart" instead of "Корзина"). The provider nested
+    // inside `tree` re-provides the same values, which is harmless.
+    <StorefrontLocaleProvider
+      activeLocale={activeLocale}
+      defaultLocale={defaultLocale}
     >
-      {tree}
-      <CartDrawer
-        currencySettings={resolvedCurrency}
-        deliverySettings={delivery}
-        cardPaymentEnabled={cardPaymentEnabled}
-      />
-      {/* Dine-in running check (ADR 0004 / KRA-116): persistent table-tab bar
-          + Table Check sheet. No-ops outside an active dine-in session. */}
-      <TableCheck
+      <CartProvider
         orgId={venue.org_id}
         venueId={venue.id}
-        currencySettings={resolvedCurrency}
-      />
-    </CartProvider>
+        catalogPath={hrefBase}
+        modes={venueModes}
+        allowDineIn={dineInAllowed}
+        taxes={taxes}
+        initialSummary={initialSummary}
+      >
+        {tree}
+        <CartDrawer
+          currencySettings={resolvedCurrency}
+          deliverySettings={delivery}
+          cardPaymentEnabled={cardPaymentEnabled}
+        />
+        {/* Dine-in running check (ADR 0004 / KRA-116): persistent table-tab bar
+            + Table Check sheet. No-ops outside an active dine-in session. */}
+        <TableCheck
+          orgId={venue.org_id}
+          venueId={venue.id}
+          currencySettings={resolvedCurrency}
+        />
+      </CartProvider>
+    </StorefrontLocaleProvider>
   );
 }
 

@@ -61,20 +61,48 @@ describe("localeFromAcceptLanguage", () => {
 describe("resolveDashboardLocale", () => {
   it("prefers the cookie over everything", () => {
     expect(
-      resolveDashboardLocale({ cookie: "uz-Latn", acceptLanguage: "ru" }),
+      resolveDashboardLocale({
+        cookie: "uz-Latn",
+        preference: "ru",
+        acceptLanguage: "en",
+      }),
     ).toBe("uz-Latn");
   });
 
-  it("falls back to Accept-Language when no cookie", () => {
+  it("uses the stored preference over Accept-Language when no cookie", () => {
+    // The core requirement: a user who prefers ru on an English device.
     expect(
-      resolveDashboardLocale({ cookie: null, acceptLanguage: "en-US,en;q=0.9" }),
+      resolveDashboardLocale({
+        cookie: null,
+        preference: "ru",
+        acceptLanguage: "en-US,en;q=0.9",
+      }),
+    ).toBe("ru");
+    // Preference stored in another script variant still normalizes.
+    expect(resolveDashboardLocale({ preference: "uz-Cyrl" })).toBe("uz-Latn");
+  });
+
+  it("falls back to Accept-Language when no cookie or preference", () => {
+    expect(
+      resolveDashboardLocale({ acceptLanguage: "en-US,en;q=0.9" }),
     ).toBe("en");
   });
 
-  it("falls back to Russian when neither is present or matchable", () => {
+  it("skips an unavailable preference and keeps resolving", () => {
+    // Preference not one we ship → fall through to Accept-Language.
+    expect(
+      resolveDashboardLocale({ preference: "fr", acceptLanguage: "ru" }),
+    ).toBe("ru");
+  });
+
+  it("falls back to Russian when nothing is present or matchable", () => {
     expect(resolveDashboardLocale({})).toBe("ru");
     expect(
-      resolveDashboardLocale({ cookie: "zz", acceptLanguage: "de,fr" }),
+      resolveDashboardLocale({
+        cookie: "zz",
+        preference: "fr",
+        acceptLanguage: "de,fr",
+      }),
     ).toBe(DEFAULT_DASHBOARD_LOCALE);
     expect(DEFAULT_DASHBOARD_LOCALE).toBe("ru");
   });
