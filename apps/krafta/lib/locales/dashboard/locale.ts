@@ -92,19 +92,29 @@ export function localeFromAcceptLanguage(
  * resolveDashboardLocale — decides which language the dashboard renders in.
  *
  * Resolution order:
- *   1. cookie (explicit merchant choice from the switcher)
- *   2. Accept-Language (best-guess from the browser)
- *   3. DEFAULT_DASHBOARD_LOCALE (Russian)
+ *   1. cookie (explicit choice from the switcher on THIS device)
+ *   2. preference (the user's stored cross-device choice — user_metadata)
+ *   3. Accept-Language (best-guess from the browser, for point-0 localization)
+ *   4. DEFAULT_DASHBOARD_LOCALE (Russian)
+ *
+ * cookie sits above preference because they're kept in sync on every switch
+ * (the switcher writes both), so for a user's own devices they always agree —
+ * and honoring the cookie first keeps the fast path from having to hit auth.
+ * The preference is what makes a brand-new device correct from the first
+ * render even before any cookie exists.
  */
 export function resolveDashboardLocale({
   cookie,
+  preference,
   acceptLanguage,
 }: {
   cookie?: string | null;
+  preference?: string | null;
   acceptLanguage?: string | null;
 }): DashboardLocale {
   return (
     normalizeDashboardLocale(cookie) ??
+    normalizeDashboardLocale(preference) ??
     localeFromAcceptLanguage(acceptLanguage) ??
     DEFAULT_DASHBOARD_LOCALE
   );

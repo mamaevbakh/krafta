@@ -16,7 +16,7 @@ import dynamic from "next/dynamic";
 import type { PublicCategoryWithItems, PublicItem } from "@/lib/catalogs/types";
 import type { ItemDetailVariant } from "@/lib/catalogs/settings/layout";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
-import { getItemImageUrl } from "@/lib/catalogs/media";
+import { getItemGalleryImages, getItemImageUrl } from "@/lib/catalogs/media";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { ItemDetailSkeleton } from "@/components/catalogs/items/item-detail-skeleton";
 import { TelegramBackButton } from "@/components/telegram/telegram-back-button";
@@ -207,6 +207,11 @@ export function ItemSheetProvider({
     : null;
 
   const imageUrl = currentItem ? getItemImageUrl(currentItem) : null;
+  // Full gallery (main photo first) for the detail carousel + viewer.
+  const galleryImages = useMemo(
+    () => (currentItem ? getItemGalleryImages(currentItem) : []),
+    [currentItem],
+  );
 
   // --- helpers -------------------------------------------------------------
 
@@ -289,6 +294,7 @@ export function ItemSheetProvider({
             item={currentItem}
             category={currentCategory}
             imageUrl={imageUrl}
+            images={galleryImages}
             itemAspectRatio={itemAspectRatio}
             onClose={closeItem}
             currencySettings={currencySettings}

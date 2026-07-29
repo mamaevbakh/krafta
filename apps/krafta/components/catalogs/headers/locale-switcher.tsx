@@ -40,6 +40,7 @@ import {
 import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
 import { useStorefrontLocale } from "@/lib/catalogs/storefront-locale-context";
 import { getStorefrontMessage } from "@/lib/locales/messages";
+import { saveUserLocalePreference } from "@/lib/locales/actions";
 import { cn } from "@/lib/utils";
 
 type LocaleSwitcherProps = {
@@ -82,6 +83,11 @@ export function LocaleSwitcher({
       router.replace(`${pathname}${query ? `?${query}` : ""}`, {
         scroll: false,
       });
+      // Remember the choice on the customer's record so it carries to other
+      // shops / devices without another explicit pick. Fire-and-forget — the
+      // ?lang above already drives the current view; a failed/absent write
+      // (session-less visitor) just means no cross-shop memory.
+      void saveUserLocalePreference(nextLocale);
     },
     [activeLocale, pathname, router, searchParams],
   );

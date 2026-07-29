@@ -291,6 +291,12 @@ export type StorefrontMessageKey =
   | "share.link_copied"
   | "share.copy_fallback"
   | "share.unable_to_copy"
+  // Photo gallery (item detail carousel + fullscreen viewer)
+  | "gallery.open_photo"
+  | "gallery.close"
+  | "gallery.prev_photo"
+  | "gallery.next_photo"
+  | "gallery.go_to_photo"
   // ARIA labels
   | "aria.close_drawer"
   | "aria.decrease_quantity"
@@ -538,6 +544,12 @@ const EN: MessageTable = {
   "share.copy_fallback": "Paste it anywhere to share.",
   "share.unable_to_copy": "Unable to copy link.",
 
+  "gallery.open_photo": "View photo",
+  "gallery.close": "Close photo",
+  "gallery.prev_photo": "Previous photo",
+  "gallery.next_photo": "Next photo",
+  "gallery.go_to_photo": "Photo {index}",
+
   "aria.close_drawer": "Close cart",
   "aria.decrease_quantity": "Decrease quantity",
   "aria.increase_quantity": "Increase quantity",
@@ -777,6 +789,12 @@ const RU: MessageTable = {
   "share.copy_fallback": "Вставьте, чтобы поделиться.",
   "share.unable_to_copy": "Не удалось скопировать ссылку.",
 
+  "gallery.open_photo": "Открыть фото",
+  "gallery.close": "Закрыть фото",
+  "gallery.prev_photo": "Предыдущее фото",
+  "gallery.next_photo": "Следующее фото",
+  "gallery.go_to_photo": "Фото {index}",
+
   "aria.close_drawer": "Закрыть корзину",
   "aria.decrease_quantity": "Уменьшить количество",
   "aria.increase_quantity": "Увеличить количество",
@@ -1013,6 +1031,12 @@ const UZ_LATN: MessageTable = {
   "share.link_copied": "Havola nusxalandi",
   "share.copy_fallback": "Ulashish uchun joylashtiring.",
   "share.unable_to_copy": "Havolani nusxalab bo‘lmadi.",
+
+  "gallery.open_photo": "Rasmni ochish",
+  "gallery.close": "Rasmni yopish",
+  "gallery.prev_photo": "Oldingi rasm",
+  "gallery.next_photo": "Keyingi rasm",
+  "gallery.go_to_photo": "{index}-rasm",
 
   "aria.close_drawer": "Savatchani yopish",
   "aria.decrease_quantity": "Miqdorni kamaytirish",

@@ -10,6 +10,7 @@ import type {
   PublicTax,
   PublicTranslationRow,
 } from "./types";
+import { groupGalleryByItem } from "./media";
 
 // Catalog locale metadata surfaced from getCatalogLocales so the storefront
 // can resolve the active locale + carry the right defaultLocale into
@@ -362,7 +363,7 @@ export async function getCatalogStructure(
   const itemsRaw = (await itemsResponse.json()) as Array<
     Omit<
       PublicItem,
-      "price_cents" | "variations" | "modifier_lists" | "translations"
+      "price_cents" | "variations" | "modifier_lists" | "translations" | "images"
     > & {
       item_variations: Array<{
         id: string;
@@ -387,7 +388,7 @@ export async function getCatalogStructure(
   // ships as [] so storefront callers render the canonical variation name
   // even on RU / UZ. TODO: KRA-XYZ — variation translations on storefront.
   const items: Array<
-    Omit<PublicItem, "modifier_lists" | "translations">
+    Omit<PublicItem, "modifier_lists" | "translations" | "images">
   > = itemsRaw.map(({ item_variations, ...rest }) => {
     const defaultRow =
       item_variations.find((v) => v.is_default) ?? item_variations[0] ?? null;
@@ -480,7 +481,7 @@ export async function getCatalogStructure(
     itemIds.length
       ? `${supabaseUrl}/rest/v1/item_media?item_id=in.(${itemIds
           .map((id) => encodeURIComponent(id))
-          .join(",")})&select=item_id,storage_path,is_primary,position&order=position.asc`
+          .join(",")})&select=item_id,storage_path,alt,is_primary,position&order=position.asc,id.asc`
       : null;
 
   const [
@@ -575,6 +576,7 @@ export async function getCatalogStructure(
       ? ((await itemMediaResponse.json()) as Array<{
           item_id: string;
           storage_path: string;
+          alt: string | null;
           is_primary: boolean;
           position: number;
         }>)
@@ -601,6 +603,9 @@ export async function getCatalogStructure(
       mediaByItemId.set(media.item_id, media.storage_path);
     }
   });
+  // Full gallery per item for the detail carousel — main photo first
+  // (see groupGalleryByItem for the ordering contract).
+  const imagesByItemId = groupGalleryByItem(itemMedia);
 
   // ---- Modifier assembly ----------------------------------------------------
   // Three flat lists (modifier_lists, modifiers, item_modifier_lists) become a
@@ -830,12 +835,22 @@ export async function getCatalogStructure(
   for (const item of items) {
     const translation = itemTranslationById.get(item.id);
     const mediaPath = item.image_path || mediaByItemId.get(item.id) || null;
+    // Gallery: media rows are the source of truth. Items whose photo
+    // predates item_media (demo seeds, backfills) only carry image_path —
+    // wrap it as a one-photo gallery so the detail view has one code path.
+    // alt stays null here: per-photo alt would SHADOW the localized
+    // item-level image_alt in the detail view, and item.image_alt at
+    // this point is the canonical (untranslated) value.
+    const galleryImages =
+      imagesByItemId.get(item.id) ??
+      (mediaPath ? [{ path: mediaPath, alt: null }] : []);
     const mergedItem: PublicItem = {
       ...item,
       name: translation?.name ?? item.name,
       description: translation?.description ?? item.description,
       image_alt: translation?.image_alt ?? item.image_alt,
       image_path: mediaPath,
+      images: galleryImages,
       modifier_lists: buildItemModifierLists(item.id),
       translations: itemTranslationsFor(item.id),
     };

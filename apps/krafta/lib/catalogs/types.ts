@@ -126,6 +126,15 @@ export type PublicItemVariation = {
   translations: PublicTranslationRow[];
 };
 
+// One photo in an item's gallery. `path` is a storage path inside the
+// public-assets bucket (same convention as ItemRow.image_path); `alt`
+// is the per-photo alt text from item_media (nullable — the detail view
+// falls back to the item-level image_alt / name).
+export type PublicItemImage = {
+  path: string;
+  alt: string | null;
+};
+
 export type PublicItem = Pick<
   ItemRow,
   | "id"
@@ -137,6 +146,11 @@ export type PublicItem = Pick<
   | "image_alt"
   | "position"
 > & {
+  /** Full photo gallery for the item detail carousel — main photo first,
+   *  then the merchant's drag order (item_media.position). Cards keep
+   *  using `image_path` (the main photo mirror) for the single cover.
+   *  Empty when the item has no photos. */
+  images: PublicItemImage[];
   /** Default variation's price — kept on the item for the catalog card +
    *  "From $X" display. The full variation set lives in `variations`. */
   price_cents: number;
