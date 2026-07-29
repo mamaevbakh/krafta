@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
 import { revalidateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
-import { requireItemMediaRole } from "./_lib/authorize";
+import { mediaPathOrgId, requireItemMediaRole } from "./_lib/authorize";
 
 const BUCKET_NAME = "public-assets";
 
@@ -12,7 +12,6 @@ export async function POST(request: Request) {
     itemId?: string;
     uploads?: Array<{
       id: string;
-      bucket?: string;
       storage_path: string;
       kind: Database["public"]["Enums"]["item_media_kind"];
       mime_type?: string | null;
@@ -53,6 +52,24 @@ export async function POST(request: Request) {
   const auth = await requireItemMediaRole(supabase, itemId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  // The paths registered here are what DELETE later feeds to a
+  // service-role storage.remove, so the path itself is part of the
+  // security boundary: only accept paths the upload-url route mints for
+  // the item's OWN org (org/<orgId>/catalog/…). Anything else — another
+  // org's prefix, or a shape we never mint — would let a merchant
+  // register a foreign object on their own item and destroy it via
+  // DELETE. The bucket is pinned to ours in insertRows for the same
+  // reason; the client-sent value is ignored.
+  const foreignUpload = uploads.find(
+    (upload) => mediaPathOrgId(upload.storage_path ?? "") !== auth.orgId,
+  );
+  if (foreignUpload) {
+    return NextResponse.json(
+      { error: "Storage path does not belong to this item's organization." },
+      { status: 403 },
+    );
   }
 
   const { data: lastMedia, error: lastMediaError } = await supabase
@@ -101,7 +118,7 @@ export async function POST(request: Request) {
   const insertRows = uploads.map((upload, index) => ({
     id: upload.id,
     item_id: itemId,
-    bucket: upload.bucket ?? BUCKET_NAME,
+    bucket: BUCKET_NAME,
     storage_path: upload.storage_path,
     kind: upload.kind,
     mime_type: upload.mime_type ?? null,
@@ -219,17 +236,25 @@ export async function DELETE(request: Request) {
     mediaRows.map((row) => row.storage_path),
   );
 
-  const grouped: Record<string, string[]> = {};
-  mediaRows.forEach((row) => {
-    if (!grouped[row.bucket]) grouped[row.bucket] = [];
-    grouped[row.bucket].push(row.storage_path);
-  });
+  // Same rule as the cleanup route: the service-role storage.remove only
+  // ever sees paths in OUR bucket whose embedded org id matches the org
+  // this caller was just authorized on. item_media rows are supposed to
+  // guarantee that (POST validates on the way in), but rows predating
+  // that check — or forged via the old unvalidated POST — must not turn
+  // this into a cross-tenant file delete. Rows failing the check still
+  // have their DB rows deleted below; only the storage object is left
+  // alone.
+  const removablePaths = mediaRows
+    .filter(
+      (row) =>
+        row.bucket === BUCKET_NAME &&
+        mediaPathOrgId(row.storage_path) === auth.orgId,
+    )
+    .map((row) => row.storage_path);
 
-  await Promise.all(
-    Object.entries(grouped).map(([bucket, paths]) =>
-      supabase.storage.from(bucket).remove(paths),
-    ),
-  );
+  if (removablePaths.length) {
+    await supabase.storage.from(BUCKET_NAME).remove(removablePaths);
+  }
 
   const { error: deleteError } = await supabase
     .from("item_media")

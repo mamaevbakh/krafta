@@ -26,9 +26,14 @@ const { createClientMock, requireItemMediaRoleMock, revalidateMock } =
   }));
 
 vi.mock("@supabase/supabase-js", () => ({ createClient: createClientMock }));
-vi.mock("./_lib/authorize", () => ({
+// Only the gate is faked — mediaPathOrgId passes through for real so the
+// POST path-ownership check runs against the actual regex. Stubbing the
+// session client keeps importing the original module side-effect free.
+vi.mock("./_lib/authorize", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./_lib/authorize")>()),
   requireItemMediaRole: requireItemMediaRoleMock,
 }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/catalogs/revalidate", () => ({
   revalidateCatalogByIdAndSlug: revalidateMock,
 }));
@@ -36,6 +41,9 @@ vi.mock("@/lib/catalogs/revalidate", () => ({
 import { PATCH, POST } from "./route";
 
 const ITEM_ID = "item-1";
+// Upload paths must embed the org the auth gate resolves — POST rejects
+// foreign-org paths outright (see storage-isolation.test.ts).
+const ORG_ID = "11111111-2222-3333-4444-555555555555";
 
 type Write = {
   table: string;
@@ -132,7 +140,7 @@ function fakeDb(
 function upload(id: string) {
   return {
     id,
-    storage_path: `org/o/catalog/c/item/${ITEM_ID}/media/${id}/${id}.png`,
+    storage_path: `org/${ORG_ID}/catalog/c/item/${ITEM_ID}/media/${id}/${id}.png`,
     kind: "image" as const,
   };
 }
@@ -173,6 +181,7 @@ beforeEach(() => {
   requireItemMediaRoleMock.mockResolvedValue({
     ok: true,
     catalogId: "catalog-1",
+    orgId: ORG_ID,
   });
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_SECRET_KEY = "service-key";
