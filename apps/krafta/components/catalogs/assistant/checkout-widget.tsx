@@ -262,13 +262,28 @@ export function CheckoutWidget({
     };
   };
 
+  /** The cart never reached the server, so there is no draft order to place.
+   *  flushBatch swallows its own write failures (it reports + refreshes), so
+   *  `flush()` resolves happily even when the lines never landed — the shopper
+   *  is left looking at an optimistic cart the server knows nothing about.
+   *  In production Next replaces the thrown message with a digest, so match
+   *  the dev-visible text AND fall through to the same branch for anything
+   *  unrecognised below. */
+  const isCartDesynced = (code: string): boolean =>
+    code === "cart_empty" || code.includes("No draft order");
+
   const errorMessage = (code: string): string => {
     if (code === "out_of_zone") return t("checkout.out_of_zone");
     if (code === "below_min_order") return t("checkout.below_min_order");
     if (code === "phone_invalid") return t("checkout.missing.phone");
     if (code.startsWith("price_changed"))
       return t("cart.modifier_pricing_hint");
-    return code;
+    if (isCartDesynced(code)) return t("checkout.cart_desynced");
+    // Never surface a raw server string. Unrecognised failures are almost
+    // always the desync above wearing a production digest, and a localized
+    // sentence beats leaking "An error occurred in the Server Components
+    // render" into the order card.
+    return t("checkout.cart_desynced");
   };
 
   const place = async () => {
@@ -280,7 +295,13 @@ export function CheckoutWidget({
     const res = await cart.placeOrder(
       input as Parameters<typeof cart.placeOrder>[0],
     );
-    if (!res.ok) setOrderError(errorMessage(res.error));
+    if (res.ok) return;
+    setOrderError(errorMessage(res.error));
+    // Re-sync so the card stops showing lines the server never accepted —
+    // otherwise the shopper retries against the same phantom cart forever.
+    if (isCartDesynced(res.error) || !cart.summary.orderId) {
+      void cart.refresh();
+    }
   };
 
   const back = () => {

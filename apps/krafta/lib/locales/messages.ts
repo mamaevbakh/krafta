@@ -137,6 +137,7 @@ export type StorefrontMessageKey =
   | "checkout.payment.card"
   | "checkout.payment.card_hint"
   | "checkout.card_unavailable_cash"
+  | "checkout.cart_desynced"
   // Delivery address book — dedicated map + list screens
   | "address.title"
   | "address.use_location"
@@ -402,6 +403,7 @@ const EN: MessageTable = {
   "checkout.payment.card": "Card",
   "checkout.payment.card_hint": "You'll pay by card on a secure page, then come right back.",
   "checkout.card_unavailable_cash": "Online payment is unavailable right now — your order was placed with cash on delivery.",
+  "checkout.cart_desynced": "We couldn’t sync your cart with the server, so the order wasn’t placed. We’ve refreshed it — please add your items again.",
   "checkout.chip.required": "Required",
   "checkout.chip.optional": "Optional",
   "address.title": "Delivery address",
@@ -643,6 +645,7 @@ const RU: MessageTable = {
   "checkout.payment.card": "Картой",
   "checkout.payment.card_hint": "Оплатите картой на защищённой странице и вернётесь обратно.",
   "checkout.card_unavailable_cash": "Онлайн-оплата сейчас недоступна — заказ оформлен с оплатой при получении.",
+  "checkout.cart_desynced": "Не удалось синхронизировать корзину с сервером, поэтому заказ не оформлен. Мы её обновили — добавьте позиции заново.",
   "checkout.chip.required": "Обязательно",
   "checkout.chip.optional": "Необязательно",
   "address.title": "Адрес доставки",
@@ -888,6 +891,7 @@ const UZ_LATN: MessageTable = {
   "checkout.payment.card": "Karta",
   "checkout.payment.card_hint": "Karta bilan xavfsiz sahifada to'laysiz va qaytib kelasiz.",
   "checkout.card_unavailable_cash": "Onlayn to'lov hozir mavjud emas — buyurtma yetkazib berilganda naqd to'lov bilan rasmiylashtirildi.",
+  "checkout.cart_desynced": "Savatchani server bilan sinxronlab bo'lmadi, shuning uchun buyurtma rasmiylashtirilmadi. Uni yangiladik — mahsulotlarni qaytadan qo'shing.",
   "checkout.chip.required": "Majburiy",
   "checkout.chip.optional": "Ixtiyoriy",
   "address.title": "Yetkazib berish manzili",
