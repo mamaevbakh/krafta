@@ -29,18 +29,40 @@ describe("tax identity", () => {
     expect(validateTaxIdentity("305123456", "self_employed").ok).toBe(false);
   });
 
-  it("says what is wrong AND what right looks like", () => {
+  // Returns the numbers, not a sentence: the same rule renders inline on the
+  // client in the merchant's language and as a JSON code on the server, so
+  // English prose from here would be wrong in both places.
+  it("reports what was expected and what arrived, not prose", () => {
     const result = validateTaxIdentity("305123456", "self_employed");
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.message).toContain("14");
-      expect(result.message).toContain("9");
+      expect(result.reason).toBe("length");
+      expect(result.label).toBe("ПИНФЛ");
+      expect(result.expected).toBe(14);
+      expect(result.actual).toBe(9);
     }
+  });
+
+  it("distinguishes an empty field from a wrong-length one", () => {
+    const empty = validateTaxIdentity("", "legal_entity");
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.reason).toBe("required");
   });
 
   it("rejects an empty value rather than passing it to the server", () => {
     expect(validateTaxIdentity("", "legal_entity").ok).toBe(false);
     expect(validateTaxIdentity("   ", "legal_entity").ok).toBe(false);
+  });
+
+  // Every key must exist in all three languages, or a merchant hits an English
+  // string mid-sentence — the failure that makes i18n look broken.
+  it("has no missing translations", async () => {
+    const { PAY_MESSAGES } = await import("@/lib/locales/catalog");
+    const englishKeys = Object.keys(PAY_MESSAGES.en);
+    for (const locale of ["ru", "uz-Latn"] as const) {
+      const missing = englishKeys.filter((key) => !PAY_MESSAGES[locale][key as never]);
+      expect({ locale, missing }).toEqual({ locale, missing: [] });
+    }
   });
 
   // The keys are mirrored in a CHECK constraint on payments.org_profiles, so a
@@ -55,5 +77,17 @@ describe("tax identity", () => {
       "services",
       "other",
     ]);
+  });
+});
+
+describe("path alias resolution", () => {
+  // Regression guard for the vitest config: modules live in BOTH ./src/lib and
+  // ./lib, and an alias that only covers one silently breaks the other with an
+  // error that reads like a missing npm package.
+  it("resolves @/ imports from src and from the app root", async () => {
+    const fromSrc = await import("@/lib/locales/catalog");
+    const fromRoot = await import("@/lib/format");
+    expect(Object.keys(fromSrc.PAY_MESSAGES)).toContain("ru");
+    expect(typeof fromRoot.formatMinorAmount).toBe("function");
   });
 });

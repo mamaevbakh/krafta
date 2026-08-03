@@ -11,6 +11,7 @@ import { createHostedCheckoutAction } from "@/app/dashboard/actions";
 import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-first";
 import { MetricsPanel } from "@/components/dashboard/metrics-panel";
 import { loadBillingMetrics } from "@/lib/metrics";
+import { getPayT } from "@/lib/locales/server";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,21 +27,21 @@ import {
 // taking payments. Nav lives in the sidebar now, so this is setup, not wayfinding.
 const SETUP_STEPS = [
   {
-    href: "/dashboard/providers",
-    title: "Connect a provider",
-    description: "Add Atmos to accept cards inline.",
+    href: "/providers",
+    titleKey: "setup.connectProvider.title",
+    descriptionKey: "setup.connectProvider.description",
     Icon: CreditCard,
   },
   {
-    href: "/dashboard/plans",
-    title: "Create a plan",
-    description: "Define subscription pricing.",
+    href: "/plans",
+    titleKey: "setup.createPlan.title",
+    descriptionKey: "setup.createPlan.description",
     Icon: Layers,
   },
   {
-    href: "/dashboard/api-keys",
-    title: "Get API keys",
-    description: "Call the Checkout API from your app.",
+    href: "/api-keys",
+    titleKey: "setup.apiKeys.title",
+    descriptionKey: "setup.apiKeys.description",
     Icon: KeyRound,
   },
 ] as const;
@@ -60,6 +61,7 @@ export default async function DashboardPage({
   const activeOrgId = org.orgId;
 
   const environment = process.env.PAY_ENV ?? "live";
+  const t = await getPayT();
   const admin = createAdminSupabase();
   const [providerStatus, metrics] = await Promise.all([
     activeOrgId
@@ -76,17 +78,17 @@ export default async function DashboardPage({
   return (
     <div className="space-y-10">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("overview.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {`Create a payment link or finish setting up ${org.orgName}.`}
+          {t("overview.subtitle", { name: org.orgName })}
         </p>
       </header>
 
-      {metrics ? <MetricsPanel metrics={metrics} orgId={activeOrgId} /> : null}
+      {metrics ? <MetricsPanel metrics={metrics} orgSlug={orgSlug} t={t} /> : null}
 
       <section className="grid gap-3 sm:grid-cols-3">
         {SETUP_STEPS.map((step) => {
-          const href = activeOrgId ? `${step.href}?orgId=${activeOrgId}` : step.href;
+          const href = `/dashboard/org/${orgSlug}${step.href}`;
           const Icon = step.Icon;
           return (
             <Link
@@ -101,9 +103,9 @@ export default async function DashboardPage({
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Icon className="size-4 text-muted-foreground" aria-hidden />
-                    {step.title}
+                    {t(step.titleKey)}
                   </CardTitle>
-                  <CardDescription>{step.description}</CardDescription>
+                  <CardDescription>{t(step.descriptionKey)}</CardDescription>
                 </CardHeader>
               </Card>
             </Link>
@@ -120,8 +122,8 @@ export default async function DashboardPage({
       {sp.payUrl ? (
         <Card size="sm">
           <CardHeader>
-            <CardTitle>Payment link created</CardTitle>
-            <CardDescription>Share this URL with the customer to collect payment.</CardDescription>
+            <CardTitle>{t("paymentLink.created.title")}</CardTitle>
+            <CardDescription>{t("paymentLink.created.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <Link className="block break-all font-mono text-sm underline" href={sp.payUrl}>
@@ -135,16 +137,16 @@ export default async function DashboardPage({
       ) : null}
 
       <section>
-        <h2 className="text-sm font-medium">Create a payment link</h2>
+        <h2 className="text-sm font-medium">{t("paymentLink.title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Generate a hosted checkout URL the customer pays on Krafta Pay.
+          {t("paymentLink.subtitle")}
         </p>
 
         {!providerStatus.hasActive ? (
           <ConnectProviderFirst
             orgId={activeOrgId}
             environment={environment}
-            what="create a payment link"
+            what={t("paymentLink.what")}
           />
         ) : (
           <Card size="sm" className="mt-4 max-w-md">
@@ -157,7 +159,7 @@ export default async function DashboardPage({
 
                 <div className="grid gap-1.5">
                   <label className="text-sm font-medium" htmlFor="amount">
-                    Amount
+                    {t("paymentLink.amount")}
                   </label>
                   <div className="relative">
                     <Input
@@ -181,17 +183,17 @@ export default async function DashboardPage({
 
                 <div className="grid gap-1.5">
                   <label className="text-sm font-medium" htmlFor="description">
-                    Description
+                    {t("paymentLink.description")}
                   </label>
                   <Input
                     id="description"
                     name="description"
-                    placeholder="What is this charge for?"
+                    placeholder={t("paymentLink.descriptionPlaceholder")}
                   />
                 </div>
 
                 <Button type="submit" className="justify-self-start">
-                  Create link
+                  {t("paymentLink.submit")}
                 </Button>
               </form>
             </CardContent>

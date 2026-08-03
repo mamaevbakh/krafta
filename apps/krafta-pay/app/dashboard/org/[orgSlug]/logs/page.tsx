@@ -1,4 +1,5 @@
 import { requireOrgAccess } from "@/lib/org-access";
+import { getPayT } from "@/lib/locales/server";
 import { LogsViewerClient } from "./logs-viewer.client";
 
 export default async function DashboardLogsPage({
@@ -14,14 +15,13 @@ export default async function DashboardLogsPage({
   const { orgSlug } = await params;
   const org = await requireOrgAccess(orgSlug);
   const sp = await searchParams;
+  const t = await getPayT();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Logs</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Inspect checkout, webhook, callback, and provider logs for payment debugging.
-        </p>
+        <h1 className="text-2xl font-semibold">{t("page.logs.title")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("page.logs.subtitle")}</p>
       </div>
 
       <LogsViewerClient

@@ -7,6 +7,8 @@ import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { findOnboardedOrg } from "@/lib/onboarding-status";
 import { OnboardingWizard } from "./_components/onboarding-wizard.client";
+import { getPayLocale } from "@/lib/locales/server";
+import { PayLocaleProvider } from "@/lib/locales/context";
 
 export const metadata = {
   title: "Set up Krafta Pay",
@@ -29,14 +31,20 @@ export default async function OnboardingPage() {
     redirect(`/dashboard/org/${existing.orgSlug}`);
   }
 
+  // /onboarding sits outside the dashboard layout, so it provides the locale
+  // itself — same reason Krafta's wizard wraps its own DashboardLocaleProvider.
+  const locale = await getPayLocale();
+
   return (
-    <main className="min-h-dvh bg-background">
+    <PayLocaleProvider locale={locale}>
+      <main className="min-h-dvh bg-background">
       <div className="mx-auto flex w-full max-w-md flex-col px-6 py-10 sm:py-16">
         <BrandWordmark text="Krafta•Pay" className="text-xl" />
         <div className="mt-10">
           <OnboardingWizard />
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
+    </PayLocaleProvider>
   );
 }

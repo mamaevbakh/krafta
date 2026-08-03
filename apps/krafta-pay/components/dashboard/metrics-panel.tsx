@@ -1,6 +1,7 @@
 import { ArrowUpRight, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import type { BillingMetrics } from "@/lib/metrics";
+import type { TranslateFn } from "@/lib/locales/messages";
 import { formatMinorAmount } from "@/lib/format";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -14,10 +15,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  */
 export function MetricsPanel({
   metrics,
-  orgId,
+  orgSlug,
+  t,
 }: {
   metrics: BillingMetrics;
-  orgId: string;
+  orgSlug: string;
+  t: TranslateFn;
 }) {
   const { recovery } = metrics;
   const hasRecoveryHistory = recovery.recoveredCount + recovery.stillFailingCount > 0;
@@ -25,12 +28,12 @@ export function MetricsPanel({
   return (
     <section className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium">Last {metrics.windowDays} days</h2>
+        <h2 className="text-sm font-medium">{t("metrics.window", { days: metrics.windowDays })}</h2>
         <Link
-          href={`/dashboard/subscriptions?orgId=${orgId}`}
+          href={`/dashboard/org/${orgSlug}/subscriptions`}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          All subscriptions
+          {t("metrics.allSubscriptions")}
           <ArrowUpRight className="size-3" aria-hidden />
         </Link>
       </div>
@@ -41,11 +44,9 @@ export function MetricsPanel({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <TrendingUp className="size-4" aria-hidden />
-            Recovered revenue
+            {t("metrics.recovered.title")}
           </CardTitle>
-          <CardDescription>
-            Collected on charges that failed the first time and would otherwise have been lost.
-          </CardDescription>
+          <CardDescription>{t("metrics.recovered.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="font-mono text-3xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
@@ -54,18 +55,16 @@ export function MetricsPanel({
           <p className="mt-1.5 text-sm text-muted-foreground">
             {hasRecoveryHistory ? (
               <>
-                {recovery.recoveredCount} of {recovery.recoveredCount + recovery.stillFailingCount}{" "}
-                failed charges recovered
-                {recovery.recoveryRatePercent !== null ? (
-                  <>
-                    {" · "}
-                    <span className="font-mono tabular-nums">{recovery.recoveryRatePercent}%</span>{" "}
-                    recovery rate
-                  </>
-                ) : null}
+                {t("metrics.recovered.summary", {
+                  recovered: recovery.recoveredCount,
+                  total: recovery.recoveredCount + recovery.stillFailingCount,
+                })}
+                {recovery.recoveryRatePercent !== null
+                  ? ` · ${t("metrics.recovered.rate", { rate: recovery.recoveryRatePercent })}`
+                  : null}
               </>
             ) : (
-              "No failed charges in this window."
+              t("metrics.recovered.none")
             )}
           </p>
         </CardContent>
@@ -73,24 +72,24 @@ export function MetricsPanel({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Metric
-          label="MRR"
+          label={t("metrics.mrr")}
           value={formatMinorAmount(metrics.mrrMinor, metrics.currency)}
-          hint="Active subscriptions, normalized to monthly."
+          hint={t("metrics.mrr.hint")}
         />
         <Metric
-          label="Active subscribers"
+          label={t("metrics.activeSubscribers")}
           value={String(metrics.activeSubscribers)}
           hint={
             metrics.pastDueSubscribers > 0
-              ? `${metrics.pastDueSubscribers} past due`
-              : "None past due."
+              ? t("metrics.activeSubscribers.pastDue", { count: metrics.pastDueSubscribers })
+              : t("metrics.activeSubscribers.nonePastDue")
           }
           alert={metrics.pastDueSubscribers > 0}
         />
         <Metric
-          label="Churn"
+          label={t("metrics.churn")}
           value={metrics.churnRatePercent !== null ? `${metrics.churnRatePercent}%` : "—"}
-          hint={`Canceled in the last ${metrics.windowDays} days.`}
+          hint={t("metrics.churn.hint", { days: metrics.windowDays })}
         />
       </div>
     </section>

@@ -10,12 +10,16 @@ import {
 } from "lucide-react";
 
 /**
- * Wizard option metadata.
+ * Wizard option metadata — structure only, no copy.
  *
  * Mirrors the shape of Krafta's `verticals.ts` so the two onboarding flows stay
- * recognisably the same product. The keys are single-sourced with the CHECK
- * constraints on `payments.org_profiles` — adding one means a migration plus an
- * entry here.
+ * recognisably the same product. Labels and descriptions live in the message
+ * catalog under `onboarding.*`, keyed off the same identifiers, so adding a
+ * language never touches this file.
+ *
+ * The keys are single-sourced with the CHECK constraints on
+ * `payments.org_profiles` — adding one means a migration plus an entry here
+ * plus three catalog lines.
  */
 
 export type BusinessType =
@@ -32,48 +36,17 @@ export type BusinessType =
  * Telegram-first businesses lead because they are the beachhead: technical
  * enough to integrate in an afternoon, and already billing by hand.
  */
-export const BUSINESS_TYPES: Record<
-  BusinessType,
-  { label: string; description: string; icon: LucideIcon }
-> = {
-  telegram: {
-    label: "Telegram bot or paid channel",
-    description: "Subscriptions for channel access or a bot service",
-    icon: Send,
-  },
-  edtech: {
-    label: "Online school or courses",
-    description: "Monthly course access, cohort renewals",
-    icon: GraduationCap,
-  },
-  saas: {
-    label: "SaaS or IT product",
-    description: "Recurring plans for a web or mobile product",
-    icon: Boxes,
-  },
-  fitness: {
-    label: "Gym, club or coworking",
-    description: "Memberships billed every month",
-    icon: Dumbbell,
-  },
-  media: {
-    label: "Media or content",
-    description: "Paywalls, premium tiers, supporter plans",
-    icon: Radio,
-  },
-  services: {
-    label: "Agency or professional services",
-    description: "Retainers and recurring client billing",
-    icon: Briefcase,
-  },
-  other: {
-    label: "Something else",
-    description: "Tell us later — this only tailors your setup",
-    icon: MoreHorizontal,
-  },
+export const BUSINESS_TYPE_ICONS: Record<BusinessType, LucideIcon> = {
+  telegram: Send,
+  edtech: GraduationCap,
+  saas: Boxes,
+  fitness: Dumbbell,
+  media: Radio,
+  services: Briefcase,
+  other: MoreHorizontal,
 };
 
-export const BUSINESS_TYPE_KEYS = Object.keys(BUSINESS_TYPES) as BusinessType[];
+export const BUSINESS_TYPE_KEYS = Object.keys(BUSINESS_TYPE_ICONS) as BusinessType[];
 
 export type LegalForm = "legal_entity" | "individual_entrepreneur" | "self_employed";
 
@@ -90,59 +63,26 @@ export type LegalForm = "legal_entity" | "individual_entrepreneur" | "self_emplo
 export const LEGAL_FORMS: Record<
   LegalForm,
   {
-    label: string;
-    description: string;
     identityType: "TIN" | "PINFL";
+    /**
+     * Stays Cyrillic in every UI language. ИНН and ПИНФЛ are what the
+     * merchant's own paperwork says, and transliterating them into Latin for
+     * the Uzbek UI would leave someone hunting for a label that appears
+     * nowhere on the document they are copying from.
+     */
     identityLabel: string;
     identityDigits: number;
   }
 > = {
-  legal_entity: {
-    label: "Legal entity",
-    description: "ООО, АО — a registered company",
-    identityType: "TIN",
-    identityLabel: "ИНН",
-    identityDigits: 9,
-  },
-  individual_entrepreneur: {
-    label: "Individual entrepreneur",
-    description: "ИП — registered in your own name",
-    identityType: "TIN",
-    identityLabel: "ИНН",
-    identityDigits: 9,
-  },
-  self_employed: {
-    label: "Self-employed",
-    description: "Самозанятый — identified by ПИНФЛ",
-    identityType: "PINFL",
-    identityLabel: "ПИНФЛ",
-    identityDigits: 14,
-  },
+  legal_entity: { identityType: "TIN", identityLabel: "ИНН", identityDigits: 9 },
+  individual_entrepreneur: { identityType: "TIN", identityLabel: "ИНН", identityDigits: 9 },
+  self_employed: { identityType: "PINFL", identityLabel: "ПИНФЛ", identityDigits: 14 },
 };
 
 export const LEGAL_FORM_KEYS = Object.keys(LEGAL_FORMS) as LegalForm[];
 
 export type BillingModel = "subscriptions" | "one_off" | "both";
-
-export const BILLING_MODELS: Record<
-  BillingModel,
-  { label: string; description: string }
-> = {
-  subscriptions: {
-    label: "Recurring subscriptions",
-    description: "Charge the same customer every month",
-  },
-  one_off: {
-    label: "One-off payments",
-    description: "Send a payment link, get paid once",
-  },
-  both: {
-    label: "Both",
-    description: "Subscriptions plus the occasional one-off charge",
-  },
-};
-
-export const BILLING_MODEL_KEYS = Object.keys(BILLING_MODELS) as BillingModel[];
+export const BILLING_MODEL_KEYS: BillingModel[] = ["subscriptions", "one_off", "both"];
 
 export type ProviderStatus = "atmos" | "uzum" | "both" | "none";
 
@@ -152,51 +92,46 @@ export type ProviderStatus = "atmos" | "uzum" | "both" | "none";
  * money today; one who doesn't needs to be told how to apply, not dropped onto
  * a Providers page they physically cannot use.
  */
-export const PROVIDER_STATUSES: Record<
-  ProviderStatus,
-  { label: string; description: string }
-> = {
-  atmos: {
-    label: "Yes — Atmos",
-    description: "Cards are collected on your checkout page, no redirect",
-  },
-  uzum: {
-    label: "Yes — Uzum",
-    description: "Customers attach a card on Uzum, then we charge it",
-  },
-  both: {
-    label: "Yes — both",
-    description: "You can offer either at checkout",
-  },
-  none: {
-    label: "Not yet",
-    description: "We'll show you how to get one",
-  },
-};
-
-export const PROVIDER_STATUS_KEYS = Object.keys(PROVIDER_STATUSES) as ProviderStatus[];
+export const PROVIDER_STATUS_KEYS: ProviderStatus[] = ["atmos", "uzum", "both", "none"];
 
 /** Digits only — merchants paste these with spaces and dashes. */
 export function normalizeTaxIdentity(value: string): string {
   return value.replace(/\D/g, "");
 }
 
-export function validateTaxIdentity(
-  value: string,
-  legalForm: LegalForm,
-): { ok: true } | { ok: false; message: string } {
+/**
+ * Validation returns a *reason plus the numbers*, never a sentence.
+ *
+ * The same rule runs on the client (for an instant inline message) and on the
+ * server (as the actual guard), and the two render in different places — one in
+ * the merchant's chosen UI language, one into a JSON error. Returning English
+ * prose from here would force the server to ship a message it cannot translate
+ * and the client to display one it did not choose the language of.
+ */
+export type TaxIdentityResult =
+  | { ok: true }
+  | { ok: false; reason: "required" | "length"; label: string; expected: number; actual: number };
+
+export function validateTaxIdentity(value: string, legalForm: LegalForm): TaxIdentityResult {
   const digits = normalizeTaxIdentity(value);
   const { identityLabel, identityDigits } = LEGAL_FORMS[legalForm];
 
   if (digits.length === 0) {
-    return { ok: false, message: `Enter your ${identityLabel}.` };
+    return {
+      ok: false,
+      reason: "required",
+      label: identityLabel,
+      expected: identityDigits,
+      actual: 0,
+    };
   }
   if (digits.length !== identityDigits) {
     return {
       ok: false,
-      // Says what is wrong AND what right looks like — "invalid" alone sends
-      // someone hunting through paperwork for a rule we already know.
-      message: `${identityLabel} is ${identityDigits} digits. You entered ${digits.length}.`,
+      reason: "length",
+      label: identityLabel,
+      expected: identityDigits,
+      actual: digits.length,
     };
   }
   return { ok: true };

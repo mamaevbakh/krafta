@@ -9,17 +9,17 @@ import { LinkButton } from "@/components/ui/link-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/locales/context";
 import {
-  BILLING_MODELS,
   BILLING_MODEL_KEYS,
-  BUSINESS_TYPES,
+  BUSINESS_TYPE_ICONS,
   BUSINESS_TYPE_KEYS,
   LEGAL_FORMS,
   LEGAL_FORM_KEYS,
-  PROVIDER_STATUSES,
   PROVIDER_STATUS_KEYS,
   normalizeTaxIdentity,
   validateTaxIdentity,
+  type TaxIdentityResult,
   type BillingModel,
   type BusinessType,
   type LegalForm,
@@ -70,6 +70,7 @@ type CreatedAccount = { orgSlug: string; providerStatus: ProviderStatus };
 
 export function OnboardingWizard() {
   const router = useRouter();
+  const t = useT();
   const [draft, setDraft] = React.useState<Draft>(EMPTY_DRAFT);
   const [hydrated, setHydrated] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -144,7 +145,7 @@ export function OnboardingWizard() {
       };
 
       if (!response.ok || !payload.account) {
-        setError(errorMessage(payload.error));
+        setError(t(errorKey(payload.error)));
         return;
       }
 
@@ -155,7 +156,7 @@ export function OnboardingWizard() {
       }
       setDone({ orgSlug: payload.account.orgSlug, providerStatus });
     } catch {
-      setError("Couldn't reach the server. Check your connection and try again.");
+      setError(t("onboarding.error.network"));
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -173,7 +174,7 @@ export function OnboardingWizard() {
     <>
       <div
         role="progressbar"
-        aria-label="Setup progress"
+        aria-label={t("onboarding.progress")}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progressPct}
@@ -194,13 +195,25 @@ export function OnboardingWizard() {
           disabled={busy}
         >
           <ArrowLeft className="size-4" />
-          Back
+          {t("onboarding.back")}
         </Button>
       ) : null}
       <h1 className={cn("text-2xl font-semibold tracking-tight", !showBack && "mt-8")}>{title}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
     </>
   );
+
+  /** Turn a validation result into a sentence in the active language. */
+  const taxMessage = (result: TaxIdentityResult): string | null => {
+    if (result.ok) return null;
+    return result.reason === "required"
+      ? t("onboarding.company.taxRequired", { label: result.label })
+      : t("onboarding.company.taxLength", {
+          label: result.label,
+          expected: result.expected,
+          actual: result.actual,
+        });
+  };
 
   const errorNote = error ? (
     <p className="mt-4 text-sm text-destructive" role="alert">
@@ -215,7 +228,7 @@ export function OnboardingWizard() {
       <section key="done">
         <div
           role="progressbar"
-          aria-label="Setup progress"
+          aria-label={t("onboarding.progress")}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={100}
@@ -224,7 +237,7 @@ export function OnboardingWizard() {
           <div className="h-full w-full rounded-full bg-primary" />
         </div>
         <h1 className="mt-8 text-2xl font-semibold tracking-tight">
-          {draft.name.trim()} is set up
+          {t("onboarding.done.title", { name: draft.name.trim() })}
         </h1>
 
         {/* The whole reason the provider question exists: two genuinely
@@ -232,31 +245,30 @@ export function OnboardingWizard() {
         {hasProvider ? (
           <>
             <p className="mt-1 text-sm text-muted-foreground">
-              One thing left — add your provider credentials and you can take your first payment.
+              {t("onboarding.done.hasProvider")}
             </p>
             <LinkButton href={`/dashboard/org/${done.orgSlug}/providers`} className="mt-6 w-full">
-              Connect your provider
+              {t("onboarding.done.connectProvider")}
             </LinkButton>
             <LinkButton
               href={`/dashboard/org/${done.orgSlug}`}
               variant="ghost"
               className="mt-2 w-full"
             >
-              Skip for now
+              {t("onboarding.done.skipForNow")}
             </LinkButton>
           </>
         ) : (
           <>
             <p className="mt-1 text-sm text-muted-foreground">
-              You&apos;ll need a merchant account with a payment provider before you can charge
-              anyone. Krafta Pay runs the billing; the money settles straight into your own account.
+              {t("onboarding.done.noProvider")}
             </p>
             <div className="mt-6 rounded-lg border bg-card p-4">
-              <p className="text-sm font-medium">Getting an Atmos account</p>
+              <p className="text-sm font-medium">{t("onboarding.done.atmosTitle")}</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Atmos is the fastest to start with — cards are collected on your checkout page with
-                no redirect. Apply with your {draft.legalForm ? LEGAL_FORMS[draft.legalForm].identityLabel : "ИНН"}{" "}
-                and company details, then paste the keys they give you into Providers.
+                {t("onboarding.done.atmosBody", {
+                  label: draft.legalForm ? LEGAL_FORMS[draft.legalForm].identityLabel : "ИНН",
+                })}
               </p>
               <a
                 href="https://atmos.uz"
@@ -269,7 +281,7 @@ export function OnboardingWizard() {
               </a>
             </div>
             <LinkButton href={`/dashboard/org/${done.orgSlug}`} className="mt-6 w-full">
-              Go to the dashboard
+              {t("onboarding.done.goToDashboard")}
             </LinkButton>
           </>
         )}
@@ -281,10 +293,10 @@ export function OnboardingWizard() {
   if (step === "type") {
     return (
       <section key="type" aria-labelledby="onboarding-heading">
-        {header("What kind of business is this?", "So we can set up the right defaults.", false)}
+        {header(t("onboarding.type.title"), t("onboarding.type.subtitle"), false)}
         <div className="mt-6 flex flex-col gap-2">
           {BUSINESS_TYPE_KEYS.map((key) => {
-            const { icon: Icon, label, description } = BUSINESS_TYPES[key];
+            const Icon = BUSINESS_TYPE_ICONS[key];
             return (
               <button
                 key={key}
@@ -298,8 +310,10 @@ export function OnboardingWizard() {
               >
                 <Icon className="size-5 shrink-0 text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-medium">{label}</span>
-                  <span className="truncate text-xs text-muted-foreground">{description}</span>
+                  <span className="text-sm font-medium">{t(`onboarding.type.${key}`)}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {t(`onboarding.type.${key}.description`)}
+                  </span>
                 </span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </button>
@@ -321,7 +335,7 @@ export function OnboardingWizard() {
 
     return (
       <section key="company">
-        {header("Your business details", "This is what your customers see on the payment page.")}
+        {header(t("onboarding.company.title"), t("onboarding.company.subtitle"))}
         <form
           className="mt-6 flex flex-col gap-5"
           onSubmit={(event) => {
@@ -329,7 +343,7 @@ export function OnboardingWizard() {
             if (!legalForm) return;
             const check = validateTaxIdentity(draft.taxIdentity, legalForm);
             if (!check.ok) {
-              setTaxError(check.message);
+              setTaxError(taxMessage(check));
               return;
             }
             setTaxError(null);
@@ -337,12 +351,12 @@ export function OnboardingWizard() {
           }}
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="company-name">Company name</Label>
+            <Label htmlFor="company-name">{t("onboarding.company.name")}</Label>
             <Input
               id="company-name"
               value={draft.name}
               onChange={(e) => patch({ name: e.target.value })}
-              placeholder="Aladeen Coffee"
+              placeholder={t("onboarding.company.namePlaceholder")}
               autoComplete="organization"
               maxLength={120}
               autoFocus
@@ -351,10 +365,9 @@ export function OnboardingWizard() {
           </div>
 
           <fieldset className="flex flex-col gap-2">
-            <legend className="text-sm font-medium leading-none">Legal form</legend>
+            <legend className="text-sm font-medium leading-none">{t("onboarding.company.legalForm")}</legend>
             <div className="mt-1 flex flex-col gap-2">
               {LEGAL_FORM_KEYS.map((key) => {
-                const form = LEGAL_FORMS[key];
                 const selected = legalForm === key;
                 return (
                   <button
@@ -371,9 +384,9 @@ export function OnboardingWizard() {
                     )}
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-sm font-medium">{form.label}</span>
+                      <span className="text-sm font-medium">{t(`onboarding.legalForm.${key}`)}</span>
                       <span className="truncate text-xs text-muted-foreground">
-                        {form.description}
+                        {t(`onboarding.legalForm.${key}.description`)}
                       </span>
                     </span>
                   </button>
@@ -397,8 +410,7 @@ export function OnboardingWizard() {
                 }}
                 onBlur={() => {
                   if (!draft.taxIdentity.trim() || !legalForm) return;
-                  const check = validateTaxIdentity(draft.taxIdentity, legalForm);
-                  setTaxError(check.ok ? null : check.message);
+                  setTaxError(taxMessage(validateTaxIdentity(draft.taxIdentity, legalForm)));
                 }}
                 inputMode="numeric"
                 placeholder={"0".repeat(identity.identityDigits)}
@@ -410,8 +422,7 @@ export function OnboardingWizard() {
                 id="tax-identity-hint"
                 className={cn("text-xs", taxError ? "text-destructive" : "text-muted-foreground")}
               >
-                {taxError ??
-                  `${identity.identityDigits} digits. Needed to issue fiscal receipts for your charges.`}
+                {taxError ?? t("onboarding.company.taxHint", { digits: identity.identityDigits })}
               </p>
             </div>
           ) : null}
@@ -419,7 +430,7 @@ export function OnboardingWizard() {
           {errorNote}
 
           <Button type="submit" className="w-full" disabled={busy || !canContinue}>
-            Continue
+            {t("onboarding.continue")}
           </Button>
         </form>
       </section>
@@ -430,29 +441,28 @@ export function OnboardingWizard() {
   if (step === "billing") {
     return (
       <section key="billing">
-        {header("What will you charge for?", "You can do both later — this just sets your starting point.")}
+        {header(t("onboarding.billing.title"), t("onboarding.billing.subtitle"))}
         <div className="mt-6 flex flex-col gap-2">
-          {BILLING_MODEL_KEYS.map((key) => {
-            const { label, description } = BILLING_MODELS[key];
-            return (
-              <button
-                key={key}
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  patch({ billingModel: key });
-                  goNext();
-                }}
-                className="flex min-h-14 w-full items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-              >
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-medium">{label}</span>
-                  <span className="truncate text-xs text-muted-foreground">{description}</span>
+          {BILLING_MODEL_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                patch({ billingModel: key });
+                goNext();
+              }}
+              className="flex min-h-14 w-full items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium">{t(`onboarding.billing.${key}`)}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {t(`onboarding.billing.${key}.description`)}
                 </span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-              </button>
-            );
-          })}
+              </span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+          ))}
         </div>
       </section>
     );
@@ -462,7 +472,7 @@ export function OnboardingWizard() {
   if (step === "contact") {
     return (
       <section key="contact">
-        {header("How do we reach you?", "For anything urgent about your payouts or a failing charge.")}
+        {header(t("onboarding.contact.title"), t("onboarding.contact.subtitle"))}
         <form
           className="mt-6 flex flex-col gap-5"
           onSubmit={(event) => {
@@ -471,7 +481,7 @@ export function OnboardingWizard() {
           }}
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="contact-phone">Phone</Label>
+            <Label htmlFor="contact-phone">{t("onboarding.contact.phone")}</Label>
             <Input
               id="contact-phone"
               value={draft.phone}
@@ -485,7 +495,7 @@ export function OnboardingWizard() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="contact-telegram">Telegram</Label>
+            <Label htmlFor="contact-telegram">{t("onboarding.contact.telegram")}</Label>
             <Input
               id="contact-telegram"
               value={draft.telegram}
@@ -494,7 +504,7 @@ export function OnboardingWizard() {
               aria-describedby="telegram-hint"
             />
             <p id="telegram-hint" className="text-xs text-muted-foreground">
-              Username or number. Usually the fastest way to reach you.
+              {t("onboarding.contact.telegramHint")}
             </p>
           </div>
 
@@ -502,13 +512,13 @@ export function OnboardingWizard() {
 
           <div className="flex flex-col gap-2">
             <Button type="submit" className="w-full">
-              Continue
+              {t("onboarding.continue")}
             </Button>
             {/* Both fields are genuinely optional — we already have the email
                 they signed up with. Forcing a contact method here would be
                 friction charged for nothing. */}
             <Button type="button" variant="ghost" className="w-full" onClick={goNext}>
-              Skip
+              {t("onboarding.skip")}
             </Button>
           </div>
         </form>
@@ -519,14 +529,9 @@ export function OnboardingWizard() {
   // ── ⑤ provider ────────────────────────────────────────────────────────────
   return (
     <section key="provider">
-      {header(
-        "Do you have a payment provider yet?",
-        "You bring your own merchant account — the money settles directly to you.",
-      )}
+      {header(t("onboarding.provider.title"), t("onboarding.provider.subtitle"))}
       <div className="mt-6 flex flex-col gap-2">
-        {PROVIDER_STATUS_KEYS.map((key) => {
-          const { label, description } = PROVIDER_STATUSES[key];
-          return (
+        {PROVIDER_STATUS_KEYS.map((key) => (
             <button
               key={key}
               type="button"
@@ -535,8 +540,10 @@ export function OnboardingWizard() {
               className="flex min-h-14 w-full items-center gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
             >
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm font-medium">{label}</span>
-                <span className="truncate text-xs text-muted-foreground">{description}</span>
+                <span className="text-sm font-medium">{t(`onboarding.provider.${key}`)}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {t(`onboarding.provider.${key}.description`)}
+                </span>
               </span>
               {submitting === key ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
@@ -544,25 +551,25 @@ export function OnboardingWizard() {
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               )}
             </button>
-          );
-        })}
+        ))}
       </div>
       {errorNote}
     </section>
   );
 }
 
-function errorMessage(code: string | undefined) {
+/** Map a server error code to a catalog key. */
+function errorKey(code: string | undefined) {
   switch (code) {
     case "account_already_exists":
-      return "You already have an account. Reload the page.";
+      return "onboarding.error.exists" as const;
     case "name_required":
-      return "Enter your company name.";
+      return "onboarding.error.nameRequired" as const;
     case "tax_identity_invalid":
-      return "That tax number doesn't look right. Check the digits and try again.";
+      return "onboarding.error.taxInvalid" as const;
     case "tax_schema_missing":
-      return "Tax setup is missing on our side. Contact support — this is not something you can fix.";
+      return "onboarding.error.taxSchema" as const;
     default:
-      return "Couldn't finish setup. Try again.";
+      return "onboarding.error.generic" as const;
   }
 }

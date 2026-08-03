@@ -1,4 +1,5 @@
 import { requireOrgAccess } from "@/lib/org-access";
+import { getPayT } from "@/lib/locales/server";
 import { ApiKeysManagerClient } from "./api-keys-manager.client";
 
 export default async function Page({
@@ -10,14 +11,13 @@ export default async function Page({
   // Authorized once, here. Pages no longer take an org id from the query string
   // and re-check it themselves.
   const org = await requireOrgAccess(orgSlug);
+  const t = await getPayT();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">API keys</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Test and live keys for the merchant API. Both work at once.
-        </p>
+        <h1 className="text-2xl font-semibold">{t("page.apiKeys.title")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("page.apiKeys.subtitle")}</p>
       </div>
 
       <ApiKeysManagerClient orgId={org.orgId} />

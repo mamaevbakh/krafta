@@ -23,38 +23,42 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { signOutAction } from "@/app/actions/auth";
+import { useT } from "@/lib/locales/context";
+import type { PayMessageKey } from "@/lib/locales/messages";
+import type { PayLocale } from "@/lib/locales/locale";
+import { LanguageSwitcher } from "@/components/dashboard/language-switcher.client";
 
 type NavItem = {
   href: string;
-  title: string;
+  titleKey: PayMessageKey;
   Icon: LucideIcon;
   orgScoped: boolean;
   exact?: boolean;
 };
 
-type NavGroup = { label: string | null; items: NavItem[] };
+type NavGroup = { labelKey: PayMessageKey | null; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: null,
-    items: [{ href: "", title: "Overview", Icon: Home, orgScoped: true, exact: true }],
+    labelKey: null,
+    items: [{ href: "", titleKey: "nav.overview", Icon: Home, orgScoped: true, exact: true }],
   },
   {
-    label: "Payments",
+    labelKey: "nav.group.payments",
     items: [
-      { href: "/providers", title: "Providers", Icon: CreditCard, orgScoped: true },
-      { href: "/plans", title: "Plans", Icon: Layers, orgScoped: true },
-      { href: "/subscriptions", title: "Subscriptions", Icon: Repeat, orgScoped: true },
-      { href: "/tax-codes", title: "Tax codes", Icon: Receipt, orgScoped: true },
+      { href: "/providers", titleKey: "nav.providers", Icon: CreditCard, orgScoped: true },
+      { href: "/plans", titleKey: "nav.plans", Icon: Layers, orgScoped: true },
+      { href: "/subscriptions", titleKey: "nav.subscriptions", Icon: Repeat, orgScoped: true },
+      { href: "/tax-codes", titleKey: "nav.taxCodes", Icon: Receipt, orgScoped: true },
     ],
   },
   {
-    label: "Developers",
+    labelKey: "nav.group.developers",
     items: [
-      { href: "/api-keys", title: "API keys", Icon: KeyRound, orgScoped: true },
-      { href: "/webhooks", title: "Webhooks", Icon: Webhook, orgScoped: true },
-      { href: "/logs", title: "Logs", Icon: ScrollText, orgScoped: true },
-      { href: "/dashboard/docs", title: "Docs", Icon: BookText, orgScoped: false },
+      { href: "/api-keys", titleKey: "nav.apiKeys", Icon: KeyRound, orgScoped: true },
+      { href: "/webhooks", titleKey: "nav.webhooks", Icon: Webhook, orgScoped: true },
+      { href: "/logs", titleKey: "nav.logs", Icon: ScrollText, orgScoped: true },
+      { href: "/dashboard/docs", titleKey: "nav.docs", Icon: BookText, orgScoped: false },
     ],
   },
 ];
@@ -87,11 +91,14 @@ export function DashboardSidebar({
   memberships,
   userEmail,
   environment,
+  locale,
 }: {
   memberships: MembershipOption[];
   userEmail: string | null;
   environment: string;
+  locale: PayLocale;
 }) {
+  const t = useT();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -148,13 +155,13 @@ export function DashboardSidebar({
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
             )}
           >
-            {isTest ? "Test mode" : "Live"}
+            {isTest ? t("env.test") : t("env.live")}
           </span>
           {onClose ? (
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close menu"
+              aria-label={t("nav.closeMenu")}
               className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent"
             >
               <X className="size-4" aria-hidden />
@@ -176,7 +183,7 @@ export function DashboardSidebar({
               <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             </div>
             <select
-              aria-label="Switch organization"
+              aria-label={t("nav.switchOrg")}
               value={orgSlug ?? ""}
               onChange={(e) => switchOrg(e.target.value)}
               // Invisible, full-size, captures the click; text-base avoids iOS zoom.
@@ -203,10 +210,10 @@ export function DashboardSidebar({
       {/* Nav */}
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-2">
         {NAV_GROUPS.map((group, gi) => (
-          <div key={group.label ?? `group-${gi}`} className="space-y-1">
-            {group.label ? (
+          <div key={group.labelKey ?? `group-${gi}`} className="space-y-1">
+            {group.labelKey ? (
               <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                {group.label}
+                {t(group.labelKey)}
               </p>
             ) : null}
             {group.items.map((item) => {
@@ -225,7 +232,7 @@ export function DashboardSidebar({
                   )}
                 >
                   <Icon className="size-4 shrink-0" aria-hidden />
-                  {item.title}
+                  {t(item.titleKey)}
                 </Link>
               );
             })}
@@ -235,6 +242,7 @@ export function DashboardSidebar({
 
       {/* Account + sign out */}
       <div className="border-t border-sidebar-border p-3">
+        <LanguageSwitcher locale={locale} />
         {userEmail ? (
           <p className="truncate px-1 pb-2 text-xs text-muted-foreground" title={userEmail}>
             {userEmail}
@@ -242,7 +250,7 @@ export function DashboardSidebar({
         ) : null}
         <form action={signOutAction}>
           <Button type="submit" variant="outline" size="sm" className="w-full">
-            Sign out
+            {t("nav.signOut")}
           </Button>
         </form>
       </div>
@@ -264,7 +272,7 @@ export function DashboardSidebar({
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          aria-label="Open menu"
+          aria-label={t("nav.openMenu")}
           className="inline-flex size-9 items-center justify-center rounded-md border"
         >
           <Menu className="size-5" aria-hidden />
