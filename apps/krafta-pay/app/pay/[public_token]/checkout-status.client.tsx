@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/lib/locales/context";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Spinner } from "@/components/ui/spinner";
@@ -48,6 +50,7 @@ export function CheckoutStatusWatcher({
   initial: StatusResponse | null;
   isRecoverable?: boolean;
 }) {
+  const t = useT();
   const [data, setData] = useState<StatusResponse | null>(initial);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,22 +134,21 @@ export function CheckoutStatusWatcher({
     <div className="mt-8 border-t pt-6 text-sm">
       {error ? (
         <p className="text-muted-foreground">
-          Couldn&apos;t check the payment status just now — retrying automatically.
+          {t("checkout.statusChecking")}
         </p>
       ) : intentStatus === "succeeded" ? (
-        <p className="font-medium">Payment confirmed — taking you back…</p>
+        <p className="font-medium">{t("checkout.statusConfirmed")}</p>
       ) : intentStatus === "failed" || intentStatus === "canceled" || intentStatus === "cancelled" ? (
         // A recovery link (see createRecoveryCheckoutSession) puts a customer on
         // this page precisely BECAUSE the last charge failed, with a live card
         // form above. A bare "Payment failed." there reads as a dead end next to
         // the form we want them to use, so say what to do instead.
         isRecoverable ? (
-          <p className="text-muted-foreground">
-            Your last payment didn&apos;t go through. Enter a card above to try again — you can use
-            a different one.
-          </p>
+          <p className="text-muted-foreground">{t("checkout.retryHint")}</p>
         ) : (
-          <p className="font-medium text-destructive">Payment {statusLabel.toLowerCase()}.</p>
+          <p className="font-medium text-destructive">
+            {intentStatus === "failed" ? t("checkout.statusFailed") : t("checkout.statusCanceled")}
+          </p>
         )
       ) : (
         <div className="flex items-center gap-2 text-muted-foreground">

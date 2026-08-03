@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/lib/locales/context";
+
 import { useState } from "react";
 
 import { AtmosCardForm } from "./atmos-card-form.client";
@@ -13,7 +15,12 @@ type SelectProviderResponse =
   | { attemptId: string; mode?: "redirect" | "inline"; redirectUrl?: string }
   | { error: string };
 
-function getErrorMessage(error: unknown): string {
+/**
+ * A provider error message if there is one, else null — the caller supplies a
+ * translated fallback. Returning an English "Unknown error" from here would
+ * hard-code one language into a customer-facing surface.
+ */
+function getErrorMessage(error: unknown): string | null {
   if (typeof error === "string") return error;
   if (
     error &&
@@ -23,7 +30,7 @@ function getErrorMessage(error: unknown): string {
   ) {
     return (error as any).message;
   }
-  return "Unknown error";
+  return null;
 }
 
 export function ProviderPicker({
@@ -37,6 +44,7 @@ export function ProviderPicker({
   amountMinor: number;
   currency: string;
 }) {
+  const t = useT();
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inlineActive, setInlineActive] = useState(false);
@@ -74,7 +82,7 @@ export function ProviderPicker({
       if (!redirectUrl) throw new Error("missing_redirect_url");
       window.location.assign(redirectUrl);
     } catch (e) {
-      setError(getErrorMessage(e));
+      setError(getErrorMessage(e) ?? t("checkout.unknownError"));
     } finally {
       setIsStarting(false);
     }
@@ -107,12 +115,12 @@ export function ProviderPicker({
                 <div className="font-medium">{p.name}</div>
                 <div className="text-xs text-muted-foreground">
                   {p.id === "atmos"
-                    ? "Pay by card here — no redirect"
-                    : "Opens the secure provider page and returns automatically"}
+                    ? t("checkout.inlineCard")
+                    : t("checkout.redirectCard")}
                 </div>
               </div>
               <span className="text-xs text-muted-foreground">
-                {isStarting ? "Starting…" : "Continue"}
+                {isStarting ? t("checkout.starting") : t("checkout.continue")}
               </span>
             </div>
           </button>

@@ -5,6 +5,8 @@ import { ProviderPicker } from "./provider-picker.client";
 import { AtmosCardForm } from "./atmos-card-form.client";
 import { CheckoutStatusWatcher } from "./checkout-status.client";
 import { formatMinorAmount } from "@/lib/format";
+import { getCheckoutT } from "@/lib/locales/checkout";
+import { PayLocaleProvider } from "@/lib/locales/context";
 
 function isTerminalStatus(status?: string | null) {
   const s = (status ?? "").toLowerCase();
@@ -13,10 +15,13 @@ function isTerminalStatus(status?: string | null) {
 
 export default async function PayPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ public_token: string }>;
+  searchParams: Promise<{ lang?: string }>;
 }) {
   const { public_token } = await params;
+  const sp = await searchParams;
 
   const supabase = createAdminSupabase();
 
@@ -37,6 +42,14 @@ export default async function PayPage({
   // Environment comes from the checkout itself, never from a process-global
   // PAY_ENV — otherwise a test-mode checkout on the live deployment would
   // resolve the LIVE Atmos account and charge a real card.
+  // The CUSTOMER's language, not the merchant's: ?lang= → session metadata →
+  // their Accept-Language. A merchant running the console in English still has
+  // customers who need «Срок действия» before typing a card number.
+  const { locale, t } = await getCheckoutT({
+    langParam: sp.lang,
+    sessionMetadata: (session as { metadata?: unknown }).metadata,
+  });
+
   const env: "test" | "live" =
     (session as { environment?: string }).environment === "test" ? "test" : "live";
 
@@ -92,6 +105,7 @@ export default async function PayPage({
     : "subscription";
 
   return (
+    <PayLocaleProvider locale={locale}>
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
       <header>
         <BrandWordmark text="Krafta•Pay" className="text-lg" />
@@ -99,7 +113,7 @@ export default async function PayPage({
 
       <main className="mt-12 flex-1">
         {/* Amount — the focal point. Typography does the work, not a box. */}
-        <div className="text-sm text-muted-foreground">Amount due</div>
+        <div className="text-sm text-muted-foreground">{t("checkout.amountDue")}</div>
         {/* Scales down on narrow screens so large UZS sums (millions) stay on
             one line — no orphaned "UZS". */}
         <div className="mt-1 font-mono text-[clamp(1.875rem,7vw,2.75rem)] font-semibold leading-none tracking-tight tabular-nums">
@@ -113,15 +127,15 @@ export default async function PayPage({
 
         {/* Payment action */}
         <section>
-          <h2 className="text-sm font-medium">Payment details</h2>
+          <h2 className="text-sm font-medium">{t("checkout.paymentDetails")}</h2>
 
           {isTerminal ? (
             <p className="mt-3 text-sm text-muted-foreground">
-              This checkout is no longer accepting payments.
+              {t("checkout.closed")}
             </p>
           ) : providers.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">
-              No payment methods are configured for this merchant yet.
+              {t("checkout.noProviders")}
             </p>
           ) : atmosProvider ? (
             <div className="mt-4">
@@ -133,7 +147,7 @@ export default async function PayPage({
               />
               {otherProviders.length > 0 ? (
                 <div className="mt-8 border-t pt-6">
-                  <div className="text-xs text-muted-foreground">Or pay another way</div>
+                  <div className="text-xs text-muted-foreground">{t("checkout.otherWays")}</div>
                   <ProviderPicker
                     publicToken={public_token}
                     providers={otherProviders}
@@ -184,9 +198,10 @@ export default async function PayPage({
       </main>
 
       <footer className="mt-12 flex items-center gap-1 text-xs text-muted-foreground">
-        <span>Powered by</span>
+        <span>{t("checkout.poweredBy")}</span>
         <BrandWordmark text="Krafta•Pay" className="text-xs" />
       </footer>
     </div>
+    </PayLocaleProvider>
   );
 }

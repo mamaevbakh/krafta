@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/lib/locales/context";
+
 import { useMemo, useState } from "react";
 import { CreditCardIcon, CheckIcon } from "lucide-react";
 
@@ -87,6 +89,7 @@ export function AtmosCardForm({
   // mounts are unchanged.
   mode?: "subscription" | "payment";
 }) {
+  const t = useT();
   const amountLabel = useMemo(
     () => formatMinorAmount(amountMinor, currency),
     [amountMinor, currency],
@@ -189,8 +192,8 @@ export function AtmosCardForm({
           <div className="text-base font-semibold">Payment successful</div>
           <p className="text-sm text-muted-foreground">
             {mode === "subscription"
-              ? "Your subscription is active. Taking you back…"
-              : "Payment complete. Taking you back…"}
+              ? t("checkout.subscriptionActive")
+              : t("checkout.paymentComplete")}
           </p>
         </div>
         <Spinner className="text-muted-foreground" />
@@ -245,7 +248,7 @@ export function AtmosCardForm({
 
         <Button type="submit" className="h-11 w-full" disabled={pending || otp.length < 6}>
           {pending ? <Spinner /> : null}
-          {pending ? "Confirming…" : `Pay ${amountLabel}`}
+          {pending ? t("checkout.confirming") : t("checkout.pay", { amount: amountLabel })}
         </Button>
 
         <div className="flex items-center justify-between text-sm">
@@ -268,7 +271,7 @@ export function AtmosCardForm({
   return (
     <form onSubmit={handlePreApply} className="space-y-4">
       <Field>
-        <FieldLabel htmlFor="atmos-card-number">Card number</FieldLabel>
+        <FieldLabel htmlFor="atmos-card-number">{t("checkout.cardNumber")}</FieldLabel>
         <InputGroup className="h-11">
           <InputGroupAddon>
             <CreditCardIcon />
@@ -286,7 +289,7 @@ export function AtmosCardForm({
       </Field>
 
       <Field>
-        <FieldLabel htmlFor="atmos-card-expiry">Expiry date</FieldLabel>
+        <FieldLabel htmlFor="atmos-card-expiry">{t("checkout.expiry")}</FieldLabel>
         <Input
           id="atmos-card-expiry"
           inputMode="numeric"
@@ -300,15 +303,15 @@ export function AtmosCardForm({
 
       <p className="text-xs text-muted-foreground">
         {mode === "subscription"
-          ? "You’ll get one SMS code to confirm. Your card is securely saved for future renewals."
-          : "You’ll get one SMS code to confirm your payment."}
+          ? t("checkout.smsHintSaveCard")
+          : t("checkout.smsHint")}
       </p>
 
       {error ? <FieldError>{error}</FieldError> : null}
 
       <Button type="submit" className="h-11 w-full" disabled={!cardValid || pending}>
         {pending ? <Spinner /> : null}
-        {pending ? "Sending code…" : `Pay ${amountLabel}`}
+        {pending ? t("checkout.sendingCode") : t("checkout.pay", { amount: amountLabel })}
       </Button>
     </form>
   );

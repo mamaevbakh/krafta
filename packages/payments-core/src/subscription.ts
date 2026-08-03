@@ -813,7 +813,15 @@ export async function createSubscriptionCheckout(
       org_id: input.merchantOrgId,
       amount_minor: plan.amount_minor,
       currency: plan.currency,
-      description: "Subscription checkout",
+      // The plan's own name, not a generic "Subscription checkout".
+      //
+      // This string is written once, at creation, and shown to the CUSTOMER on
+      // the hosted pay page — where it is the only line telling them what they
+      // are about to be charged for. A fixed English phrase is both useless
+      // ("subscription to what?") and untranslatable, since we do not know the
+      // customer's language yet. The merchant's own plan name is meaningful and
+      // already in whatever language they chose.
+      description: plan.name?.trim() || "Subscription",
       status: "requires_action",
       environment,
       client_secret: clientSecret,

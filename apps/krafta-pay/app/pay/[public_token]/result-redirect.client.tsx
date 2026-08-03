@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/lib/locales/context";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { Spinner } from "@/components/ui/spinner";
@@ -63,6 +65,7 @@ export function PayResultRedirect({
   merchantCancelUrl: string | null;
   merchantReturnUrl: string | null;
 }) {
+  const t = useT();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -176,24 +179,24 @@ export function PayResultRedirect({
   const title =
     mode === "success"
       ? isSucceeded
-        ? "Payment confirmed"
+        ? t("checkout.result.confirmed")
         : isFailed
-          ? "Payment couldn’t be completed"
-          : "Confirming your payment"
+          ? t("checkout.result.failed")
+          : t("checkout.result.confirmingTitle")
       : isFailed
-        ? "Payment was not completed"
-        : "Checking payment status";
+        ? t("checkout.result.notCompleted")
+        : t("checkout.result.checking");
 
   const helperText =
     mode === "success"
       ? isSucceeded
-        ? "Payment complete. We’ll take you back automatically."
+        ? t("checkout.result.confirmedBody")
         : isFailed
-          ? "We couldn’t complete the charge yet. You can retry, or go back to checkout."
-          : "We’re confirming your payment — this only takes a moment."
+          ? t("checkout.result.retryBody")
+          : t("checkout.result.confirmingBody")
       : isFailed
-        ? "The payment wasn’t completed. You can go back and try again."
-        : "We’re still checking the result with the payment provider.";
+        ? t("checkout.result.notCompletedBody")
+        : t("checkout.result.checkingBody");
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
@@ -208,7 +211,7 @@ export function PayResultRedirect({
         {waitingForWebhook ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Spinner className="size-4" />
-            <span>Confirming with the payment provider…</span>
+            <span>{t("checkout.result.withProvider")}</span>
           </div>
         ) : null}
 
@@ -254,10 +257,10 @@ export function PayResultRedirect({
                   const nextIntentStatus = json?.paymentIntentStatus ?? "processing";
                   setRetryNote(
                     nextIntentStatus === "succeeded"
-                      ? "Charge retry succeeded. Redirecting shortly…"
+                      ? t("checkout.result.retrySucceeded")
                       : nextIntentStatus === "failed"
-                        ? "Charge retry failed. You can try again in a moment."
-                        : "Charge retry started. We’re checking the result now.",
+                        ? t("checkout.result.retryFailed")
+                        : t("checkout.result.retryStarted"),
                   );
 
                   setStatus((prev) => {
@@ -279,7 +282,7 @@ export function PayResultRedirect({
                 }
               }}
             >
-              {retryPending ? "Retrying…" : "Retry payment"}
+              {retryPending ? t("checkout.result.retrying") : t("checkout.result.retry")}
             </Button>
           ) : null}
 
