@@ -1,9 +1,11 @@
 "use client";
 
+import { useT } from "@/lib/locales/context";
+
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatMinorAmount } from "@/lib/format";
+import { formatMinorAmount, majorInputToMinor, minorToMajorInput } from "@/lib/format";
 
 type Plan = {
   id: string;
@@ -31,6 +33,7 @@ type EditDraft = {
 };
 
 export function PlansManagerClient({ orgId }: { orgId: string }) {
+  const t = useT();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +41,8 @@ export function PlansManagerClient({ orgId }: { orgId: string }) {
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [amountMinor, setAmountMinor] = useState("99000");
+  // Held in MAJOR units — what the merchant actually charges.
+  const [amountMajor, setAmountMajor] = useState("990");
   const [currency, setCurrency] = useState("UZS");
   const [intervalCount, setIntervalCount] = useState("1");
   const [trialDays, setTrialDays] = useState("0");
@@ -77,7 +81,7 @@ export function PlansManagerClient({ orgId }: { orgId: string }) {
   function resetCreateForm() {
     setName("");
     setCode("");
-    setAmountMinor("99000");
+    setAmountMajor("990");
     setCurrency("UZS");
     setIntervalCount("1");
     setTrialDays("0");
@@ -100,7 +104,7 @@ export function PlansManagerClient({ orgId }: { orgId: string }) {
           orgId,
           name,
           code,
-          amountMinor: Number(amountMinor),
+          amountMinor: majorInputToMinor(amountMajor),
           currency,
           intervalCount: Number(intervalCount),
           trialDays: Number(trialDays),
@@ -124,7 +128,7 @@ export function PlansManagerClient({ orgId }: { orgId: string }) {
     setEditDraft({
       name: plan.name,
       code: plan.code,
-      amountMinor: String(plan.amount_minor),
+      amountMinor: minorToMajorInput(plan.amount_minor),
       currency: plan.currency,
       intervalCount: String(plan.interval_count),
       trialDays: String(plan.trial_days),
@@ -152,7 +156,7 @@ export function PlansManagerClient({ orgId }: { orgId: string }) {
           planId,
           name: editDraft.name,
           code: editDraft.code,
-          amountMinor: Number(editDraft.amountMinor),
+          amountMinor: majorInputToMinor(editDraft.amountMinor),
           currency: editDraft.currency,
           intervalCount: Number(editDraft.intervalCount),
           trialDays: Number(editDraft.trialDays),
@@ -233,9 +237,20 @@ export function PlansManagerClient({ orgId }: { orgId: string }) {
         </div>
         <div className="grid gap-1">
           <label className="text-sm font-medium" htmlFor="plan-amount">
-            Amount minor
+            {t("plans.price")}
           </label>
-          <Input id="plan-amount" value={amountMinor} onChange={(e) => setAmountMinor(e.target.value)} />
+          <div className="relative">
+            <Input
+              id="plan-amount"
+              value={amountMajor}
+              onChange={(e) => setAmountMajor(e.target.value)}
+              inputMode="decimal"
+              className="pr-14 font-mono tabular-nums"
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+              {currency}
+            </span>
+          </div>
         </div>
         <div className="grid gap-1">
           <label className="text-sm font-medium" htmlFor="plan-currency">
@@ -353,11 +368,20 @@ export function PlansManagerClient({ orgId }: { orgId: string }) {
                         />
                       </div>
                       <div className="grid gap-1">
-                        <label className="text-xs text-muted-foreground">Amount minor</label>
-                        <Input
-                          value={editDraft.amountMinor}
-                          onChange={(e) => setEditDraft({ ...editDraft, amountMinor: e.target.value })}
-                        />
+                        <label className="text-xs text-muted-foreground">{t("plans.price")}</label>
+                        <div className="relative">
+                          <Input
+                            value={editDraft.amountMinor}
+                            onChange={(e) =>
+                              setEditDraft({ ...editDraft, amountMinor: e.target.value })
+                            }
+                            inputMode="decimal"
+                            className="pr-14 font-mono tabular-nums"
+                          />
+                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+                            {editDraft.currency}
+                          </span>
+                        </div>
                       </div>
                       <div className="grid gap-1">
                         <label className="text-xs text-muted-foreground">Currency</label>
