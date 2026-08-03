@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EDITION, OTHER_EDITIONS } from "./editions";
+import { EDITION, HEADER_MENU } from "./editions";
 import { useScrollSpy } from "./ScrollSpy";
 
 function BagMark({ className }: { className?: string }) {
@@ -69,7 +69,7 @@ export function SiteHeader() {
             aria-expanded={open}
             aria-haspopup="menu"
           >
-            {EDITION.season}
+            {EDITION.menu}
             <ChevronDown
               className={open ? "rotate-180 transition-transform" : "transition-transform"}
             />
@@ -80,24 +80,25 @@ export function SiteHeader() {
               role="menu"
               className="absolute right-0 top-[calc(100%+0.5rem)] w-60 overflow-hidden rounded-xl border border-cream/15 bg-canvas/95 p-1.5 text-cream shadow-2xl backdrop-blur-md"
             >
-              {OTHER_EDITIONS.map((ed) => (
+              {HEADER_MENU.map((entry) => (
                 <a
-                  key={ed.label}
-                  href={ed.href}
+                  key={entry.label}
+                  href={entry.href}
                   role="menuitem"
-                  className={`flex items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-cream/10 ${
-                    ed.current ? "bg-cream/10" : ""
-                  }`}
+                  className="flex items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-cream/10"
                 >
-                  <span>{ed.label}</span>
+                  <span>{entry.label}</span>
                   <span className="font-serif text-xs text-stone-2 italic">
-                    {ed.codename}
+                    {entry.hint}
                   </span>
                 </a>
               ))}
               <div className="mt-1.5 border-t border-cream/10 px-3 py-2">
-                <a href="#" className="text-sm text-stone-2 link-underline">
-                  View all Editions
+                <a
+                  href="https://www.krafta.uz"
+                  className="text-sm text-stone-2 link-underline"
+                >
+                  Krafta
                 </a>
               </div>
             </div>
@@ -117,7 +118,7 @@ export function SiteHeader() {
           // eslint-disable-next-line @next/next/no-html-link-for-pages
           render={<a href="/dashboard" />}
         >
-          Start free trial
+          Get started
         </Button>
       </nav>
 

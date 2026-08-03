@@ -26,13 +26,26 @@ export function SiteFooter() {
           ))}
         </nav>
 
+        {/* Links point at pages that exist. Terms and Privacy do not yet — a
+            dead legal link is worse than no legal link.
+
+            Plain <a>, same reasoning as the header CTA: /dashboard/* answers a
+            signed-out visitor with a cross-origin redirect to Krafta SSO, which
+            <Link> can neither prefetch nor follow. */}
         <div className="mt-14 flex flex-wrap items-center gap-x-8 gap-y-3 font-serif text-xs text-stone-3">
-          <span>© Shopify Inc</span>
-          <a href="#" className="link-underline transition-colors hover:text-stone-1">
-            Terms of Service
+          <span>© Krafta</span>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a
+            href="/dashboard/docs"
+            className="link-underline transition-colors hover:text-stone-1"
+          >
+            API reference
           </a>
-          <a href="#" className="link-underline transition-colors hover:text-stone-1">
-            Privacy Policy
+          <a
+            href="https://www.krafta.uz"
+            className="link-underline transition-colors hover:text-stone-1"
+          >
+            Krafta
           </a>
         </div>
       </div>

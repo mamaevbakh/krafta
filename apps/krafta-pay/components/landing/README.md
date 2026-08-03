@@ -17,14 +17,22 @@ landing.css         palette + type scale (see "Styles" below)
 hero/               three.js scene — see hero/HeroCanvas.tsx for the asset map
 ```
 
-## Copy is Shopify's — replace it before launch
+## Copy
 
-`editions.ts`, the header brand line and the footer copyright are still the
-marketing text from Shopify Editions Winter '26, which is what the bundle
-shipped with. The layout and palette were measured off that page too. None of it
-is Krafta's to publish: swap `editions.ts`, `EDITION.name` in `SiteHeader.tsx`
-and the footer line in `SiteFooter.tsx` for Krafta Pay copy before this page goes
-in front of anyone.
+All of it lives in `editions.ts`, except the two-line hero headline, which is
+set in `Hero.tsx` because its second line is styled differently from its first.
+
+Every claim on the page is checked against `docs/krafta-pay-api.md`, the
+locale catalogue, and the dashboard itself. Keep it that way — a landing page
+that promises a capability the product does not have is a support ticket with
+better typography. Where something isn't built, the page says so (Payme and
+Click, under Providers).
+
+The bundle arrived carrying Shopify Editions Winter '26 marketing text, which
+has been replaced wholesale. What remains from that source is structural: the
+layout, the type scale, and the palette — including `--color-purple`, which is
+still Shopify's accent and is the one thing on this page DESIGN.md would
+object to.
 
 ## Styles
 

@@ -21,16 +21,19 @@ export function Hero() {
     <HeroStage>
       <div className="mx-auto flex w-full max-w-[105rem] flex-1 flex-col justify-center">
         <Reveal className="flex items-center gap-4">
-          <span className="label text-stone-2">{EDITION.season}</span>
+          <span className="label text-stone-2">{EDITION.eyebrow}</span>
           <Ornament className="h-3 w-24 text-stone-3" />
         </Reveal>
 
         <Reveal as="h1" delay={80} className="mt-6 max-w-[16ch]">
+          {/* Two words, and short ones. The type is clamped to 11.5vw against a
+              16ch measure, so anything longer than roughly "Subscription" wraps
+              a third line and pushes the section index off the fold. */}
           <span className="block font-serif text-[clamp(3rem,11.5vw,10.5rem)] leading-[0.86] tracking-[-0.02em]">
-            The Renaissance
+            Subscription
           </span>
           <span className="block font-serif italic text-[clamp(3rem,11.5vw,10.5rem)] leading-[0.86] tracking-[-0.02em] text-stone-1">
-            Edition
+            billing
           </span>
         </Reveal>
 
