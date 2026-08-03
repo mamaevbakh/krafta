@@ -37,10 +37,16 @@ function normalizeBaseUrl(baseUrl: string) {
 // Egress proxy. The Atmos gateway (apigw.atmos.uz) only accepts requests from
 // IPs the merchant has whitelisted with Atmos; Vercel's function egress IPs are
 // dynamic and non-UZ, so every Atmos call is routed through a fixed-IP forward
-// proxy whenever ATMOS_EGRESS_PROXY_URL is set (e.g.
-// "http://user:pass@1.2.3.4:3128"). That proxy's single static IP is the one
-// whitelisted with Atmos. Unset (e.g. local dev on an already-whitelisted
-// network) → calls go out directly, unchanged. Built once and reused.
+// proxy whenever ATMOS_EGRESS_PROXY_URL is set. That variable holds a standard
+// proxy URL — scheme, host, port, and optionally basic-auth credentials — and
+// the proxy's single static IP is the one whitelisted with Atmos.
+//
+// (Spelled out in prose rather than shown as a sample URL: an inline
+// scheme://user:pass@host literal, however obviously fake, trips the
+// credential scanner on every push.)
+//
+// Unset (e.g. local dev on an already-whitelisted network) → calls go out
+// directly, unchanged. Built once and reused.
 // ---------------------------------------------------------------------------
 let cachedEgressDispatcher: Dispatcher | null | undefined;
 function getEgressDispatcher(): Dispatcher | undefined {
