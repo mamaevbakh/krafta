@@ -33,6 +33,14 @@ export async function createCardSetupSession(
     merchantOrgId?: string | null;
     payBaseUrl: string;
     returnUrl?: string | null;
+    /**
+     * Which of the payee org's provider accounts should bind the card. Omitted
+     * for merchant subscriptions, where the column default (`live`) has always
+     * been right. Platform-fee billing passes it explicitly: the dev branch has
+     * no live Atmos account on the platform org, so a defaulted `live` session
+     * there resolves nothing and the card form dies with no provider.
+     */
+    environment?: "test" | "live" | null;
   },
 ): Promise<CardSetupResult> {
   const payBaseUrl = input.payBaseUrl?.replace(/\/+$/, "");
@@ -96,6 +104,7 @@ export async function createCardSetupSession(
       client_secret: clientSecret,
       return_url: returnUrl,
       metadata: cardUpdateMetadata,
+      ...(input.environment ? { environment: input.environment } : {}),
     })
     .select("id")
     .single();
@@ -114,6 +123,7 @@ export async function createCardSetupSession(
       cancel_url: returnUrl,
       return_url: returnUrl,
       metadata: cardUpdateMetadata,
+      ...(input.environment ? { environment: input.environment } : {}),
     })
     .select("id")
     .single();

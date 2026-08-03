@@ -6,6 +6,16 @@ import type { AtmosCardDetails } from "./providers/atmos";
 import { redactSensitive } from "./redact";
 import { writePaymentLog } from "./debug-log";
 import { emitSubscriptionEvent } from "./webhooks-out";
+import {
+  buildPlatformInvoiceLines,
+  computePlatformUsage,
+  insertInvoiceLineItems,
+  isPlatformBillingExempt,
+  isPlatformFeeSubscription,
+  platformPricingFromPlanRow,
+  sumLineItems,
+  type PlatformInvoiceLine,
+} from "./platform-billing";
 
 const RETRY_SCHEDULE_DAYS = [3, 7, 14] as const;
 
@@ -1809,6 +1819,9 @@ async function ensureRenewalInvoice(
     periodStartIso: string;
     periodEndIso: string;
     environment: PayEnvironment;
+    // Platform-fee invoices arrive itemised (base + usage). Written once, on
+    // invoice creation, and never recomputed — see platform-billing.ts.
+    lineItems?: PlatformInvoiceLine[];
   },
 ) {
   const { data: existingInvoice, error: existingInvoiceErr } = await supabase
@@ -1830,25 +1843,40 @@ async function ensureRenewalInvoice(
     };
   }
 
-  const { data: invoice, error: invoiceErr } = await supabase
-    .schema("payments")
-    .from("invoices")
-    .insert({
-      org_id: params.orgId,
-      subscription_id: params.subscriptionId,
-      amount_due_minor: params.amountMinor,
-      currency: params.currency,
-      status: "open",
-      billing_period_start: params.periodStartIso,
-      billing_period_end: params.periodEndIso,
-      due_at: new Date().toISOString(),
-      metadata: {
-        billing_reason: "subscription_cycle",
-      },
-    })
-    .select("id")
-    .single();
-  if (invoiceErr) throw invoiceErr;
+  // An invoice for this period that carries NO intent. Before platform fees
+  // this was unreachable — every invoice got an intent on the next line. A
+  // zero-amount platform close creates exactly this shape (settled, no charge),
+  // and inserting a second invoice for the same period would violate
+  // invoices_subscription_period_unique. Adopt the existing row instead.
+  const existingInvoiceId = (existingInvoice?.id as string | undefined) ?? null;
+
+  let invoiceId = existingInvoiceId;
+  if (!invoiceId) {
+    const { data: invoice, error: invoiceErr } = await supabase
+      .schema("payments")
+      .from("invoices")
+      .insert({
+        org_id: params.orgId,
+        subscription_id: params.subscriptionId,
+        amount_due_minor: params.amountMinor,
+        currency: params.currency,
+        status: "open",
+        billing_period_start: params.periodStartIso,
+        billing_period_end: params.periodEndIso,
+        due_at: new Date().toISOString(),
+        metadata: {
+          billing_reason: "subscription_cycle",
+        },
+      })
+      .select("id")
+      .single();
+    if (invoiceErr) throw invoiceErr;
+    invoiceId = String(invoice.id);
+  }
+
+  if (params.lineItems?.length) {
+    await insertInvoiceLineItems(supabase, invoiceId, params.lineItems);
+  }
 
   // Create the intent in a PRE-charge state, not 'processing'. chargeRenewal
   // flips it to 'processing' via a conditional update (compare-and-swap) as a
@@ -1868,7 +1896,7 @@ async function ensureRenewalInvoice(
       client_secret: randomToken(24),
       metadata: {
         subscription_id: params.subscriptionId,
-        invoice_id: invoice.id,
+        invoice_id: invoiceId,
         billing_reason: "subscription_cycle",
       },
     })
@@ -1882,16 +1910,190 @@ async function ensureRenewalInvoice(
     .update({
       payment_intent_id: intent.id,
     })
-    .eq("id", invoice.id);
+    .eq("id", invoiceId);
   if (invoiceUpdateErr) throw invoiceUpdateErr;
 
   return {
-    invoiceId: invoice.id,
+    invoiceId,
     paymentIntentId: intent.id,
     created: true,
     status: "open" as string,
     dueAt: null as string | null,
   };
+}
+
+/**
+ * Meter a closing period and turn it into invoice lines for a platform fee.
+ *
+ * The merchant being billed is identified by the platform customer row's
+ * `external_id`, which holds their organization uuid. Without it there is no
+ * way to know whose volume to meter, and billing the base fee alone would
+ * silently under-bill — so this throws rather than guessing. `runRenewalCycle`
+ * isolates per-subscription failures, so one broken row cannot starve the batch.
+ */
+async function computePlatformFeeForClose(
+  supabase: SupabaseClient,
+  params: {
+    customerId: string;
+    plan: { amount_minor: number; name?: string | null; code?: string | null; metadata?: unknown };
+    usagePeriodStartIso: string;
+    usagePeriodEndIso: string;
+    servicePeriodStartIso: string;
+    servicePeriodEndIso: string;
+  },
+): Promise<
+  { exempt: true } | { exempt: false; lineItems: PlatformInvoiceLine[]; amountDueMinor: number }
+> {
+  const { data: customer, error: customerErr } = await supabase
+    .schema("payments")
+    .from("customers")
+    .select("id, external_id")
+    .eq("id", params.customerId)
+    .maybeSingle();
+  if (customerErr) throw customerErr;
+
+  const merchantOrgId = normalizeExternalId(customer?.external_id);
+  if (!merchantOrgId) throw new Error("platform_customer_external_id_missing");
+
+  // The last line of defence. Provisioning already refuses exempt orgs, so
+  // reaching here means a subscription predates the exemption — a grandfathered
+  // merchant, or one exempted by hand after the fact. Skip without metering,
+  // without invoicing and without charging, rather than trusting that the entry
+  // point was the only way in.
+  if (await isPlatformBillingExempt(supabase, merchantOrgId)) {
+    return { exempt: true };
+  }
+
+  const usage = await computePlatformUsage(supabase, {
+    merchantOrgId,
+    periodStart: params.usagePeriodStartIso,
+    periodEnd: params.usagePeriodEndIso,
+  });
+
+  const lineItems = buildPlatformInvoiceLines({
+    planName: params.plan.name?.trim() || "Platform",
+    planAmountMinor: params.plan.amount_minor,
+    pricing: platformPricingFromPlanRow(params.plan),
+    usage,
+    servicePeriodStartIso: params.servicePeriodStartIso,
+    servicePeriodEndIso: params.servicePeriodEndIso,
+    usagePeriodStartIso: params.usagePeriodStartIso,
+    usagePeriodEndIso: params.usagePeriodEndIso,
+  });
+
+  return { exempt: false, lineItems, amountDueMinor: sumLineItems(lineItems) };
+}
+
+/**
+ * Close a period that costs nothing.
+ *
+ * A Start merchant on a $0 base with no live volume owes zero. Atmos rejects a
+ * zero-value charge, so the naive path — create an intent, charge it, watch it
+ * decline — puts every free merchant into dunning every month and buries the
+ * real failures. Instead the invoice is written already `paid`, itemised so the
+ * merchant can still see the 0% of 0 they were charged on, with no payment
+ * intent and no attempt, and the subscription period advances exactly as a
+ * successful charge would advance it.
+ */
+async function settleZeroAmountInvoice(
+  supabase: SupabaseClient,
+  params: {
+    subscription: {
+      id: string;
+      org_id: string;
+      status?: string | null;
+    };
+    currency: string;
+    periodStartIso: string;
+    periodEndIso: string;
+    environment: PayEnvironment;
+    lineItems: PlatformInvoiceLine[];
+  },
+) {
+  const nowIso = new Date().toISOString();
+
+  const { data: existing, error: existingErr } = await supabase
+    .schema("payments")
+    .from("invoices")
+    .select("id, status")
+    .eq("subscription_id", params.subscription.id)
+    .eq("billing_period_start", params.periodStartIso)
+    .eq("billing_period_end", params.periodEndIso)
+    .maybeSingle();
+  if (existingErr) throw existingErr;
+
+  let invoiceId = (existing?.id as string | undefined) ?? null;
+  const alreadySettled = existing?.status === "paid";
+
+  if (!invoiceId) {
+    const { data: invoice, error: invoiceErr } = await supabase
+      .schema("payments")
+      .from("invoices")
+      .insert({
+        org_id: params.subscription.org_id,
+        subscription_id: params.subscription.id,
+        amount_due_minor: 0,
+        currency: params.currency,
+        status: "paid",
+        billing_period_start: params.periodStartIso,
+        billing_period_end: params.periodEndIso,
+        due_at: null,
+        paid_at: nowIso,
+        attempt_count: 0,
+        metadata: {
+          billing_reason: "subscription_cycle",
+          // The flag that explains, months later, why this invoice has no
+          // payment intent and no attempt behind it.
+          zero_amount: true,
+        },
+      })
+      .select("id")
+      .single();
+    if (invoiceErr) throw invoiceErr;
+    invoiceId = String(invoice.id);
+  }
+
+  await insertInvoiceLineItems(supabase, invoiceId, params.lineItems);
+
+  if (alreadySettled) {
+    return { skipped: true, reason: "zero_amount_already_settled" as const, invoiceId };
+  }
+
+  const { error: subscriptionUpdateErr } = await supabase
+    .schema("payments")
+    .from("subscriptions")
+    .update({
+      status: "active",
+      current_period_start: params.periodStartIso,
+      current_period_end: params.periodEndIso,
+      updated_at: nowIso,
+    })
+    .eq("id", params.subscription.id);
+  if (subscriptionUpdateErr) throw subscriptionUpdateErr;
+
+  await supabase
+    .schema("payments")
+    .from("subscription_events")
+    .insert({
+      subscription_id: params.subscription.id,
+      event_type: "payment_succeeded",
+      payload: {
+        invoice_id: invoiceId,
+        zero_amount: true,
+        source: "platform_fee_zero_close",
+      },
+    });
+
+  await emitSubscriptionEvent(supabase, {
+    eventType: "subscription.renewed",
+    subscriptionId: params.subscription.id,
+    orgId: params.subscription.org_id,
+    environment: params.environment,
+    invoiceId,
+    extra: { zeroAmount: true },
+  });
+
+  return { skipped: true, reason: "zero_amount_invoice" as const, invoiceId };
 }
 
 export async function chargeRenewal(
@@ -1905,7 +2107,7 @@ export async function chargeRenewal(
     .schema("payments")
     .from("subscriptions")
     .select(
-      "id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_end, cancel_at_period_end, environment, metadata",
+      "id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_start, current_period_end, cancel_at_period_end, environment, metadata",
     )
     .eq("id", params.subscriptionId)
     .maybeSingle();
@@ -1979,7 +2181,7 @@ export async function chargeRenewal(
   const { data: plan, error: planErr } = await supabase
     .schema("payments")
     .from("plans")
-    .select("amount_minor, currency, interval_count, name, metadata")
+    .select("amount_minor, currency, interval_count, name, code, metadata")
     .eq("id", effectivePlanId)
     .maybeSingle();
   if (planErr) throw planErr;
@@ -2029,19 +2231,71 @@ export async function chargeRenewal(
     });
   }
 
+  const intervalMonths = Math.max(1, plan.interval_count ?? 1);
   const periodStartIso = periodStart.toISOString();
-  const periodEndIso = addMonths(
-    periodStart,
-    Math.max(1, plan.interval_count ?? 1),
-  ).toISOString();
+  const periodEndIso = addMonths(periodStart, intervalMonths).toISOString();
+
+  // ---------------------------------------------------------------------
+  // Platform fee: Krafta Pay billing this merchant, not the merchant billing
+  // a customer. The amount is not the plan price — it is the plan price PLUS a
+  // percentage of the volume the merchant actually processed in the period that
+  // just closed. Metered once, here, and snapshotted onto the invoice.
+  // ---------------------------------------------------------------------
+  const isPlatformFee = isPlatformFeeSubscription({
+    subscriptionMetadata: subscription.metadata,
+    planCode: plan.code,
+  });
+
+  let lineItems: PlatformInvoiceLine[] | undefined;
+  let amountDueMinor = plan.amount_minor as number;
+
+  if (isPlatformFee) {
+    const platform = await computePlatformFeeForClose(supabase, {
+      customerId: subscription.customer_id,
+      plan,
+      // The period that just CLOSED is what we meter. The period being OPENED
+      // is what the base fee covers. Billing usage in arrears and the plan in
+      // advance is the same shape Vercel and Supabase invoices take.
+      usagePeriodStartIso:
+        (subscription.current_period_start as string | null) ??
+        addMonths(periodStart, -intervalMonths).toISOString(),
+      usagePeriodEndIso: periodStartIso,
+      servicePeriodStartIso: periodStartIso,
+      servicePeriodEndIso: periodEndIso,
+    });
+
+    if (platform.exempt) {
+      return { skipped: true, reason: "org_billing_exempt" as const };
+    }
+
+    lineItems = platform.lineItems;
+    amountDueMinor = platform.amountDueMinor;
+
+    // A Start merchant with no live volume owes nothing. Atmos rejects a
+    // zero-value charge, so sending one would fail every free merchant into
+    // dunning every single month. Settle the invoice as paid, itemised, with no
+    // payment intent and no attempt, and advance the period.
+    if (amountDueMinor === 0) {
+      return await settleZeroAmountInvoice(supabase, {
+        subscription,
+        currency: plan.currency,
+        periodStartIso,
+        periodEndIso,
+        environment,
+        lineItems,
+      });
+    }
+  }
+
   const renewal = await ensureRenewalInvoice(supabase, {
     subscriptionId: subscription.id,
     orgId: subscription.org_id,
-    amountMinor: plan.amount_minor,
+    amountMinor: amountDueMinor,
     currency: plan.currency,
     periodStartIso,
     periodEndIso,
     environment,
+    lineItems,
   });
 
   // Respect the dunning schedule + terminal invoice states. The primary renewal
@@ -2145,7 +2399,10 @@ export async function chargeRenewal(
           supabase,
           orgProviderAccountId: paymentMethod.org_provider_account_id,
           providerToken: paymentMethod.provider_token,
-          amountMinor: plan.amount_minor,
+          // The INVOICE total, not the plan price. For a platform fee these
+          // differ by the metered usage component; charging plan.amount_minor
+          // here would move a different amount than the invoice says.
+          amountMinor: amountDueMinor,
           // Atmos reconciliation id; the renewal intent id is stable per cycle.
           account: renewal.paymentIntentId,
         })
@@ -2160,7 +2417,7 @@ export async function chargeRenewal(
           // new payment_attempt, so use attempt id to force a fresh charge orderId.
           orderNumber: `renewal-${attempt.id}`,
           currency: plan.currency,
-          amountMinor: plan.amount_minor,
+          amountMinor: amountDueMinor,
           uzumCart: renewalUzumCart,
           phoneNumber: customer?.phone,
         });

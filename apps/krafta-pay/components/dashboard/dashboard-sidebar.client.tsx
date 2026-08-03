@@ -14,6 +14,7 @@ import {
   Receipt,
   Repeat,
   ScrollText,
+  Wallet,
   Webhook,
   X,
   type LucideIcon,
@@ -61,6 +62,14 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/logs", titleKey: "nav.logs", Icon: ScrollText, orgScoped: true },
       { href: "/dashboard/docs", titleKey: "nav.docs", Icon: BookText, orgScoped: false },
     ],
+  },
+  {
+    // What Krafta Pay charges the merchant — the opposite direction of money to
+    // everything above it, so it gets its own group rather than sitting next to
+    // the merchant's own plans and subscriptions where the two would be
+    // confused for each other.
+    labelKey: "nav.group.account",
+    items: [{ href: "/billing", titleKey: "nav.billing", Icon: Wallet, orgScoped: true }],
   },
 ];
 

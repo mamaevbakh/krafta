@@ -1,0 +1,153 @@
+/**
+ * Everything the landing page needs, scoped so it does not restyle the host app.
+ *
+ * The page must not inherit its colour from the host's `body`. Several headings
+ * carry no colour class and relied on the source app's base layer; dropped into
+ * an app whose body is the browser default, the display headline rendered black
+ * on black. `.editions-landing` re-establishes those surfaces around the page
+ * itself, so it looks the same wherever it is mounted.
+ *
+ * Tailwind 4 resolves `@theme` at build time, so this must be pulled in from the
+ * stylesheet that imports Tailwind, not through a JS import. It is imported from
+ * `app/globals.css`, directly after `@import "tailwindcss"`.
+ *
+ * Without it, utilities like text-cream and bg-canvas simply do not exist and
+ * the page renders unstyled.
+ *
+ * Typography deviates from the bundle on purpose. DESIGN.md allows exactly three
+ * faces — Geist Sans, Geist Mono, and Helvetica Neue Bold for the wordmark — and
+ * rules out a display serif, so both the grotesk and the serif role resolve to
+ * Geist here. `--font-serif` keeps its name because the markup asks for it by
+ * that name; only what it points at changed.
+ */
+
+@theme {
+  /* Palette lifted from the source page */
+  --color-canvas: #000000;
+  --color-cream: #f7f7ee;
+  --color-ink: #292919;
+  --color-purple: #8051ff;
+  --color-indigo: #5433eb;
+  --color-stone-1: #dcdcd0;
+  --color-stone-2: #9a9a92;
+  --color-stone-3: #5c5c4e;
+  --color-stone-4: #909083;
+
+  /* `--font-sans` is deliberately not set here — app/globals.css owns it and
+     already points at Geist. The serif role is Geist too; see the header note. */
+  --font-serif: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@layer components {
+  /* The page's own surface. Everything the host's body would otherwise have
+     provided, re-established on the wrapper so nothing leaks either way. */
+  .editions-landing {
+    background-color: var(--color-canvas);
+    color: var(--color-cream);
+    /* Spelled out rather than `var(--font-sans)`: globals.css declares that key
+       inside `@theme inline`, which resolves it into utilities without ever
+       emitting the custom property, so plain CSS cannot read it back. */
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .editions-landing ::selection {
+    background-color: var(--color-purple);
+    color: var(--color-cream);
+  }
+
+  .editions-landing :focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* The oversized section headline. 176px at ~1355px wide on the source. */
+  .headline-1 {
+    font-size: clamp(3.25rem, 13vw, 11rem);
+    font-weight: 700;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+  }
+
+  .headline-2 {
+    font-size: clamp(2rem, 4.6vw, 3.5rem);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.025em;
+  }
+
+  /* Serif narrative set very tight — the signature of this edition. */
+  .narrative-1 {
+    font-family: var(--font-serif);
+    font-size: clamp(1.6rem, 3.1vw, 2.6rem);
+    line-height: 0.98;
+    letter-spacing: -0.01em;
+  }
+
+  .narrative-2 {
+    font-family: var(--font-serif);
+    font-size: clamp(1.15rem, 1.7vw, 1.5rem);
+    line-height: 1.15;
+  }
+
+  .drop-cap::first-letter {
+    font-family: var(--font-serif);
+    float: left;
+    font-size: 3.1em;
+    line-height: 0.76;
+    padding-right: 0.06em;
+    padding-top: 0.04em;
+    font-weight: 400;
+  }
+
+  .label {
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  /* Underline that draws in from the left on hover. */
+  .link-underline {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    background-size: 0% 1px;
+    transition: background-size 0.35s var(--ease-out-cubic);
+  }
+  .link-underline:hover,
+  .link-underline:focus-visible {
+    background-size: 100% 1px;
+  }
+}
+
+@layer utilities {
+  .reveal {
+    opacity: 0;
+    transform: translateY(1.75rem);
+    transition:
+      opacity 0.7s var(--ease-out-cubic),
+      transform 0.7s var(--ease-out-cubic);
+  }
+  .reveal[data-shown="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+
+  /* Vertically-set text for the section rail. */
+  .vertical-rl {
+    writing-mode: vertical-rl;
+  }
+}
