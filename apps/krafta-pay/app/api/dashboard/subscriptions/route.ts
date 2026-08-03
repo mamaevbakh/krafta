@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       .schema("payments")
       .from("subscriptions")
       .select(
-        "id, status, cancel_at_period_end, canceled_at, current_period_start, current_period_end, created_at, updated_at, plan_id, customer_id, default_payment_method_id, plans:plan_id(id, name, code, amount_minor, currency), customers:customer_id(email, phone)",
+        "id, status, cancel_at_period_end, canceled_at, current_period_start, current_period_end, created_at, updated_at, plan_id, customer_id, default_payment_method_id, plans:plan_id(id, name, code, amount_minor, currency, interval, interval_count), customers:customer_id(email, phone)",
       )
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
