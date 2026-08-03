@@ -69,17 +69,14 @@ export default async function DashboardSubscriptionsPage({
         </p>
       </header>
 
-      {/* Create subscription */}
+      {/* Create subscription. A single row, not a stacked card: this is a
+          two-field action on an index page, and a tall form pushed the actual
+          subscriptions below the fold. */}
       <section>
-        <h2 className="text-sm font-medium">New subscription</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Bill a customer on a recurring plan — they pay the first invoice on Krafta Pay.
-        </p>
-
         {!providerStatus.hasActive ? (
           <ConnectProviderFirst orgId={orgId} environment={environment} />
         ) : plans.length === 0 ? (
-          <Card size="sm" className="mt-4 max-w-md">
+          <Card size="sm" className="max-w-md">
             <CardHeader>
               <CardTitle className="text-sm">No plans yet</CardTitle>
               <CardDescription>
@@ -88,7 +85,7 @@ export default async function DashboardSubscriptionsPage({
             </CardHeader>
             <CardContent>
               <LinkButton
-                href={`/dashboard/plans${orgId ? `?orgId=${orgId}` : ""}`}
+                href={`/dashboard/org/${orgSlug}/plans`}
                 size="sm"
                 variant="outline"
               >
@@ -97,55 +94,62 @@ export default async function DashboardSubscriptionsPage({
             </CardContent>
           </Card>
         ) : (
-          <Card size="sm" className="mt-4 max-w-md">
-            <CardContent>
-              <form action={createSubscriptionCheckoutAction} className="grid gap-4">
-                <input type="hidden" name="orgId" value={orgId} />
+          <div className="rounded-lg border p-3">
+            <form
+              action={createSubscriptionCheckoutAction}
+              className="flex flex-wrap items-end gap-3"
+            >
+              <input type="hidden" name="orgId" value={orgId} />
 
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium" htmlFor="sub-email">
-                    Customer email
-                  </label>
-                  <Input
-                    id="sub-email"
-                    name="email"
-                    type="email"
-                    inputMode="email"
-                    placeholder="customer@example.com"
-                  />
-                  {/* Says it plainly, because the field looked like a "send to"
-                      box and there is no sender behind it. */}
-                  <p className="text-xs text-muted-foreground">
-                    Identifies the customer. We don&apos;t email them — you&apos;ll get a
-                    payment link to send yourself.
-                  </p>
-                </div>
+              <div className="grid min-w-56 flex-1 gap-1.5">
+                <label
+                  className="text-xs font-medium text-muted-foreground"
+                  htmlFor="sub-email"
+                >
+                  Customer email
+                </label>
+                <Input
+                  id="sub-email"
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  placeholder="customer@example.com"
+                />
+              </div>
 
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium" htmlFor="sub-plan">
-                    Plan
-                  </label>
-                  <select
-                    id="sub-plan"
-                    name="planId"
-                    required
-                    className="h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-                  >
-                    {plans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — {formatMinorAmount(p.amount_minor, p.currency)} /{" "}
-                        {p.interval_count === 1 ? "month" : `${p.interval_count} months`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="grid min-w-56 flex-1 gap-1.5">
+                <label
+                  className="text-xs font-medium text-muted-foreground"
+                  htmlFor="sub-plan"
+                >
+                  Plan
+                </label>
+                <select
+                  id="sub-plan"
+                  name="planId"
+                  required
+                  className="h-9 w-full rounded-md border bg-background px-3 text-base md:text-sm"
+                >
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {formatMinorAmount(p.amount_minor, p.currency)} /{" "}
+                      {p.interval_count === 1 ? "month" : `${p.interval_count} months`}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                <Button type="submit" className="justify-self-start">
-                  Create subscription
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+              <Button type="submit">Create subscription</Button>
+            </form>
+
+            {/* Says it plainly, because the field looked like a "send to" box
+                and there is no sender behind it. One line under the row rather
+                than wedged between the fields. */}
+            <p className="mt-2 text-xs text-muted-foreground">
+              The email identifies the customer — we don&apos;t contact them. You&apos;ll
+              get a payment link to send yourself.
+            </p>
+          </div>
         )}
 
         {sp.subError ? (
@@ -175,8 +179,7 @@ export default async function DashboardSubscriptionsPage({
 
       {/* Existing subscriptions */}
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">All subscriptions</h2>
-        <SubscriptionsListClient orgId={orgId} />
+        <SubscriptionsListClient orgId={orgId} orgSlug={orgSlug} />
       </section>
     </div>
   );
