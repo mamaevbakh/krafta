@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { selectProviderCreateAttempt, writePaymentDebugLog } from "@krafta/payments-core";
+import { resolveCheckoutEnvironment } from "@/lib/checkout-environment";
 
 export async function POST(
   req: Request,
@@ -11,7 +12,7 @@ export async function POST(
     const body = await req.json();
     const { public_token } = await params;
 
-    const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
+    const environment = await resolveCheckoutEnvironment(supabase, public_token);
     const payBaseUrl = process.env.PAY_BASE_URL ?? "http://localhost:3001";
     const providerId = String(body.providerId ?? "");
     // Allowlist of providers wired end-to-end. Phase 1 adds "atmos" once its

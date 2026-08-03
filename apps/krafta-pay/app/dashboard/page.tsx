@@ -9,6 +9,9 @@ import { getOrgProviderStatus } from "@/lib/provider-status";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createHostedCheckoutAction } from "@/app/dashboard/actions";
 import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-first";
+import { CreateAccount } from "@/components/dashboard/create-account.client";
+import { MetricsPanel } from "@/components/dashboard/metrics-panel";
+import { loadBillingMetrics } from "@/lib/metrics";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,10 +64,36 @@ export default async function DashboardPage({
   const activeOrgId = sp.orgId || memberships[0]?.orgId || "";
   const activeOrg = memberships.find((m) => m.orgId === activeOrgId) ?? memberships[0] ?? null;
 
+  // A signed-in user with no organization used to hit a dead end reading "No
+  // organization memberships found for this user" — the state every merchant
+  // who signed up for Krafta Pay directly landed in, with nothing to click.
+  if (memberships.length === 0) {
+    return (
+      <div className="space-y-8">
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight">Welcome to Krafta Pay</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            One question, then you can connect a provider and start billing.
+          </p>
+        </header>
+        <CreateAccount />
+      </div>
+    );
+  }
+
   const environment = process.env.PAY_ENV ?? "live";
-  const providerStatus = activeOrgId
-    ? await getOrgProviderStatus(createAdminSupabase(), activeOrgId, environment)
-    : { hasActive: false, providers: [], environment };
+  const admin = createAdminSupabase();
+  const [providerStatus, metrics] = await Promise.all([
+    activeOrgId
+      ? getOrgProviderStatus(admin, activeOrgId, environment)
+      : Promise.resolve({ hasActive: false, providers: [], environment }),
+    activeOrgId
+      ? loadBillingMetrics(admin, {
+          orgId: activeOrgId,
+          environment: environment === "test" ? "test" : "live",
+        })
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div className="space-y-10">
@@ -76,6 +105,8 @@ export default async function DashboardPage({
             : "Create a payment link to start collecting payments."}
         </p>
       </header>
+
+      {metrics ? <MetricsPanel metrics={metrics} orgId={activeOrgId} /> : null}
 
       <section className="grid gap-3 sm:grid-cols-3">
         {SETUP_STEPS.map((step) => {
@@ -133,11 +164,7 @@ export default async function DashboardPage({
           Generate a hosted checkout URL the customer pays on Krafta Pay.
         </p>
 
-        {memberships.length === 0 ? (
-          <div className="mt-4 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No organization memberships found for this user.
-          </div>
-        ) : !providerStatus.hasActive ? (
+        {!providerStatus.hasActive ? (
           <ConnectProviderFirst
             orgId={activeOrgId}
             environment={environment}

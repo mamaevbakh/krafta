@@ -19,13 +19,12 @@ export default async function PayPage({
   const { public_token } = await params;
 
   const supabase = createAdminSupabase();
-  const env = (process.env.PAY_ENV ?? "live") as "test" | "live";
 
   const { data: session, error } = await supabase
     .schema("payments")
     .from("checkout_sessions")
     .select(
-      "id, status, org_id, public_token, payment_intent_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at, order_id)"
+      "id, status, org_id, public_token, payment_intent_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, environment, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at, order_id)"
     )
     .eq("public_token", public_token)
     .maybeSingle();
@@ -33,9 +32,19 @@ export default async function PayPage({
   if (error) throw error;
   if (!session) notFound();
 
+  // Environment comes from the checkout itself, never from a process-global
+  // PAY_ENV — otherwise a test-mode checkout on the live deployment would
+  // resolve the LIVE Atmos account and charge a real card.
+  const env: "test" | "live" =
+    (session as { environment?: string }).environment === "test" ? "test" : "live";
+
   const intent = (session as any).payment_intents;
   const initialIntentStatus = (intent as any)?.status as string | undefined;
-  const isTerminal = isTerminalStatus(initialIntentStatus);
+  // A `failed` intent under a still-OPEN session is a deliberate retry link
+  // (see createRecoveryCheckoutSession): the first card declined and the
+  // customer is here to try another one. Treating it as terminal would show
+  // "already handled" on the exact page we asked them to open.
+  const isTerminal = isTerminalStatus(initialIntentStatus) && session.status !== "open";
 
   const { data: accounts, error: accErr } = await supabase
     .schema("payments")
@@ -133,6 +142,7 @@ export default async function PayPage({
         {/* Live status — renders only once a payment is actually in flight. */}
         <CheckoutStatusWatcher
           publicToken={public_token}
+          isRecoverable={session.status === "open"}
           initial={{
             checkoutSession: {
               id: session.id,

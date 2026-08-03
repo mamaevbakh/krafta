@@ -74,11 +74,13 @@ export async function authenticateMerchantApiKey(params: {
     throw new Error("invalid_api_key_format");
   }
 
-  const runtimeEnv = getRuntimePayEnvironment();
-  if (tokenEnvironment !== runtimeEnv) {
-    throw new Error("invalid_api_key_environment");
-  }
-
+  // The key IS the environment — deliberately no comparison against a global
+  // PAY_ENV here. That check used to reject every `krp_test_` key on the live
+  // deployment, so a new merchant could not integrate against test mode before
+  // going live: the whole "integrate in an afternoon" promise died on it. Both
+  // modes now coexist on one deployment; the environment travels with the data
+  // (payment_intents / checkout_sessions / subscriptions / customers) and
+  // decides which org_provider_account actually charges.
   const hashedKey = hashApiKey(token);
   const { data: apiKey, error } = await params.supabase
     .schema("payments")

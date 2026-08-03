@@ -2,7 +2,9 @@
 
 ## Document purpose
 
-This document is the operational and product reference for the current Krafta platform setup:
+This document is the **operational** reference — provider flows, log taxonomy, debugging runbooks. Its audience is operators, support, and Krafta Pay's own developers.
+
+For the **merchant integration guide** (authentication, customers, subscriptions, webhooks) see [krafta-pay-api.md](./krafta-pay-api.md). That is what an external client reads; this is what we read when something breaks.
 
 - **Krafta** (`apps/krafta`) = merchant-facing product application (catalogs, builder, billing entrypoint)
 - **Krafta Pay** (`apps/krafta-pay`) = hosted billing infrastructure (provider setup, plans, checkout orchestration, subscriptions)
@@ -13,17 +15,32 @@ It also documents the purpose and structure of **`payments.logs`**, including th
 
 ### Core roles
 
-- **Krafta Pay platform merchant**: a business/product using Krafta Pay as billing infrastructure (today: **Krafta Catalogs**)
-- **End customer / subscriber**: the organization/user paying the SaaS plan of that product (example: Aladeen)
-- **Payment provider account owner**: the platform merchant brings its own acquirer credentials (today: Uzum)
+- **Krafta Pay merchant**: any business using Krafta Pay as billing infrastructure. Krafta Catalogs is one of them, not the only shape one can take.
+- **End customer / subscriber**: whoever pays that merchant's recurring bill — a Telegram channel member, a student, a gym member, or (in Krafta's case) another organization.
+- **Payment provider account owner**: the merchant, always. They bring their own Atmos or Uzum credentials.
 
-### What this means in current MVP
+Stripe-like platform model with a **bring-your-acquirer** approach: funds settle directly from subscriber to the merchant's own provider account. Krafta Pay never holds, routes, or settles money.
 
-- Aladeen is **not** the payment provider merchant in Krafta Pay
-- Krafta Catalogs is the merchant client of Krafta Pay
-- Krafta Pay processes subscriptions for Krafta Catalogs using Krafta Catalogs' provider integration
+### Customer identity: two keys
 
-This is intentionally similar to a Stripe-like platform model, but with a **bring-your-acquirer** approach.
+`payments.customers` supports two identity keys, and which one is in play determines everything about how a merchant integrates.
+
+- **`external_id`** — the merchant's own id for the subscriber. Unique per `(org_id, environment, external_id)`. The key for every merchant that is not Krafta. A subscriber does not need to exist anywhere in Krafta.
+- **`customer_org_id`** — a `public.organizations` uuid. Krafta billing one of its own merchant orgs. Predates the external-id model and is unchanged.
+
+Historically only `customer_org_id` existed, and `POST /api/v1/subscriptions/checkout` required it — which made Krafta Pay unusable for any merchant whose subscribers are not Krafta organizations. The documented escape hatch (pass `null`) had no dedup path, so every call inserted a fresh customer and forked a duplicate subscription.
+
+`resolveOrCreateCustomer` (in `@krafta/payments-core`) is now the single resolution point for both, and reports `identified` — whether the customer can be recognised on a later call. Checkout resume is gated on it: an anonymous customer (neither key) is a different person every time, so resuming would attach a stranger to someone else's subscription.
+
+### Environments
+
+`test` and `live` coexist on one deployment. The environment is carried on the data — `api_keys`, `org_provider_accounts`, `customers`, `subscriptions`, `payment_intents`, `checkout_sessions`, `webhook_endpoints`, `webhook_deliveries` — and is fixed at creation from the API key.
+
+Before this, every environment decision read a process-global `PAY_ENV`, and `authenticateMerchantApiKey` rejected any key whose prefix disagreed with it. A `krp_test_` key was therefore rejected outright on the live deployment: a new merchant could not integrate against test before going live.
+
+`PAY_ENV` survives only as the fallback for rows created before the columns existed, and for flows with no key context (dashboard-created payment links). **Do not add new reads of it in the checkout path** — use `resolveCheckoutEnvironment` / the session's own column.
+
+Plans are deliberately NOT environment-scoped: a plan is amount + interval, and duplicating pricing across modes is friction with no upside.
 
 ## Platform functionality (current)
 
@@ -136,6 +153,55 @@ A deferred reconciler recovers that state out-of-band.
 ### Current gaps (expected)
 
 - Renewal-path stalls where the charge created an Atmos transaction but the post-charge attempt write blipped (transaction id never persisted) are unrecoverable from our records and surface as `skipped_no_transaction_id` for manual review.
+
+## Outbound webhooks
+
+Krafta Pay tells merchant systems what happened. Not needed while Krafta Catalogs was the only client (same database, direct reads); mandatory for every external merchant.
+
+### Tables
+
+- `payments.webhook_endpoints` — merchant-registered URLs. Signing secret is AES-256-GCM under `PAY_CREDENTIALS_SECRET` (encrypted, not hashed — the merchant must be able to reveal it again). `enabled_events = NULL` subscribes to everything including future types. `consecutive_failure_count` drives auto-disable at 20.
+- `payments.webhook_deliveries` — one row per `(endpoint, event)`. `(endpoint_id, event_id)` is unique, so a double-fire of a producer enqueues once.
+
+### Producers and consumers
+
+Producers only **enqueue** — never an inline HTTP call. A merchant endpoint that hangs must not stall a payment, and a charge that settled at the provider must never be rolled back because a webhook timed out. `emitWebhookEvent` / `emitSubscriptionEvent` therefore **never throw**; failures are logged under `type=webhook_out` and swallowed.
+
+Delivery runs from `POST|GET /api/internal/webhooks/deliver/cron`, every minute (`* * * * *` in `vercel.json`), batch-bounded.
+
+### Event types
+
+`subscription.created`, `.activated`, `.renewed`, `.payment_failed`, `.recovered`, `.canceled`, `.paused`, `.resumed`.
+
+`activated` / `renewed` / `recovered` all come out of `finalizeInitialPayment` — the prior subscription status is what discriminates them (`incomplete` → activated, `past_due`/`unpaid` → recovered, `active`/`trialing` → renewed). Capture the status **before** flipping it to active.
+
+`subscription.canceled` fires on real cancellation only: immediately for `{immediately: true}`, otherwise from the renewal cron when the period actually elapses. A scheduled cancel deliberately fires nothing — a merchant who revoked on it would cut off a customer who is still paid up.
+
+### Signing
+
+`Krafta-Signature: t=<unix-seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `${timestamp}.${rawBody}`. Timestamp inside the MAC bounds replay. Same construction as Stripe, so merchants can port a verifier they already know. `verifyWebhookSignature` is exported for both our tests and merchant copy-paste.
+
+Retry backoff: 1m, 5m, 30m, 2h, 6h, 12h, 24h — eight attempts over ~2 days, then `failed`. Operators can replay a single delivery from **Dashboard → Webhooks**.
+
+### Recovery links
+
+`markPaymentFailed` calls `createRecoveryCheckoutSession`, which mints (or reuses) an open `checkout_sessions` row over the failed intent and puts the resulting `payUrl` in the `subscription.payment_failed` payload.
+
+This is what makes the event actionable. Automatic retries recover an empty balance; they can never recover an expired or cancelled card, because they re-charge the same dead token. A link lets the customer pay with a different card.
+
+`selectProviderCreateAttempt` gates on the *session* being open, not on intent status, so a new open session over a `failed` intent is payable as-is. The hosted pay page's terminal-state check is correspondingly `isTerminalStatus(intent) && session.status !== "open"`.
+
+Krafta Pay deliberately does not send the dunning message itself: we do not have the merchant's subscribers' Telegram chat ids (their bot does), and SMS in UZ means a carrier contract and per-message cost. We hand over the link; the merchant sends it.
+
+## Merchant account creation
+
+`createMerchantAccount` (`apps/krafta-pay/src/lib/merchant-account.ts`) creates a `public.organizations` row plus an owner `organization_members` row, with **no** catalog, venue, or storefront.
+
+Previously the only code that inserted an organization was Krafta Catalogs' shop wizard, so signing up for the billing product meant creating a restaurant menu first, and `/signup` simply redirected into the Krafta app. A signed-in user with no org hit a dashboard reading "No organization memberships found for this user" with nothing to click.
+
+Requires a **service-role** client: `organizations` has no INSERT policy for `authenticated`, and the membership row that would authorize it does not exist yet — the bootstrap cycle. `POST /api/dashboard/account` authenticates the user first, then uses admin. Membership insert failure rolls the org back, since an org with no member is invisible, unreachable, and has burned its slug.
+
+No KYB / INN at signup by design: the merchant's own acquirer already ran KYB on them, we are not the merchant of record, and the tax identity fiscalization actually needs is collected on the plan where it is used.
 
 ## Hosted customer portal (Stripe-like pattern, current)
 
@@ -918,6 +984,14 @@ Likely causes:
 
 ### Done
 
+- Standalone merchant accounts (org creation without a Krafta catalog)
+- Merchant-scoped customer identity (`external_id`) + `/api/v1/customers`
+- Per-key test/live environments coexisting on one deployment
+- Subscriptions REST API: list, retrieve, cancel, pause, resume
+- Outbound webhooks: signed delivery, backoff, auto-disable, dashboard + replay
+- Recovery checkout links on `subscription.payment_failed`
+- Recovery-first dashboard metrics (recovered revenue, MRR, active, churn)
+- Merchant API reference at `docs/krafta-pay-api.md`, served at `/dashboard/docs`
 - Hosted checkout orchestration (Krafta -> Krafta Pay)
 - Uzum binding-first flow registration
 - Browser callback pages (`success` / `failure`)
@@ -929,6 +1003,14 @@ Likely causes:
 - Portal audit events (`payments.customer_portal_events`)
 - Logs table + logs dashboard
 - Subscriptions dashboard with invoices and attempts
+
+### Known gaps (deliberate, not forgotten)
+
+- **Payme and Click adapters are `throw` stubs.** The pitch names four providers; two exist. Building the other two is weeks of work ahead of a customer asking for them with money — do it when one does.
+- **Trials are decorative.** `plans.trial_days` is written into subscription metadata and never read: the first invoice is created at full amount with `due_at = now`. Real trials need a `trialing` state, a deferred first invoice, and trial-end conversion.
+- **No rate limiting on `/api/v1`.**
+- **One org per user** from `POST /api/dashboard/account`. Multi-business merchants need an org switcher and invites first.
+- **Churn is computed over a rolling window** from `canceled_at`, not a cohort. Directionally right, not an accounting figure.
 
 ### Pending / next hardening steps
 

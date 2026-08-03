@@ -1,17 +1,41 @@
 import { NextResponse } from "next/server";
-import { createAdminSupabase } from "@/lib/supabase-admin";
-import { authenticateMerchantApiKey } from "@/lib/api-keys";
 import { createSubscriptionCheckout } from "@krafta/payments-core";
+import {
+  V1Error,
+  authenticateV1,
+  optionalString,
+  readJsonBody,
+  requireString,
+  v1ErrorResponse,
+} from "@/lib/v1";
+
+/**
+ * Create (or resume) a subscription checkout and return a hosted pay URL.
+ *
+ * Customer identity accepts either shape:
+ *
+ *   `customer.externalId`  — the merchant's own id for the subscriber. What
+ *                            every merchant other than Krafta uses.
+ *   `customerOrgId`        — a Krafta organization uuid. Krafta's own billing
+ *                            integration; predates the external-id model and
+ *                            keeps working unchanged.
+ *
+ * Exactly one is required. `customerOrgId` used to be mandatory, which made the
+ * whole API unusable for a merchant whose subscribers are not Krafta orgs. The
+ * documented escape hatch (omit it) silently created a duplicate customer and a
+ * duplicate subscription on every call, so in practice there was no escape.
+ */
 
 type CheckoutBody = {
-  customerOrgId: string;
-  planId: string;
-  /** The catalog this subscription is for (per-catalog billing). Stored on the sub. */
+  customerOrgId?: string;
+  /** Per-catalog billing scope. Krafta-specific; stored on the subscription. */
   catalogId?: string;
+  planId?: string;
   successUrl?: string;
   cancelUrl?: string;
   returnUrl?: string;
-  customerRef?: {
+  customer?: {
+    externalId?: string;
     email?: string;
     phone?: string;
     customerUserRef?: string;
@@ -19,68 +43,80 @@ type CheckoutBody = {
   metadata?: Record<string, unknown>;
 };
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message;
-  }
-  return "api_checkout_failed";
-}
-
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as CheckoutBody;
-    if (!body?.customerOrgId || !body?.planId) {
-      return NextResponse.json(
-        { error: "customerOrgId and planId are required" },
-        { status: 400 },
+    const { supabase, auth } = await authenticateV1(req);
+    const body = (await readJsonBody(req)) as CheckoutBody;
+
+    const planId = requireString(body.planId, "planId");
+    const customerOrgId = optionalString(body.customerOrgId);
+    const customerExternalId = optionalString(body.customer?.externalId);
+
+    if (!customerOrgId && !customerExternalId) {
+      throw new V1Error(
+        "parameter_missing",
+        400,
+        "Provide `customer.externalId` (your own id for this subscriber) or `customerOrgId`.",
       );
     }
 
     const payBaseUrl = process.env.PAY_BASE_URL;
     if (!payBaseUrl) {
-      return NextResponse.json({ error: "PAY_BASE_URL is not set" }, { status: 500 });
+      throw new V1Error("configuration_error", 500, "PAY_BASE_URL is not configured.");
     }
-
-    const supabase = createAdminSupabase();
-    const auth = await authenticateMerchantApiKey({
-      supabase,
-      authorizationHeader: req.headers.get("authorization"),
-    });
 
     const result = await createSubscriptionCheckout(supabase, {
       merchantOrgId: auth.merchantOrgId,
-      customerOrgId: body.customerOrgId,
-      planId: body.planId,
+      customerOrgId,
+      customerExternalId,
+      planId,
       payBaseUrl,
-      successUrl: body.successUrl ?? null,
-      cancelUrl: body.cancelUrl ?? null,
-      returnUrl: body.returnUrl ?? null,
-      customer: body.customerRef,
+      environment: auth.environment,
+      successUrl: optionalString(body.successUrl),
+      cancelUrl: optionalString(body.cancelUrl),
+      returnUrl: optionalString(body.returnUrl),
+      customer: body.customer,
       metadata: {
         source: "merchant_api",
         api_key_id: auth.keyId,
         api_key_name: auth.name,
-        ...(typeof body.catalogId === "string" && body.catalogId
-          ? { catalog_id: body.catalogId }
-          : {}),
+        ...(optionalString(body.catalogId) ? { catalog_id: body.catalogId } : {}),
         ...(body.metadata ?? {}),
       },
     });
 
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json({ ...result, livemode: auth.environment === "live" }, { status: 201 });
   } catch (error) {
-    const message = getErrorMessage(error);
-    const status =
-      message === "missing_api_key" ||
-      message === "invalid_api_key" ||
-      message === "invalid_api_key_format" ||
-      message === "invalid_api_key_environment"
-        ? 401
-        : 500;
+    const message = error instanceof Error ? error.message : "";
 
-    console.error("v1 subscriptions checkout failed", { message, error });
-    return NextResponse.json({ error: message }, { status });
+    // Domain errors thrown from payments-core carry a stable code but no HTTP
+    // status. Map the ones a merchant can act on, so they see "that plan is
+    // inactive" instead of an opaque 500.
+    if (message === "plan_not_found") {
+      return NextResponse.json(
+        {
+          error: {
+            type: "not_found_error",
+            code: "plan_not_found",
+            message: "No plan with that id exists on your account.",
+          },
+        },
+        { status: 404 },
+      );
+    }
+    if (message === "plan_inactive") {
+      return NextResponse.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            code: "plan_inactive",
+            message: "That plan is archived and cannot accept new subscriptions.",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    return v1ErrorResponse(error);
   }
 }

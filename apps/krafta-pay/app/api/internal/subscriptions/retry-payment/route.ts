@@ -3,9 +3,11 @@ import { createAdminSupabase } from "@/lib/supabase-admin";
 import { verifyInternalRequest } from "@/lib/internal-auth";
 import { assertMemberOrThrow, resolveOwnedSubscription } from "@/lib/internal-subscription";
 import {
+  RETRYABLE_INVOICE_STATUSES,
   activateSubscriptionAfterCharge,
   createAtmosRecurringCharge,
   extractAtmosChargeProviderRefs,
+  pickRetryTargetInvoice,
   writePaymentDebugLog,
 } from "@krafta/payments-core";
 
@@ -69,15 +71,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: invoiceRow, error: invoiceErr } = await supabase
+    // `past_due` (dunning exhausted) carries an `uncollectible` invoice, not an
+    // `open` one — filtering to `open` alone returned no_open_invoice for the
+    // exact state this route claims to recover. Accept both retryable statuses
+    // and let finalizeInitialPayment flip it uncollectible→paid on success.
+    const { data: candidateInvoices, error: invoiceErr } = await supabase
       .schema("payments")
       .from("invoices")
-      .select("id, payment_intent_id, amount_due_minor, currency")
+      .select("id, payment_intent_id, amount_due_minor, currency, status")
       .eq("subscription_id", sub.id)
-      .eq("status", "open")
-      .order("created_at", { ascending: false })
-      .maybeSingle();
+      .in("status", RETRYABLE_INVOICE_STATUSES)
+      .order("created_at", { ascending: false });
     if (invoiceErr) throw invoiceErr;
+    const invoiceRow = pickRetryTargetInvoice(candidateInvoices ?? []);
     if (!invoiceRow?.payment_intent_id) {
       return NextResponse.json({ error: "no_open_invoice" }, { status: 409 });
     }

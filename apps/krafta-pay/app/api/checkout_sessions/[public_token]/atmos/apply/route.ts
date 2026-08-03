@@ -10,6 +10,7 @@ import {
   persistBindingPaymentMethodForCustomer,
   activateSubscriptionAfterCharge,
   writePaymentDebugLog,
+  classifyAtmosFailure,
   AtmosError,
 } from "@krafta/payments-core";
 import { broadcastCheckoutUpdate } from "@/lib/realtime-broadcast";
@@ -76,12 +77,24 @@ export async function POST(
     const orgProviderAccountId = attempt.org_provider_account_id as string;
 
     // Optimistic lock: block a concurrent second submit / page reload.
+    //
+    // `failed` is chargeable here, not just the pre-charge states. A recovery
+    // link (createRecoveryCheckoutSession, sent out with
+    // subscription.payment_failed) is an OPEN session over an intent that
+    // markPaymentFailed already flipped to `failed` — retrying with a different
+    // card is the entire point of that link. Without `failed` in this list the
+    // page renders a working card form whose submit always 409s, which is worse
+    // than not sending the link at all.
+    //
+    // The lock still serializes: exactly one caller wins the transition out of
+    // `failed`, and any concurrent submit matches no row and bails. Same
+    // contract the manual retry route and chargeRenewal already rely on.
     const { data: locked, error: lockErr } = await supabase
       .schema("payments")
       .from("payment_intents")
       .update({ status: "processing", updated_at: new Date().toISOString() })
       .eq("id", intent.id)
-      .in("status", ["requires_action", "requires_payment_method"])
+      .in("status", ["requires_action", "requires_payment_method", "failed"])
       .select("id")
       .maybeSingle();
     if (lockErr) throw lockErr;
@@ -108,8 +121,13 @@ export async function POST(
         .from("payment_intents")
         .update({ status: "requires_action", updated_at: new Date().toISOString() })
         .eq("id", intent.id);
+      // A transient Atmos glitch (ERR-001) or a transport blip must NOT masquerade
+      // as a wrong code — the cardholder typed it correctly. Keep atmos_otp_invalid
+      // for a genuine rejection; surface the retryable copy otherwise.
       const code =
-        bindError instanceof AtmosError ? "atmos_otp_invalid" : "atmos_apply_failed";
+        classifyAtmosFailure(bindError) === "temporary"
+          ? "atmos_temporary_error"
+          : "atmos_otp_invalid";
       await writePaymentDebugLog(supabase, {
         scope: "atmos",
         event: "bind_confirm.error",
@@ -251,14 +269,27 @@ export async function POST(
       });
     } catch {}
 
+    // A declined first charge is HTTP 200 with status:"failed" (no money moved,
+    // subscription left incomplete by activateSubscriptionAfterCharge). Carry an
+    // explicit `error` so the hosted page can NEVER misread it as a success — the
+    // client also gates on status, this is defense-in-depth for that P1.
     return NextResponse.json({
       status: charge.status,
       paymentIntentStatus: charge.status,
+      ...(charge.status === "succeeded" ? {} : { error: "atmos_charge_declined" }),
     });
   } catch (error) {
     // A failure here may leave the intent 'processing' (e.g. charge settled at
     // Atmos but our write failed). The pay/get reconciler recovers it — do NOT
     // blindly reset the intent, which could hide a real charge.
+    //
+    // A known-transient Atmos glitch (ERR-001) or a transport blip gets the
+    // retryable copy; a genuine decline or unknown charge failure keeps the
+    // cautious generic code (both invite a retry the reconciler makes safe).
+    const code =
+      classifyAtmosFailure(error) === "temporary"
+        ? "atmos_temporary_error"
+        : "atmos_apply_failed";
     await writePaymentDebugLog(supabase, {
       scope: "atmos",
       event: "apply.error",
@@ -266,11 +297,12 @@ export async function POST(
       providerId: "atmos",
       publicToken: public_token,
       data: {
-        error: error instanceof Error ? error.message : "unknown",
+        error: code,
+        detail: error instanceof Error ? error.message : String(error),
         cause: (error as { cause?: { code?: string } } | null)?.cause?.code ?? null,
         atmos: error instanceof AtmosError ? error.raw : undefined,
       },
     }).catch(() => {});
-    return NextResponse.json({ error: "atmos_apply_failed" }, { status: 500 });
+    return NextResponse.json({ error: code }, { status: 500 });
   }
 }

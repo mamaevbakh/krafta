@@ -24,6 +24,11 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import {
+  type ApplyResult,
+  errorMessage,
+  resolveApplyOutcome,
+} from "./atmos-apply-outcome";
 
 function formatCardNumber(raw: string) {
   return raw
@@ -57,9 +62,7 @@ export type AtmosClient = {
     cardNumber: string;
     expiry: string;
   }) => Promise<{ ok: boolean; maskedPhone?: string | null; error?: string }>;
-  apply: (input: {
-    otp: string;
-  }) => Promise<{ ok: boolean; status?: string; error?: string }>;
+  apply: (input: { otp: string }) => Promise<ApplyResult>;
 };
 
 export function AtmosCardForm({
@@ -165,8 +168,12 @@ export function AtmosCardForm({
       .apply({ otp })
       .catch(() => ({ ok: false, error: "network_error" }) as const);
     setPending(false);
-    if (!result.ok) {
-      setError(errorMessage(result.error));
+    // A declined first charge returns { ok: true, status: "failed" } — never a
+    // success. resolveApplyOutcome is the single gate: success only on an
+    // explicit "succeeded", a decline error on anything else.
+    const outcome = resolveApplyOutcome(result);
+    if (outcome.kind === "error") {
+      setError(errorMessage(outcome.code));
       return;
     }
     setStep("success");
@@ -305,23 +312,4 @@ export function AtmosCardForm({
       </Button>
     </form>
   );
-}
-
-// Map provider/transport error codes to concrete, actionable copy (DESIGN.md:
-// "Generic 'Invalid input' violates this system").
-function errorMessage(code?: string) {
-  switch (code) {
-    case "network_error":
-      return "Connection problem. Check your internet and try again.";
-    case "atmos_card_invalid":
-    case "invalid_card":
-      return "That card number or expiry doesn't look right. Please re-check it.";
-    case "atmos_otp_invalid":
-    case "invalid_otp":
-      return "That code didn't match. Re-enter the code from the SMS.";
-    case "atmos_insufficient_funds":
-      return "The payment was declined for insufficient funds.";
-    default:
-      return "We couldn't complete the payment. Please try again.";
-  }
 }
