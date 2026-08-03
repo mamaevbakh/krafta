@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatMinorAmount } from "@/lib/format";
+import { PayLink } from "@/components/dashboard/pay-link.client";
 
 type SubscriptionRow = {
   id: string;
   status: string;
+  /** Open checkout link for the outstanding invoice, if the customer still owes one. */
+  pay_url?: string | null;
   cancel_at_period_end: boolean;
   canceled_at: string | null;
   current_period_start: string | null;
@@ -125,6 +128,19 @@ export function SubscriptionsListClient({ orgId }: { orgId: string }) {
                     {row.invoices?.length ?? 0} invoice{(row.invoices?.length ?? 0) === 1 ? "" : "s"}
                   </div>
                 </div>
+
+                {/* An unpaid subscription is waiting on the customer, and we
+                    never contacted them — the merchant sends the link. */}
+                {row.pay_url ? (
+                  <div className="mt-3">
+                    <p className="mb-1 text-xs font-medium">
+                      {row.status === "incomplete"
+                        ? "Waiting for first payment — send this link"
+                        : "Payment due — send this link"}
+                    </p>
+                    <PayLink url={row.pay_url} />
+                  </div>
+                ) : null}
 
                 <details className="mt-3 rounded-md border bg-muted/10 p-3">
                   <summary className="cursor-pointer text-sm font-medium">

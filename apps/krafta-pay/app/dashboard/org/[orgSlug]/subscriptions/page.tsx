@@ -1,5 +1,4 @@
 import { getDashboardEnvironment } from "@/lib/dashboard-env";
-import Link from "next/link";
 import { requireOrgAccess } from "@/lib/org-access";
 import { getOrgProviderStatus } from "@/lib/provider-status";
 import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-first";
@@ -16,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PayLink } from "@/components/dashboard/pay-link.client";
 import { SubscriptionsListClient } from "./subscriptions-list.client";
 
 type PlanRow = {
@@ -113,6 +113,12 @@ export default async function DashboardSubscriptionsPage({
                     inputMode="email"
                     placeholder="customer@example.com"
                   />
+                  {/* Says it plainly, because the field looked like a "send to"
+                      box and there is no sender behind it. */}
+                  <p className="text-xs text-muted-foreground">
+                    Identifies the customer. We don&apos;t email them — you&apos;ll get a
+                    payment link to send yourself.
+                  </p>
                 </div>
 
                 <div className="grid gap-1.5">
@@ -149,20 +155,19 @@ export default async function DashboardSubscriptionsPage({
         ) : null}
 
         {sp.subPayUrl ? (
-          <Card size="sm" className="mt-4 max-w-md">
+          <Card
+            size="sm"
+            className="mt-4 max-w-md border-emerald-500/30 bg-emerald-500/5"
+          >
             <CardHeader>
-              <CardTitle>Subscription started</CardTitle>
+              <CardTitle>Subscription created</CardTitle>
               <CardDescription>
-                Share this link — the customer pays the first invoice to activate.
+                Send this link to the customer. It stays on the subscription below,
+                so you can copy it again later.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <Link className="block break-all font-mono text-sm underline" href={sp.subPayUrl}>
-                {sp.subPayUrl}
-              </Link>
-              {sp.subToken ? (
-                <p className="font-mono text-xs text-muted-foreground">token: {sp.subToken}</p>
-              ) : null}
+            <CardContent>
+              <PayLink url={sp.subPayUrl} className="bg-background" />
             </CardContent>
           </Card>
         ) : null}
