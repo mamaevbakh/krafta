@@ -1,3 +1,4 @@
+import { getDashboardEnvironment } from "@/lib/dashboard-env";
 import Link from "next/link";
 import { requireOrgAccess } from "@/lib/org-access";
 import { getOrgProviderStatus } from "@/lib/provider-status";
@@ -42,7 +43,7 @@ export default async function DashboardSubscriptionsPage({
   const sp = await searchParams;
 
   const admin = createAdminSupabase();
-  const environment = process.env.PAY_ENV ?? "live";
+  const environment = await getDashboardEnvironment();
   const providerStatus = orgId
     ? await getOrgProviderStatus(admin, orgId, environment)
     : { hasActive: false, providers: [], environment };

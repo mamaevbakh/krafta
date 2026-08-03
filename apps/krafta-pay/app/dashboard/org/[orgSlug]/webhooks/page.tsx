@@ -1,3 +1,4 @@
+import { getDashboardEnvironment } from "@/lib/dashboard-env";
 import { requireOrgAccess } from "@/lib/org-access";
 import { getPayT } from "@/lib/locales/server";
 import { WebhooksManager } from "./webhooks-manager.client";
@@ -9,7 +10,7 @@ export default async function DashboardWebhooksPage({
 }) {
   const { orgSlug } = await params;
   const org = await requireOrgAccess(orgSlug);
-  const environment = process.env.PAY_ENV ?? "live";
+  const environment = await getDashboardEnvironment();
   const t = await getPayT();
 
   return (

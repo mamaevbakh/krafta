@@ -9,6 +9,8 @@ export type CreateCheckoutSessionInput = {
   successUrl?: string;
   cancelUrl?: string;
   returnUrl?: string;           // fallback return URL
+  /** test | live. Fixed at creation; decides which acquirer may charge it. */
+  environment?: "test" | "live";
   customerId?: string;          // existing customer in payments.customers
   customer?: {
     email?: string;

@@ -1,3 +1,4 @@
+import { getDashboardEnvironment } from "@/lib/dashboard-env";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
@@ -22,7 +23,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // can switch between them. With the org in the path, a single-org merchant
   // never sees a picker at all — the sidebar hides it.
   const memberships = await getCurrentUserMemberships();
-  const environment = process.env.PAY_ENV ?? "live";
+  const environment = await getDashboardEnvironment();
   const locale = await getPayLocale();
 
   return (

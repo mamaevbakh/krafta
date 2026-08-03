@@ -1,5 +1,6 @@
 "use server";
 
+import { getDashboardEnvironment } from "@/lib/dashboard-env";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -68,10 +69,13 @@ export async function createHostedCheckoutAction(formData: FormData) {
 
   const admin = createAdminSupabase();
 
+  const environment = await getDashboardEnvironment();
+
   const result = await createCheckoutSession(
     admin,
     {
       orgId,
+      environment,
       amountMinor,
       currency,
       description,
@@ -140,6 +144,9 @@ export async function createSubscriptionCheckoutAction(formData: FormData) {
   try {
     result = await createSubscriptionCheckout(admin, {
       merchantOrgId: orgId,
+      // Follows the sidebar toggle. Without this a merchant in test mode got a
+      // LIVE checkout link, which would resolve their live provider account.
+      environment: await getDashboardEnvironment(),
       // Dashboard-created subscriptions identify the customer by email — there's
       // no external customer org, so this is null (email customers aren't deduped
       // by org; the unique index treats NULL customer_org_id as distinct).

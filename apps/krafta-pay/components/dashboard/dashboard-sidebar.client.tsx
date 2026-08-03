@@ -27,6 +27,7 @@ import { useT } from "@/lib/locales/context";
 import type { PayMessageKey } from "@/lib/locales/messages";
 import type { PayLocale } from "@/lib/locales/locale";
 import { LanguageSwitcher } from "@/components/dashboard/language-switcher.client";
+import { EnvironmentSwitcher } from "@/components/dashboard/environment-switcher.client";
 
 type NavItem = {
   href: string;
@@ -147,16 +148,7 @@ export function DashboardSidebar({
           <BrandWordmark text="Krafta•Pay" className="text-base" />
         </Link>
         <div className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-[11px] font-medium",
-              isTest
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-            )}
-          >
-            {isTest ? t("env.test") : t("env.live")}
-          </span>
+          <EnvironmentSwitcher environment={isTest ? "test" : "live"} />
           {onClose ? (
             <button
               type="button"

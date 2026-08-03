@@ -85,6 +85,7 @@ const EN = {
   "nav.closeMenu": "Close menu",
   "nav.switchOrg": "Switch organization",
   "nav.language": "Language",
+  "env.switchHint": "You are working in {mode}. Providers, plans and subscriptions are separate per mode.",
   "env.test": "Test mode",
   "env.live": "Live",
 
@@ -372,6 +373,7 @@ const RU: Catalog = {
   "nav.closeMenu": "Закрыть меню",
   "nav.switchOrg": "Сменить организацию",
   "nav.language": "Язык",
+  "env.switchHint": "Вы работаете в режиме «{mode}». Провайдеры, тарифы и подписки в режимах разные.",
   "env.test": "Тестовый режим",
   "env.live": "Рабочий режим",
 
@@ -644,6 +646,7 @@ const UZ: Catalog = {
   "nav.closeMenu": "Menyuni yopish",
   "nav.switchOrg": "Tashkilotni almashtirish",
   "nav.language": "Til",
+  "env.switchHint": "Siz «{mode}» rejimida ishlayapsiz. Provayderlar, tariflar va obunalar rejimlarda alohida.",
   "env.test": "Sinov rejimi",
   "env.live": "Ishchi rejim",
 

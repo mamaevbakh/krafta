@@ -72,22 +72,14 @@ export default async function PayPage({
 
   if (accErr) throw accErr;
 
-  // Subscriptions are Atmos-only: the first charge binds the card (one OTP) and
-  // every renewal reuses that token off-session, so Uzum is never offered here.
-  // Detect via the subscription_id stamped on the session — not the order_id
-  // heuristic below, which would also sweep in one-off payment links.
-  const sessionMetadata = ((session as any).metadata ?? {}) as Record<string, unknown>;
-  const isSubscriptionSession =
-    typeof sessionMetadata.subscription_id === "string" &&
-    sessionMetadata.subscription_id.length > 0;
-
+  // Both providers can take a subscription's first charge. Atmos binds the card
+  // inline (one OTP); Uzum binds on its own page and the bindingId arrives on
+  // the webhook, which then runs merchantPay. Renewals reuse the saved token
+  // off-session either way — chargeRenewal has always accepted both.
   const providers =
     (accounts ?? [])
       .filter((a: any) => a.providers?.is_active)
-      .filter((a: any) =>
-        a.provider_id === "atmos" ||
-        (!isSubscriptionSession && a.provider_id === "uzum"),
-      )
+      .filter((a: any) => a.provider_id === "atmos" || a.provider_id === "uzum")
       .map((a: any) => ({
         id: a.provider_id as string,
         name: a.providers.display_name as string,

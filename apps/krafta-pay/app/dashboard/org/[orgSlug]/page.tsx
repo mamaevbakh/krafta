@@ -1,3 +1,4 @@
+import { getDashboardEnvironment } from "@/lib/dashboard-env";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -60,7 +61,7 @@ export default async function DashboardPage({
   const org = await requireOrgAccess(orgSlug);
   const activeOrgId = org.orgId;
 
-  const environment = process.env.PAY_ENV ?? "live";
+  const environment = await getDashboardEnvironment();
   const t = await getPayT();
   const admin = createAdminSupabase();
   const [providerStatus, metrics] = await Promise.all([

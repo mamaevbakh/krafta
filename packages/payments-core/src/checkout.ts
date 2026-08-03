@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { defaultPayEnvironment, type PayEnvironment } from "./subscription";
 import crypto from "crypto";
 import {
   assertNonNegativeAmount,
@@ -23,6 +24,10 @@ export async function createCheckoutSession(
 ): Promise<CreateCheckoutSessionResult> {
   assertNonNegativeAmount(input.amountMinor);
 
+  // Fixed at creation, like a subscription checkout. Without it a payment link
+  // made in test mode is written as live and resolves the live acquirer.
+  const environment: PayEnvironment = input.environment ?? defaultPayEnvironment();
+
   const publicToken = randomToken(18);
   const clientSecret = randomToken(24);
 
@@ -38,6 +43,7 @@ export async function createCheckoutSession(
       order_id: input.orderId ?? null,
       return_url: input.returnUrl ?? input.successUrl ?? null,
       client_secret: clientSecret,
+      environment,
       metadata: input.metadata ?? {},
     })
     .select("*")
@@ -53,6 +59,7 @@ export async function createCheckoutSession(
       .from("customers")
       .insert({
         org_id: input.orgId,
+        environment,
         email: input.customer.email ?? null,
         phone: input.customer.phone ?? null,
         customer_user_ref: input.customer.customerUserRef ?? null,
@@ -77,6 +84,7 @@ export async function createCheckoutSession(
       cancel_url: input.cancelUrl ?? null,
       return_url: input.returnUrl ?? null,
       public_token: publicToken,
+      environment,
       customer_id: customerId,
       metadata: input.metadata ?? {},
     })
