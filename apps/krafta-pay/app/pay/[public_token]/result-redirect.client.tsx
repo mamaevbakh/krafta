@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
+import { formatMinorAmount } from "@/lib/format";
 
 type StatusResponse = {
   checkoutSession: {
@@ -73,20 +74,25 @@ export function PayResultRedirect({
   const [retryNote, setRetryNote] = useState<string | null>(null);
   const didStartCountdown = useRef(false);
 
+  // Null when the merchant gave us nowhere to send the customer — which is the
+  // normal case for a link created from the dashboard, where there is no
+  // merchant site behind the payment. Previously this fell back to
+  // `/pay/{token}`, so a customer who had just paid was pushed back onto the
+  // checkout page they had already completed.
   const primaryTarget = useMemo(() => {
     if (mode === "success") {
-      return merchantSuccessUrl ?? merchantReturnUrl ?? `/pay/${publicToken}`;
+      return merchantSuccessUrl ?? merchantReturnUrl ?? null;
     }
-    return merchantCancelUrl ?? merchantReturnUrl ?? merchantSuccessUrl ?? `/pay/${publicToken}`;
-  }, [merchantCancelUrl, merchantReturnUrl, merchantSuccessUrl, mode, publicToken]);
+    return merchantCancelUrl ?? merchantReturnUrl ?? merchantSuccessUrl ?? null;
+  }, [merchantCancelUrl, merchantReturnUrl, merchantSuccessUrl, mode]);
 
   const statusTarget = useMemo(() => {
     const intentStatus = status?.paymentIntent?.status?.toLowerCase();
     if (intentStatus === "succeeded") {
-      return merchantSuccessUrl ?? merchantReturnUrl ?? `/pay/${publicToken}`;
+      return merchantSuccessUrl ?? merchantReturnUrl ?? null;
     }
     if (intentStatus === "failed" || intentStatus === "canceled" || intentStatus === "cancelled") {
-      return merchantCancelUrl ?? merchantReturnUrl ?? merchantSuccessUrl ?? `/pay/${publicToken}`;
+      return merchantCancelUrl ?? merchantReturnUrl ?? merchantSuccessUrl ?? null;
     }
     return primaryTarget;
   }, [
@@ -94,7 +100,6 @@ export function PayResultRedirect({
     merchantReturnUrl,
     merchantSuccessUrl,
     primaryTarget,
-    publicToken,
     status?.paymentIntent?.status,
   ]);
 
@@ -136,6 +141,8 @@ export function PayResultRedirect({
 
   useEffect(() => {
     if (didStartCountdown.current) return;
+    // Nowhere to go — this page is the end of the flow, not a waypoint.
+    if (!statusTarget) return;
 
     const intentStatus = status?.paymentIntent?.status?.toLowerCase();
     const shouldStartForSuccess = mode === "success" && intentStatus === "succeeded";
@@ -149,12 +156,12 @@ export function PayResultRedirect({
 
     didStartCountdown.current = true;
     setCountdown(4);
-  }, [mode, status?.paymentIntent?.status]);
+  }, [mode, status?.paymentIntent?.status, statusTarget]);
 
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
-      topNavigate(statusTarget);
+      if (statusTarget) topNavigate(statusTarget);
       return;
     }
 
@@ -190,7 +197,9 @@ export function PayResultRedirect({
   const helperText =
     mode === "success"
       ? isSucceeded
-        ? t("checkout.result.confirmedBody")
+        ? statusTarget
+          ? t("checkout.result.confirmedBody")
+          : t("checkout.result.confirmedBodyFinal")
         : isFailed
           ? t("checkout.result.retryBody")
           : t("checkout.result.confirmingBody")
@@ -207,6 +216,25 @@ export function PayResultRedirect({
       <main className="mt-12 flex-1">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{helperText}</p>
+
+        {/* When this page is where the customer ends up, it has to answer
+            "what did I just pay for?" on its own — there is no merchant
+            receipt page behind it. */}
+        {isSucceeded && status?.paymentIntent ? (
+          <div className="mt-6 rounded-lg border p-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="text-sm text-muted-foreground">
+                {status.paymentIntent.description || t("checkout.result.paid")}
+              </span>
+              <span className="font-medium tabular-nums">
+                {formatMinorAmount(
+                  status.paymentIntent.amountMinor,
+                  status.paymentIntent.currency,
+                )}
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         {waitingForWebhook ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
@@ -286,21 +314,28 @@ export function PayResultRedirect({
             </Button>
           ) : null}
 
-          <Button
-            type="button"
-            variant={canManualRetry ? "outline" : "default"}
-            className="h-10"
-            onClick={() => topNavigate(statusTarget)}
-          >
-            {t("checkout.result.continue")}
-          </Button>
+          {/* Only offer "continue" when there is somewhere to continue TO. */}
+          {statusTarget ? (
+            <Button
+              type="button"
+              variant={canManualRetry ? "outline" : "default"}
+              className="h-10"
+              onClick={() => topNavigate(statusTarget)}
+            >
+              {t("checkout.result.continue")}
+            </Button>
+          ) : null}
 
-          <a
-            href={`/pay/${encodeURIComponent(publicToken)}`}
-            className="inline-flex h-10 items-center px-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {t("checkout.result.back")}
-          </a>
+          {/* Back to checkout is for someone who still needs to pay. Offering it
+              to a customer who just succeeded invites a second charge. */}
+          {!isSucceeded ? (
+            <a
+              href={`/pay/${encodeURIComponent(publicToken)}`}
+              className="inline-flex h-10 items-center px-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {t("checkout.result.back")}
+            </a>
+          ) : null}
         </div>
       </main>
 

@@ -79,9 +79,14 @@ export async function createHostedCheckoutAction(formData: FormData) {
       amountMinor,
       currency,
       description,
-      // Dummy https URLs are fine for provider validation during dev.
-      successUrl: "https://pay.krafta.uz/pay/success",
-      cancelUrl: "https://pay.krafta.uz/pay/cancel",
+      // No success/cancel URL on purpose. A link created from the dashboard has
+      // no merchant site to return to, so the customer stays on the Krafta Pay
+      // result page. These used to be dummy https placeholders ("fine for
+      // provider validation during dev") pointing at /pay/success and
+      // /pay/cancel — routes that do not exist, so every customer who paid was
+      // redirected onto a 404 four seconds after a successful charge. Providers
+      // never needed them: Uzum builds its own callbacks from PAY_BASE_URL +
+      // the public token, and Atmos is inline with no redirect at all.
       // Uzum terminals can have AUTOFISCALIZATION enabled; in that case
       // /payment/register requires a cart with fiscalization params.
       // For now we attach a demo cart so hosted checkout works end-to-end.
@@ -154,8 +159,9 @@ export async function createSubscriptionCheckoutAction(formData: FormData) {
       planId,
       customer: email ? { email } : undefined,
       payBaseUrl,
-      successUrl: "https://pay.krafta.uz/pay/success",
-      cancelUrl: "https://pay.krafta.uz/pay/cancel",
+      // Deliberately no success/cancel URL — see the note in the one-off
+      // checkout action above. The customer finishes on the Krafta Pay result
+      // page rather than being bounced to a route that does not exist.
     });
   } catch (error) {
     redirect(failWith(error instanceof Error ? error.message : "subscription_create_failed"));
