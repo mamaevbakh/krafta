@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { EDITION, HEADER_MENU } from "./editions";
 import { useScrollSpy } from "./ScrollSpy";
 
@@ -59,7 +60,12 @@ export function SiteHeader() {
           className="flex shrink-0 items-center gap-2 text-[0.8125rem] font-medium tracking-tight"
         >
           <BagMark className="size-[1.15rem]" />
-          <span className="hidden sm:inline">{EDITION.name}</span>
+          {/* text-current beats the component's own black/white, so the wordmark
+              inverts with the rest of the header over cream sections. */}
+          <BrandWordmark
+            text={EDITION.name}
+            className="hidden text-current sm:inline dark:text-current"
+          />
         </a>
 
         <div className="relative ml-auto" ref={menuRef}>
