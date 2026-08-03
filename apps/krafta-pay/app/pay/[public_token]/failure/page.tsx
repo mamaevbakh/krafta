@@ -49,7 +49,7 @@ export default async function PayFailurePage({
     <PayLocaleProvider locale={locale}>
     {isTest ? (
       <div className="mx-auto w-full max-w-md px-6 pt-10 [&>*]:mb-0">
-        <TestModeBanner t={t} />
+        <TestModeBanner t={t} locale={locale} publicToken={public_token} />
       </div>
     ) : null}
     <PayResultRedirect

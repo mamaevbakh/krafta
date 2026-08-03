@@ -115,7 +115,9 @@ export default async function PayPage({
       <main className="mt-12 flex-1">
         {/* Only in test. Live shows nothing — a real customer paying real money
             should see the amount and the card fields, not our plumbing. */}
-        {env === "test" ? <TestModeBanner t={t} /> : null}
+        {env === "test" ? (
+          <TestModeBanner t={t} locale={locale} publicToken={public_token} />
+        ) : null}
         {/* Amount — the focal point. Typography does the work, not a box. */}
         <div className="text-sm text-muted-foreground">{t("checkout.amountDue")}</div>
         {/* Scales down on narrow screens so large UZS sums (millions) stay on
