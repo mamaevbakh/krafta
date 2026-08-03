@@ -8,6 +8,10 @@
     {
       "path": "/api/internal/atmos/reconcile/cron",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/internal/webhooks/deliver/cron",
+      "schedule": "* * * * *"
     }
   ]
 }

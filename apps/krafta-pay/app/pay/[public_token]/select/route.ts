@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { selectProviderCreateAttempt } from "@krafta/payments-core";
+import { resolveCheckoutEnvironment } from "@/lib/checkout-environment";
 
 function isNextRedirectError(error: unknown): boolean {
   return (
@@ -29,7 +30,7 @@ export async function POST(
 
     const supabase = createAdminSupabase();
     const { public_token } = await params;
-    const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
+    const environment = await resolveCheckoutEnvironment(supabase, public_token);
     const payBaseUrl = process.env.PAY_BASE_URL ?? "http://localhost:3001";
 
     const { redirectUrl } = await selectProviderCreateAttempt(

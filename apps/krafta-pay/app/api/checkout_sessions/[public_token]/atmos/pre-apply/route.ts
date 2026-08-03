@@ -5,8 +5,10 @@ import {
   loadAtmosCredentials,
   atmosBindInit,
   writePaymentDebugLog,
+  classifyAtmosFailure,
   AtmosError,
 } from "@krafta/payments-core";
+import { toPayEnvironment } from "@/lib/checkout-environment";
 
 // Step 1 of the Atmos inline flow: take the card on pay.krafta.uz and start a
 // card binding, which makes Atmos SMS a one-time code to the cardholder. We keep
@@ -32,7 +34,7 @@ export async function POST(
     const { data: session, error: sessionErr } = await supabase
       .schema("payments")
       .from("checkout_sessions")
-      .select("id, status, selected_provider_id, selected_attempt_id, payment_intent_id")
+      .select("id, status, selected_provider_id, selected_attempt_id, payment_intent_id, environment")
       .eq("public_token", public_token)
       .maybeSingle();
     if (sessionErr) throw sessionErr;
@@ -47,7 +49,9 @@ export async function POST(
     let attemptId =
       session.selected_provider_id === "atmos" ? session.selected_attempt_id : null;
     if (!attemptId) {
-      const env = (process.env.PAY_ENV ?? "live") as "test" | "live";
+      // From the session, not PAY_ENV — this picks the Atmos account whose
+      // credentials will actually take the card.
+      const env = toPayEnvironment((session as { environment?: string }).environment);
       const payBaseUrl = process.env.PAY_BASE_URL ?? "http://localhost:3003";
       const selection = await selectProviderCreateAttempt(
         supabase,
@@ -102,8 +106,14 @@ export async function POST(
 
     return NextResponse.json({ otp_sent: true, phone: bind.phone ?? null });
   } catch (error) {
+    // Only a genuine card-validation code (ERR-009/ERR-067) should tell the
+    // cardholder their card is wrong. An Atmos internal glitch (ERR-001) or a
+    // transport failure is transient — "network hiccup, try again", not a dead-end
+    // "your card is bad" that makes a merchant with a good card give up.
     const code =
-      error instanceof AtmosError ? "atmos_card_invalid" : "atmos_pre_apply_failed";
+      classifyAtmosFailure(error) === "card_invalid"
+        ? "atmos_card_invalid"
+        : "atmos_temporary_error";
     try {
       await writePaymentDebugLog(supabase, {
         scope: "atmos",

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { reconcileAtmosPaymentIntent } from "./atmos-reconcile";
+import {
+  reconcileAtmosPaymentIntent,
+  reconcileProcessingAtmosIntents,
+} from "./atmos-reconcile";
 import type { AtmosChargeStatus } from "./providers/atmos";
 
 // Same minimal chainable Supabase fake as subscription.test.ts: reads return
@@ -231,5 +234,123 @@ describe("reconcileAtmosPaymentIntent", () => {
 
     expect(result.outcome).toBe("skipped_not_processing");
     expect(mutations).toEqual([]);
+  });
+});
+
+// The first-charge "throw at pre-apply" case (real dev repro 2026-07-13:
+// STPIMS-ERR-043 in createAtmosRecurringCharge's pre-apply step). The apply
+// route leaves the intent 'processing' on a thrown charge and relies on this
+// reconciler. retry-payment only accepts intents in status 'failed', so the
+// merchant's Retry button 409s ("payment_intent_not_retryable, processing")
+// until the reconciler terminates the intent. These two tests pin down whether
+// it actually does — and what it needs in order to.
+describe("reconcileProcessingAtmosIntents — first-charge throw at pre-apply", () => {
+  // A pay/create transaction id IS issued at Atmos before pre-apply throws, but
+  // createAtmosRecurringCharge holds it in a local and never returns, so the
+  // apply route never persists it: activateSubscriptionAfterCharge (which stamps
+  // provider_payment_id) never runs, and the attempt still carries only the
+  // bind-init response — no providerRefs.transactionId. resolveTransactionId
+  // therefore returns null, and the reconciler CANNOT prove what happened at
+  // Atmos, so by design it never auto-fails. The intent stays 'processing'
+  // forever and Retry keeps 409-ing: no auto-recovery. This is the P0 gap.
+  it("strands the intent when the pay/create tx id was never persisted (skips, never touches it)", async () => {
+    const mutations: string[] = [];
+    let atmosQueried = false;
+    const supa = fakeSupabase(
+      {
+        payment_intents: {
+          id: "pi_stuck",
+          status: "processing",
+          metadata: { invoice_id: "inv_stuck", subscription_id: "sub_stuck" },
+        },
+        checkout_sessions: { public_token: "tok_stuck", payment_intent_id: "pi_stuck" },
+        payment_attempts: {
+          id: "att_stuck",
+          org_provider_account_id: "opa_stuck",
+          provider_payment_id: null, // activateSubscriptionAfterCharge never ran
+          // exactly what atmos/pre-apply persisted before the charge threw:
+          raw_init_response: {
+            attemptKind: "atmos_bind_init",
+            bindTransactionId: "bind_777",
+            phone: null,
+          },
+          status: "requires_action",
+        },
+      },
+      mutations,
+    );
+
+    const result = await reconcileProcessingAtmosIntents(
+      supa,
+      { paymentIntentId: "pi_stuck" },
+      {
+        fetchAtmosStatus: async () => {
+          atmosQueried = true;
+          return "failed";
+        },
+      },
+    );
+
+    expect(result.scanned).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.items[0].outcome).toBe("skipped_no_transaction_id");
+    expect(result.items[0].transactionId).toBeNull();
+    // Never even consulted Atmos — there was nothing to look the charge up by.
+    expect(atmosQueried).toBe(false);
+    // Critically: the intent is NOT moved to 'failed', so retry-payment's
+    // `status === "failed"` gate stays shut and Retry keeps returning 409.
+    expect(mutations).not.toContain("update:payment_intents");
+  });
+
+  // The fix (persist the pay/create tx id onto the attempt the moment Atmos
+  // issues it, before pre-apply) makes the SAME stuck intent resolvable. Given
+  // that id, the reconciler queries pay/get, sees the charge never settled
+  // ('failed'), and terminates the intent to 'failed' — which is exactly what
+  // unblocks the merchant's Retry button.
+  it("terminates the intent to 'failed' once the pay/create tx id is resolvable (unblocks retry)", async () => {
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        payment_intents: {
+          id: "pi_stuck",
+          status: "processing",
+          metadata: { invoice_id: "inv_stuck", subscription_id: "sub_stuck" },
+        },
+        checkout_sessions: { public_token: "tok_stuck", payment_intent_id: "pi_stuck" },
+        payment_attempts: {
+          id: "att_stuck",
+          org_provider_account_id: "opa_stuck",
+          provider_payment_id: null,
+          // what the fix persists before pre-apply: the pay/create tx id.
+          raw_init_response: {
+            attemptKind: "atmos_bind_init",
+            bindTransactionId: "bind_777",
+            providerRefs: { transactionId: "create_555" },
+          },
+          status: "requires_action",
+        },
+        invoices: {
+          id: "inv_stuck",
+          subscription_id: "sub_stuck",
+          attempt_count: 0,
+          metadata: {},
+        },
+        subscriptions: { id: "sub_stuck", status: "incomplete" },
+      },
+      mutations,
+    );
+
+    const result = await reconcileProcessingAtmosIntents(
+      supa,
+      { paymentIntentId: "pi_stuck" },
+      { fetchAtmosStatus: fixedStatus("failed") },
+    );
+
+    expect(result.failed).toBe(1);
+    expect(result.items[0].outcome).toBe("failed");
+    expect(result.items[0].transactionId).toBe("create_555");
+    expect(mutations).toContain("update:payment_intents"); // -> failed (unblocks Retry)
+    expect(mutations).toContain("update:payment_attempts"); // attempt -> failed
   });
 });

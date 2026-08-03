@@ -4,8 +4,41 @@ import { createUzumRecurringCharge, extractUzumChargeProviderRefs } from "./prov
 import { createAtmosRecurringCharge, extractAtmosChargeProviderRefs } from "./providers/atmos";
 import type { AtmosCardDetails } from "./providers/atmos";
 import { redactSensitive } from "./redact";
+import { writePaymentLog } from "./debug-log";
+import { emitSubscriptionEvent } from "./webhooks-out";
 
 const RETRY_SCHEDULE_DAYS = [3, 7, 14] as const;
+
+/**
+ * Invoice statuses a customer-initiated recovery (dashboard "retry payment", or
+ * re-running checkout) is allowed to charge against.
+ *
+ * `uncollectible` matters as much as `open`: when automatic dunning exhausts,
+ * markPaymentFailed flips the invoice to `uncollectible` AND the subscription to
+ * `past_due` in the same write. That `uncollectible` sentinel is what stops the
+ * renewal cron from re-charging a dead card forever — but it must NOT hide the
+ * invoice from the manual recovery paths, or a past_due merchant is stranded on
+ * Free with no button that works. So the manual paths accept both; the cron
+ * paths keep filtering to `open` only.
+ */
+export const RETRYABLE_INVOICE_STATUSES = ["open", "uncollectible"] as const;
+
+/**
+ * Pick the invoice a manual retry/resume should charge: the most recent one
+ * (callers pass newest-first) that both carries a payment intent and sits in a
+ * customer-recoverable status. Returns null when nothing is recoverable.
+ */
+export function pickRetryTargetInvoice<
+  T extends { payment_intent_id?: string | null; status?: string | null },
+>(invoices: T[]): T | null {
+  return (
+    invoices.find(
+      (invoice) =>
+        !!invoice.payment_intent_id &&
+        (RETRYABLE_INVOICE_STATUSES as readonly string[]).includes(invoice.status ?? ""),
+    ) ?? null
+  );
+}
 
 function randomToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString("hex");
@@ -235,8 +268,8 @@ function getTaxIdentityFromEnv(): FiscalTaxIdentity | null {
 async function resolveOrgUzumFiscalization(
   supabase: SupabaseClient,
   orgId: string,
+  environment: PayEnvironment,
 ) {
-  const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
   const { data, error } = await supabase
     .schema("payments")
     .from("org_provider_accounts")
@@ -256,6 +289,7 @@ async function resolveOrgUzumFiscalization(
 async function resolveOrgTaxProfile(
   supabase: SupabaseClient,
   orgId: string,
+  environment: PayEnvironment = defaultPayEnvironment(),
 ) {
   const db = supabase as any;
   const { data: profile, error: profileErr } = await db
@@ -288,7 +322,7 @@ async function resolveOrgTaxProfile(
     };
   }
 
-  return resolveOrgUzumFiscalization(supabase, orgId);
+  return resolveOrgUzumFiscalization(supabase, orgId, environment);
 }
 
 async function resolvePlanTaxClassification(
@@ -411,15 +445,35 @@ function buildDemoUzumCart(params: {
   };
 }
 
+export type PayEnvironment = "test" | "live";
+
+/**
+ * Fallback environment for callers with no key context (dashboard payment
+ * links, internal Krafta routes). Explicit `environment` on the input always
+ * wins — API-keyed callers pass the environment their key carries.
+ */
+export function defaultPayEnvironment(): PayEnvironment {
+  return process.env.PAY_ENV === "test" ? "test" : "live";
+}
+
 export type CreateSubscriptionCheckoutInput = {
   merchantOrgId: string;
-  // The subscriber's org, for cross-org billing (e.g. Krafta billing a merchant
-  // org). null for generic email-identified customers (dashboard-created), which
-  // are NOT deduped by org — the (org_id, customer_org_id) unique index treats
-  // NULLs as distinct, so a merchant can have many email customers.
+  // The subscriber's org, for cross-org billing (Krafta billing one of its own
+  // merchant orgs). null for every other merchant — their subscribers are not
+  // Krafta organizations, so they identify them with `customerExternalId`.
   customerOrgId: string | null;
+  // The merchant's own id for this subscriber (telegram user id, internal uuid,
+  // student number — their choice). Unique per (org, environment) and the
+  // identity key for any merchant that is not Krafta itself.
+  //
+  // Supplying it is what makes repeated checkout calls idempotent at the
+  // customer level. Without either this or customerOrgId, every call creates a
+  // fresh customer row — which is exactly the duplicate-subscription bug that
+  // made the null-org path unusable.
+  customerExternalId?: string | null;
   planId: string;
   payBaseUrl: string;
+  environment?: PayEnvironment;
   successUrl?: string | null;
   cancelUrl?: string | null;
   returnUrl?: string | null;
@@ -440,10 +494,146 @@ export type CreateSubscriptionCheckoutResult = {
   payUrl: string;
 };
 
+export function normalizeExternalId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export type ResolveCustomerInput = {
+  merchantOrgId: string;
+  environment: PayEnvironment;
+  customerOrgId?: string | null;
+  externalId?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  customerUserRef?: string | null;
+};
+
+/**
+ * Find-or-create the `payments.customers` row for a checkout.
+ *
+ * Two identity keys, checked in priority order:
+ *
+ *   1. `externalId` — the merchant's own id for the subscriber. The identity
+ *      key for every merchant that is not Krafta. Unique per
+ *      (org_id, environment, external_id).
+ *   2. `customerOrgId` (+ `customerUserRef`) — Krafta billing one of its own
+ *      merchant organizations. Predates the external-id model, kept working
+ *      unchanged.
+ *
+ * `identified` reports whether we can recognise this customer on a later call.
+ * When it is false the caller must NOT attempt checkout resume: an anonymous
+ * customer is a different person each time, so "resuming" would attach a
+ * stranger to someone else's subscription.
+ *
+ * Non-identifying fields (email/phone) are refreshed on an existing match —
+ * people change their email, and the value the merchant just sent is newer
+ * than whatever we stored months ago.
+ */
+export async function resolveOrCreateCustomer(
+  supabase: SupabaseClient,
+  input: ResolveCustomerInput,
+): Promise<{ customerId: string; identified: boolean; created: boolean }> {
+  const externalId = normalizeExternalId(input.externalId);
+  const email = input.email ?? null;
+  const phone = input.phone ?? null;
+  const customerUserRef = input.customerUserRef ?? null;
+
+  const findExisting = async () => {
+    if (externalId) {
+      const { data, error } = await supabase
+        .schema("payments")
+        .from("customers")
+        .select("id")
+        .eq("org_id", input.merchantOrgId)
+        .eq("environment", input.environment)
+        .eq("external_id", externalId)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.id ?? null;
+    }
+
+    if (input.customerOrgId && customerUserRef) {
+      const { data, error } = await supabase
+        .schema("payments")
+        .from("customers")
+        .select("id")
+        .eq("org_id", input.merchantOrgId)
+        .eq("customer_org_id", input.customerOrgId)
+        .eq("customer_user_ref", customerUserRef)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.id ?? null;
+    }
+
+    return null;
+  };
+
+  const existingId = await findExisting();
+  if (existingId) {
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (email) patch.email = email;
+    if (phone) patch.phone = phone;
+    if (customerUserRef) patch.customer_user_ref = customerUserRef;
+    const { error: patchErr } = await supabase
+      .schema("payments")
+      .from("customers")
+      .update(patch)
+      .eq("id", existingId);
+    if (patchErr) throw patchErr;
+
+    return { customerId: existingId, identified: true, created: false };
+  }
+
+  const { data: created, error: createErr } = await supabase
+    .schema("payments")
+    .from("customers")
+    .insert({
+      org_id: input.merchantOrgId,
+      environment: input.environment,
+      customer_org_id: input.customerOrgId ?? null,
+      external_id: externalId,
+      email,
+      phone,
+      customer_user_ref: customerUserRef,
+      metadata: {},
+    })
+    .select("id")
+    .single();
+
+  if (createErr) {
+    // Lost a race against a concurrent checkout for the same external id — the
+    // partial unique index rejected the second insert. The winner's row is the
+    // right answer, so read it back rather than surfacing a 500 to a merchant
+    // who did nothing wrong.
+    if (externalId && isUniqueViolation(createErr)) {
+      const retryId = await findExisting();
+      if (retryId) return { customerId: retryId, identified: true, created: false };
+    }
+    throw createErr;
+  }
+
+  return {
+    customerId: created.id,
+    identified: Boolean(externalId || (input.customerOrgId && customerUserRef)),
+    created: true,
+  };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  return (error as { code?: unknown }).code === "23505";
+}
+
 export async function createSubscriptionCheckout(
   supabase: SupabaseClient,
   input: CreateSubscriptionCheckoutInput,
 ): Promise<CreateSubscriptionCheckoutResult> {
+  const environment = input.environment ?? defaultPayEnvironment();
+
   const { data: plan, error: planErr } = await supabase
     .schema("payments")
     .from("plans")
@@ -464,6 +654,7 @@ export async function createSubscriptionCheckout(
   const orgFiscalization = await resolveOrgTaxProfile(
     supabase,
     input.merchantOrgId,
+    environment,
   );
   const fallbackTaxIdentity = getTaxIdentityFromEnv();
   const planClassification = await resolvePlanTaxClassification(supabase, plan.id);
@@ -515,7 +706,7 @@ export async function createSubscriptionCheckout(
 
   // Uzum test terminals with AUTOFISCALIZATION enabled require cart fiscal params.
   // Auto-attach a demo cart only in test env when merchant hasn't provided one.
-  if ((process.env.PAY_ENV ?? "live") === "test" && !hasUzumCartMetadata(metadata)) {
+  if (environment === "test" && !hasUzumCartMetadata(metadata)) {
     const demoTaxIdentity = orgFiscalization.taxIdentity ?? fallbackTaxIdentity;
     metadata.uzumCart = buildDemoUzumCart({
       amountMinor: plan.amount_minor,
@@ -531,43 +722,22 @@ export async function createSubscriptionCheckout(
     }
   }
 
-  let customerId: string | null = null;
-  if (input.customerOrgId && input.customer?.customerUserRef) {
-    const { data: existing, error: existingErr } = await supabase
-      .schema("payments")
-      .from("customers")
-      .select("id")
-      .eq("org_id", input.merchantOrgId)
-      .eq("customer_org_id", input.customerOrgId)
-      .eq("customer_user_ref", input.customer.customerUserRef)
-      .order("created_at", { ascending: false })
-      .maybeSingle();
-    if (existingErr) throw existingErr;
-    customerId = existing?.id ?? null;
-  }
+  const externalId = normalizeExternalId(input.customerExternalId);
+  const { customerId, identified } = await resolveOrCreateCustomer(supabase, {
+    merchantOrgId: input.merchantOrgId,
+    environment,
+    customerOrgId: input.customerOrgId,
+    externalId,
+    email: input.customer?.email ?? null,
+    phone: input.customer?.phone ?? null,
+    customerUserRef: input.customer?.customerUserRef ?? null,
+  });
 
-  if (!customerId) {
-    const { data: customer, error: customerErr } = await supabase
-      .schema("payments")
-      .from("customers")
-      .insert({
-        org_id: input.merchantOrgId,
-        customer_org_id: input.customerOrgId,
-        email: input.customer?.email ?? null,
-        phone: input.customer?.phone ?? null,
-        customer_user_ref: input.customer?.customerUserRef ?? null,
-        metadata: {},
-      })
-      .select("id")
-      .single();
-    if (customerErr) throw customerErr;
-    customerId = customer.id;
-  }
-  if (!customerId) throw new Error("customer_create_or_lookup_failed");
-
-  // Resume only applies to cross-org customers (matched by customer_org_id);
-  // email-identified customers (null org) always start a fresh checkout.
-  const resumedCheckout = input.customerOrgId
+  // Resume applies to any *identified* customer — one we can recognise on a
+  // second call, whether by Krafta org or by the merchant's own external id.
+  // An anonymous customer (neither key given) is a new person every time by
+  // definition, so there is nothing to resume.
+  const resumedCheckout = identified
     ? await tryResumeExistingSubscriptionCheckout(supabase, {
         merchantOrgId: input.merchantOrgId,
         customerOrgId: input.customerOrgId,
@@ -598,10 +768,12 @@ export async function createSubscriptionCheckout(
       plan_id: plan.id,
       customer_id: customerId,
       status: "incomplete",
+      environment,
       metadata: {
         billing_anchor: periodStart.toISOString(),
         trial_days: plan.trial_days ?? 0,
         customer_org_id: input.customerOrgId,
+        ...(externalId ? { customer_external_id: externalId } : {}),
         // Per-catalog scope: one org account holds one sub per catalog. Carried
         // from the caller's metadata.catalog_id. Absent = legacy org-wide sub.
         ...(typeof metadata.catalog_id === "string" && metadata.catalog_id
@@ -643,6 +815,7 @@ export async function createSubscriptionCheckout(
       currency: plan.currency,
       description: "Subscription checkout",
       status: "requires_action",
+      environment,
       client_secret: clientSecret,
       return_url: input.returnUrl ?? input.successUrl ?? null,
       metadata: {
@@ -674,6 +847,7 @@ export async function createSubscriptionCheckout(
       customer_id: subscription.customer_id,
       public_token: publicToken,
       status: "open",
+      environment,
       success_url: input.successUrl ?? null,
       cancel_url: input.cancelUrl ?? null,
       return_url: input.returnUrl ?? null,
@@ -690,19 +864,30 @@ export async function createSubscriptionCheckout(
     .single();
   if (checkoutSessionErr) throw checkoutSessionErr;
 
+  const payUrl = `${input.payBaseUrl.replace(/\/+$/, "")}/pay/${publicToken}`;
+
+  await emitSubscriptionEvent(supabase, {
+    eventType: "subscription.created",
+    subscriptionId: subscription.id,
+    orgId: input.merchantOrgId,
+    environment,
+    invoiceId: invoice.id,
+    payUrl,
+  });
+
   return {
     subscriptionId: subscription.id,
     invoiceId: invoice.id,
     checkoutSessionId: checkoutSession.id,
     paymentIntentId: intent.id,
     publicToken,
-    payUrl: `${input.payBaseUrl.replace(/\/+$/, "")}/pay/${publicToken}`,
+    payUrl,
   };
 }
 
 type ResumeSubscriptionCheckoutInput = {
   merchantOrgId: string;
-  customerOrgId: string;
+  customerOrgId: string | null;
   customerId: string;
   planId: string;
   payBaseUrl: string;
@@ -735,7 +920,12 @@ async function tryResumeExistingSubscriptionCheckout(
       .from("invoices")
       .select("id, payment_intent_id, status")
       .eq("subscription_id", subscription.id)
-      .in("status", ["open"])
+      // Accept `uncollectible` too, not just `open`: a past_due subscription
+      // (dunning exhausted) carries an `uncollectible` invoice, and this resume
+      // path is explicitly meant to cover past_due (see the status filter above).
+      // Filtering to `open` alone silently skipped it and forked a duplicate
+      // subscription instead of resuming the existing one.
+      .in("status", RETRYABLE_INVOICE_STATUSES)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -745,7 +935,7 @@ async function tryResumeExistingSubscriptionCheckout(
     const { data: intent, error: intentErr } = await supabase
       .schema("payments")
       .from("payment_intents")
-      .select("id, status")
+      .select("id, status, environment")
       .eq("id", invoice.payment_intent_id)
       .maybeSingle();
     if (intentErr) throw intentErr;
@@ -776,6 +966,9 @@ async function tryResumeExistingSubscriptionCheckout(
         customer_id: subscription.customer_id,
         public_token: publicToken,
         status: "open",
+        // Inherit from the intent being resumed, never from PAY_ENV — a resumed
+        // test checkout must keep resolving the test provider account.
+        environment: (intent as { environment?: string }).environment ?? defaultPayEnvironment(),
         success_url: input.successUrl,
         cancel_url: input.cancelUrl,
         return_url: input.returnUrl,
@@ -1224,11 +1417,16 @@ export async function finalizeInitialPayment(
   const { data: subscription, error: subscriptionErr } = await supabase
     .schema("payments")
     .from("subscriptions")
-    .select("id, customer_id, org_id, default_payment_method_id")
+    .select("id, customer_id, org_id, default_payment_method_id, status, environment")
     .eq("id", subscriptionId)
     .maybeSingle();
   if (subscriptionErr) throw subscriptionErr;
   if (!subscription) throw new Error("subscription_not_found");
+
+  // Capture the status BEFORE we flip it to active — it is what distinguishes a
+  // first activation from a dunning recovery, and the merchant cares about the
+  // difference (one grants access, the other un-suspends it).
+  const statusBeforeCharge = String(subscription.status ?? "");
 
   const periodStart = invoice?.billing_period_start ?? nowIso;
   const periodEnd = invoice?.billing_period_end ?? addMonths(new Date(), 1).toISOString();
@@ -1268,6 +1466,30 @@ export async function finalizeInitialPayment(
       },
     });
 
+  // One code path settles all three, so the prior status is what tells the
+  // merchant which of them just happened:
+  //   incomplete      -> first payment landed. Grant access.
+  //   past_due/unpaid -> dunning worked. Un-suspend. This is the recovery the
+  //                      whole product exists to produce.
+  //   active/trialing -> an ordinary renewal. Extend the period.
+  await emitSubscriptionEvent(supabase, {
+    eventType:
+      statusBeforeCharge === "past_due" || statusBeforeCharge === "unpaid"
+        ? "subscription.recovered"
+        : statusBeforeCharge === "active" || statusBeforeCharge === "trialing"
+          ? "subscription.renewed"
+          : "subscription.activated",
+    subscriptionId: subscription.id,
+    orgId: subscription.org_id,
+    environment:
+      (subscription as { environment?: string }).environment === "test" ? "test" : "live",
+    invoiceId,
+    extra: {
+      previousStatus: statusBeforeCharge,
+      providerId: input.providerId,
+    },
+  });
+
   return {
     subscriptionId: subscription.id,
     invoiceId,
@@ -1281,6 +1503,92 @@ type MarkFailedInput = {
   providerPaymentId?: string | null;
   payload?: unknown;
 };
+
+/**
+ * Mint a fresh hosted checkout session over an already-failed payment intent so
+ * the customer can retry with a *different* card.
+ *
+ * This is what makes `subscription.payment_failed` actionable rather than
+ * merely informative. The dominant failure on Uzcard/Humo debit is an expired
+ * card or an empty balance — re-charging the same saved token recovers the
+ * second case but never the first. A link the customer can open and pay from
+ * recovers both.
+ *
+ * `selectProviderCreateAttempt` gates on the SESSION being open, not on the
+ * intent status, so a new open session over a failed intent is payable as-is.
+ *
+ * Returns null rather than throwing: this runs inside failure handling, and a
+ * missing PAY_BASE_URL must not turn a recorded decline into an exception.
+ */
+export async function createRecoveryCheckoutSession(
+  supabase: SupabaseClient,
+  params: {
+    paymentIntentId: string;
+    orgId: string;
+    customerId?: string | null;
+    subscriptionId?: string | null;
+    invoiceId?: string | null;
+    environment: PayEnvironment;
+    payBaseUrl?: string | null;
+  },
+): Promise<{ publicToken: string; payUrl: string } | null> {
+  const payBaseUrl = params.payBaseUrl ?? process.env.PAY_BASE_URL ?? null;
+  if (!payBaseUrl) return null;
+
+  try {
+    // Reuse an open session for this intent if one already exists — a customer
+    // who got a link on attempt 1 should not need a different one on attempt 2,
+    // and stale links in a Telegram history should keep working.
+    const { data: existing } = await supabase
+      .schema("payments")
+      .from("checkout_sessions")
+      .select("public_token")
+      .eq("payment_intent_id", params.paymentIntentId)
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.public_token) {
+      const token = String(existing.public_token);
+      return { publicToken: token, payUrl: `${payBaseUrl.replace(/\/+$/, "")}/pay/${token}` };
+    }
+
+    const publicToken = randomToken(18);
+    const { error } = await supabase
+      .schema("payments")
+      .from("checkout_sessions")
+      .insert({
+        org_id: params.orgId,
+        payment_intent_id: params.paymentIntentId,
+        customer_id: params.customerId ?? null,
+        public_token: publicToken,
+        status: "open",
+        environment: params.environment,
+        metadata: {
+          billing_reason: "payment_recovery",
+          subscription_id: params.subscriptionId ?? null,
+          invoice_id: params.invoiceId ?? null,
+        },
+      });
+    if (error) throw error;
+
+    return {
+      publicToken,
+      payUrl: `${payBaseUrl.replace(/\/+$/, "")}/pay/${publicToken}`,
+    };
+  } catch (error) {
+    await writePaymentLog(supabase, {
+      type: "webhook_out",
+      event: "recovery_link_failed",
+      level: "warn",
+      orgId: params.orgId,
+      paymentIntentId: params.paymentIntentId,
+      data: { error: error instanceof Error ? error.message : String(error) },
+    });
+    return null;
+  }
+}
 
 export async function markPaymentFailed(
   supabase: SupabaseClient,
@@ -1337,7 +1645,7 @@ export async function markPaymentFailed(
   const { data: subscription, error: subscriptionErr } = await supabase
     .schema("payments")
     .from("subscriptions")
-    .select("id, status")
+    .select("id, status, org_id, customer_id, environment")
     .eq("id", invoice.subscription_id)
     .maybeSingle();
   if (subscriptionErr) throw subscriptionErr;
@@ -1376,6 +1684,35 @@ export async function markPaymentFailed(
           next_due_at: dueAt,
         },
       });
+
+    const environment: PayEnvironment =
+      (subscription as { environment?: string }).environment === "test" ? "test" : "live";
+
+    const recovery = await createRecoveryCheckoutSession(supabase, {
+      paymentIntentId: input.paymentIntentId,
+      orgId: subscription.org_id,
+      customerId: subscription.customer_id,
+      subscriptionId: subscription.id,
+      invoiceId: invoice.id,
+      environment,
+    });
+
+    await emitSubscriptionEvent(supabase, {
+      eventType: "subscription.payment_failed",
+      subscriptionId: subscription.id,
+      orgId: subscription.org_id,
+      environment,
+      invoiceId: invoice.id,
+      payUrl: recovery?.payUrl ?? null,
+      extra: {
+        providerId: input.providerId,
+        attemptCount: nextAttemptCount,
+        // null once automatic dunning is exhausted — the signal for a merchant
+        // to escalate (downgrade, suspend, or ask a human to call).
+        nextRetryAt: dueAt,
+        dunningExhausted: isExpired,
+      },
+    });
   }
 }
 
@@ -1463,6 +1800,7 @@ async function ensureRenewalInvoice(
     currency: string;
     periodStartIso: string;
     periodEndIso: string;
+    environment: PayEnvironment;
   },
 ) {
   const { data: existingInvoice, error: existingInvoiceErr } = await supabase
@@ -1504,6 +1842,12 @@ async function ensureRenewalInvoice(
     .single();
   if (invoiceErr) throw invoiceErr;
 
+  // Create the intent in a PRE-charge state, not 'processing'. chargeRenewal
+  // flips it to 'processing' via a conditional update (compare-and-swap) as a
+  // single-flight lock right before it moves money, so 'processing' must mean
+  // "a charge is in flight" and nothing else. (Same contract the inline apply
+  // route and the manual retry route rely on.) 'requires_payment_method' is the
+  // column default and the natural pre-charge state for an off-session renewal.
   const { data: intent, error: intentErr } = await supabase
     .schema("payments")
     .from("payment_intents")
@@ -1511,7 +1855,8 @@ async function ensureRenewalInvoice(
       org_id: params.orgId,
       amount_minor: params.amountMinor,
       currency: params.currency,
-      status: "processing",
+      environment: params.environment,
+      status: "requires_payment_method",
       client_secret: randomToken(24),
       metadata: {
         subscription_id: params.subscriptionId,
@@ -1552,7 +1897,7 @@ export async function chargeRenewal(
     .schema("payments")
     .from("subscriptions")
     .select(
-      "id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_end, cancel_at_period_end, metadata",
+      "id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_end, cancel_at_period_end, environment, metadata",
     )
     .eq("id", params.subscriptionId)
     .maybeSingle();
@@ -1561,6 +1906,9 @@ export async function chargeRenewal(
   if (subscription.status !== "active" && subscription.status !== "past_due") {
     return { skipped: true, reason: "subscription_not_chargeable" as const };
   }
+
+  const environment: PayEnvironment =
+    (subscription as { environment?: string }).environment === "test" ? "test" : "live";
 
   const periodStart = subscription.current_period_end
     ? new Date(subscription.current_period_end)
@@ -1576,6 +1924,27 @@ export async function chargeRenewal(
       })
       .eq("id", subscription.id);
     if (cancelErr) throw cancelErr;
+
+    await supabase
+      .schema("payments")
+      .from("subscription_events")
+      .insert({
+        subscription_id: subscription.id,
+        event_type: "canceled",
+        payload: { source: "renewal_cycle", reason: "cancel_at_period_end" },
+      });
+
+    // The moment access should actually stop. A merchant who revoked on the
+    // earlier "cancel scheduled" call would have cut the customer off while
+    // they were still paid up; this is the event that means it for real.
+    await emitSubscriptionEvent(supabase, {
+      eventType: "subscription.canceled",
+      subscriptionId: subscription.id,
+      orgId: subscription.org_id,
+      environment,
+      extra: { immediate: false, source: "renewal_cycle" },
+    });
+
     return { skipped: true, reason: "canceled_at_period_end" as const };
   }
 
@@ -1615,7 +1984,11 @@ export async function chargeRenewal(
   let renewalUzumCart = getUzumCartFromMetadata(planMetadata);
 
   if (!renewalUzumCart) {
-    const orgFiscalization = await resolveOrgTaxProfile(supabase, subscription.org_id);
+    const orgFiscalization = await resolveOrgTaxProfile(
+      supabase,
+      subscription.org_id,
+      environment,
+    );
     const fallbackTaxIdentity = getTaxIdentityFromEnv();
     const planClassification = await resolvePlanTaxClassification(
       supabase,
@@ -1639,7 +2012,7 @@ export async function chargeRenewal(
     }
   }
 
-  if (!renewalUzumCart && (process.env.PAY_ENV ?? "live") === "test") {
+  if (!renewalUzumCart && environment === "test") {
     const fallbackTaxIdentity = getTaxIdentityFromEnv();
     renewalUzumCart = buildDemoUzumCart({
       amountMinor: plan.amount_minor,
@@ -1660,6 +2033,7 @@ export async function chargeRenewal(
     currency: plan.currency,
     periodStartIso,
     periodEndIso,
+    environment,
   });
 
   // Respect the dunning schedule + terminal invoice states. The primary renewal
@@ -1717,6 +2091,31 @@ export async function chargeRenewal(
     .eq("id", subscription.customer_id)
     .maybeSingle();
   if (customerErr) throw customerErr;
+
+  // Single-flight lock. The open+due guard above is NOT enough: two executions
+  // can pass it at once on the same dunning invoice — the Vercel renewal cron
+  // racing an internal renewal POST, an overrunning tick overlapping the next,
+  // or the cron racing a dashboard Retry — and each would insert an attempt and
+  // fire a REAL charge. `account` is an Atmos reconciliation reference, not an
+  // idempotency key, so the provider does NOT dedup the second charge and the
+  // merchant is billed twice for one period. Claim the intent by flipping it out
+  // of a chargeable state (requires_payment_method for a fresh cycle invoice,
+  // failed for a dunning retry) into 'processing' with a conditional update; only
+  // the row that wins proceeds. Any concurrent execution finds it already
+  // 'processing' (or succeeded/canceled), matches no row, and bails without
+  // charging. This mirrors the manual retry route's failed->processing lock.
+  const { data: claimedIntent, error: claimIntentErr } = await supabase
+    .schema("payments")
+    .from("payment_intents")
+    .update({ status: "processing", updated_at: new Date().toISOString() })
+    .eq("id", renewal.paymentIntentId)
+    .in("status", ["requires_payment_method", "failed"])
+    .select("id")
+    .maybeSingle();
+  if (claimIntentErr) throw claimIntentErr;
+  if (!claimedIntent) {
+    return { skipped: true, reason: "charge_in_progress" as const };
+  }
 
   const { data: attempt, error: attemptErr } = await supabase
     .schema("payments")
@@ -1862,6 +2261,12 @@ export async function runRenewalCycle(
   let charged = 0;
   let canceled = 0;
   let errored = 0;
+  // Subscriptions already handled by the primary loop below. The retry loop then
+  // skips them: re-invoking chargeRenewal on a subscription the primary loop just
+  // charged would, after finalize advances current_period_end, create a fresh
+  // NEXT-period invoice and charge it prematurely (the retry snapshot still lists
+  // the now-paid invoice). One pass per subscription per run.
+  const handledSubscriptionIds = new Set<string>();
   for (const row of dueSubscriptions ?? []) {
     const { data: subscription, error: subscriptionErr } = await supabase
       .schema("payments")
@@ -1871,6 +2276,7 @@ export async function runRenewalCycle(
       .maybeSingle();
     if (subscriptionErr) throw subscriptionErr;
     if (!subscription) continue;
+    handledSubscriptionIds.add(subscription.id);
 
     if (subscription.cancel_at_period_end) {
       const { error: cancelErr } = await supabase
@@ -1911,6 +2317,10 @@ export async function runRenewalCycle(
 
   let retried = 0;
   for (const invoice of retryInvoices ?? []) {
+    // Already charged (or attempted) in the primary loop this run — skip to avoid
+    // a second chargeRenewal on an already-advanced subscription.
+    if (handledSubscriptionIds.has(invoice.subscription_id)) continue;
+    handledSubscriptionIds.add(invoice.subscription_id);
     try {
       await chargeRenewal(supabase, { subscriptionId: invoice.subscription_id });
       retried += 1;

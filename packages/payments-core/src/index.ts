@@ -2,6 +2,7 @@ export * from "./types";
 export * from "./checkout";
 export * from "./webhook";
 export * from "./subscription";
+export * from "./webhooks-out";
 export * from "./atmos-reconcile";
 export * from "./secrets";
 export * from "./debug-log";
@@ -19,6 +20,12 @@ export {
   loadAtmosCredentials,
   parseAtmosCredentials,
   verifyAtmosCredentials,
+  classifyAtmosFailure,
   AtmosError,
 } from "./providers/atmos";
-export type { AtmosVerifyResult, AtmosCredentials, AtmosCardDetails } from "./providers/atmos";
+export type {
+  AtmosVerifyResult,
+  AtmosCredentials,
+  AtmosCardDetails,
+  AtmosFailureKind,
+} from "./providers/atmos";

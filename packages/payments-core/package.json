@@ -12,7 +12,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "undici": "^6.21.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.9",

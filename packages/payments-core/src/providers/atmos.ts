@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ProxyAgent, fetch as undiciFetch, type Dispatcher } from "undici";
 
 import { getOrgProviderAccountSecrets } from "../db";
 import { decryptSecretJsonMaybe } from "../secrets";
@@ -30,6 +31,30 @@ const DEFAULT_BASE_URL = "https://apigw.atmos.uz";
 
 function normalizeBaseUrl(baseUrl: string) {
   return (baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
+}
+
+// ---------------------------------------------------------------------------
+// Egress proxy. The Atmos gateway (apigw.atmos.uz) only accepts requests from
+// IPs the merchant has whitelisted with Atmos; Vercel's function egress IPs are
+// dynamic and non-UZ, so every Atmos call is routed through a fixed-IP forward
+// proxy whenever ATMOS_EGRESS_PROXY_URL is set. That variable holds a standard
+// proxy URL — scheme, host, port, and optionally basic-auth credentials — and
+// the proxy's single static IP is the one whitelisted with Atmos.
+//
+// (Spelled out in prose rather than shown as a sample URL: an inline
+// scheme://user:pass@host literal, however obviously fake, trips the
+// credential scanner on every push.)
+//
+// Unset (e.g. local dev on an already-whitelisted network) → calls go out
+// directly, unchanged. Built once and reused.
+// ---------------------------------------------------------------------------
+let cachedEgressDispatcher: Dispatcher | null | undefined;
+function getEgressDispatcher(): Dispatcher | undefined {
+  if (cachedEgressDispatcher === undefined) {
+    const proxyUrl = process.env.ATMOS_EGRESS_PROXY_URL?.trim();
+    cachedEgressDispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : null;
+  }
+  return cachedEgressDispatcher ?? undefined;
 }
 
 export function parseAtmosCredentials(credentials: unknown): AtmosCredentials {
@@ -78,13 +103,14 @@ async function getAtmosAccessToken(creds: AtmosCredentials): Promise<string> {
 
   const basic = Buffer.from(`${creds.consumerKey}:${creds.consumerSecret}`).toString("base64");
   const url = `${normalizeBaseUrl(creds.apiBaseUrl)}/token?grant_type=client_credentials`;
-  const res = await fetch(url, {
+  const res = await undiciFetch(url, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basic}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: "grant_type=client_credentials",
+    dispatcher: getEgressDispatcher(),
   });
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   const token = json.access_token;
@@ -127,7 +153,7 @@ export async function verifyAtmosCredentials(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 8000);
   try {
-    const res = await fetch(url, {
+    const res = await undiciFetch(url, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basic}`,
@@ -135,6 +161,7 @@ export async function verifyAtmosCredentials(
       },
       body: "grant_type=client_credentials",
       signal: controller.signal,
+      dispatcher: getEgressDispatcher(),
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (res.ok && typeof json.access_token === "string" && json.access_token !== "") {
@@ -155,13 +182,14 @@ async function atmosPost(
 ): Promise<{ httpStatus: number; json: Record<string, unknown> }> {
   const token = await getAtmosAccessToken(creds);
   const url = `${normalizeBaseUrl(creds.apiBaseUrl)}${path}`;
-  const res = await fetch(url, {
+  const res = await undiciFetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    dispatcher: getEgressDispatcher(),
   });
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { httpStatus: res.status, json };
@@ -438,4 +466,39 @@ export class AtmosError extends Error {
     // Never retain card data on a thrown error; only the (redacted) provider body.
     this.raw = redactSensitive(raw);
   }
+}
+
+// A failed Atmos call reaches a route two ways: a thrown `AtmosError` carrying
+// the provider's `result.code`, or a plain transport error (fetch timeout, DNS/
+// connect failure, or the OAuth token step failing) when the gateway is
+// unreachable. The pay page must NOT tell a cardholder their card is wrong for an
+// Atmos internal glitch or a network blip — only for codes that genuinely mean
+// the card details are bad. Callers map this kind onto their own copy:
+//   card_invalid  the cardholder must fix the PAN/expiry (ERR-009 wrong params,
+//                 ERR-067 wrong card).
+//   temporary     an Atmos internal error (ERR-001 "Внутренняя ошибка") or any
+//                 transport/timeout failure — retryable, not the card's fault.
+//   other         any other Atmos result code (e.g. a genuine charge decline or
+//                 a store-config error); the caller keeps its own default copy.
+export type AtmosFailureKind = "card_invalid" | "temporary" | "other";
+
+// Match on the trailing "ERR-0NN" token so a partner prefix ("STPIMS-ERR-009")
+// or a bare "ERR-009" both classify. Atmos codes are 3-digit and non-overlapping.
+const ATMOS_CARD_INVALID_CODES = ["ERR-009", "ERR-067"] as const;
+const ATMOS_TEMPORARY_CODES = ["ERR-001"] as const;
+
+function atmosResultCode(raw: Record<string, unknown> | null | undefined): string | null {
+  const code = (raw as { result?: { code?: unknown } } | null)?.result?.code;
+  return typeof code === "string" && code.trim() !== "" ? code.toUpperCase() : null;
+}
+
+export function classifyAtmosFailure(error: unknown): AtmosFailureKind {
+  // A non-AtmosError reached us as a raw throw: fetch timeout, DNS/connect
+  // failure, or the token step failing. The gateway is at fault, never the card.
+  if (!(error instanceof AtmosError)) return "temporary";
+  const code = atmosResultCode(error.raw);
+  if (!code) return "temporary";
+  if (ATMOS_CARD_INVALID_CODES.some((c) => code.includes(c))) return "card_invalid";
+  if (ATMOS_TEMPORARY_CODES.some((c) => code.includes(c))) return "temporary";
+  return "other";
 }

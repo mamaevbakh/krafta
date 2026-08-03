@@ -14,6 +14,171 @@ export type Database = {
   }
   commerce: {
     Tables: {
+      api_keys: {
+        Row: {
+          catalog_id: string | null
+          created_at: string
+          environment: string
+          hashed_key: string
+          id: string
+          key_type: string
+          last_used_at: string | null
+          last4: string
+          metadata: Json
+          name: string
+          org_id: string
+          prefix: string
+          revoked_at: string | null
+        }
+        Insert: {
+          catalog_id?: string | null
+          created_at?: string
+          environment?: string
+          hashed_key: string
+          id?: string
+          key_type?: string
+          last_used_at?: string | null
+          last4: string
+          metadata?: Json
+          name: string
+          org_id: string
+          prefix: string
+          revoked_at?: string | null
+        }
+        Update: {
+          catalog_id?: string | null
+          created_at?: string
+          environment?: string
+          hashed_key?: string
+          id?: string
+          key_type?: string
+          last_used_at?: string | null
+          last4?: string
+          metadata?: Json
+          name?: string
+          org_id?: string
+          prefix?: string
+          revoked_at?: string | null
+        }
+        Relationships: []
+      }
+      cart_sessions: {
+        Row: {
+          api_key_id: string | null
+          auth_user_id: string
+          catalog_id: string
+          created_at: string
+          customer_id: string
+          environment: string
+          expires_at: string
+          id: string
+          last_used_at: string
+          metadata: Json
+          org_id: string
+          refresh_token: string
+          token_hash: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          auth_user_id: string
+          catalog_id: string
+          created_at?: string
+          customer_id: string
+          environment?: string
+          expires_at?: string
+          id?: string
+          last_used_at?: string
+          metadata?: Json
+          org_id: string
+          refresh_token: string
+          token_hash: string
+        }
+        Update: {
+          api_key_id?: string | null
+          auth_user_id?: string
+          catalog_id?: string
+          created_at?: string
+          customer_id?: string
+          environment?: string
+          expires_at?: string
+          id?: string
+          last_used_at?: string
+          metadata?: Json
+          org_id?: string
+          refresh_token?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cart_sessions_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_iiko_links: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          external_menu_id: string | null
+          iiko_organization_id: string
+          iiko_terminal_group_id: string | null
+          last_revision: number | null
+          last_stoplist_synced_at: string | null
+          last_sync_error: string | null
+          last_synced_at: string | null
+          menu_source: string
+          org_id: string
+          price_category_id: string | null
+          push_orders_enabled: boolean
+          sync_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          external_menu_id?: string | null
+          iiko_organization_id: string
+          iiko_terminal_group_id?: string | null
+          last_revision?: number | null
+          last_stoplist_synced_at?: string | null
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          menu_source?: string
+          org_id: string
+          price_category_id?: string | null
+          push_orders_enabled?: boolean
+          sync_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          external_menu_id?: string | null
+          iiko_organization_id?: string
+          iiko_terminal_group_id?: string | null
+          last_revision?: number | null
+          last_stoplist_synced_at?: string | null
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          menu_source?: string
+          org_id?: string
+          price_category_id?: string | null
+          push_orders_enabled?: boolean
+          sync_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customer_addresses: {
         Row: {
           apartment: string | null
@@ -442,6 +607,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      iiko_entity_map: {
+        Row: {
+          catalog_id: string
+          created_at: string
+          entity_type: string
+          id: string
+          iiko_group_id: string | null
+          iiko_id: string
+          iiko_size_id: string | null
+          krafta_id: string
+          metadata: Json
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          catalog_id: string
+          created_at?: string
+          entity_type: string
+          id?: string
+          iiko_group_id?: string | null
+          iiko_id: string
+          iiko_size_id?: string | null
+          krafta_id: string
+          metadata?: Json
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          catalog_id?: string
+          created_at?: string
+          entity_type?: string
+          id?: string
+          iiko_group_id?: string | null
+          iiko_id?: string
+          iiko_size_id?: string | null
+          krafta_id?: string
+          metadata?: Json
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       line_item_applied_discounts: {
         Row: {
@@ -1069,6 +1276,75 @@ export type Database = {
         }
         Relationships: []
       }
+      org_iiko_settings: {
+        Row: {
+          account_label: string | null
+          api_host: string
+          created_at: string
+          credentials_encrypted: Json | null
+          is_active: boolean
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_label?: string | null
+          api_host?: string
+          created_at?: string
+          credentials_encrypted?: Json | null
+          is_active?: boolean
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_label?: string | null
+          api_host?: string
+          created_at?: string
+          credentials_encrypted?: Json | null
+          is_active?: boolean
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      org_payment_settings: {
+        Row: {
+          account_label: string | null
+          connected_at: string
+          created_at: string
+          environment: string
+          is_active: boolean
+          org_id: string
+          provider: string
+          store_id: string | null
+          updated_at: string
+          verified: boolean
+        }
+        Insert: {
+          account_label?: string | null
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          is_active?: boolean
+          org_id: string
+          provider?: string
+          store_id?: string | null
+          updated_at?: string
+          verified?: boolean
+        }
+        Update: {
+          account_label?: string | null
+          connected_at?: string
+          created_at?: string
+          environment?: string
+          is_active?: boolean
+          org_id?: string
+          provider?: string
+          store_id?: string | null
+          updated_at?: string
+          verified?: boolean
+        }
+        Relationships: []
+      }
       processed_actions: {
         Row: {
           created_at: string
@@ -1087,6 +1363,24 @@ export type Database = {
           id?: string
           result?: Json
           user_id?: string
+        }
+        Relationships: []
+      }
+      subscription_payment_notifications: {
+        Row: {
+          event_type: string
+          notified_at: string
+          subscription_id: string
+        }
+        Insert: {
+          event_type: string
+          notified_at?: string
+          subscription_id: string
+        }
+        Update: {
+          event_type?: string
+          notified_at?: string
+          subscription_id?: string
         }
         Relationships: []
       }
@@ -1280,6 +1574,7 @@ export type Database = {
           cancel_url: string | null
           created_at: string
           customer_id: string | null
+          environment: string
           id: string
           metadata: Json
           org_id: string
@@ -1296,6 +1591,7 @@ export type Database = {
           cancel_url?: string | null
           created_at?: string
           customer_id?: string | null
+          environment?: string
           id?: string
           metadata?: Json
           org_id: string
@@ -1312,6 +1608,7 @@ export type Database = {
           cancel_url?: string | null
           created_at?: string
           customer_id?: string | null
+          environment?: string
           id?: string
           metadata?: Json
           org_id?: string
@@ -1472,6 +1769,8 @@ export type Database = {
           customer_org_id: string | null
           customer_user_ref: string | null
           email: string | null
+          environment: string
+          external_id: string | null
           id: string
           metadata: Json
           org_id: string
@@ -1483,6 +1782,8 @@ export type Database = {
           customer_org_id?: string | null
           customer_user_ref?: string | null
           email?: string | null
+          environment?: string
+          external_id?: string | null
           id?: string
           metadata?: Json
           org_id: string
@@ -1494,6 +1795,8 @@ export type Database = {
           customer_org_id?: string | null
           customer_user_ref?: string | null
           email?: string | null
+          environment?: string
+          external_id?: string | null
           id?: string
           metadata?: Json
           org_id?: string
@@ -1867,6 +2170,7 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          environment: string
           id: string
           metadata: Json
           order_id: string | null
@@ -1881,6 +2185,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          environment?: string
           id?: string
           metadata?: Json
           order_id?: string | null
@@ -1895,6 +2200,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          environment?: string
           id?: string
           metadata?: Json
           order_id?: string | null
@@ -2149,6 +2455,7 @@ export type Database = {
           current_period_start: string | null
           customer_id: string
           default_payment_method_id: string | null
+          environment: string
           id: string
           metadata: Json
           org_id: string
@@ -2164,6 +2471,7 @@ export type Database = {
           current_period_start?: string | null
           customer_id: string
           default_payment_method_id?: string | null
+          environment?: string
           id?: string
           metadata?: Json
           org_id: string
@@ -2179,6 +2487,7 @@ export type Database = {
           current_period_start?: string | null
           customer_id?: string
           default_payment_method_id?: string | null
+          environment?: string
           id?: string
           metadata?: Json
           org_id?: string
@@ -2331,12 +2640,131 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_deliveries: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          delivered_at: string | null
+          endpoint_id: string
+          environment: string
+          event_id: string
+          event_type: string
+          id: string
+          last_error: string | null
+          last_response_snippet: string | null
+          last_status_code: number | null
+          next_attempt_at: string | null
+          org_id: string
+          payload: Json
+          status: string
+          subscription_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id: string
+          environment?: string
+          event_id: string
+          event_type: string
+          id?: string
+          last_error?: string | null
+          last_response_snippet?: string | null
+          last_status_code?: number | null
+          next_attempt_at?: string | null
+          org_id: string
+          payload: Json
+          status?: string
+          subscription_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id?: string
+          environment?: string
+          event_id?: string
+          event_type?: string
+          id?: string
+          last_error?: string | null
+          last_response_snippet?: string | null
+          last_status_code?: number | null
+          next_attempt_at?: string | null
+          org_id?: string
+          payload?: Json
+          status?: string
+          subscription_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_endpoint_id_fkey"
+            columns: ["endpoint_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_endpoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_endpoints: {
+        Row: {
+          consecutive_failure_count: number
+          created_at: string
+          description: string | null
+          disabled_at: string | null
+          enabled_events: string[] | null
+          environment: string
+          id: string
+          metadata: Json
+          org_id: string
+          secret_encrypted: Json
+          status: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          consecutive_failure_count?: number
+          created_at?: string
+          description?: string | null
+          disabled_at?: string | null
+          enabled_events?: string[] | null
+          environment?: string
+          id?: string
+          metadata?: Json
+          org_id: string
+          secret_encrypted: Json
+          status?: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          consecutive_failure_count?: number
+          created_at?: string
+          description?: string | null
+          disabled_at?: string | null
+          enabled_events?: string[] | null
+          environment?: string
+          id?: string
+          metadata?: Json
+          org_id?: string
+          secret_encrypted?: Json
+          status?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      set_default_payment_method: {
+        Args: { p_customer_id: string; p_payment_method_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       environment: "test" | "live"
@@ -2761,6 +3189,7 @@ export type Database = {
       catalogs: {
         Row: {
           created_at: string
+          creation_method: string
           current_source_hash: string | null
           description: string | null
           id: string
@@ -2768,6 +3197,8 @@ export type Database = {
           name: string
           org_id: string
           pricing_config: Json | null
+          published_at: string | null
+          published_url: string | null
           settings_behavior: Json
           settings_branding: Json
           settings_currency: Json
@@ -2777,11 +3208,14 @@ export type Database = {
           settings_qr_style: Json
           slug: string
           status: Database["public"]["Enums"]["catalog_status"]
+          studio_publishable_key: string | null
           tags: string[] | null
+          vercel_deployment_url: string | null
           vertical: Database["public"]["Enums"]["shop_vertical"] | null
         }
         Insert: {
           created_at?: string
+          creation_method?: string
           current_source_hash?: string | null
           description?: string | null
           id?: string
@@ -2789,6 +3223,8 @@ export type Database = {
           name: string
           org_id: string
           pricing_config?: Json | null
+          published_at?: string | null
+          published_url?: string | null
           settings_behavior?: Json
           settings_branding?: Json
           settings_currency?: Json
@@ -2798,11 +3234,14 @@ export type Database = {
           settings_qr_style?: Json
           slug: string
           status?: Database["public"]["Enums"]["catalog_status"]
+          studio_publishable_key?: string | null
           tags?: string[] | null
+          vercel_deployment_url?: string | null
           vertical?: Database["public"]["Enums"]["shop_vertical"] | null
         }
         Update: {
           created_at?: string
+          creation_method?: string
           current_source_hash?: string | null
           description?: string | null
           id?: string
@@ -2810,6 +3249,8 @@ export type Database = {
           name?: string
           org_id?: string
           pricing_config?: Json | null
+          published_at?: string | null
+          published_url?: string | null
           settings_behavior?: Json
           settings_branding?: Json
           settings_currency?: Json
@@ -2819,7 +3260,9 @@ export type Database = {
           settings_qr_style?: Json
           slug?: string
           status?: Database["public"]["Enums"]["catalog_status"]
+          studio_publishable_key?: string | null
           tags?: string[] | null
+          vercel_deployment_url?: string | null
           vertical?: Database["public"]["Enums"]["shop_vertical"] | null
         }
         Relationships: [
@@ -4214,15 +4657,23 @@ export type Database = {
       catalog_search_auto: {
         Args: {
           p_catalog_id?: string
+          p_exact_boost?: number
+          p_fts_weight?: number
           p_limit?: number
           p_org_id?: string
+          p_prefix_boost?: number
           p_query: string
           p_query_embedding?: unknown
+          p_rrf_k?: number
+          p_trgm_threshold?: number
+          p_vec_weight?: number
+          p_word_boost?: number
         }
         Returns: {
           catalog_id: string
           description: string
           distance: number
+          entity_id: string
           id: string
           locale: string
           mode: string
@@ -4231,6 +4682,7 @@ export type Database = {
           score: number
           sim_desc: number
           sim_title: number
+          source_table: string
           subtitle: string
           tags: string[]
           title: string
@@ -4279,6 +4731,14 @@ export type Database = {
           p_vertical: Database["public"]["Enums"]["shop_vertical"]
         }
         Returns: undefined
+      }
+      create_coded_shop: {
+        Args: { p_name?: string; p_org_id: string; p_slug: string }
+        Returns: {
+          catalog_id: string
+          org_id: string
+          slug: string
+        }[]
       }
       create_draft_shop: {
         Args: {
@@ -4333,6 +4793,14 @@ export type Database = {
           venue_slug: string
         }[]
       }
+      record_studio_publish: {
+        Args: {
+          p_catalog_id: string
+          p_deployment_url?: string
+          p_published_url: string
+        }
+        Returns: undefined
+      }
       reorder_categories: {
         Args: { p_catalog_id: string; p_changes: Json }
         Returns: undefined
@@ -4381,6 +4849,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      uz_cyrl_to_latn: { Args: { q: string }; Returns: string }
     }
     Enums: {
       catalog_item_product_type:

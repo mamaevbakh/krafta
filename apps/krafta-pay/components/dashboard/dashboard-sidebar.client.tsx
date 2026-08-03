@@ -14,6 +14,7 @@ import {
   Receipt,
   Repeat,
   ScrollText,
+  Webhook,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -51,6 +52,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Developers",
     items: [
       { href: "/dashboard/api-keys", title: "API keys", Icon: KeyRound, orgScoped: true },
+      { href: "/dashboard/webhooks", title: "Webhooks", Icon: Webhook, orgScoped: true },
       { href: "/dashboard/logs", title: "Logs", Icon: ScrollText, orgScoped: true },
       { href: "/dashboard/docs", title: "Docs", Icon: BookText, orgScoped: false },
     ],

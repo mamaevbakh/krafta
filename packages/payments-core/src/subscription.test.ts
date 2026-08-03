@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  RETRYABLE_INVOICE_STATUSES,
   chargeRenewal,
   finalizeInitialPayment,
   persistBindingPaymentMethodForCustomer,
+  pickRetryTargetInvoice,
   runRenewalCycle,
 } from "./subscription";
 
@@ -421,6 +423,38 @@ describe("chargeRenewal dunning + terminal-invoice guards", () => {
   });
 });
 
+describe("chargeRenewal single-flight lock (no double charge on a race)", () => {
+  it("bails without charging when the intent CAS matches no row (another execution already claimed it)", async () => {
+    const mutations: string[] = [];
+    // Invoice is open + due, so the dunning guard passes and we reach the lock.
+    // A concurrent execution already flipped the intent to 'processing', so the
+    // requires_payment_method/failed -> processing CAS returns no row (fake:
+    // payment_intents single = null).
+    const supa = fakeRenewalSupabase({
+      singles: {
+        subscriptions: ACTIVE_SUB,
+        plans: PLAN,
+        invoices: { id: "inv1", payment_intent_id: "pi1", status: "open", due_at: PAST },
+        payment_methods: {
+          id: "pm1",
+          provider_id: "atmos",
+          org_provider_account_id: "opa1",
+          provider_token: "tok",
+        },
+        payment_intents: null, // CAS claims nothing -> charge already in flight
+      },
+      mutations,
+    });
+
+    const result = await chargeRenewal(supa, { subscriptionId: "sub1" });
+
+    expect(result).toEqual({ skipped: true, reason: "charge_in_progress" });
+    // The single-flight lock must stop the charge dead: no attempt insert, so no
+    // second createAtmosRecurringCharge and no duplicate bill for the period.
+    expect(mutations).not.toContain("insert:payment_attempts");
+  });
+});
+
 describe("runRenewalCycle per-subscription error isolation", () => {
   it("does not let one throwing subscription abort the whole batch", async () => {
     const mutations: string[] = [];
@@ -443,5 +477,67 @@ describe("runRenewalCycle per-subscription error isolation", () => {
 
     expect(result.erroredSubscriptions).toBe(2);
     expect(result.chargedSubscriptions).toBe(0);
+  });
+
+  it("retry loop skips a subscription the primary loop already handled (one chargeRenewal per sub per run)", async () => {
+    const mutations: string[] = [];
+    // sub1 is due (primary loop) AND has an open due invoice (retry snapshot).
+    // chargeRenewal throws plan_not_found (plans single = null), so each call
+    // counts as one error. Without the dedup, both loops would charge sub1 and
+    // errored would be 2; with it, the retry loop skips sub1 and errored is 1 —
+    // proving chargeRenewal ran only once for the subscription this cycle.
+    const supa = fakeRenewalSupabase({
+      singles: {
+        subscriptions: ACTIVE_SUB,
+        plans: null,
+        invoices: { id: "inv1", payment_intent_id: "pi1", status: "open", due_at: PAST },
+      },
+      lists: {
+        subscriptions: [{ id: "sub1" }],
+        invoices: [{ id: "inv1", subscription_id: "sub1" }],
+      },
+      mutations,
+    });
+
+    const result = await runRenewalCycle(supa, new Date());
+
+    expect(result.erroredSubscriptions).toBe(1);
+    expect(result.retriedInvoices).toBe(0);
+    expect(result.chargedSubscriptions).toBe(0);
+  });
+});
+
+describe("pickRetryTargetInvoice (past_due self-serve recovery)", () => {
+  // The P1: at dunning exhaustion markPaymentFailed sets the invoice to
+  // `uncollectible` and the subscription to `past_due` in one write. The manual
+  // retry/resume paths used to filter to status `open` only, so they returned
+  // nothing for the exact past_due state they claim to recover — leaving the
+  // merchant stranded on Free with no working button.
+  it("recovers a past_due subscription's uncollectible invoice", () => {
+    const invoice = { id: "inv1", payment_intent_id: "pi1", status: "uncollectible" };
+    expect(pickRetryTargetInvoice([invoice])).toBe(invoice);
+  });
+
+  it("recovers an incomplete subscription's open invoice", () => {
+    const invoice = { id: "inv1", payment_intent_id: "pi1", status: "open" };
+    expect(pickRetryTargetInvoice([invoice])).toBe(invoice);
+  });
+
+  it("returns null when nothing is recoverable (paid / voided / no intent)", () => {
+    expect(pickRetryTargetInvoice([{ id: "inv1", payment_intent_id: "pi1", status: "paid" }])).toBeNull();
+    expect(pickRetryTargetInvoice([{ id: "inv1", payment_intent_id: "pi1", status: "void" }])).toBeNull();
+    // An uncollectible invoice with no intent can't be charged — skip it.
+    expect(pickRetryTargetInvoice([{ id: "inv1", payment_intent_id: null, status: "uncollectible" }])).toBeNull();
+    expect(pickRetryTargetInvoice([])).toBeNull();
+  });
+
+  it("picks the newest recoverable invoice (callers pass newest-first)", () => {
+    const newest = { id: "inv2", payment_intent_id: "pi2", status: "uncollectible" };
+    const older = { id: "inv1", payment_intent_id: "pi1", status: "open" };
+    expect(pickRetryTargetInvoice([newest, older])).toBe(newest);
+  });
+
+  it("treats both open and uncollectible as recoverable", () => {
+    expect([...RETRYABLE_INVOICE_STATUSES].sort()).toEqual(["open", "uncollectible"]);
   });
 });

@@ -38,9 +38,15 @@ function isTerminalIntentStatus(status?: string | null) {
 export function CheckoutStatusWatcher({
   publicToken,
   initial,
+  /**
+   * The session is still open, so a failed intent is retryable here rather than
+   * final. True on recovery links sent out with `subscription.payment_failed`.
+   */
+  isRecoverable = false,
 }: {
   publicToken: string;
   initial: StatusResponse | null;
+  isRecoverable?: boolean;
 }) {
   const [data, setData] = useState<StatusResponse | null>(initial);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +136,18 @@ export function CheckoutStatusWatcher({
       ) : intentStatus === "succeeded" ? (
         <p className="font-medium">Payment confirmed — taking you back…</p>
       ) : intentStatus === "failed" || intentStatus === "canceled" || intentStatus === "cancelled" ? (
-        <p className="font-medium text-destructive">Payment {statusLabel.toLowerCase()}.</p>
+        // A recovery link (see createRecoveryCheckoutSession) puts a customer on
+        // this page precisely BECAUSE the last charge failed, with a live card
+        // form above. A bare "Payment failed." there reads as a dead end next to
+        // the form we want them to use, so say what to do instead.
+        isRecoverable ? (
+          <p className="text-muted-foreground">
+            Your last payment didn&apos;t go through. Enter a card above to try again — you can use
+            a different one.
+          </p>
+        ) : (
+          <p className="font-medium text-destructive">Payment {statusLabel.toLowerCase()}.</p>
+        )
       ) : (
         <div className="flex items-center gap-2 text-muted-foreground">
           <Spinner className="size-4" />
