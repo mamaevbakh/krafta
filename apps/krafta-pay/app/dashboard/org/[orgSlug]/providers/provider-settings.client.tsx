@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MembershipOption } from "@/lib/org-memberships";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,20 +89,12 @@ async function fetchAccount(
   }
 }
 
-export function ProviderSettingsClient({
-  memberships,
-  initialOrgId,
-}: {
-  memberships: MembershipOption[];
-  initialOrgId?: string;
-}) {
-  const [orgId, setOrgId] = useState(initialOrgId || memberships[0]?.orgId || "");
+export function ProviderSettingsClient({ orgId }: { orgId: string }) {
   const [provider, setProvider] = useState<ProviderId>("atmos");
   const [environment, setEnvironment] = useState<Environment>("live");
   const [refreshKey, setRefreshKey] = useState(0);
   const formRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedMembership = memberships.find((m) => m.orgId === orgId) ?? null;
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   const startEdit = useCallback((p: ProviderId, env: Environment) => {
@@ -116,30 +107,6 @@ export function ProviderSettingsClient({
 
   return (
     <div className="space-y-8">
-      <div className="space-y-2">
-        <Label htmlFor="provider-org">Organization</Label>
-        <Select value={orgId} onValueChange={(v) => setOrgId(v ?? "")}>
-          <SelectTrigger id="provider-org" className="w-full sm:max-w-md">
-            <SelectValue placeholder="Select an organization">
-              {(value) => {
-                const m = memberships.find((x) => x.orgId === value);
-                return m ? `${m.orgName} (${m.role})` : "Select an organization";
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {memberships.map((m) => (
-              <SelectItem key={m.orgId} value={m.orgId}>
-                {m.orgName} ({m.role})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {selectedMembership ? (
-          <p className="font-mono text-xs text-muted-foreground">{selectedMembership.orgSlug}</p>
-        ) : null}
-      </div>
-
       {orgId ? (
         <>
           <ConnectedAccounts

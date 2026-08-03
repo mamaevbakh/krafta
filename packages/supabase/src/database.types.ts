@@ -1922,6 +1922,48 @@ export type Database = {
         }
         Relationships: []
       }
+      org_profiles: {
+        Row: {
+          billing_model: string
+          business_type: string
+          contact_phone: string | null
+          created_at: string
+          legal_form: string
+          metadata: Json
+          onboarding_completed_at: string | null
+          org_id: string
+          provider_status: string
+          telegram: string | null
+          updated_at: string
+        }
+        Insert: {
+          billing_model?: string
+          business_type: string
+          contact_phone?: string | null
+          created_at?: string
+          legal_form: string
+          metadata?: Json
+          onboarding_completed_at?: string | null
+          org_id: string
+          provider_status?: string
+          telegram?: string | null
+          updated_at?: string
+        }
+        Update: {
+          billing_model?: string
+          business_type?: string
+          contact_phone?: string | null
+          created_at?: string
+          legal_form?: string
+          metadata?: Json
+          onboarding_completed_at?: string | null
+          org_id?: string
+          provider_status?: string
+          telegram?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       org_provider_account_secrets: {
         Row: {
           created_at: string

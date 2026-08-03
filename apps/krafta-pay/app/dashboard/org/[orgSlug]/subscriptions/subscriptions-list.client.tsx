@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MembershipOption } from "@/lib/org-memberships";
 import { formatMinorAmount } from "@/lib/format";
 
 type SubscriptionRow = {
@@ -53,21 +52,9 @@ function fmtDateTime(value?: string | null) {
   return d.toLocaleString();
 }
 
-export function SubscriptionsListClient({
-  memberships,
-  initialOrgId,
-}: {
-  memberships: MembershipOption[];
-  initialOrgId?: string;
-}) {
-  const [orgId, setOrgId] = useState(initialOrgId || memberships[0]?.orgId || "");
+export function SubscriptionsListClient({ orgId }: { orgId: string }) {
   const [rows, setRows] = useState<SubscriptionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedMembership = useMemo(
-    () => memberships.find((membership) => membership.orgId === orgId) ?? null,
-    [memberships, orgId],
-  );
 
   useEffect(() => {
     if (!orgId) return;
@@ -102,32 +89,6 @@ export function SubscriptionsListClient({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border bg-background p-4">
-        <label className="text-sm font-medium" htmlFor="subscriptions-org">
-          Organization
-        </label>
-        <select
-          id="subscriptions-org"
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-          value={orgId}
-          onChange={(e) => {
-            setOrgId(e.target.value);
-            setRows(null);
-            setError(null);
-          }}
-        >
-          {memberships.map((membership) => (
-            <option key={membership.orgId} value={membership.orgId}>
-              {membership.orgName} ({membership.role})
-            </option>
-          ))}
-        </select>
-        {selectedMembership ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Org slug: {selectedMembership.orgSlug}
-          </p>
-        ) : null}
-      </div>
 
       <div className="rounded-md border bg-background p-4">
         <h2 className="text-sm font-medium">Subscriptions</h2>

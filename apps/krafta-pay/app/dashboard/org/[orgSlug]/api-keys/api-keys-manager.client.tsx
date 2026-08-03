@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MembershipOption } from "@/lib/org-memberships";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -15,14 +14,7 @@ type ApiKeyRow = {
   revoked_at: string | null;
 };
 
-export function ApiKeysManagerClient({
-  memberships,
-  initialOrgId,
-}: {
-  memberships: MembershipOption[];
-  initialOrgId?: string;
-}) {
-  const [orgId, setOrgId] = useState(initialOrgId || memberships[0]?.orgId || "");
+export function ApiKeysManagerClient({ orgId }: { orgId: string }) {
   const [keys, setKeys] = useState<ApiKeyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +23,6 @@ export function ApiKeysManagerClient({
 
   const [name, setName] = useState("");
   const [environment, setEnvironment] = useState<"test" | "live">("test");
-
-  const selectedMembership = useMemo(
-    () => memberships.find((membership) => membership.orgId === orgId) ?? null,
-    [memberships, orgId],
-  );
 
   async function loadKeys(targetOrgId: string) {
     if (!targetOrgId) return;
@@ -113,28 +100,6 @@ export function ApiKeysManagerClient({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border bg-background p-4">
-        <label className="text-sm font-medium" htmlFor="keys-org">
-          Organization
-        </label>
-        <select
-          id="keys-org"
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-          value={orgId}
-          onChange={(e) => setOrgId(e.target.value)}
-        >
-          {memberships.map((membership) => (
-            <option key={membership.orgId} value={membership.orgId}>
-              {membership.orgName} ({membership.role})
-            </option>
-          ))}
-        </select>
-        {selectedMembership ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Org slug: {selectedMembership.orgSlug}
-          </p>
-        ) : null}
-      </div>
 
       <form onSubmit={createKey} className="grid gap-3 rounded-md border bg-background p-4 md:grid-cols-3">
         <div className="grid gap-1 md:col-span-2">

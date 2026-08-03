@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCurrentUserMemberships } from "@/lib/org-memberships";
+import { requireOrgAccess } from "@/lib/org-access";
 import { getOrgProviderStatus } from "@/lib/provider-status";
 import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-first";
 import { createAdminSupabase } from "@/lib/supabase-admin";
@@ -26,21 +26,20 @@ type PlanRow = {
 };
 
 export default async function DashboardSubscriptionsPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ orgSlug: string }>;
   searchParams: Promise<{
-    orgId?: string;
     subPayUrl?: string;
     subToken?: string;
     subError?: string;
   }>;
 }) {
+  const { orgSlug } = await params;
+  const org = await requireOrgAccess(orgSlug);
+  const orgId = org.orgId;
   const sp = await searchParams;
-  const memberships = await getCurrentUserMemberships();
-  const orgId =
-    sp.orgId && memberships.some((m) => m.orgId === sp.orgId)
-      ? sp.orgId
-      : memberships[0]?.orgId ?? "";
 
   const admin = createAdminSupabase();
   const environment = process.env.PAY_ENV ?? "live";
@@ -76,11 +75,7 @@ export default async function DashboardSubscriptionsPage({
           Bill a customer on a recurring plan — they pay the first invoice on Krafta Pay.
         </p>
 
-        {memberships.length === 0 ? (
-          <div className="mt-4 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No organization memberships found for this user.
-          </div>
-        ) : !providerStatus.hasActive ? (
+        {!providerStatus.hasActive ? (
           <ConnectProviderFirst orgId={orgId} environment={environment} />
         ) : plans.length === 0 ? (
           <Card size="sm" className="mt-4 max-w-md">
@@ -173,12 +168,10 @@ export default async function DashboardSubscriptionsPage({
       </section>
 
       {/* Existing subscriptions */}
-      {memberships.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium">All subscriptions</h2>
-          <SubscriptionsListClient memberships={memberships} initialOrgId={orgId} />
-        </section>
-      ) : null}
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">All subscriptions</h2>
+        <SubscriptionsListClient orgId={orgId} />
+      </section>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MembershipOption } from "@/lib/org-memberships";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatMinorAmount } from "@/lib/format";
@@ -31,14 +30,7 @@ type EditDraft = {
   packageCode: string;
 };
 
-export function PlansManagerClient({
-  memberships,
-  initialOrgId,
-}: {
-  memberships: MembershipOption[];
-  initialOrgId?: string;
-}) {
-  const [orgId, setOrgId] = useState(initialOrgId || memberships[0]?.orgId || "");
+export function PlansManagerClient({ orgId }: { orgId: string }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,11 +48,6 @@ export function PlansManagerClient({
 
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
-
-  const selectedMembership = useMemo(
-    () => memberships.find((membership) => membership.orgId === orgId) ?? null,
-    [memberships, orgId],
-  );
 
   async function loadPlans(targetOrgId: string) {
     if (!targetOrgId) return;
@@ -230,28 +217,6 @@ export function PlansManagerClient({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border bg-background p-4">
-        <label className="text-sm font-medium" htmlFor="plans-org">
-          Organization
-        </label>
-        <select
-          id="plans-org"
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-          value={orgId}
-          onChange={(e) => setOrgId(e.target.value)}
-        >
-          {memberships.map((membership) => (
-            <option key={membership.orgId} value={membership.orgId}>
-              {membership.orgName} ({membership.role})
-            </option>
-          ))}
-        </select>
-        {selectedMembership ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Org slug: {selectedMembership.orgSlug}
-          </p>
-        ) : null}
-      </div>
 
       <form onSubmit={createPlan} className="grid gap-3 rounded-md border bg-background p-4 md:grid-cols-2">
         <div className="grid gap-1">

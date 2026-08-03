@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MembershipOption } from "@/lib/org-memberships";
 
 type RecentCheckout = {
   id: string;
@@ -50,28 +49,20 @@ function prettyJson(value: unknown) {
 const LOG_TYPE_OPTIONS = ["", "checkout_api", "uzum", "webhook", "callback_page", "cron"] as const;
 
 export function LogsViewerClient({
-  memberships,
-  initialOrgId,
+  orgId,
   initialPublicToken,
   initialType,
 }: {
-  memberships: MembershipOption[];
-  initialOrgId?: string;
+  orgId: string;
   initialPublicToken?: string;
   initialType?: string;
 }) {
-  const [orgId, setOrgId] = useState(initialOrgId || memberships[0]?.orgId || "");
   const [publicToken, setPublicToken] = useState(initialPublicToken ?? "");
   const [type, setType] = useState(initialType ?? "");
   const [providerId, setProviderId] = useState("");
   const [rows, setRows] = useState<LogRow[] | null>(null);
   const [recentCheckouts, setRecentCheckouts] = useState<RecentCheckout[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedMembership = useMemo(
-    () => memberships.find((membership) => membership.orgId === orgId) ?? null,
-    [memberships, orgId],
-  );
 
   useEffect(() => {
     if (!orgId) return;
@@ -121,33 +112,6 @@ export function LogsViewerClient({
     <div className="space-y-6">
       <div className="rounded-md border bg-background p-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="text-sm font-medium" htmlFor="logs-org">
-              Organization
-            </label>
-            <select
-              id="logs-org"
-              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-              value={orgId}
-              onChange={(e) => {
-                setOrgId(e.target.value);
-                setRows(null);
-                setError(null);
-              }}
-            >
-              {memberships.map((membership) => (
-                <option key={membership.orgId} value={membership.orgId}>
-                  {membership.orgName} ({membership.role})
-                </option>
-              ))}
-            </select>
-            {selectedMembership ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Org slug: {selectedMembership.orgSlug}
-              </p>
-            ) : null}
-          </div>
-
           <div>
             <label className="text-sm font-medium" htmlFor="logs-type">
               Log type

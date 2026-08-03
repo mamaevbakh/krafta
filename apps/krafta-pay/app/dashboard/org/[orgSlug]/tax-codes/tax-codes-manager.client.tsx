@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MembershipOption } from "@/lib/org-memberships";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -37,14 +36,7 @@ function parseLines(input: string) {
   });
 }
 
-export function TaxCodesManagerClient({
-  memberships,
-  initialOrgId,
-}: {
-  memberships: MembershipOption[];
-  initialOrgId?: string;
-}) {
-  const [orgId, setOrgId] = useState(initialOrgId || memberships[0]?.orgId || "");
+export function TaxCodesManagerClient({ orgId }: { orgId: string }) {
   const [registryName, setRegistryName] = useState("Default UZ Registry");
   const [source, setSource] = useState("tasnif_manual_upload");
   const [replace, setReplace] = useState(false);
@@ -54,11 +46,6 @@ export function TaxCodesManagerClient({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-
-  const selectedMembership = useMemo(
-    () => memberships.find((membership) => membership.orgId === orgId) ?? null,
-    [memberships, orgId],
-  );
 
   async function loadRegistries(targetOrgId: string) {
     if (!targetOrgId) return;
@@ -126,28 +113,6 @@ export function TaxCodesManagerClient({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border bg-background p-4">
-        <label className="text-sm font-medium" htmlFor="tax-registry-org">
-          Organization
-        </label>
-        <select
-          id="tax-registry-org"
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-base md:text-sm"
-          value={orgId}
-          onChange={(e) => setOrgId(e.target.value)}
-        >
-          {memberships.map((membership) => (
-            <option key={membership.orgId} value={membership.orgId}>
-              {membership.orgName} ({membership.role})
-            </option>
-          ))}
-        </select>
-        {selectedMembership ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Org slug: {selectedMembership.orgSlug}
-          </p>
-        ) : null}
-      </div>
 
       <form onSubmit={uploadRegistry} className="space-y-4 rounded-md border bg-background p-4">
         <div className="grid gap-3 md:grid-cols-2">

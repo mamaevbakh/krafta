@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BookText,
   ChevronsUpDown,
@@ -37,31 +37,50 @@ type NavGroup = { label: string | null; items: NavItem[] };
 const NAV_GROUPS: NavGroup[] = [
   {
     label: null,
-    items: [{ href: "/dashboard", title: "Overview", Icon: Home, orgScoped: false, exact: true }],
+    items: [{ href: "", title: "Overview", Icon: Home, orgScoped: true, exact: true }],
   },
   {
     label: "Payments",
     items: [
-      { href: "/dashboard/providers", title: "Providers", Icon: CreditCard, orgScoped: true },
-      { href: "/dashboard/plans", title: "Plans", Icon: Layers, orgScoped: true },
-      { href: "/dashboard/subscriptions", title: "Subscriptions", Icon: Repeat, orgScoped: true },
-      { href: "/dashboard/tax-codes", title: "Tax codes", Icon: Receipt, orgScoped: true },
+      { href: "/providers", title: "Providers", Icon: CreditCard, orgScoped: true },
+      { href: "/plans", title: "Plans", Icon: Layers, orgScoped: true },
+      { href: "/subscriptions", title: "Subscriptions", Icon: Repeat, orgScoped: true },
+      { href: "/tax-codes", title: "Tax codes", Icon: Receipt, orgScoped: true },
     ],
   },
   {
     label: "Developers",
     items: [
-      { href: "/dashboard/api-keys", title: "API keys", Icon: KeyRound, orgScoped: true },
-      { href: "/dashboard/webhooks", title: "Webhooks", Icon: Webhook, orgScoped: true },
-      { href: "/dashboard/logs", title: "Logs", Icon: ScrollText, orgScoped: true },
+      { href: "/api-keys", title: "API keys", Icon: KeyRound, orgScoped: true },
+      { href: "/webhooks", title: "Webhooks", Icon: Webhook, orgScoped: true },
+      { href: "/logs", title: "Logs", Icon: ScrollText, orgScoped: true },
       { href: "/dashboard/docs", title: "Docs", Icon: BookText, orgScoped: false },
     ],
   },
 ];
 
-function isActivePath(pathname: string, item: NavItem) {
-  if (item.exact) return pathname === item.href;
-  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+/**
+ * The org now lives in the path (`/dashboard/org/[slug]/plans`), so a nav item
+ * stores only its suffix and the slug is spliced in at render. That is what
+ * removed the organization dropdown from six separate pages: there is nothing
+ * left to pick, because the URL already says which org you are looking at.
+ */
+function hrefForItem(item: NavItem, orgSlug: string | null) {
+  if (!item.orgScoped) return item.href;
+  if (!orgSlug) return "/dashboard";
+  return `/dashboard/org/${orgSlug}${item.href}`;
+}
+
+function isActivePath(pathname: string, item: NavItem, orgSlug: string | null) {
+  const href = hrefForItem(item, orgSlug);
+  if (item.exact) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** Read the org slug straight out of /dashboard/org/[slug]/… */
+function orgSlugFromPath(pathname: string): string | null {
+  const match = pathname.match(/^\/dashboard\/org\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 export function DashboardSidebar({
@@ -74,12 +93,15 @@ export function DashboardSidebar({
   environment: string;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const orgId = searchParams.get("orgId") || memberships[0]?.orgId || "";
-  const activeOrg = memberships.find((m) => m.orgId === orgId) ?? memberships[0] ?? null;
+  const orgSlug = orgSlugFromPath(pathname) ?? memberships[0]?.orgSlug ?? null;
+  const activeOrg = memberships.find((m) => m.orgSlug === orgSlug) ?? memberships[0] ?? null;
+  // A merchant with one organization has nothing to switch between, so the
+  // picker is not rendered at all. This is the common case by design: account
+  // creation makes exactly one org.
+  const showOrgSwitcher = memberships.length > 1;
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -87,13 +109,25 @@ export function DashboardSidebar({
   }, [pathname]);
 
   function hrefFor(item: NavItem) {
-    return item.orgScoped && orgId ? `${item.href}?orgId=${orgId}` : item.href;
+    return hrefForItem(item, orgSlug);
   }
 
-  function switchOrg(nextOrgId: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("orgId", nextOrgId);
-    router.push(`${pathname}?${params.toString()}`);
+  /**
+   * Switching orgs keeps you on the same screen, just under the other org's
+   * slug — swapping the segment rather than bouncing to the overview, so
+   * "compare plans across my two businesses" is one click, not three.
+   */
+  function switchOrg(nextOrgSlug: string) {
+    if (!orgSlug) {
+      router.push(`/dashboard/org/${nextOrgSlug}`);
+      return;
+    }
+    router.push(
+      pathname.replace(
+        `/dashboard/org/${encodeURIComponent(orgSlug)}`,
+        `/dashboard/org/${encodeURIComponent(nextOrgSlug)}`,
+      ),
+    );
   }
 
   const isTest = environment.toLowerCase() === "test";
@@ -131,7 +165,7 @@ export function DashboardSidebar({
 
       {/* Org switcher — a styled box with a real <select> overlaid on top, so it
           stays reliable + keyboard/mobile-native while keeping the two-line look. */}
-      {activeOrg ? (
+      {activeOrg && showOrgSwitcher ? (
         <div className="px-3 pb-2">
           <div className="relative">
             <div className="pointer-events-none flex items-center justify-between gap-2 rounded-md border border-sidebar-border bg-sidebar px-2.5 py-2">
@@ -143,18 +177,26 @@ export function DashboardSidebar({
             </div>
             <select
               aria-label="Switch organization"
-              value={orgId}
+              value={orgSlug ?? ""}
               onChange={(e) => switchOrg(e.target.value)}
               // Invisible, full-size, captures the click; text-base avoids iOS zoom.
               className="absolute inset-0 size-full cursor-pointer text-base opacity-0"
             >
               {memberships.map((m) => (
-                <option key={m.orgId} value={m.orgId}>
+                <option key={m.orgId} value={m.orgSlug}>
                   {m.orgName} ({m.role})
                 </option>
               ))}
             </select>
           </div>
+        </div>
+      ) : null}
+
+      {activeOrg && !showOrgSwitcher ? (
+        <div className="px-4 pb-3">
+          <p className="truncate text-sm font-medium" title={activeOrg.orgName}>
+            {activeOrg.orgName}
+          </p>
         </div>
       ) : null}
 
@@ -168,7 +210,7 @@ export function DashboardSidebar({
               </p>
             ) : null}
             {group.items.map((item) => {
-              const active = isActivePath(pathname, item);
+              const active = isActivePath(pathname, item, orgSlug);
               const Icon = item.Icon;
               return (
                 <Link

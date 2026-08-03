@@ -16,6 +16,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     redirect(buildKraftaLoginUrl(`${origin}/dashboard`));
   }
 
+  // Still loaded, but only so a merchant who genuinely belongs to several orgs
+  // can switch between them. With the org in the path, a single-org merchant
+  // never sees a picker at all — the sidebar hides it.
   const memberships = await getCurrentUserMemberships();
   const environment = process.env.PAY_ENV ?? "live";
 
