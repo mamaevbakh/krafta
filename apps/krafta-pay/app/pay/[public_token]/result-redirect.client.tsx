@@ -292,14 +292,14 @@ export function PayResultRedirect({
             className="h-10"
             onClick={() => topNavigate(statusTarget)}
           >
-            Continue now
+            {t("checkout.result.continue")}
           </Button>
 
           <a
             href={`/pay/${encodeURIComponent(publicToken)}`}
             className="inline-flex h-10 items-center px-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            Back to checkout
+            {t("checkout.result.back")}
           </a>
         </div>
       </main>

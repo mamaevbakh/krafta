@@ -3,6 +3,7 @@ import { createAdminSupabase } from "@/lib/supabase-admin";
 import { writePaymentDebugLog } from "@krafta/payments-core";
 import { PayResultRedirect } from "../result-redirect.client";
 import { resolveCheckoutLocaleByToken } from "@/lib/locales/checkout";
+import { TestModeBanner } from "../test-mode-banner";
 import { PayLocaleProvider } from "@/lib/locales/context";
 
 export default async function PaySuccessPage({
@@ -19,7 +20,7 @@ export default async function PaySuccessPage({
   const { data: session, error } = await supabase
     .schema("payments")
     .from("checkout_sessions")
-    .select("public_token, success_url, cancel_url, return_url, metadata")
+    .select("public_token, success_url, cancel_url, return_url, metadata, environment")
     .eq("public_token", public_token)
     .maybeSingle();
 
@@ -41,10 +42,16 @@ export default async function PaySuccessPage({
   // Same locale the customer just paid in — read back off the session rather
   // than re-deriving from Accept-Language, which would contradict an explicit
   // ?lang= or a merchant-set session locale on the page right before this one.
-  const { locale } = await resolveCheckoutLocaleByToken(supabase, public_token, sp.lang);
+  const { locale, t } = await resolveCheckoutLocaleByToken(supabase, public_token, sp.lang);
+  const isTest = (session as { environment?: string }).environment === "test";
 
   return (
     <PayLocaleProvider locale={locale}>
+    {isTest ? (
+      <div className="mx-auto w-full max-w-md px-6 pt-10 [&>*]:mb-0">
+        <TestModeBanner t={t} />
+      </div>
+    ) : null}
     <PayResultRedirect
       publicToken={public_token}
       mode="success"

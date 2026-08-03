@@ -20,6 +20,8 @@ import type { PayLocale } from "./locale";
 
 const EN = {
   // ── hosted checkout (customer-facing) ───────────────────────────────────
+  "checkout.testBadge": "Test mode",
+  "checkout.testHint": "No real money will be charged. Use a test card from your provider cabinet.",
   "checkout.amountDue": "Amount due",
   "checkout.paymentDetails": "Payment details",
   "checkout.closed": "This checkout is no longer accepting payments.",
@@ -63,6 +65,7 @@ const EN = {
   "checkout.result.retrySucceeded": "Charge retry succeeded. Redirecting shortly…",
   "checkout.result.retryStarted": "Charge retry started. We’re checking the result now.",
   "checkout.result.retryFailed": "Charge retry failed. You can try again in a moment.",
+  "checkout.result.continue": "Continue now",
   "checkout.result.back": "Back to checkout",
 
   // ── chrome ──────────────────────────────────────────────────────────────
@@ -282,6 +285,8 @@ export type PayMessageKey = keyof typeof EN;
 type Catalog = Record<PayMessageKey, string>;
 
 const RU: Catalog = {
+  "checkout.testBadge": "Тестовый режим",
+  "checkout.testHint": "Реальные деньги не спишутся. Используйте тестовую карту из кабинета провайдера.",
   "checkout.amountDue": "К оплате",
   "checkout.paymentDetails": "Данные карты",
   "checkout.closed": "Эта оплата больше не принимается.",
@@ -325,6 +330,7 @@ const RU: Catalog = {
   "checkout.result.retrySucceeded": "Списание прошло. Сейчас перенаправим…",
   "checkout.result.retryStarted": "Списание запущено. Проверяем результат.",
   "checkout.result.retryFailed": "Списание не прошло. Попробуйте ещё раз через минуту.",
+  "checkout.result.continue": "Продолжить",
   "checkout.result.back": "Вернуться к оплате",
 
   "nav.overview": "Обзор",
@@ -529,6 +535,8 @@ const RU: Catalog = {
 };
 
 const UZ: Catalog = {
+  "checkout.testBadge": "Sinov rejimi",
+  "checkout.testHint": "Haqiqiy pul yechilmaydi. Provayder kabinetidagi sinov kartasidan foydalaning.",
   "checkout.amountDue": "To‘lov summasi",
   "checkout.paymentDetails": "Karta ma’lumotlari",
   "checkout.closed": "Bu to‘lov endi qabul qilinmaydi.",
@@ -572,6 +580,7 @@ const UZ: Catalog = {
   "checkout.result.retrySucceeded": "To‘lov o‘tdi. Hozir yo‘naltiramiz…",
   "checkout.result.retryStarted": "To‘lov boshlandi. Natijani tekshiryapmiz.",
   "checkout.result.retryFailed": "To‘lov o‘tmadi. Bir daqiqadan so‘ng qayta urinib ko‘ring.",
+  "checkout.result.continue": "Davom etish",
   "checkout.result.back": "To‘lovga qaytish",
 
   "nav.overview": "Umumiy ko‘rinish",

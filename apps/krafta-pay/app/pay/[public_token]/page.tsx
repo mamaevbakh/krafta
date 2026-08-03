@@ -6,6 +6,7 @@ import { AtmosCardForm } from "./atmos-card-form.client";
 import { CheckoutStatusWatcher } from "./checkout-status.client";
 import { formatMinorAmount } from "@/lib/format";
 import { getCheckoutT } from "@/lib/locales/checkout";
+import { TestModeBanner } from "./test-mode-banner";
 import { PayLocaleProvider } from "@/lib/locales/context";
 
 function isTerminalStatus(status?: string | null) {
@@ -112,6 +113,9 @@ export default async function PayPage({
       </header>
 
       <main className="mt-12 flex-1">
+        {/* Only in test. Live shows nothing — a real customer paying real money
+            should see the amount and the card fields, not our plumbing. */}
+        {env === "test" ? <TestModeBanner t={t} /> : null}
         {/* Amount — the focal point. Typography does the work, not a box. */}
         <div className="text-sm text-muted-foreground">{t("checkout.amountDue")}</div>
         {/* Scales down on narrow screens so large UZS sums (millions) stay on
