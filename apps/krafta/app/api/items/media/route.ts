@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
 import { revalidateCatalogByIdAndSlug } from "@/lib/catalogs/revalidate";
+import { mediaPathOrgId, requireItemMediaRole } from "./_lib/authorize";
 
 const BUCKET_NAME = "public-assets";
 
@@ -11,7 +12,6 @@ export async function POST(request: Request) {
     itemId?: string;
     uploads?: Array<{
       id: string;
-      bucket?: string;
       storage_path: string;
       kind: Database["public"]["Enums"]["item_media_kind"];
       mime_type?: string | null;
@@ -46,20 +46,33 @@ export async function POST(request: Request) {
     auth: { persistSession: false },
   });
 
-  const { data: item, error: itemError } = await supabase
-    .from("items")
-    .select("id, catalog_id")
-    .eq("id", itemId)
-    .maybeSingle();
+  // Service-role writes below bypass RLS, so the caller must be authorized
+  // here: signed in + owner/admin on the org owning the item's catalog
+  // (the same gate the item_media RLS policies enforce).
+  const auth = await requireItemMediaRole(supabase, itemId);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
 
-  if (itemError || !item) {
+  // The paths registered here are what DELETE later feeds to a
+  // service-role storage.remove, so the path itself is part of the
+  // security boundary: only accept paths the upload-url route mints for
+  // the item's OWN org (org/<orgId>/catalog/…). Anything else — another
+  // org's prefix, or a shape we never mint — would let a merchant
+  // register a foreign object on their own item and destroy it via
+  // DELETE. The bucket is pinned to ours in insertRows for the same
+  // reason; the client-sent value is ignored.
+  const foreignUpload = uploads.find(
+    (upload) => mediaPathOrgId(upload.storage_path ?? "") !== auth.orgId,
+  );
+  if (foreignUpload) {
     return NextResponse.json(
-      { error: itemError?.message ?? "Item not found." },
-      { status: 404 },
+      { error: "Storage path does not belong to this item's organization." },
+      { status: 403 },
     );
   }
 
-  const { data: lastMedia } = await supabase
+  const { data: lastMedia, error: lastMediaError } = await supabase
     .from("item_media")
     .select("position")
     .eq("item_id", itemId)
@@ -67,25 +80,55 @@ export async function POST(request: Request) {
     .limit(1)
     .maybeSingle();
 
+  // A failed max-position read would silently reuse taken positions,
+  // making the "first" photo nondeterministic. Fail loudly.
+  if (lastMediaError) {
+    return NextResponse.json(
+      { error: lastMediaError.message ?? "Failed to load media." },
+      { status: 500 },
+    );
+  }
+
   const basePosition = lastMedia?.position ?? 0;
 
-  await supabase
+  // Main-photo contract: the main photo is the FIRST one. New uploads
+  // APPEND to the gallery, so they never steal main from an existing
+  // photo — the first upload only becomes primary when the item doesn't
+  // have a primary yet (first-ever photo, or drifted data).
+  const { data: existingPrimary, error: primaryProbeError } = await supabase
     .from("item_media")
-    .update({ is_primary: false })
+    .select("id")
     .eq("item_id", itemId)
-    .eq("is_primary", true);
+    .eq("is_primary", true)
+    .limit(1)
+    .maybeSingle();
+
+  // A failed probe can't tell us whether a primary exists; promoting
+  // blind would insert a second is_primary row (unique-index violation)
+  // or steal the cover. Fail loudly instead.
+  if (primaryProbeError) {
+    return NextResponse.json(
+      { error: primaryProbeError.message ?? "Failed to load media." },
+      { status: 500 },
+    );
+  }
+
+  const promoteFirstUpload = !existingPrimary;
 
   const insertRows = uploads.map((upload, index) => ({
     id: upload.id,
     item_id: itemId,
-    bucket: upload.bucket ?? BUCKET_NAME,
+    bucket: BUCKET_NAME,
     storage_path: upload.storage_path,
     kind: upload.kind,
     mime_type: upload.mime_type ?? null,
     bytes: upload.bytes ?? null,
     alt: upload.alt ?? null,
     title: upload.title ?? null,
-    is_primary: index === 0,
+    is_primary: promoteFirstUpload && index === 0,
+    // Positions are ordinal-only (relative order matters, absolute
+    // values don't): appends continue past the current max, while the
+    // PATCH renumber paths write 0-based indices. Mixed bases are fine.
     position: basePosition + index + 1,
   })) satisfies Database["public"]["Tables"]["item_media"]["Insert"][];
 
@@ -99,7 +142,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (insertRows[0]) {
+  if (promoteFirstUpload && insertRows[0]) {
     // Check the error explicitly — previously this awaited the result
     // and dropped any failure on the floor, which is how an entire
     // upload could return ok:true while items.image_path stayed NULL
@@ -130,7 +173,7 @@ export async function POST(request: Request) {
   // client triggers an RSC re-render but the underlying cached fetch
   // serves stale data — the photo shows up on the customer page (which
   // reads via a different cache path) but not in the dashboard canvas.
-  await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+  await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
   return NextResponse.json({ ok: true, media: insertRows });
 }
@@ -166,6 +209,12 @@ export async function DELETE(request: Request) {
     auth: { persistSession: false },
   });
 
+  // Same gate as POST — service-role writes need explicit authorization.
+  const auth = await requireItemMediaRole(supabase, itemId);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   const { data: mediaRows, error: fetchError } = await supabase
     .from("item_media")
     .select("id, storage_path, bucket, is_primary")
@@ -187,17 +236,25 @@ export async function DELETE(request: Request) {
     mediaRows.map((row) => row.storage_path),
   );
 
-  const grouped: Record<string, string[]> = {};
-  mediaRows.forEach((row) => {
-    if (!grouped[row.bucket]) grouped[row.bucket] = [];
-    grouped[row.bucket].push(row.storage_path);
-  });
+  // Same rule as the cleanup route: the service-role storage.remove only
+  // ever sees paths in OUR bucket whose embedded org id matches the org
+  // this caller was just authorized on. item_media rows are supposed to
+  // guarantee that (POST validates on the way in), but rows predating
+  // that check — or forged via the old unvalidated POST — must not turn
+  // this into a cross-tenant file delete. Rows failing the check still
+  // have their DB rows deleted below; only the storage object is left
+  // alone.
+  const removablePaths = mediaRows
+    .filter(
+      (row) =>
+        row.bucket === BUCKET_NAME &&
+        mediaPathOrgId(row.storage_path) === auth.orgId,
+    )
+    .map((row) => row.storage_path);
 
-  await Promise.all(
-    Object.entries(grouped).map(([bucket, paths]) =>
-      supabase.storage.from(bucket).remove(paths),
-    ),
-  );
+  if (removablePaths.length) {
+    await supabase.storage.from(BUCKET_NAME).remove(removablePaths);
+  }
 
   const { error: deleteError } = await supabase
     .from("item_media")
@@ -212,29 +269,27 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const { data: remainingMedia } = await supabase
+  const { data: remainingMedia, error: remainingError } = await supabase
     .from("item_media")
     .select("id, storage_path, alt, is_primary, position")
     .eq("item_id", itemId)
     .order("position", { ascending: true });
 
-  // Lookup the item's catalog_id once — used for the cache-bust at the
-  // end. Returns early with cache-bust if the item is gone (unexpected,
-  // but be defensive).
-  const { data: item } = await supabase
-    .from("items")
-    .select("catalog_id")
-    .eq("id", itemId)
-    .maybeSingle();
+  // A swallowed error here would fall into the "no media left" branch
+  // and NULL the item cover while photos still exist. Fail loudly.
+  if (remainingError) {
+    return NextResponse.json(
+      { error: remainingError.message ?? "Failed to load media." },
+      { status: 500 },
+    );
+  }
 
   if (!remainingMedia?.length) {
     await supabase
       .from("items")
       .update({ image_path: null, image_alt: null })
       .eq("id", itemId);
-    if (item?.catalog_id) {
-      await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
-    }
+    await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
     return NextResponse.json({ ok: true, count: mediaRows.length });
   }
 
@@ -242,22 +297,34 @@ export async function DELETE(request: Request) {
 
   if (!nextPrimary) {
     nextPrimary = remainingMedia[0];
-    await supabase
+    const { error: demoteError } = await supabase
       .from("item_media")
       .update({ is_primary: false })
       .eq("item_id", itemId);
-    await supabase
+    if (demoteError) {
+      return NextResponse.json(
+        { error: demoteError.message ?? "Failed to update main photo." },
+        { status: 500 },
+      );
+    }
+    const { error: promoteError } = await supabase
       .from("item_media")
       .update({ is_primary: true })
       .eq("id", nextPrimary.id)
       .eq("item_id", itemId);
+    if (promoteError) {
+      return NextResponse.json(
+        { error: promoteError.message ?? "Failed to update main photo." },
+        { status: 500 },
+      );
+    }
   }
 
   if (nextPrimary && deletedPaths.has(nextPrimary.storage_path)) {
     nextPrimary = remainingMedia.find((row) => row.is_primary) ?? remainingMedia[0];
   }
 
-  await supabase
+  const { error: mirrorError } = await supabase
     .from("items")
     .update({
       image_path: nextPrimary.storage_path,
@@ -265,12 +332,17 @@ export async function DELETE(request: Request) {
     })
     .eq("id", itemId);
 
+  if (mirrorError) {
+    return NextResponse.json(
+      { error: mirrorError.message ?? "Failed to update item cover." },
+      { status: 500 },
+    );
+  }
+
   // Bust the catalog cache so the dashboard re-fetches with the
   // deleted-media state reflected. See POST handler comment above for
   // why this is required.
-  if (item?.catalog_id) {
-    await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
-  }
+  await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
   return NextResponse.json({ ok: true, count: mediaRows.length });
 }
@@ -280,13 +352,21 @@ export async function DELETE(request: Request) {
  *
  *   1. Set primary: body = { itemId, mediaId }
  *      Demotes the current primary, promotes the given media row,
- *      mirrors its storage_path + alt onto items.image_path.
+ *      MOVES it to the front of the gallery, and mirrors its
+ *      storage_path + alt onto items.image_path.
  *
  *   2. Reorder: body = { itemId, positions: [{ id, position }, ...] }
  *      Batch-updates the position column on item_media. Used by the
  *      photo-uploader drag-reorder gesture. Positions are the visible
  *      0-based index after the merchant's drag; the server doesn't
  *      assume monotonicity (the client supplies the full target list).
+ *      After the update, the row in the FIRST position is promoted to
+ *      primary and mirrored onto items.image_path.
+ *
+ * Both modes enforce the same invariant — the main photo IS the first
+ * photo. Dragging a photo to the front makes it main; making a photo
+ * main moves it to the front. Cards and the detail carousel lead with
+ * the same image either way.
  *
  * The two modes are disjoint; presence of `positions` picks the second
  * mode regardless of mediaId.
@@ -334,11 +414,11 @@ export async function PATCH(request: Request) {
     auth: { persistSession: false },
   });
 
-  const { data: item } = await supabase
-    .from("items")
-    .select("catalog_id")
-    .eq("id", itemId)
-    .maybeSingle();
+  // Same gate as POST — service-role writes need explicit authorization.
+  const auth = await requireItemMediaRole(supabase, itemId);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
 
   // ----- REORDER MODE -------------------------------------------------
   if (positions && positions.length > 0) {
@@ -365,9 +445,71 @@ export async function PATCH(request: Request) {
       );
     }
 
-    if (item?.catalog_id) {
-      await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
+    // Main = first: whatever row now leads the gallery becomes the
+    // primary and is mirrored onto items.image_path. Queried from the
+    // table (not the payload) so a partial positions list can't
+    // desync the invariant.
+    const { data: firstRow, error: firstRowError } = await supabase
+      .from("item_media")
+      .select("id, storage_path, alt, is_primary")
+      .eq("item_id", itemId)
+      .order("position", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    // A swallowed read error here would skip the promote+mirror and
+    // return ok:true with the invariant broken — fail loudly instead.
+    if (firstRowError) {
+      return NextResponse.json(
+        { error: firstRowError.message ?? "Failed to update main photo." },
+        { status: 500 },
+      );
     }
+
+    if (firstRow && !firstRow.is_primary) {
+      // Demote failure must abort BEFORE the promote — otherwise a
+      // failed demote + successful promote leaves two primary rows
+      // (or, in the reverse order, zero) and the endpoint would still
+      // report ok:true. Same for the cover mirror: a silent mirror
+      // failure is exactly the stale-image_path desync KRA-88 fixed.
+      const { error: demoteError } = await supabase
+        .from("item_media")
+        .update({ is_primary: false })
+        .eq("item_id", itemId)
+        .eq("is_primary", true);
+      if (demoteError) {
+        return NextResponse.json(
+          { error: demoteError.message ?? "Failed to update main photo." },
+          { status: 500 },
+        );
+      }
+      const { error: promoteError } = await supabase
+        .from("item_media")
+        .update({ is_primary: true })
+        .eq("id", firstRow.id)
+        .eq("item_id", itemId);
+      if (promoteError) {
+        return NextResponse.json(
+          { error: promoteError.message ?? "Failed to update main photo." },
+          { status: 500 },
+        );
+      }
+      const { error: mirrorError } = await supabase
+        .from("items")
+        .update({
+          image_path: firstRow.storage_path,
+          image_alt: firstRow.alt ?? null,
+        })
+        .eq("id", itemId);
+      if (mirrorError) {
+        return NextResponse.json(
+          { error: mirrorError.message ?? "Failed to update item cover." },
+          { status: 500 },
+        );
+      }
+    }
+
+    await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
     return NextResponse.json({ ok: true });
   }
@@ -387,11 +529,20 @@ export async function PATCH(request: Request) {
     );
   }
 
-  await supabase
+  // Demote failure aborts before the promote — see the reorder-mode
+  // block above for why the order matters.
+  const { error: demoteError } = await supabase
     .from("item_media")
     .update({ is_primary: false })
     .eq("item_id", itemId)
     .eq("is_primary", true);
+
+  if (demoteError) {
+    return NextResponse.json(
+      { error: demoteError.message ?? "Failed to update media." },
+      { status: 500 },
+    );
+  }
 
   const { error: updateError } = await supabase
     .from("item_media")
@@ -406,7 +557,52 @@ export async function PATCH(request: Request) {
     );
   }
 
-  await supabase
+  // Main = first: the new primary moves to the front of the gallery so
+  // the dashboard grid, catalog cards, and the detail carousel all lead
+  // with the same photo. Renumber every row (target first, then the
+  // rest in their existing order) — same parallel-update pattern as
+  // reorder mode.
+  const { data: orderedRows, error: orderedRowsError } = await supabase
+    .from("item_media")
+    .select("id")
+    .eq("item_id", itemId)
+    .order("position", { ascending: true });
+
+  // Same fail-loud rule as reorder mode: skipping the renumber on a
+  // swallowed read would leave the new main photo mid-gallery.
+  if (orderedRowsError) {
+    return NextResponse.json(
+      { error: orderedRowsError.message ?? "Failed to reorder photos." },
+      { status: 500 },
+    );
+  }
+
+  // Skip the renumber when the target already leads the gallery — a
+  // no-op "set as main" click shouldn't cost N row writes.
+  if (orderedRows && orderedRows.length > 1 && orderedRows[0]?.id !== mediaId) {
+    const reordered = [
+      mediaId,
+      ...orderedRows.map((row) => row.id).filter((id) => id !== mediaId),
+    ];
+    const positionUpdates = await Promise.all(
+      reordered.map((id, index) =>
+        supabase
+          .from("item_media")
+          .update({ position: index })
+          .eq("id", id)
+          .eq("item_id", itemId),
+      ),
+    );
+    const positionError = positionUpdates.find((r) => r.error)?.error;
+    if (positionError) {
+      return NextResponse.json(
+        { error: positionError.message ?? "Failed to reorder photos." },
+        { status: 500 },
+      );
+    }
+  }
+
+  const { error: mirrorError } = await supabase
     .from("items")
     .update({
       image_path: mediaRow.storage_path,
@@ -414,11 +610,16 @@ export async function PATCH(request: Request) {
     })
     .eq("id", itemId);
 
+  if (mirrorError) {
+    return NextResponse.json(
+      { error: mirrorError.message ?? "Failed to update item cover." },
+      { status: 500 },
+    );
+  }
+
   // Bust the catalog cache so the dashboard reflects the new primary.
   // See POST handler comment for why this is required.
-  if (item?.catalog_id) {
-    await revalidateCatalogByIdAndSlug({ catalogId: item.catalog_id });
-  }
+  await revalidateCatalogByIdAndSlug({ catalogId: auth.catalogId });
 
   return NextResponse.json({ ok: true });
 }

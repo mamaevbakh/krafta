@@ -40,6 +40,9 @@ Create a catalog in your dashboard, then add:
 - categories (for example “Drinks”, “Services”)
 - items (name, price, description, photos)
 
+### Can an item have more than one photo?
+Yes. Items support a photo gallery: upload multiple photos and drag them into the order you want. The first photo is always the main one — it's what customers see on catalog cards. On the item page, customers can swipe through the gallery and tap a photo to view it fullscreen.
+
 ### How do I share my catalog with customers?
 Share your public catalog link (or QR). Customers can open it on mobile and browse your categories and items.
 

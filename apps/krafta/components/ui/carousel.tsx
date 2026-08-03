@@ -231,6 +231,31 @@ function CarouselNext({
   )
 }
 
+/**
+ * Tracks the selected snap index of a carousel instance — for consumers
+ * that render their own dots/counter/arrow chrome around `setApi`
+ * (item photo carousel + fullscreen viewer). `initial` seeds the state
+ * before embla reports its first select (e.g. a viewer opened at a
+ * tapped photo index).
+ */
+function useCarouselSelectedIndex(api: CarouselApi, initial = 0) {
+  const [selected, setSelected] = React.useState(initial)
+
+  React.useEffect(() => {
+    if (!api) return
+    const onSelect = () => setSelected(api.selectedScrollSnap())
+    onSelect()
+    api.on("select", onSelect)
+    api.on("reInit", onSelect)
+    return () => {
+      api.off("select", onSelect)
+      api.off("reInit", onSelect)
+    }
+  }, [api])
+
+  return selected
+}
+
 export {
   type CarouselApi,
   Carousel,
@@ -238,4 +263,5 @@ export {
   CarouselItem,
   CarouselPrevious,
   CarouselNext,
+  useCarouselSelectedIndex,
 }

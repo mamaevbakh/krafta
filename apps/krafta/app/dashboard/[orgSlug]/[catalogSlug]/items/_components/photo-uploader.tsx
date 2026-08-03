@@ -96,6 +96,10 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
+import {
+  promoteGalleryEntry,
+  reorderGallery,
+} from "@/lib/catalogs/gallery-order";
 import { useT } from "@/lib/locales/dashboard/context";
 import type { TranslateFn } from "@/lib/locales/dashboard/messages";
 
@@ -395,7 +399,10 @@ export function PhotoUploader({
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [itemId, orgId, catalogId, router, t],
+    // `media` must be a dep: create mode spreads it into the callback
+    // (`[...media, ...newEntries]`) — a stale closure here silently
+    // DROPPED the first batch when a second batch was uploaded.
+    [itemId, orgId, catalogId, router, t, media, isCreateMode, onLocalMediaChange],
   );
 
   const handleDelete = React.useCallback(
@@ -433,11 +440,16 @@ export function PhotoUploader({
 
   const handleSetPrimary = React.useCallback(
     async (mediaId: string) => {
-      // Create mode: flip is_primary in local state.
+      // Create mode: main = first — move the photo to the front AND
+      // flip is_primary, matching what createItem persists (it derives
+      // primary from array order) and what the server-side set-primary
+      // does in edit mode. The transform lives in lib/catalogs/
+      // gallery-order.ts (unit-tested) so it can't drift from the
+      // server contract.
       if (isCreateMode && onLocalMediaChange) {
-        onLocalMediaChange(
-          media.map((m) => ({ ...m, is_primary: m.id === mediaId })),
-        );
+        const next = promoteGalleryEntry(media, mediaId);
+        if (next === media) return;
+        onLocalMediaChange(next);
         return;
       }
       try {
@@ -480,15 +492,14 @@ export function PhotoUploader({
 
   const handleReorder = React.useCallback(
     async (newOrder: string[]) => {
-      // Create mode: rebuild local media in the new order. Optimistic
-      // order state is irrelevant since the rendered grid reads from
-      // parent's media prop directly post-callback.
+      // Create mode: rebuild local media in the new order. Main = first —
+      // the new leading photo takes the primary badge, mirroring the
+      // server-side reorder behavior in edit mode (transform in
+      // lib/catalogs/gallery-order.ts, unit-tested). Optimistic order
+      // state is irrelevant since the rendered grid reads from parent's
+      // media prop directly post-callback.
       if (isCreateMode && onLocalMediaChange) {
-        const byId = new Map(media.map((m) => [m.id, m]));
-        const reordered = newOrder
-          .map((id) => byId.get(id))
-          .filter((m): m is PhotoUploaderMedia => Boolean(m));
-        onLocalMediaChange(reordered);
+        onLocalMediaChange(reorderGallery(media, newOrder));
         setOptimisticOrder(null);
         return;
       }

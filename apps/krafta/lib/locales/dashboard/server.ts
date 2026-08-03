@@ -17,16 +17,32 @@ import { cookies, headers } from "next/headers";
 
 import {
   DASHBOARD_LOCALE_COOKIE,
+  normalizeDashboardLocale,
   resolveDashboardLocale,
   type DashboardLocale,
 } from "./locale";
+import { getUserPreferredLocale } from "@/lib/locales/user-locale";
 import { createTranslator, type TranslateFn } from "./messages";
 
 export const getDashboardLocale = cache(
   async (): Promise<DashboardLocale> => {
-    const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
+    const cookieStore = await cookies();
+    const cookieValue = cookieStore.get(DASHBOARD_LOCALE_COOKIE)?.value;
+
+    // Fast path: a switcher choice on this device. Set on every switch, so
+    // returning visitors skip the auth lookup below entirely.
+    const fromCookie = normalizeDashboardLocale(cookieValue);
+    if (fromCookie) return fromCookie;
+
+    // No cookie (fresh device / first visit) — consult the user's stored
+    // cross-device preference, then fall back to the browser's Accept-Language
+    // so the very first render is already in a sensible language.
+    const [preference, headerStore] = await Promise.all([
+      getUserPreferredLocale(),
+      headers(),
+    ]);
     return resolveDashboardLocale({
-      cookie: cookieStore.get(DASHBOARD_LOCALE_COOKIE)?.value,
+      preference,
       acceptLanguage: headerStore.get("accept-language"),
     });
   },

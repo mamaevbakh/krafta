@@ -1,5 +1,6 @@
 // app/[...slug]/page.tsx
 import { Suspense, type JSX } from "react";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import {
@@ -14,6 +15,7 @@ import type { PublicCatalog } from "@/lib/catalogs/types";
 import { CatalogLayout } from "@/lib/catalogs/layout";
 import { pickLocalizedField } from "@/lib/catalogs/i18n";
 import { resolveStorefrontLocale } from "@/lib/catalogs/storefront-locale";
+import { getUserPreferredLocale } from "@/lib/locales/user-locale";
 import { CatalogSkeleton } from "./catalog-skeleton";
 
 type CatalogRouteParams = {
@@ -97,12 +99,24 @@ async function CatalogPageContent({
   // the data layer can target the active-locale translation rows in the
   // same round of parallel fetches. ?lang= is the only signal v1 ships;
   // future locale routing (subpath, cookie) plugs into the same resolver.
-  const catalogLocales = await getCatalogLocales(catalog.id);
+  // An explicit ?lang= (from the switcher or a shared link) always wins, so
+  // only consult the customer's stored preference + device language when it's
+  // absent — that also keeps the getUser lookup off the hot ?lang path.
+  const requestedLang = resolvedSearchParams.lang;
+  const hasExplicitLang =
+    typeof requestedLang === "string" && requestedLang.length > 0;
+  const [catalogLocales, preference, headerStore] = await Promise.all([
+    getCatalogLocales(catalog.id),
+    hasExplicitLang ? Promise.resolve(null) : getUserPreferredLocale(),
+    hasExplicitLang ? Promise.resolve(null) : headers(),
+  ]);
   const activeLocale =
     resolveStorefrontLocale({
-      requested: resolvedSearchParams.lang,
+      requested: requestedLang,
       enabled: catalogLocales.enabled,
       default: catalogLocales.default,
+      preference,
+      acceptLanguage: headerStore?.get("accept-language") ?? null,
     }) ?? "";
   const defaultLocale = catalogLocales.default ?? "";
 

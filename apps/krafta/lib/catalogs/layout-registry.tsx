@@ -7,6 +7,7 @@ import type {
 } from "@/lib/catalogs/types";
 import type { CurrencySettings } from "@/lib/catalogs/settings/currency";
 import type { PublicCatalogLocaleOption } from "@/lib/catalogs/data";
+import type { ItemGalleryImage } from "@/lib/catalogs/media";
 
 
 // Headers
@@ -95,6 +96,10 @@ export type ItemDetailProps = LocaleProps & {
   item: PublicItem;
   category: PublicCategoryWithItems | null;
   imageUrl: string | null;
+  /** Full photo gallery (main photo first) for the detail carousel +
+   *  fullscreen viewer. When omitted, the view falls back to the single
+   *  `imageUrl`. Resolved via getItemGalleryImages(item). */
+  images?: ItemGalleryImage[];
   itemAspectRatio?: number;
   backHref?: string;
   onClose?: () => void;

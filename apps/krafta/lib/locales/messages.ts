@@ -137,6 +137,7 @@ export type StorefrontMessageKey =
   | "checkout.payment.card"
   | "checkout.payment.card_hint"
   | "checkout.card_unavailable_cash"
+  | "checkout.cart_desynced"
   // Delivery address book — dedicated map + list screens
   | "address.title"
   | "address.use_location"
@@ -291,6 +292,12 @@ export type StorefrontMessageKey =
   | "share.link_copied"
   | "share.copy_fallback"
   | "share.unable_to_copy"
+  // Photo gallery (item detail carousel + fullscreen viewer)
+  | "gallery.open_photo"
+  | "gallery.close"
+  | "gallery.prev_photo"
+  | "gallery.next_photo"
+  | "gallery.go_to_photo"
   // ARIA labels
   | "aria.close_drawer"
   | "aria.decrease_quantity"
@@ -396,6 +403,7 @@ const EN: MessageTable = {
   "checkout.payment.card": "Card",
   "checkout.payment.card_hint": "You'll pay by card on a secure page, then come right back.",
   "checkout.card_unavailable_cash": "Online payment is unavailable right now — your order was placed with cash on delivery.",
+  "checkout.cart_desynced": "We couldn’t sync your cart with the server, so the order wasn’t placed. We’ve refreshed it — please add your items again.",
   "checkout.chip.required": "Required",
   "checkout.chip.optional": "Optional",
   "address.title": "Delivery address",
@@ -538,6 +546,12 @@ const EN: MessageTable = {
   "share.copy_fallback": "Paste it anywhere to share.",
   "share.unable_to_copy": "Unable to copy link.",
 
+  "gallery.open_photo": "View photo",
+  "gallery.close": "Close photo",
+  "gallery.prev_photo": "Previous photo",
+  "gallery.next_photo": "Next photo",
+  "gallery.go_to_photo": "Photo {index}",
+
   "aria.close_drawer": "Close cart",
   "aria.decrease_quantity": "Decrease quantity",
   "aria.increase_quantity": "Increase quantity",
@@ -631,6 +645,7 @@ const RU: MessageTable = {
   "checkout.payment.card": "Картой",
   "checkout.payment.card_hint": "Оплатите картой на защищённой странице и вернётесь обратно.",
   "checkout.card_unavailable_cash": "Онлайн-оплата сейчас недоступна — заказ оформлен с оплатой при получении.",
+  "checkout.cart_desynced": "Не удалось синхронизировать корзину с сервером, поэтому заказ не оформлен. Мы её обновили — добавьте позиции заново.",
   "checkout.chip.required": "Обязательно",
   "checkout.chip.optional": "Необязательно",
   "address.title": "Адрес доставки",
@@ -777,6 +792,12 @@ const RU: MessageTable = {
   "share.copy_fallback": "Вставьте, чтобы поделиться.",
   "share.unable_to_copy": "Не удалось скопировать ссылку.",
 
+  "gallery.open_photo": "Открыть фото",
+  "gallery.close": "Закрыть фото",
+  "gallery.prev_photo": "Предыдущее фото",
+  "gallery.next_photo": "Следующее фото",
+  "gallery.go_to_photo": "Фото {index}",
+
   "aria.close_drawer": "Закрыть корзину",
   "aria.decrease_quantity": "Уменьшить количество",
   "aria.increase_quantity": "Увеличить количество",
@@ -870,6 +891,7 @@ const UZ_LATN: MessageTable = {
   "checkout.payment.card": "Karta",
   "checkout.payment.card_hint": "Karta bilan xavfsiz sahifada to'laysiz va qaytib kelasiz.",
   "checkout.card_unavailable_cash": "Onlayn to'lov hozir mavjud emas — buyurtma yetkazib berilganda naqd to'lov bilan rasmiylashtirildi.",
+  "checkout.cart_desynced": "Savatchani server bilan sinxronlab bo'lmadi, shuning uchun buyurtma rasmiylashtirilmadi. Uni yangiladik — mahsulotlarni qaytadan qo'shing.",
   "checkout.chip.required": "Majburiy",
   "checkout.chip.optional": "Ixtiyoriy",
   "address.title": "Yetkazib berish manzili",
@@ -1013,6 +1035,12 @@ const UZ_LATN: MessageTable = {
   "share.link_copied": "Havola nusxalandi",
   "share.copy_fallback": "Ulashish uchun joylashtiring.",
   "share.unable_to_copy": "Havolani nusxalab bo‘lmadi.",
+
+  "gallery.open_photo": "Rasmni ochish",
+  "gallery.close": "Rasmni yopish",
+  "gallery.prev_photo": "Oldingi rasm",
+  "gallery.next_photo": "Keyingi rasm",
+  "gallery.go_to_photo": "{index}-rasm",
 
   "aria.close_drawer": "Savatchani yopish",
   "aria.decrease_quantity": "Miqdorni kamaytirish",
