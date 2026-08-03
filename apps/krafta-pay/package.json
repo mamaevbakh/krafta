@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "hero:shoot": "node scripts/shoot.mjs",
+    "hero:probe": "node scripts/frame-probe.mjs",
+    "hero:measure": "node scripts/measure-hands.mjs",
+    "hero:preview": "bash scripts/preview.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.1.0",
@@ -28,6 +32,7 @@
     "react-markdown": "^10.1.0",
     "shadcn": "^3.6.3",
     "tailwind-merge": "^3.4.0",
+    "three": "^0.182.0",
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
@@ -37,6 +42,7 @@
     "@types/react-dom": "19.2.3",
     "eslint": "^9.39.2",
     "eslint-config-next": "16.2.0",
+    "playwright": "^1.60.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vitest": "^4.1.7"
