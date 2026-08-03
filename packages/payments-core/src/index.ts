@@ -2,6 +2,8 @@ export * from "./types";
 export * from "./checkout";
 export * from "./webhook";
 export * from "./subscription";
+export * from "./platform-billing";
+export * from "./platform-provisioning";
 export * from "./webhooks-out";
 export * from "./atmos-reconcile";
 export * from "./secrets";
