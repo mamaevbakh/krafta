@@ -11,6 +11,18 @@ export type CreateCheckoutSessionInput = {
   returnUrl?: string;           // fallback return URL
   /** test | live. Fixed at creation; decides which acquirer may charge it. */
   environment?: "test" | "live";
+  /**
+   * Whether the provider order must keep the customer's card.
+   *
+   * Omit it. The default is `required`, which is what a subscription, a card
+   * update and anything unrecognised needs — and getting this wrong towards
+   * `none` on a subscription means renewals can never charge.
+   *
+   * Only pass `none` from a route that structurally cannot create a
+   * subscription. It makes the checkout a plain payment: the customer is asked
+   * to pay rather than to add a card, and no card is kept afterwards.
+   */
+  cardBinding?: "required" | "none";
   customerId?: string;          // existing customer in payments.customers
   customer?: {
     email?: string;

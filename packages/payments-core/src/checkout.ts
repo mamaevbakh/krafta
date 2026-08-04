@@ -58,6 +58,10 @@ export async function createCheckoutSession(
       return_url: input.returnUrl ?? input.successUrl ?? null,
       client_secret: clientSecret,
       environment,
+      // Absent means `required`, the safe direction: a flow that forgets to say
+      // gets a card binding, which is what every subscription and card update
+      // needs. Only a route that cannot create a subscription may pass "none".
+      card_binding: input.cardBinding ?? "required",
       metadata: input.metadata ?? {},
     })
     .select("*")
