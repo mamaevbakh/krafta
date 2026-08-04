@@ -76,6 +76,9 @@ export async function createHostedCheckoutAction(formData: FormData) {
     {
       orgId,
       environment,
+      // A payment link the merchant made by hand: a one-off, always. The
+      // dashboard has no way to create a subscription from here.
+      cardBinding: "none",
       amountMinor,
       currency,
       description,

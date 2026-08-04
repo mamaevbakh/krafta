@@ -276,6 +276,87 @@ type CreateAttemptCtx = {
   viewType?: UzumViewType;
 };
 
+/**
+ * Does this checkout keep the customer's card, or just take their money?
+ *
+ * Every check is a positive assertion ABOUT a one-off, never a negation about a
+ * subscription. So anything unrecognised — a new flow, a pre-migration row, a
+ * query that throws — comes out `binding`, which is what shipped before this
+ * existed and works. Getting it wrong towards `one_step` on a subscription
+ * means renewals can never charge, and nobody would notice until the first
+ * renewal fell due.
+ *
+ * The naive rule is "an intent with no invoice is a one-off". That is the
+ * discriminator the payments list uses and it is WRONG here: the portal card
+ * update, all three card-setup flows and platform-fee provisioning have no
+ * invoice either, and every one of them must bind. They are all zero-amount,
+ * which is why the amount check carries most of the weight.
+ *
+ * Merchant-supplied metadata may only ever force `binding`. A merchant who
+ * writes `purpose: "card_update"` into their own metadata gets today's
+ * behaviour, which is harmless. Nothing merchant-writable can select
+ * `one_step` — that is the inverse of the hazard the payments list documents,
+ * and it has to stay that way.
+ */
+export function decideUzumRegisterShape(facts: {
+  cardBinding: unknown;
+  amountMinor: unknown;
+  hasInvoice: boolean;
+  intentMetadata?: unknown;
+  sessionMetadata?: unknown;
+}): "one_step" | "binding" {
+  if (facts.cardBinding !== "none") return "binding";
+  if (typeof facts.amountMinor !== "number" || !(facts.amountMinor > 0)) return "binding";
+  if (facts.hasInvoice) return "binding";
+  if (hasBindingMarker(facts.intentMetadata) || hasBindingMarker(facts.sessionMetadata)) {
+    return "binding";
+  }
+  return "one_step";
+}
+
+/** Any hint that this checkout exists to attach a card rather than to collect money. */
+function hasBindingMarker(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== "object") return false;
+  const rec = metadata as Record<string, unknown>;
+  if (rec.purpose === "card_update") return true;
+  if (rec.portalFlowType || rec.portalSubscriptionId) return true;
+  if (rec.subscription_id || rec.subscriptionId) return true;
+  const portal = rec.customerPortal;
+  if (portal && typeof portal === "object") {
+    const p = portal as Record<string, unknown>;
+    if (p.flowType || p.subscriptionId) return true;
+  }
+  return false;
+}
+
+/** The invoice lookup, failing closed: an error means "assume subscription". */
+async function resolveUzumRegisterShape(
+  supabase: CreateAttemptCtx["supabase"],
+  args: { intent: Record<string, unknown>; session: Record<string, unknown> },
+): Promise<"one_step" | "binding"> {
+  let hasInvoice = true;
+  try {
+    const { data, error } = await supabase
+      .schema("payments")
+      .from("invoices")
+      .select("id")
+      .eq("payment_intent_id", args.intent.id as string)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    hasInvoice = Boolean(data);
+  } catch {
+    return "binding";
+  }
+  return decideUzumRegisterShape({
+    cardBinding: args.intent.card_binding,
+    amountMinor: args.intent.amount_minor,
+    hasInvoice,
+    intentMetadata: args.intent.metadata,
+    sessionMetadata: args.session.metadata,
+  });
+}
+
 export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<ProviderAttemptResult> {
   // Load session + intent
   const session = await getCheckoutSessionByPublicToken(ctx.supabase, ctx.publicToken);
@@ -322,6 +403,11 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
   //
   // Callers can still override per attempt — a future Telegram Mini App or a
   // native shell genuinely wants WEB_VIEW, and that is exactly when to pass it.
+  const registerShape = await resolveUzumRegisterShape(ctx.supabase, {
+    intent: intent as unknown as Record<string, unknown>,
+    session: session as unknown as Record<string, unknown>,
+  });
+
   const viewType = ctx.viewType ?? "REDIRECT";
   const body = {
     amount: intent.amount_minor,
@@ -347,11 +433,29 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
     successUrl,
     failureUrl,
     ...(cart ? { merchantParams: { cart } } : {}),
-    paymentParams: {
-      payType: "TWO_STEP",
-      operationType: "BINDING",
-      ...(customerPhone ? { phoneNumber: customerPhone } : {}),
-    },
+    paymentParams:
+      registerShape === "one_step"
+        ? {
+            // AcquiringPaymentParams, Uzum Checkout OpenAPI v1.10.3:
+            // operationType is the enum [PAYMENT], payType is ONE_STEP |
+            // TWO_STEP. One order, authorised and captured on Uzum's page, and
+            // no card token comes back — which is the whole point. The customer
+            // is asked to PAY. Under the BINDING branch below Uzum shows them
+            // «Добавить карту» instead, because that is literally what we asked
+            // for, and we keep a card nobody wanted saved.
+            //
+            // Note this branch is spec-exact. The one below sends `payType` on
+            // BindingPaymentParams, which does not define that field; Uzum
+            // tolerates it. Do not copy that habit here.
+            operationType: "PAYMENT",
+            payType: "ONE_STEP",
+            ...(customerPhone ? { phoneNumber: customerPhone } : {}),
+          }
+        : {
+            payType: "TWO_STEP",
+            operationType: "BINDING",
+            ...(customerPhone ? { phoneNumber: customerPhone } : {}),
+          },
   };
 
   await writePaymentDebugLog(ctx.supabase, {

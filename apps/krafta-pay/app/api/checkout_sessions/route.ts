@@ -82,6 +82,12 @@ export async function POST(req: Request) {
       {
         orgId: merchantOrgId,
         environment,
+        // A public one-off payment. This route cannot create a subscription
+        // (that is /api/v1/subscriptions), so the customer is asked to pay
+        // rather than to add a card, and no card is kept. Hardcoded, never
+        // read from the body: merchant input must never be able to turn a
+        // subscription's checkout into a non-binding one.
+        cardBinding: "none",
         amountMinor: body.amountMinor,
         currency: body.currency,
         description: body.description,

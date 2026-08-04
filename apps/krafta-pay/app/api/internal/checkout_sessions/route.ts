@@ -98,6 +98,9 @@ export async function POST(req: Request) {
       admin,
       {
         orgId: body.orgId,
+        // A storefront order — a one-off by construction. See the public
+        // route for why this is hardcoded rather than taken from the body.
+        cardBinding: "none",
         // Must be the same value the pre-flight above used. Omitting it is the
         // original bug.
         environment,
