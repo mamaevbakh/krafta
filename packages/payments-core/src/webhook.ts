@@ -38,7 +38,9 @@ export async function handleWebhookEvent(
   const payload = safeJsonParse(input.rawBody) ?? { raw: input.rawBody };
 
   const providerEventId =
-    (payload && typeof payload === "object" && "id" in payload) ? String((payload as any).id) : null;
+    (payload && typeof payload === "object" && "id" in payload)
+      ? String((payload as any).id)
+      : synthesizeProviderEventId(payload);
 
   const providerPaymentId =
     (payload && typeof payload === "object" && "payment_id" in payload)
@@ -562,6 +564,51 @@ export async function applyWebhookEvent(
 
 function safeJsonParse(s: string) {
   try { return JSON.parse(s); } catch { return null; }
+}
+
+/**
+ * A stable event id for providers that do not send one.
+ *
+ * The idempotency guard above keys on `payload.id`. Uzum's callback
+ * (`AcquiringCallbackData` in Checkout OpenAPI v1.10.3) carries orderId,
+ * operationState, operationType, orderNumber, rrn, cardType and
+ * merchantOperationId — and no `id`. So `providerEventId` was always null for
+ * Uzum and the guard never fired once, on the only provider that has ever moved
+ * money here.
+ *
+ * That mattered beyond a wasted branch. `markPaymentFailed` is deliberately
+ * ungated (see subscription.ts), and its stated justification is that
+ * "duplicate provider callbacks are already stopped upstream by the webhook's
+ * event-id guard, so each call here is one real decline". For Uzum that was not
+ * true, so one retransmitted decline could walk an invoice's attempt_count up
+ * toward `uncollectible` and fire a `subscription.payment_failed` per delivery.
+ *
+ * The composite is deliberately narrow: the same order reporting the same
+ * outcome for the same operation is the same event. It stays distinct across
+ * the binding leg and the charge leg (different orderIds), and across an
+ * AUTHORIZE followed by a COMPLETE on one order (different operationType).
+ * Returns null rather than a partial key when orderId is absent — a guess that
+ * collided would drop a real event, which is worse than not deduping.
+ */
+export function synthesizeProviderEventId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const rec = payload as Record<string, unknown>;
+  const orderId =
+    typeof rec.orderId === "string" && rec.orderId
+      ? rec.orderId
+      : typeof rec.order_id === "string" && rec.order_id
+        ? rec.order_id
+        : null;
+  if (!orderId) return null;
+  const state =
+    typeof rec.operationState === "string" && rec.operationState
+      ? rec.operationState.toUpperCase()
+      : "UNKNOWN_STATE";
+  const opType =
+    typeof rec.operationType === "string" && rec.operationType
+      ? rec.operationType.toUpperCase()
+      : "UNKNOWN_OP";
+  return `synthetic:${orderId}:${state}:${opType}`;
 }
 
 function pickBindingId(payload: unknown) {
