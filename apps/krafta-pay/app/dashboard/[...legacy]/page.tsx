@@ -5,6 +5,7 @@ import { createAdminSupabase } from "@/lib/supabase-admin";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 import { findAnyOrg, findOnboardedOrg } from "@/lib/onboarding-status";
+import { forwardQuery } from "./forward-query";
 
 /**
  * Redirects for the pre-slug dashboard URLs.
@@ -37,10 +38,11 @@ export default async function LegacyDashboardRedirect({
   searchParams,
 }: {
   params: Promise<{ legacy: string[] }>;
-  searchParams: Promise<{ orgId?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { legacy } = await params;
   const sp = await searchParams;
+  const orgIdParam = typeof sp.orgId === "string" ? sp.orgId : undefined;
 
   const supabase = await createClient();
   const { user, authError } = await getUserSafely(supabase);
@@ -54,12 +56,12 @@ export default async function LegacyDashboardRedirect({
   // A legacy link may name an org explicitly. Honour it, but only after
   // confirming this user actually belongs to it — an old URL is not authority.
   let orgSlug: string | null = null;
-  if (sp.orgId) {
+  if (orgIdParam) {
     const { data } = await admin
       .from("organization_members")
       .select("organizations!inner(slug)")
       .eq("user_id", user.id)
-      .eq("org_id", sp.orgId)
+      .eq("org_id", orgIdParam)
       .maybeSingle();
     const embedded = (data as { organizations?: { slug: string } | { slug: string }[] } | null)
       ?.organizations;
@@ -79,5 +81,20 @@ export default async function LegacyDashboardRedirect({
 
   const section = legacy[0];
   const suffix = section && KNOWN_SECTIONS.has(section) ? `/${legacy.join("/")}` : "";
-  redirect(`/dashboard/org/${orgSlug}${suffix}`);
+
+  // Carry the rest of the query string across. The server actions in
+  // `app/dashboard/actions.ts` redirect back to these legacy paths with their
+  // result attached — `?subError=…` on failure, `?subPayUrl=…&subToken=…` on
+  // success — and the org-scoped page reads exactly those keys. Dropping the
+  // query here made both invisible: a failed "create subscription" looked like
+  // nothing happened at all, and the natural response to that is to submit the
+  // same email again, which mints a second customer and a second subscription.
+  // The silent redirect was the trigger for the duplicate, not just a cosmetic
+  // gap.
+  //
+  // `orgId` is deliberately not forwarded — see `forward-query.ts`, which holds
+  // the rule and its tests.
+  const query = forwardQuery(sp);
+
+  redirect(`/dashboard/org/${orgSlug}${suffix}${query ? `?${query}` : ""}`);
 }
