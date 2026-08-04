@@ -112,9 +112,19 @@ export async function upsertAtmosProviderAccount(
 
   const credentials = { apiBaseUrl, consumerKey, consumerSecret, storeId };
   const secretKey = resolveSecretDecryptionKey(process.env);
-  const encryptedCredentialsJson = (
-    secretKey ? encryptSecretJson(credentials, secretKey) : credentials
-  ) as Json;
+  // Fail closed. This used to fall through to writing the merchant's acquirer
+  // credentials as plaintext JSON when no key was configured, and that failure
+  // is invisible from the outside: `decryptSecretJsonMaybe` returns the raw
+  // value both when the key is missing and when decryption throws, so every
+  // read of a plaintext row succeeds and nothing ever reports it. The row would
+  // sit there readable until someone happened to look.
+  //
+  // A consumer secret is the credential that moves the merchant's money. If we
+  // cannot encrypt it, refusing the write is the only correct outcome — a
+  // misconfigured deploy should break the Providers page loudly, not silently
+  // downgrade every merchant who connects while it is broken.
+  if (!secretKey) throw new Error("credentials_encryption_key_missing");
+  const encryptedCredentialsJson = encryptSecretJson(credentials, secretKey) as Json;
 
   let orgProviderAccountId = existing?.id ?? null;
   if (!orgProviderAccountId) {

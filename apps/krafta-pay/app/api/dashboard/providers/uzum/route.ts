@@ -333,13 +333,16 @@ async function upsertProvider(req: Request, method: "POST" | "PATCH") {
   };
 
   const secretKey = resolveSecretDecryptionKey(process.env);
-  const encryptedCredentials = secretKey
-    ? encryptSecretJson(credentials, secretKey)
-    : credentials;
+  // Fail closed — same reasoning as the Atmos connect path. Without a key these
+  // used to be written as plaintext JSON, and `decryptSecretJsonMaybe` returns
+  // raw values both when the key is missing and when decryption throws, so a
+  // plaintext row reads back cleanly forever and nothing reports it. The API
+  // key moves the merchant's money and the webhook secret is what proves an
+  // inbound callback is really from Uzum; neither is storable in the clear.
+  if (!secretKey) throw new Error("credentials_encryption_key_missing");
+  const encryptedCredentials = encryptSecretJson(credentials, secretKey);
   const encryptedWebhookSecret = webhookSecretValue
-    ? secretKey
-      ? encryptSecretJson({ webhookSecret: webhookSecretValue }, secretKey)
-      : { webhookSecret: webhookSecretValue }
+    ? encryptSecretJson({ webhookSecret: webhookSecretValue }, secretKey)
     : null;
   const encryptedCredentialsJson = encryptedCredentials as Json;
   const encryptedWebhookSecretJson = encryptedWebhookSecret as Json | null;

@@ -21,13 +21,23 @@ This is a **reverse-engineered formalization** of the system that already ships 
 
 ## Components & Composition
 
-* **Foundation:** **shadcn/ui (style: `new-york`, base color: `zinc`, RSC: true, icons: lucide)** is the only component library. Configured in `apps/krafta/components.json` (mirrored in `apps/krafta-auth/`, `apps/krafta-docs/`, `apps/krafta-pay/`). Do not introduce Material UI, Chakra, Mantine, Headless UI, Ariakit, NextUI, Park UI, or any other primitive library. If shadcn lacks a primitive we need, build it on top of Radix or `base-ui` (which shadcn already pulls in) — never alongside a competing system.
-* **Use shadcn at 100%.** Before building any UI element, check `apps/krafta/components/ui/` first (37 primitives installed and counting). If the primitive exists, use it. If a variant is missing, extend the existing primitive's API or copy from the canonical shadcn registry. Do not duplicate primitives with subtly different APIs.
-* **Install new primitives via shadcn CLI:** `pnpm dlx shadcn@latest add <name>` (or pull from one of the configured registries below). Never paste primitive code by hand — keep the upgrade path intact.
+* **Foundation:** **shadcn/ui (RSC: true, icons: lucide)** is the only component library, in every app. Do not introduce Material UI, Chakra, Mantine, Headless UI, Ariakit, NextUI, Park UI, or any other primitive library. If shadcn lacks a primitive we need, build it on top of the app's own headless layer (below) — never alongside a competing system.
+* **Two shadcn flavors, split by app.** shadcn ships on two headless engines and Krafta uses both. Everything else in this document — type, color, spacing, composition rules, anti-slop guardrails — is identical across all four. Only the primitive layer differs.
+
+| App | `components.json` style | Base color | Headless layer | Primitives in `components/ui/` |
+|---|---|---|---|---|
+| `apps/krafta` | `new-york` | `zinc` | **Radix** | 49 |
+| `apps/krafta-auth` | `new-york` | `zinc` | **Radix** | 9 |
+| `apps/krafta-pay` | `base-vega` | `neutral` | **Base UI** (`@base-ui/react`) | 23 |
+| `apps/krafta-docs` | `base-nova` | `neutral` | **Base UI** (`@base-ui/react`) | 55 |
+
+* **Never mix the two engines inside one app.** A Base UI app importing `@radix-ui/*` (or the reverse) is a regression, not a shortcut. The part names differ — Dialog's overlay is `DialogPrimitive.Backdrop` in Base UI, `Overlay` in Radix; polymorphism is `render` / `useRender` in Base UI, `asChild` + Slot in Radix — so a component copied wholesale between `apps/krafta/components/ui/` and `apps/krafta-pay/components/ui/` will not compile. Port it deliberately or install it from the registry.
+* **Use shadcn at 100%.** Before building any UI element, check **that app's** `components/ui/` first. If the primitive exists, use it. If a variant is missing, extend the existing primitive's API or copy from the canonical shadcn registry. Do not duplicate primitives with subtly different APIs.
+* **Install new primitives via shadcn CLI, run from inside the app directory:** `pnpm dlx shadcn@latest add <name>` (or pull from one of the configured registries below). The CLI reads that app's `components.json`, which is what resolves the Radix or Base UI variant — running it from the repo root gets you the wrong engine. Never paste primitive code by hand; keep the upgrade path intact.
 
 ### Configured registries
 
-`components.json` exposes three custom registries beyond the default shadcn one:
+`apps/krafta/components.json` exposes three custom registries beyond the default shadcn one (`apps/krafta-auth` adds `@react-bits`; `krafta-pay` and `krafta-docs` run registry-free on the default):
 
 | Registry | URL pattern | Use for |
 |---|---|---|
@@ -63,12 +73,13 @@ Krafta has custom primitives that extend the shadcn surface — never replace it
 
 ### Hard rules for components
 
-1. **Check `components/ui/` first.** If the primitive exists, use it. No exceptions.
+1. **Check `components/ui/` first** — the one in the app you're editing. If the primitive exists, use it. No exceptions.
 2. **No competing component libraries.** shadcn or extend-shadcn only.
-3. **No boolean prop sprawl.** A component with 5+ boolean props is a smell. Refactor to compound or render-props.
-4. **No paste-from-internet primitives.** Use the shadcn CLI or a configured registry so the upgrade path stays clean.
-5. **No CSS-in-JS at runtime.** Tailwind utility classes + cva variants only. No emotion, no styled-components, no vanilla-extract.
-6. **No duplicate primitives.** One `<Dialog>`, one `<Drawer>`, one `<Sheet>`. If two surfaces need slightly different chrome, extend with variants, do not fork.
+3. **One headless engine per app.** Radix in `krafta` / `krafta-auth`, Base UI in `krafta-pay` / `krafta-docs`. Never import the other one, and never copy a primitive across the line without porting it.
+4. **No boolean prop sprawl.** A component with 5+ boolean props is a smell. Refactor to compound or render-props.
+5. **No paste-from-internet primitives.** Use the shadcn CLI or a configured registry so the upgrade path stays clean.
+6. **No CSS-in-JS at runtime.** Tailwind utility classes + cva variants only. No emotion, no styled-components, no vanilla-extract.
+7. **No duplicate primitives.** One `<Dialog>`, one `<Drawer>`, one `<Sheet>`. If two surfaces need slightly different chrome, extend with variants, do not fork.
 
 ## Typography
 
@@ -281,6 +292,8 @@ A design choice that violates any of these is a regression. Reject in code revie
 | 2026-05-22 | Square POS dashboard adopted as canonical design reference | When designing merchant-facing catalog / POS / editor surfaces, look at Square's equivalent screen FIRST. Generic shadcn defaults are the floor; Square's patterns are the ceiling. Concrete patterns absorbed listed in the "Design references" section below. |
 | 2026-06-09 | Telegram Mini App storefront chrome: progressive blur + frosted dock, no Liquid Glass | Customer storefront in the TMA gets an iOS-style **progressive (gradient) blur** behind the sticky category nav (`components/catalogs/progressive-blur.tsx` — stacked backdrop-filter layers masked to a top-down falloff; alpha falloff, not a color gradient) instead of a hard uniform `backdrop-blur` edge. The bottom dock becomes a clean **frosted** surface (border + strong blur, no decorative shadow). Deliberately did NOT chase iOS 26 "Liquid Glass": a Mini App is a webview (no native tabs possible) and a glossy translucent skin fights the "brutally minimal, withholding" system. Decided via /design-consultation. |
 | 2026-07-12 | Ratified `--success` / `--warning` status tokens; Krafta Pay customer portal redesigned to a Stripe-style two-panel hosted "Manage Billing" page | Muted/desaturated `success`+`warning` added to `apps/krafta-pay/app/globals.css` (values in §Color › Status colors) for status pills only — the first ratified status colors, needed so the hosted billing portal could show calm "Оплачено"/"Активна" pills instead of raw text. The portal (`apps/krafta-pay/app/portal/[session_token]/page.tsx`) adopts a **persistent dark brand rail + light content** two-panel shell — DESIGN.md-compliant (solid inverted surface, no gradient/blob/shadow). RU-first, responsive, light/dark. Full spec: `docs/krafta-pay-customer-portal.md`. |
+| 2026-08-04 | **Narrow exception to "no gradients": acquirer brand treatment on the hosted checkout provider picker** | The provider rows on `/pay/[public_token]` (`app/pay/[public_token]/provider-row.tsx`, colours in `provider-brand.ts`) carry the acquirer's own brand as a soft gradient wash plus their logo, mark-first with an 8px gap to the name. This breaks §Decoration level ("no gradients") and brushes hard rule 1 (Uzum's identity is purple). **Approved by the founder on 2026-08-04 after seeing branded and neutral versions rendered side by side.** Rationale accepted: on the one screen where a stranger is deciding whether to type a card number, recognising their own bank is a trust function rather than decoration — the same reason T-Bank, Kaspi and every acquirer-selection UI in the region does it. Scope is deliberately narrow: **this exception covers acquirer identity on the checkout provider picker only.** It does not license gradients anywhere else, and the brand colour belongs to the acquirer — Krafta Pay's own surfaces stay neutral. Constraints held, after two rounds of comparing rendered options: **the brand is anchored at the mark and dissolves to fully transparent before the midpoint**, painted over `bg-card` rather than replacing it, so the right-hand two-thirds of every row stay the app's own neutral and all text stays on the app's own foreground. A full-width brand wash was built and rejected — two saturated rows competed with each other, and four would read as a colour swatch once Payme and Click ship. **The treatment is also mode-aware, not a fixed palette:** dark mode lifts the tint rather than recolouring it, so a row sits inside a near-black page instead of glowing on top of it. The first build used inline hex, which cannot respond to `.dark` and produced exactly that glare — colours are now emitted as CSS custom properties in light/dark pairs and selected by the `dark:` variant. Also held: per-provider values live in one table so nothing is hardcoded to Uzum, and an unknown provider degrades to a neutral surface rather than borrowing another bank's colours. Contrast verified in both schemes against real rendering. Related: the merchant's Providers page now renders supplied logos (`src/lib/provider-logos.ts`) with monogram tiles as a fallback, never as an approximation of a mark we do not have. Dissent recorded: the reviewing agent recommended the neutral version, on the grounds that the logo already does the recognition work and that four branded rows will read as a swatch once Payme and Click ship — revisit at the third provider. |
+| 2026-08-04 | Krafta Pay (and Krafta Docs) run shadcn on **Base UI**; Krafta and Krafta Auth stay on **Radix** | Recording what already shipped: `krafta-pay` is style `base-vega` / base `neutral` on `@base-ui/react` (zero Radix imports), `krafta-docs` is `base-nova` on the same engine, while `krafta` and `krafta-auth` remain `new-york` / `zinc` on Radix. The prior wording — "`new-york`/`zinc`, mirrored in `apps/krafta-pay/`" — was stale and actively misleading: it sent agents to copy Radix components into a Base UI app, where `DialogPrimitive.Overlay` and `asChild` do not exist. **This is a primitive-layer split only.** Type, color tokens, spacing, composition rules, and the anti-slop guardrails are unchanged and apply to all four apps. New hard rule 3 forbids mixing engines within an app; the CLI must be run from inside the app directory so `components.json` resolves the right variant. |
 
 ## Design references
 
