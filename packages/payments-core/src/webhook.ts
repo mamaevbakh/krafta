@@ -210,10 +210,22 @@ export async function handleWebhookEvent(
 
       const normalizedState = opStateRaw?.toUpperCase() ?? null;
       const isSuccess = normalizedState === "SUCCESS";
-      const isFailure = normalizedState === "CANCEL" || normalizedState === "ERROR";
-      const isBindingSetupAttempt =
-        matchedAttempt?.status === "requires_action" ||
-        matchedAttempt?.status === "initialized";
+      // Uzum's server callback reports FAIL. CANCEL and ERROR come from a
+      // DIFFERENT channel — the postMessage their page sends to a host page
+      // embedding it ("Post Messages" in Checkout OpenAPI v1.10.3, whose enum is
+      // SUCCESS | CANCEL | ERROR). The two vocabularies were mixed up here, so
+      // FAIL matched neither branch and every declined Uzum payment was
+      // silently dropped: the customer's card was refused, the merchant was
+      // told nothing, and the payment sat on "waiting" forever. That is the
+      // likeliest source of the stuck attempts in production.
+      //
+      // CANCEL and ERROR stay in the test. They cost nothing, and something put
+      // them here — dropping a shape Uzum might really send would trade one
+      // silent failure for another.
+      const isFailure =
+        normalizedState === "FAIL" ||
+        normalizedState === "CANCEL" ||
+        normalizedState === "ERROR";
 
       if ((isSuccess || isFailure) && matchedAttempt) {
         paymentIntentId = matchedAttempt.payment_intent_id;
@@ -224,7 +236,23 @@ export async function handleWebhookEvent(
           // 2) persist bindingId immediately so retries/renewals can reuse it
           // 3) run merchantPay using that binding
           // 4) finalize subscription only after merchantPay success
-          if (bindingId && isBindingSetupAttempt) {
+          // Saving the card must not depend on the attempt's status.
+          //
+          // This used to require the attempt to be `initialized` or
+          // `requires_action`. That coupling is why recognising FAIL above could
+          // not ship on its own: a decline moves the attempt to `failed`, and a
+          // binding SUCCESS arriving afterwards would fall through to the
+          // warn-only branch below. The customer's new card would never be
+          // stored — so a subscriber updating an expired card would be told it
+          // worked while we saved nothing, and their next renewal would fail.
+          //
+          // Storing a card token is idempotent (persistBinding… looks for an
+          // existing row on the same token first), so there is nothing to
+          // protect against here. What must be guarded is CHARGING, and that is
+          // already guarded a few lines down by the intent's status — which, as
+          // the comment there says, is the thing that must only ever be paid
+          // once. Attempt status was never the right instrument for either job.
+          if (bindingId) {
             const { data: intent, error: intentErr } = await supabase
               .schema("payments")
               .from("payment_intents")
@@ -425,45 +453,34 @@ export async function handleWebhookEvent(
               failurePayload: chargeResult.raw,
             });
             }
-          } else if (!bindingId) {
-            // No bindingId means this is the CHARGE order reporting in, not the
-            // card-binding one. That is the async settlement path: when
-            // merchantPay returns `processing` rather than a terminal answer,
-            // this callback is the only thing that ever records the money.
-            // Finalizing here is correct and must not be removed.
+          } else {
+            // No bindingId. Two things arrive this way and both are handled
+            // correctly by finalizing:
+            //
+            //   - the CHARGE order reporting in. When merchantPay returns
+            //     `processing` rather than a terminal answer, this callback is
+            //     the only thing that ever records the money.
+            //   - a ONE_STEP one-off (see providers/uzum.ts). It captures on
+            //     Uzum's page and returns no card token, so there is nothing to
+            //     bind and nothing more to charge.
+            //
+            // Finalizing here is correct for both and must not be removed.
+            //
+            // There used to be a third branch below this one, for a binding
+            // success on an attempt that had moved on, which logged a warning
+            // and did nothing. It is gone because it is now unreachable —
+            // bindingId is either present or absent, and the branch above takes
+            // every present case. The protection it stood for did not go with
+            // it: what it guarded against was finalizing off the back of a
+            // tokenised card with no money taken, and that is now enforced
+            // where it belongs, by the intent-status check above, which refuses
+            // to charge an intent that has already settled.
             await finalizeInitialPayment(supabase, {
               paymentIntentId: matchedAttempt.payment_intent_id,
               providerId: input.providerId,
               providerPaymentId,
               payload,
               attemptId: matchedAttempt.id,
-            });
-          } else {
-            // A BINDING callback for an attempt that is no longer in a
-            // binding-setup state — because a charge already failed against it,
-            // or a retry moved it on.
-            //
-            // This used to fall into the branch above and finalize: intent
-            // `succeeded`, session `completed`, `payment.succeeded` emitted —
-            // off the back of a card being tokenised, with no merchantPay and
-            // no money taken. Every Uzum checkout registers TWO_STEP/BINDING
-            // (providers/uzum.ts), so a binding success proves only that a card
-            // exists, never that it was charged.
-            //
-            // It is reachable today: a charge that fails before returning refs
-            // leaves the attempt's provider_payment_id set to the BINDING order
-            // id, so a duplicate binding callback still matches this attempt.
-            await writePaymentDebugLog(supabase, {
-              scope: "webhook",
-              event: "binding.success_for_non_setup_attempt",
-              level: "warn",
-              providerId: input.providerId,
-              paymentIntentId: matchedAttempt.payment_intent_id,
-              paymentAttemptId: matchedAttempt.id,
-              data: {
-                attemptStatus: matchedAttempt.status,
-                bindingProviderPaymentId: providerPaymentId,
-              },
             });
           }
         } else {
