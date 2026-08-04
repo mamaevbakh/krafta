@@ -210,6 +210,29 @@ const EN = {
   "page.webhooks.title": "Webhooks",
   "page.webhooks.subtitle":
     "Krafta Pay tells your app when a subscription renews, fails, or recovers — so you can grant or revoke access without polling.",
+  // ── payments (one-off) ──────────────────────────────────────────────────
+  "page.payments.title": "Payments",
+  "page.payments.subtitle": "One-off charges — create a link, send it, and watch it land.",
+  "payments.createHint":
+    "We don’t send the link. Create it, then share it with the customer yourself.",
+  "payments.created.description":
+    "Share this URL with the customer. It stays in the table below, so you can copy it again later.",
+  "payments.list.loading": "Loading payments…",
+  "payments.list.empty": "No payments yet.",
+  "payments.noDescription": "Payment",
+  "payments.col.description": "For",
+  "payments.col.amount": "Amount",
+  "payments.col.status": "Status",
+  "payments.col.created": "Created",
+  "payments.col.paid": "Paid",
+  "payments.col.link": "Link",
+  "payments.status.succeeded": "Paid",
+  "payments.status.processing": "Processing",
+  "payments.status.awaiting": "Awaiting payment",
+  "payments.status.failed": "Failed",
+  "payments.status.canceled": "Canceled",
+  "nav.payments": "Payments",
+
   // ── subscriptions ───────────────────────────────────────────────────────
   "page.subscriptions.title": "Subscriptions",
   "page.subscriptions.subtitle": "Create a subscription and track lifecycle + billing states.",
@@ -586,6 +609,29 @@ const RU: Catalog = {
   "page.webhooks.title": "Вебхуки",
   "page.webhooks.subtitle":
     "Krafta Pay сообщает вашему приложению, когда подписка продлилась, сорвалась или восстановилась — чтобы выдавать и отзывать доступ без опроса API.",
+  // ── payments (one-off) ──────────────────────────────────────────────────
+  "page.payments.title": "Платежи",
+  "page.payments.subtitle": "Разовые оплаты — создайте ссылку, отправьте и следите за оплатой.",
+  "payments.createHint":
+    "Ссылку мы не отправляем. Создайте её и перешлите клиенту сами.",
+  "payments.created.description":
+    "Отправьте эту ссылку клиенту. Она останется в таблице ниже — сможете скопировать её снова.",
+  "payments.list.loading": "Загружаем платежи…",
+  "payments.list.empty": "Платежей пока нет.",
+  "payments.noDescription": "Платёж",
+  "payments.col.description": "За что",
+  "payments.col.amount": "Сумма",
+  "payments.col.status": "Статус",
+  "payments.col.created": "Создан",
+  "payments.col.paid": "Оплачен",
+  "payments.col.link": "Ссылка",
+  "payments.status.succeeded": "Оплачен",
+  "payments.status.processing": "В обработке",
+  "payments.status.awaiting": "Ждёт оплаты",
+  "payments.status.failed": "Не прошёл",
+  "payments.status.canceled": "Отменён",
+  "nav.payments": "Платежи",
+
   // ── subscriptions ───────────────────────────────────────────────────────
   "page.subscriptions.title": "Подписки",
   "page.subscriptions.subtitle": "Создайте подписку и следите за её статусом и списаниями.",
@@ -948,6 +994,29 @@ const UZ: Catalog = {
   "page.webhooks.title": "Vebxuklar",
   "page.webhooks.subtitle":
     "Obuna uzaytirilganda, uzilganda yoki tiklanganda Krafta Pay ilovangizga xabar beradi — API’ni so‘rab turmasdan ruxsat berish yoki olib qo‘yish uchun.",
+  // ── payments (one-off) ──────────────────────────────────────────────────
+  "page.payments.title": "To‘lovlar",
+  "page.payments.subtitle": "Bir martalik to‘lovlar — havola yarating, yuboring va to‘lovni kuzating.",
+  "payments.createHint":
+    "Havolani biz yubormaymiz. Uni yarating va mijozga o‘zingiz uzating.",
+  "payments.created.description":
+    "Bu havolani mijozga yuboring. U quyidagi jadvalda saqlanadi — keyin yana nusxalashingiz mumkin.",
+  "payments.list.loading": "To‘lovlar yuklanmoqda…",
+  "payments.list.empty": "Hali to‘lovlar yo‘q.",
+  "payments.noDescription": "To‘lov",
+  "payments.col.description": "Nima uchun",
+  "payments.col.amount": "Summa",
+  "payments.col.status": "Holat",
+  "payments.col.created": "Yaratildi",
+  "payments.col.paid": "To‘landi",
+  "payments.col.link": "Havola",
+  "payments.status.succeeded": "To‘landi",
+  "payments.status.processing": "Ishlanmoqda",
+  "payments.status.awaiting": "To‘lov kutilmoqda",
+  "payments.status.failed": "O‘tmadi",
+  "payments.status.canceled": "Bekor qilingan",
+  "nav.payments": "To‘lovlar",
+
   // ── subscriptions ───────────────────────────────────────────────────────
   "page.subscriptions.title": "Obunalar",
   "page.subscriptions.subtitle": "Obuna yarating va uning holati hamda to‘lovlarini kuzating.",

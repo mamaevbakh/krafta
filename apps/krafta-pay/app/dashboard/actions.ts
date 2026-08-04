@@ -34,18 +34,18 @@ export async function createHostedCheckoutAction(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim();
 
   if (!Number.isFinite(amountUzs) || amountUzs <= 0) {
-    redirect(`/dashboard?error=${encodeURIComponent("Enter an amount greater than zero")}`);
+    redirect(`/dashboard/payments?error=${encodeURIComponent("Enter an amount greater than zero")}`);
   }
   // step={1} is only a client hint; UZS has no sub-units, so reject fractional
   // sums server-side rather than silently storing 137,000.50.
   if (!Number.isInteger(amountUzs)) {
-    redirect(`/dashboard?error=${encodeURIComponent("Enter a whole UZS amount")}`);
+    redirect(`/dashboard/payments?error=${encodeURIComponent("Enter a whole UZS amount")}`);
   }
   const amountMinor = amountUzs * 100;
 
   const payBaseUrl = process.env.PAY_BASE_URL;
   if (!payBaseUrl) {
-    redirect(`/dashboard?error=${encodeURIComponent("PAY_BASE_URL is not set")}`);
+    redirect(`/dashboard/payments?error=${encodeURIComponent("PAY_BASE_URL is not set")}`);
   }
 
   const supabase = await createClient();
@@ -64,7 +64,7 @@ export async function createHostedCheckoutAction(formData: FormData) {
     .maybeSingle();
 
   if (!membership) {
-    redirect(`/dashboard?error=${encodeURIComponent("You do not have access to this org")}`);
+    redirect(`/dashboard/payments?error=${encodeURIComponent("You do not have access to this org")}`);
   }
 
   const admin = createAdminSupabase();
@@ -121,7 +121,7 @@ export async function createHostedCheckoutAction(formData: FormData) {
   );
 
   redirect(
-    `/dashboard?publicToken=${encodeURIComponent(result.publicToken)}&payUrl=${encodeURIComponent(
+    `/dashboard/payments?publicToken=${encodeURIComponent(result.publicToken)}&payUrl=${encodeURIComponent(
       result.payUrl,
     )}`,
   );
