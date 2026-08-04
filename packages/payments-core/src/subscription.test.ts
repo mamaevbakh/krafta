@@ -27,13 +27,80 @@ function fakeSupabase(rows: Record<string, unknown>, mutations: string[]) {
       },
       maybeSingle: () => Promise.resolve({ data: rows[table] ?? null, error: null }),
       single: () => Promise.resolve({ data: rows[table] ?? null, error: null }),
-      then: (resolve: (v: { data: null; error: null }) => unknown) =>
-        Promise.resolve({ data: null, error: null }).then(resolve),
+      then: (resolve: (v: { data: unknown; error: null }) => unknown) =>
+        // Array-valued rows resolve as a list, which is how the outbound-webhook
+        // endpoint query reads. Anything else stays null, as before.
+        Promise.resolve({
+          data: Array.isArray(rows[table]) ? rows[table] : null,
+          error: null,
+        }).then(resolve),
     };
     return b;
   }
   return { schema: () => ({ from: (table: string) => builder(table) }) } as never;
 }
+
+describe("payment.* fires for one-off charges only", () => {
+  const endpoint = [{ id: "ep_1", enabled_events: null }];
+
+  it("emits a delivery when a one-off settles", async () => {
+    // Before this existed, WEBHOOK_EVENT_TYPES held only subscription.* and
+    // every emit site required a subscription id — so a one-off payment
+    // produced no outbound event at all and an integrator had to poll.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        payment_intents: { id: "pi_oneoff", org_id: "org1", environment: "live", status: "processing", metadata: {}, amount_minor: 100, currency: "UZS" },
+        payment_attempts: { id: "att1", org_provider_account_id: "opa1" },
+        checkout_sessions: { id: "cs1", customer_id: null, metadata: {} },
+        webhook_endpoints: endpoint,
+        // no invoices row — this is what makes it a one-off
+      },
+      mutations,
+    );
+
+    await finalizeInitialPayment(supa, {
+      paymentIntentId: "pi_oneoff",
+      providerId: "atmos",
+      providerPaymentId: "254179",
+      attemptId: "att1",
+    });
+
+    expect(mutations).toContain("insert:webhook_deliveries");
+  });
+
+  it("stays silent for a subscription charge", async () => {
+    // A subscription already has subscription.activated / .renewed. Emitting
+    // payment.* alongside would double-report one event and invite a merchant
+    // to release the same thing twice.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        payment_intents: { id: "pi_sub", org_id: "org1", environment: "live", status: "processing", metadata: {}, amount_minor: 100, currency: "UZS" },
+        invoices: { id: "inv1", subscription_id: "sub1", attempt_count: 0, metadata: {} },
+        subscriptions: { id: "sub1", customer_id: "cust1", org_id: "org1", default_payment_method_id: null },
+        payment_attempts: { id: "att2", org_provider_account_id: "opa2" },
+        checkout_sessions: { id: "cs2", customer_id: null, metadata: {} },
+        webhook_endpoints: endpoint,
+      },
+      mutations,
+    );
+
+    await finalizeInitialPayment(supa, {
+      paymentIntentId: "pi_sub",
+      providerId: "atmos",
+      providerPaymentId: "254180",
+      attemptId: "att2",
+    });
+
+    // It still does its subscription work…
+    expect(mutations).toContain("update:subscriptions");
+    // …and the deliveries it enqueues come from the subscription path, which
+    // this fake's endpoint rows would also satisfy — so assert on the absence of
+    // a SECOND emit rather than on silence.
+    expect(mutations.filter((m) => m === "insert:webhook_deliveries").length).toBeLessThanOrEqual(1);
+  });
+});
 
 describe("finalizeInitialPayment idempotency (double-finalize guard)", () => {
   it("does NO writes when the intent is already succeeded", async () => {

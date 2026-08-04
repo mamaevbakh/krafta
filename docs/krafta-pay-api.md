@@ -240,6 +240,50 @@ Register endpoints under **Dashboard → Webhooks**. Without one, your app has t
 | `subscription.canceled` | Billing ended for real | Revoke access |
 | `subscription.paused` | Billing suspended | Suspend access |
 | `subscription.resumed` | Billing resumed | Restore access |
+| `payment.succeeded` | A one-off payment settled | **Release the order** |
+| `payment.failed` | A one-off payment was declined | Tell the customer; `data.payUrl` may still work |
+
+**`payment.*` fires for one-off payments only.** A subscription charge produces
+`subscription.activated` / `subscription.renewed` / `subscription.payment_failed`
+instead, never both — otherwise one event would arrive twice under two names and
+you would release the same thing twice.
+
+A one-off payload carries the two things you need to act on it:
+
+```json
+{
+  "id": "evt_...",
+  "type": "payment.succeeded",
+  "livemode": true,
+  "data": {
+    "payment": {
+      "id": "pi_...",
+      "status": "succeeded",
+      "amountMinor": 25000000,
+      "currency": "UZS",
+      "description": "Tuition, August",
+      "orderId": "ORD-42",
+      "providerId": "uzum",
+      "providerPaymentId": "254179",
+      "settledAt": "2026-08-04T09:05:00.000Z"
+    },
+    "customer": null,
+    "metadata": { "cartId": "c-9" },
+    "payUrl": null
+  }
+}
+```
+
+`orderId` and `metadata` are yours — whatever you sent to
+`POST /api/checkout_sessions` comes back untouched, minus a handful of keys
+Krafta Pay writes into the same field for its own bookkeeping. They are your
+correlation handle; nothing else in the payload is stable enough to key on.
+
+`amountMinor` is major units × 100 for **every** currency, UZS included:
+25000000 is 250,000 UZS.
+
+Delivery is at-least-once, so a decline that is retried and declines again
+produces two `payment.failed` events. Dedupe on the top-level `id`.
 
 Subscribe to none and you get all of them, including events added later.
 

@@ -9,7 +9,7 @@ import { createAtmosRecurringCharge, extractAtmosChargeProviderRefs } from "./pr
 import type { AtmosCardDetails } from "./providers/atmos";
 import { redactSensitive } from "./redact";
 import { writePaymentLog } from "./debug-log";
-import { emitSubscriptionEvent } from "./webhooks-out";
+import { emitPaymentEvent, emitSubscriptionEvent } from "./webhooks-out";
 import {
   buildPlatformInvoiceLines,
   computePlatformUsage,
@@ -1308,6 +1308,33 @@ export async function markStandaloneCheckoutFailed(
     .eq("id", input.paymentIntentId);
   if (intentUpdateErr) throw intentUpdateErr;
 
+  // Tell the merchant's backend the charge was declined, so they can stop
+  // waiting on an order that is not coming and tell the customer themselves.
+  //
+  // DELIBERATELY UNGATED. The design this came from gated the emit on a
+  // pre-read of the intent's status, reasoning that a genuine second decline
+  // always passes because the Atmos apply route moves the intent through
+  // `processing` first. That holds for Atmos and NOT for Uzum, where a retry can
+  // arrive with the intent already `failed` — so the guard would silently
+  // swallow every Uzum decline after the first, on the provider Kinza uses.
+  //
+  // The asymmetry decides it: a duplicate `payment.failed` costs a merchant a
+  // redundant notification, while a missing one means a customer is never told
+  // their card was declined. Duplicate provider callbacks are already stopped
+  // upstream by the webhook's event-id guard, so each call here is one real
+  // decline. Consumers dedupe on the payload `id` regardless — that is the
+  // documented contract for at-least-once delivery.
+  await emitPaymentEvent(supabase, {
+    eventType: "payment.failed",
+    paymentIntentId: input.paymentIntentId,
+    providerId: input.providerId,
+    providerPaymentId: input.providerPaymentId ?? null,
+    attemptId,
+    // The session stays open on a decline (see below), so the link the customer
+    // was given still works — the merchant can re-send it rather than starting over.
+    payUrl: input.payUrl ?? null,
+  });
+
   // The checkout session is deliberately left `open`.
   //
   // This used to write status: "failed", which was wrong twice over. First,
@@ -1484,6 +1511,21 @@ export async function finalizeInitialPayment(
   // settle. The intent + checkout are finalized and the charge is recorded — we
   // are done (and crucially we did NOT throw after the money moved).
   if (!invoiceId || !subscriptionId) {
+    // The one place a one-off success converges, and therefore the only place
+    // this event can fire. A subscription charge always resolves both ids and
+    // returns further down, so it never reaches here — which is what makes the
+    // subscription path provably unaffected rather than merely careful.
+    //
+    // emitPaymentEvent never throws. That matters here more than anywhere: the
+    // acquirer has already moved the money, and a merchant with a broken
+    // endpoint must not be able to turn a settled payment into an error.
+    await emitPaymentEvent(supabase, {
+      eventType: "payment.succeeded",
+      paymentIntentId: intent.id,
+      providerId: input.providerId,
+      providerPaymentId: input.providerPaymentId ?? null,
+      attemptId: attempt?.id ?? null,
+    });
     return { subscriptionId: null, invoiceId: null, paymentIntentId: intent.id };
   }
 
@@ -1587,6 +1629,8 @@ type MarkFailedInput = {
   providerId: string;
   providerPaymentId?: string | null;
   payload?: unknown;
+  /** Surfaced on `payment.failed` so a merchant can re-send the live link. */
+  payUrl?: string | null;
 };
 
 /**

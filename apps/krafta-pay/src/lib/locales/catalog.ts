@@ -209,7 +209,7 @@ const EN = {
   "page.apiKeys.subtitle": "Test and live keys for the merchant API. Both work at once.",
   "page.webhooks.title": "Webhooks",
   "page.webhooks.subtitle":
-    "Krafta Pay tells your app when a subscription renews, fails, or recovers — so you can grant or revoke access without polling.",
+    "Krafta Pay tells your app when a payment lands and when a subscription renews, fails, or recovers — so you can release an order or grant access without polling.",
   // ── payments (one-off) ──────────────────────────────────────────────────
   "page.payments.title": "Payments",
   "page.payments.subtitle": "One-off charges — create a link, send it, and watch it land.",
@@ -608,7 +608,7 @@ const RU: Catalog = {
   "page.apiKeys.subtitle": "Тестовые и рабочие ключи. Работают одновременно.",
   "page.webhooks.title": "Вебхуки",
   "page.webhooks.subtitle":
-    "Krafta Pay сообщает вашему приложению, когда подписка продлилась, сорвалась или восстановилась — чтобы выдавать и отзывать доступ без опроса API.",
+    "Krafta Pay сообщает вашему приложению, когда прошёл платёж и когда подписка продлилась, сорвалась или восстановилась — чтобы отдавать заказ и выдавать доступ, не опрашивая API.",
   // ── payments (one-off) ──────────────────────────────────────────────────
   "page.payments.title": "Платежи",
   "page.payments.subtitle": "Разовые оплаты — создайте ссылку, отправьте и следите за оплатой.",
@@ -993,7 +993,7 @@ const UZ: Catalog = {
   "page.apiKeys.subtitle": "Sinov va ishchi kalitlar. Ikkalasi bir vaqtda ishlaydi.",
   "page.webhooks.title": "Vebxuklar",
   "page.webhooks.subtitle":
-    "Obuna uzaytirilganda, uzilganda yoki tiklanganda Krafta Pay ilovangizga xabar beradi — API’ni so‘rab turmasdan ruxsat berish yoki olib qo‘yish uchun.",
+    "To‘lov o‘tganda hamda obuna uzaytirilganda, uzilganda yoki tiklanganda Krafta Pay ilovangizga xabar beradi — API’ni so‘rab turmasdan buyurtmani berish yoki ruxsatni ochish uchun.",
   // ── payments (one-off) ──────────────────────────────────────────────────
   "page.payments.title": "To‘lovlar",
   "page.payments.subtitle": "Bir martalik to‘lovlar — havola yarating, yuboring va to‘lovni kuzating.",
