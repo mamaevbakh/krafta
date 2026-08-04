@@ -1,6 +1,6 @@
 # Krafta Pay API
 
-Subscription billing for Uzbekistan. You connect your own Atmos or Uzum account, we run the subscription logic, and money moves directly from your customer to you — we never hold it.
+Payments for Uzbekistan — one-off charges and subscription billing. You connect your own Atmos or Uzum account, we run the billing logic, and money moves directly from your customer to you: we are never the merchant of record and never hold your funds.
 
 This is the integration guide. For internal operations, log taxonomy, and provider debugging, see the [platform reference](./krafta-pay-platform-reference.md).
 
@@ -8,16 +8,29 @@ This is the integration guide. For internal operations, log taxonomy, and provid
 
 ## The shortest path to a first charge
 
+**A one-off charge**
+
 ```
-1. Connect a provider      Dashboard → Providers → Atmos (consumer key, secret, store id)
+1. Connect a provider      Dashboard → Providers (consumer key, secret, store id)
+2. Get an API key          Dashboard → API keys → Create test key
+3. Create a payment        POST /api/checkout_sessions
+4. Send the customer       Open the returned payUrl
+5. Listen                  Dashboard → Webhooks → payment.succeeded
+```
+
+**A subscription**
+
+```
+1. Connect a provider      Dashboard → Providers (consumer key, secret, store id)
 2. Create a plan           Dashboard → Plans (amount, currency, interval)
 3. Get an API key          Dashboard → API keys → Create test key
 4. Create a checkout       POST /api/v1/subscriptions/checkout
 5. Send the customer       Open the returned payUrl
-6. Listen                  Dashboard → Webhooks → add your endpoint
+6. Listen                  Dashboard → Webhooks → subscription.activated
 ```
 
-Steps 4–6 are the only code you write.
+No engineer? Skip the API entirely: create a payment link in
+**Dashboard → Payments**, send it yourself, and watch the status there.
 
 ---
 
@@ -226,9 +239,70 @@ Also clears a scheduled cancel on a subscription that has not lapsed yet.
 
 ## Payments (one-off)
 
-A single charge, not a subscription. Create one with `POST /api/checkout_sessions`
-and send the customer to the `payUrl` it returns; the `paymentIntentId` from that
-response is the `id` used below.
+A single charge, not a subscription.
+
+### `POST /api/checkout_sessions`
+
+```
+POST /api/checkout_sessions
+Authorization: Bearer krp_test_...
+Idempotency-Key: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+Content-Type: application/json
+
+{
+  "amountMinor": 25000000,
+  "currency": "UZS",
+  "description": "Tuition, August",
+  "orderId": "ORD-42",
+  "successUrl": "https://yourapp.uz/orders/42",
+  "metadata": { "cartId": "c-9" }
+}
+```
+
+```json
+{
+  "checkoutSessionId": "cs_...",
+  "paymentIntentId": "pi_...",
+  "publicToken": "...",
+  "payUrl": "https://pay.krafta.org/pay/...",
+  "livemode": false
+}
+```
+
+`amountMinor` is major units × 100 for **every** currency, UZS included:
+25000000 is 250,000 UZS. Only `amountMinor` and `currency` are required.
+
+**`livemode` comes from your key**, not from a server setting. A `krp_test_` key
+always creates a test session and a `krp_live_` key always creates a live one, on
+the same deployment. Check this field if you are unsure which you are holding.
+
+**`successUrl` may use a custom scheme.** `myapp://orders/42` works, so a mobile
+app can be returned to directly. Uzum and Atmos never see your URL — the customer
+comes back to Krafta Pay first and is forwarded from there.
+
+#### Idempotency
+
+Send an `Idempotency-Key` header — any unique string up to 255 characters, one
+per logical operation — and a retry will not create a second payment.
+
+| Situation | Response |
+|---|---|
+| First request | `201` and the payment is created |
+| Retry, same body, original finished | `201`, the original response, `Idempotent-Replay: true` |
+| Retry, same body, original still running | `409 idempotency_key_in_progress` — retry shortly |
+| Same key, different body | `422 idempotency_key_reused` |
+
+The key is scoped to your organisation, your environment and this endpoint, so
+the same value is safe to reuse elsewhere. Keys expire after 24 hours.
+
+Without the header the endpoint behaves exactly as before, and a retry **will**
+create a second payment with its own `payUrl`. If your backend retries on timeout
+— most do — send the header.
+
+### Reading them back
+
+The `paymentIntentId` from the create response is the `id` below. Webhooks tell
+you the moment a payment lands; these tell you what you missed.
 
 ### `GET /v1/payments`
 
