@@ -19,7 +19,18 @@ import {
 
 // Intent states that mean the money question is already answered. A binding
 // callback arriving for an intent in one of these must not start another charge.
-const SETTLED_INTENT_STATUSES = new Set([
+/**
+ * Statuses where this payment is no longer ours to start again.
+ *
+ * `processing` is in here for the same reason as `succeeded`: the customer's
+ * money may be moving right now. Treating "we have not heard back yet" as
+ * "nothing happened" is exactly how someone pays twice.
+ *
+ * Exported because `selectProviderCreateAttempt` enforces the same rule before
+ * it registers an order with ANY provider. One definition, so a new provider
+ * cannot quietly acquire a different idea of what "already paid" means.
+ */
+export const SETTLED_INTENT_STATUSES = new Set([
   "succeeded",
   "processing",
   "canceled",
@@ -111,6 +122,45 @@ export async function handleWebhookEvent(
       .maybeSingle();
     if (attemptErr) throw attemptErr;
     matchedAttempt = attempt ?? null;
+  }
+
+  // Second reference, second chance.
+  //
+  // Uzum echoes back BOTH the id they minted (`orderId`) and the id we sent
+  // (`orderNumber`, which is our attempt's uuid). We only ever matched on the
+  // first. If a callback carries an id we did not store — a different id on the
+  // capture leg of a two-step order, say — the attempt goes unmatched, and an
+  // unmatched callback is a payment we never record. The customer is charged
+  // and the merchant is never told.
+  //
+  // Matching on our own id costs one query in the rare case the first misses,
+  // and it cannot mismatch: we generated it.
+  if (!matchedAttempt) {
+    const orderNumber =
+      payload && typeof payload === "object" && "orderNumber" in payload
+        ? String((payload as any).orderNumber)
+        : null;
+    if (orderNumber && /^[0-9a-f-]{32,36}$/i.test(orderNumber)) {
+      const { data: byOrderNumber, error: byOrderNumberErr } = await supabase
+        .schema("payments")
+        .from("payment_attempts")
+        .select("id, payment_intent_id, org_provider_account_id, status")
+        .eq("provider_id", input.providerId)
+        .eq("id", orderNumber)
+        .maybeSingle();
+      if (byOrderNumberErr) throw byOrderNumberErr;
+      if (byOrderNumber) {
+        matchedAttempt = byOrderNumber;
+        await writePaymentDebugLog(supabase, {
+          scope: "webhook",
+          event: "attempt.matched_by_order_number",
+          level: "warn",
+          providerId: input.providerId,
+          paymentAttemptId: byOrderNumber.id,
+          data: { providerPaymentId, orderNumber },
+        });
+      }
+    }
   }
 
   if (input.providerId === "uzum") {
