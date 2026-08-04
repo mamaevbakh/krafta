@@ -1285,6 +1285,18 @@ export async function markStandaloneCheckoutFailed(
   const nowIso = new Date().toISOString();
   const attemptId = input.attemptId ?? null;
 
+  if (await intentAlreadySucceeded(supabase, input.paymentIntentId)) {
+    await writePaymentLog(supabase, {
+      scope: "webhook",
+      event: "decline.ignored_intent_already_succeeded",
+      level: "warn",
+      providerId: input.providerId,
+      paymentIntentId: input.paymentIntentId,
+      data: { providerPaymentId: input.providerPaymentId ?? null, attemptId },
+    });
+    return { paymentIntentId: input.paymentIntentId, attemptId };
+  }
+
   if (attemptId) {
     const { error: attemptUpdateErr } = await supabase
       .schema("payments")
@@ -1725,12 +1737,59 @@ export async function createRecoveryCheckoutSession(
   }
 }
 
+/**
+ * Has this payment already settled?
+ *
+ * This is NOT the gate B1 removed, and the distinction is the whole point. That
+ * gate asked "is the intent in a chargeable state", which excluded `failed` —
+ * and since a Uzum retry can arrive with the intent already `failed`, it
+ * silently swallowed every decline after the first. This asks only whether the
+ * money already landed. A repeat decline on a `failed` intent still passes
+ * through and still emits, exactly as B1 intended; only `succeeded` is refused.
+ *
+ * Without it a late or retransmitted decline can un-pay a paid intent: on the
+ * subscription path `markPaymentFailed` writes `status: "failed"` with no
+ * pre-read at all, which also bumps the invoice's attempt_count toward
+ * `uncollectible` and pushes the subscription to `past_due` — for money that is
+ * sitting in the merchant's account.
+ *
+ * Fails OPEN on a read error: a decline that cannot be verified is still
+ * processed, because leaving a real decline unrecorded is the failure B1 fixed.
+ */
+async function intentAlreadySucceeded(
+  supabase: SupabaseClient,
+  paymentIntentId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .schema("payments")
+    .from("payment_intents")
+    .select("status")
+    .eq("id", paymentIntentId)
+    .maybeSingle();
+  if (error) return false;
+  return String(data?.status ?? "").toLowerCase() === "succeeded";
+}
+
 export async function markPaymentFailed(
   supabase: SupabaseClient,
   input: MarkFailedInput,
 ) {
   const now = new Date();
   const nowIso = now.toISOString();
+
+  if (await intentAlreadySucceeded(supabase, input.paymentIntentId)) {
+    // A paid subscription must never be walked backwards into dunning.
+    await writePaymentLog(supabase, {
+      scope: "webhook",
+      event: "decline.ignored_intent_already_succeeded",
+      level: "warn",
+      providerId: input.providerId,
+      paymentIntentId: input.paymentIntentId,
+      data: { providerPaymentId: input.providerPaymentId ?? null },
+    });
+    return;
+  }
+
   const { data: invoice, error: invoiceErr } = await supabase
     .schema("payments")
     .from("invoices")

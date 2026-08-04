@@ -38,7 +38,39 @@ export type PaymentListRow = {
   createdAt: string;
   paidAt: string | null;
   payUrl: string | null;
+  payLinkIntent: PayLinkIntent;
 };
+
+/**
+ * What the merchant is being asked to do with the link, which is not the same
+ * question as whether a link exists.
+ *
+ * `send` — nobody has tried yet; the job is to get the link to the customer.
+ * `retry` — a card was declined; the same link still works and the customer can
+ *   try again, which is the one thing a merchant staring at "Не прошёл" needs to
+ *   be told. Without this the two states render an identical bare URL and the
+ *   merchant has no way to know a failed payment is still recoverable.
+ */
+export type PayLinkIntent = "send" | "retry" | null;
+
+/**
+ * Deliberately derived from the display status rather than stored.
+ *
+ * An earlier design for this reached for a cron that wrote abandoned attempts to
+ * `failed`. That is unsafe: `webhook.ts` treats an attempt as binding-setup only
+ * while it is `initialized`/`requires_action`, so writing `failed` sends a late
+ * Uzum SUCCESS into the warn-only branch, `merchantPay` never runs, and the
+ * customer's funds sit in an uncaptured authorization hold. `checkout.ts` already
+ * documents the same conclusion where it leaves a stale attempt alone on purpose.
+ * Reading the answer costs nothing and cannot corrupt the money path.
+ */
+export function payLinkIntent(
+  displayStatus: PaymentDisplayStatus,
+  hasLink: boolean,
+): PayLinkIntent {
+  if (!hasLink) return null;
+  return displayStatus === "failed" ? "retry" : "send";
+}
 
 export type PaymentDisplayStatus =
   | "succeeded"
@@ -127,7 +159,9 @@ export function buildPaymentRow(input: {
   payBaseUrl: string;
 }): PaymentListRow {
   const status = paymentDisplayStatus(input.intent.status);
-  const canLink = shouldOfferPayLink(status) && input.openPublicToken && input.payBaseUrl;
+  const canLink = Boolean(
+    shouldOfferPayLink(status) && input.openPublicToken && input.payBaseUrl,
+  );
 
   // Every field is named explicitly. Spreading the intent row would ship
   // `metadata` to the browser, and metadata carries whatever the merchant's
@@ -144,5 +178,6 @@ export function buildPaymentRow(input: {
     createdAt: input.intent.created_at,
     paidAt: resolvePaidAt(status, input.attempts),
     payUrl: canLink ? `${input.payBaseUrl}/pay/${input.openPublicToken}` : null,
+    payLinkIntent: payLinkIntent(status, canLink),
   };
 }

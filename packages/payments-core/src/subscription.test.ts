@@ -307,6 +307,53 @@ describe("markPaymentFailed records the decline on the attempt", () => {
     expect(mutations).toContain("update:payment_intents");
   });
 
+  it("refuses to un-pay an intent that already succeeded", async () => {
+    // A late or retransmitted decline must never walk a paid payment backwards.
+    // On the subscription path this wrote status:"failed" with no pre-read at
+    // all, which also bumps the invoice's attempt_count toward `uncollectible`
+    // and pushes the subscription to past_due — for money already banked.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        payment_intents: { id: "pi7", status: "succeeded", metadata: {} },
+        invoices: { id: "inv7", subscription_id: "sub7", attempt_count: 0, metadata: {} },
+      },
+      mutations,
+    );
+
+    await markPaymentFailed(supa, {
+      paymentIntentId: "pi7",
+      providerId: "uzum",
+      providerPaymentId: "ref7",
+      attemptId: "att7",
+    });
+
+    expect(mutations).not.toContain("update:payment_intents");
+    expect(mutations).not.toContain("update:invoices");
+    expect(mutations).not.toContain("update:subscriptions");
+  });
+
+  it("still records a repeat decline on an already-failed intent", async () => {
+    // The guard above must stay narrower than the one B1 removed. That one
+    // asked "is the intent chargeable", which excluded `failed` — and since a
+    // Uzum retry arrives with the intent already `failed`, it swallowed every
+    // decline after the first. Only `succeeded` may be refused.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      { payment_intents: { id: "pi8", status: "failed", metadata: {} } },
+      mutations,
+    );
+
+    await markPaymentFailed(supa, {
+      paymentIntentId: "pi8",
+      providerId: "uzum",
+      providerPaymentId: "ref8",
+      attemptId: "att8",
+    });
+
+    expect(mutations).toContain("update:payment_intents");
+  });
+
   it("leaves the attempt alone on the dunning path, which mints its own", async () => {
     // A subscription retry creates a fresh attempt. Failing the old one here
     // would rewrite history rather than record it.

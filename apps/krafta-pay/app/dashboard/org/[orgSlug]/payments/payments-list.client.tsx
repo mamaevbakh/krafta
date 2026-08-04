@@ -127,7 +127,18 @@ export function PaymentsListClient({
               </div>
 
               {row.payUrl ? (
-                <PayLink url={row.payUrl} className="bg-background" />
+                <div className="space-y-1">
+                  {/* A declined payment and an unpaid one render an identical
+                      bare URL otherwise, so the merchant has no way to know the
+                      same link still works after a decline — the one fact that
+                      turns a lost sale into a recovered one. */}
+                  <span className="block text-xs text-muted-foreground">
+                    {row.payLinkIntent === "retry"
+                      ? t("payments.link.retry")
+                      : t("payments.link.send")}
+                  </span>
+                  <PayLink url={row.payUrl} className="bg-background" />
+                </div>
               ) : null}
             </li>
           );
@@ -154,7 +165,14 @@ export function PaymentsListClient({
             <TableHead className="hidden text-xs text-muted-foreground md:table-cell">
               {t("payments.col.paid")}
             </TableHead>
-            <TableHead className="hidden px-4 text-xs text-muted-foreground lg:table-cell">
+            {/* Not progressive enhancement, unlike the two above: this is the
+                only control on the row. It used to be `hidden lg:table-cell`
+                while the table itself starts at `sm:`, so between 640px and
+                1023px — a tablet, or a half-width laptop window — a merchant
+                with a declined payment was shown no way to act on it at all.
+                The column is now unconditional and its CONTENTS collapse
+                instead, so a future breakpoint edit cannot reopen the gap. */}
+            <TableHead className="px-4 text-xs text-muted-foreground">
               {t("payments.col.link")}
             </TableHead>
           </TableRow>
@@ -195,12 +213,23 @@ export function PaymentsListClient({
                   {formatPayDate(row.paidAt, locale, "short")}
                 </TableCell>
 
-                <TableCell className="hidden w-72 max-w-72 px-4 lg:table-cell">
+                <TableCell className="w-auto px-4 lg:w-72 lg:max-w-72">
                   {/* Only unpaid payments carry a link — see shouldOfferPayLink.
                       Re-sending one for a settled payment is how a customer gets
                       charged twice by a merchant trying to be helpful. */}
                   {row.payUrl ? (
-                    <PayLink url={row.payUrl} className="bg-background" />
+                    <div className="space-y-1">
+                      <PayLink
+                        url={row.payUrl}
+                        className="bg-background"
+                        collapseUrlBelowLg
+                      />
+                      {row.payLinkIntent === "retry" ? (
+                        <span className="hidden text-xs text-muted-foreground lg:block">
+                          {t("payments.link.retry")}
+                        </span>
+                      ) : null}
+                    </div>
                   ) : (
                     <span className="text-sm text-muted-foreground">—</span>
                   )}
