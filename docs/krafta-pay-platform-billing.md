@@ -255,6 +255,35 @@ re-pricing does not touch it. To re-price: edit `PLATFORM_PLANS` in
 seed against dev and prod. Existing subscribers re-price at their next period
 boundary (there is no proration in this repo).
 
+## Who is billed (decided at deploy, 2026-08-04)
+
+**Nobody who was already here.** `payments.platform_billing_exemptions` holds one
+row per exempt organization with a reason, seeded at migration time with every
+organization that existed on production — all 30, all of them the founder's test
+accounts. Billing applies only to merchants who sign up after the deploy.
+
+This started as "do not bill mamaevbakh@gmail.com" and widened, on the founder's
+call, once the production picture was on the table: 10 orgs under that address,
+5 under mr.mamaev01@mail.ru, and 15 under other addresses — none of them real
+customers. Exempting too many is a `DELETE` away from being fixed; exempting too
+few charges a real person's card. The exemption is per-org and reversible, so
+turning a specific merchant on later is one row.
+
+The guard is checked in **three** places, deliberately redundantly:
+
+1. `ensurePlatformSubscription` — an exempt org is never provisioned, so there is
+   no dormant subscription that could start charging if a later guard is removed.
+2. `loadPlatformBilling` / the billing page — renders a plain "not billed"
+   statement rather than 404ing, since every current user is exempt and the nav
+   item must not lead to an error page.
+3. `chargeRenewal` — skips before metering, invoicing or charging. This is the
+   one that matters for an org exempted *after* it was already provisioned.
+
+Verified on dev: an exempt org holding a pre-existing platform subscription
+produced zero payment intents, zero invoices and zero attempts after the
+exemption row appeared, while a billable org in the same cron run invoiced
+normally.
+
 ## Decisions
 
 **Platform-fee subscriptions live on `krafta-studio`** (org
@@ -308,6 +337,7 @@ Note the billing environment is a different axis from metering: what we bill
 | Version | What | dev | prod |
 |---|---|---|---|
 | `20260804120000_pay_invoice_line_items` | `payments.invoice_line_items` + `plans.features` | applied | applied |
+| `20260804140000_pay_platform_billing_exemptions` | exemption table + grandfather every existing org | applied | applied (30 orgs) |
 | `20260804121000_pay_seed_platform_plans` | the three platform plans on krafta-studio | applied (re-run after the USD removal and again after rounding) | applied (re-run after the USD removal and again after rounding) |
 
 The seed is idempotent on `(org_id, code)` and its upsert explicitly strips the
