@@ -326,9 +326,20 @@ export function PayResultRedirect({
             </Button>
           ) : null}
 
-          {/* Back to checkout is for someone who still needs to pay. Offering it
-              to a customer who just succeeded invites a second charge. */}
-          {!isSucceeded ? (
+          {/* Back to checkout is for someone who still needs to pay.
+
+              Hiding it only on confirmed success was not enough. The dangerous
+              case is the gap in between: the customer paid, the provider sent
+              them back here, and their callback to us has not landed yet. For
+              those seconds the status still reads "not paid", so this link
+              appeared under the "checking with the provider" spinner and
+              invited a second charge for an order that was already paid.
+
+              So it is hidden for anyone who came back from a successful
+              payment, until we positively know it failed. A customer who
+              genuinely still owes money either arrived via the failure route,
+              or has a confirmed failure and the retry button above. */}
+          {mode !== "success" || isFailed ? (
             <a
               href={`/pay/${encodeURIComponent(publicToken)}`}
               className="inline-flex h-10 items-center px-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"

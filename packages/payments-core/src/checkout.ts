@@ -4,7 +4,9 @@ import crypto from "crypto";
 import {
   assertNonNegativeAmount,
   getCheckoutSessionByPublicToken,
+  getPaymentIntentById,
 } from "./db";
+import { SETTLED_INTENT_STATUSES } from "./webhook";
 import type {
   CreateCheckoutSessionInput,
   CreateCheckoutSessionResult,
@@ -123,6 +125,30 @@ export async function selectProviderCreateAttempt(
 
   if (session.status !== "open") {
     throw new Error("checkout_session_not_open");
+  }
+
+  // Never start a second payment for money that has already moved.
+  //
+  // The session being `open` is not enough on its own. A provider's callback
+  // can arrive late — the customer pays, lands back on our page, and for the
+  // seconds or minutes until we hear back the intent still reads
+  // `requires_payment_method` while the session is still `open`. In that window
+  // the pay page offers "back to checkout", and every provider adapter below
+  // will happily register a brand-new order. The customer pays twice, and the
+  // second charge is one WE created, so "it happened on the provider's page" is
+  // no defence.
+  //
+  // This sits above createProviderAttempt deliberately: it is the same rule for
+  // Uzum, for Atmos, and for Payme/Click/Octo when they arrive. A provider
+  // adapter cannot opt out of it or reimplement it differently.
+  //
+  // `processing` counts as settled here. It means we are waiting on the
+  // provider's answer, and "we have not heard back" must not read as "nothing
+  // happened" — that is precisely the case this exists to stop.
+  const intentForGuard = await getPaymentIntentById(supabase, session.payment_intent_id);
+  const intentStatus = String((intentForGuard as any)?.status ?? "").toLowerCase();
+  if (SETTLED_INTENT_STATUSES.has(intentStatus)) {
+    throw new Error("payment_intent_already_settled");
   }
 
   // Idempotency: if this checkout session already selected the same provider and the attempt is still usable,

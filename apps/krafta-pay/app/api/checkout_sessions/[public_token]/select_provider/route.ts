@@ -83,6 +83,13 @@ export async function POST(
         },
       });
     } catch {}
+    // Refusing to start a second payment for an order that already settled is
+    // the guard working, not a fault. 409 so the pay page can say "this is
+    // already paid" instead of showing the customer a crash and inviting them
+    // to try again — which is the very thing the guard just prevented.
+    if (message === "payment_intent_already_settled") {
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
