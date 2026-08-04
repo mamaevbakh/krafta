@@ -17,6 +17,18 @@ function randomToken(bytes = 24) {
   return crypto.randomBytes(bytes).toString("hex");
 }
 
+// How long a provider-hosted redirect URL stays worth replaying.
+//
+// Uzum registers each order with `sessionTimeoutSecs`, whose documented range is
+// 600-1800 and which we always send at the 1800 maximum — 30 minutes is their
+// ceiling, not a default we could raise. Once it lapses the paymentRedirectUrl
+// renders "payment expired", so replaying a stored URL past that point can only
+// ever dead-end the customer. The margin covers clock skew between us and the
+// provider plus the time the customer spends on their page after we hand it over.
+const REDIRECT_URL_TTL_MS = 30 * 60 * 1000;
+const REDIRECT_URL_REUSE_MARGIN_MS = 2 * 60 * 1000;
+const REDIRECT_URL_REUSE_WINDOW_MS = REDIRECT_URL_TTL_MS - REDIRECT_URL_REUSE_MARGIN_MS;
+
 export async function createCheckoutSession(
   supabase: SupabaseClient,
   input: CreateCheckoutSessionInput,
@@ -109,6 +121,10 @@ export async function selectProviderCreateAttempt(
 ): Promise<SelectProviderResult> {
   const session = await getCheckoutSessionByPublicToken(supabase, input.publicToken);
 
+  if (session.status !== "open") {
+    throw new Error("checkout_session_not_open");
+  }
+
   // Idempotency: if this checkout session already selected the same provider and the attempt is still usable,
   // just return the existing checkout_url instead of creating a new provider order.
   const selectedProviderId = (session as any).selected_provider_id as string | null | undefined;
@@ -117,7 +133,7 @@ export async function selectProviderCreateAttempt(
     const { data: existingAttempt, error: existingAttemptErr } = await supabase
       .schema("payments")
       .from("payment_attempts")
-      .select("id, checkout_url, status")
+      .select("id, checkout_url, status, created_at")
       .eq("id", selectedAttemptId)
       .maybeSingle();
 
@@ -125,17 +141,31 @@ export async function selectProviderCreateAttempt(
 
     const status = (existingAttempt as any)?.status as string | undefined;
     const checkoutUrl = (existingAttempt as any)?.checkout_url as string | null | undefined;
+    const createdAt = (existingAttempt as any)?.created_at as string | undefined;
     const reusableStatuses = new Set(["initialized", "requires_action", "processing"]);
+    const ageMs = createdAt
+      ? Date.now() - new Date(createdAt).getTime()
+      : Number.POSITIVE_INFINITY;
 
-    if (existingAttempt && checkoutUrl && (!status || reusableStatuses.has(status))) {
+    if (
+      existingAttempt &&
+      checkoutUrl &&
+      status &&
+      reusableStatuses.has(status) &&
+      ageMs < REDIRECT_URL_REUSE_WINDOW_MS
+    ) {
       // Reuse only fires for redirect providers in Phase 0 (checkout_url present).
       // Inline (Atmos) re-selection reuse lands with the adapter in Phase 1.
       return { attemptId: existingAttempt.id, mode: "redirect", redirectUrl: checkoutUrl };
     }
-  }
 
-  if (session.status !== "open") {
-    throw new Error("checkout_session_not_open");
+    // Past the window the stored URL is a corpse — the provider's own page will
+    // tell the customer the payment expired. Fall through and register a fresh
+    // order rather than handing back the dead one.
+    //
+    // The stale attempt is deliberately left in `requires_action` and not
+    // canceled: if a late callback still arrives for that order, the webhook's
+    // binding-setup check has to recognise it and persist the binding.
   }
 
   // Find org_provider_account for that org+provider+env
@@ -222,7 +252,15 @@ export async function selectProviderCreateAttempt(
           })
           .eq("id", session.id);
 
-        return { attemptId: existing.id, mode: "redirect", redirectUrl: existing.checkout_url };
+        // Prefer the URL the provider minted moments ago in this very call. The
+        // one stored on the existing attempt is by definition older, and is the
+        // likely reason we are here at all — returning it would send the
+        // customer straight back to the expired page.
+        return {
+          attemptId: existing.id,
+          mode: "redirect",
+          redirectUrl: providerResult.redirectUrl ?? existing.checkout_url,
+        };
       }
     }
 
