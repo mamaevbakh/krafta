@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import { useT } from "@/lib/locales/context";
+import { payDateFormatter } from "@/lib/format-date";
+import { usePayLocale, useT } from "@/lib/locales/context";
 import type { PayMessageKey } from "@/lib/locales/catalog";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
@@ -40,12 +41,7 @@ type SubscriptionRow = {
   } | null;
 };
 
-function fmtDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
+
 
 /**
  * `success` and `warning` are the two ratified status tokens (DESIGN.md) and
@@ -81,6 +77,7 @@ export function SubscriptionsListClient({
 }) {
   const router = useRouter();
   const t = useT();
+  const fmtDate = payDateFormatter(usePayLocale());
   const [rows, setRows] = useState<SubscriptionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

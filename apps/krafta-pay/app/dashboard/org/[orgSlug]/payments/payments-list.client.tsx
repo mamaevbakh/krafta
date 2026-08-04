@@ -13,24 +13,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatMinorAmount } from "@/lib/format";
+import { formatPayDate } from "@/lib/format-date";
 import { usePayLocale, useT } from "@/lib/locales/context";
 import { PAYMENT_STATUS_META, type PaymentListRow } from "@/lib/payments-list";
 
-// Intl tags for the three product locales. Passing `undefined` here would use
-// the BROWSER's locale, which is how a fully Russian page ends up printing
-// "Aug 1" — the rest of the dashboard still does this, tracked separately.
-const DATE_LOCALE: Record<string, string> = { en: "en-GB", ru: "ru-RU", uz: "uz-UZ" };
-
-function fmtDate(value: string | null, locale: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString(DATE_LOCALE[locale] ?? "ru-RU", {
-        day: "numeric",
-        month: "short",
-      });
-}
 
 /**
  * The payments table.
@@ -136,8 +122,8 @@ export function PaymentsListClient({
 
               <div className="text-xs text-muted-foreground">
                 {row.paidAt
-                  ? `${t("payments.col.paid")} ${fmtDate(row.paidAt, locale)}`
-                  : `${t("payments.col.created")} ${fmtDate(row.createdAt, locale)}`}
+                  ? `${t("payments.col.paid")} ${formatPayDate(row.paidAt, locale, "short")}`
+                  : `${t("payments.col.created")} ${formatPayDate(row.createdAt, locale, "short")}`}
               </div>
 
               {row.payUrl ? (
@@ -202,11 +188,11 @@ export function PaymentsListClient({
                 </TableCell>
 
                 <TableCell className="text-sm text-muted-foreground">
-                  {fmtDate(row.createdAt, locale)}
+                  {formatPayDate(row.createdAt, locale, "short")}
                 </TableCell>
 
                 <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                  {fmtDate(row.paidAt, locale)}
+                  {formatPayDate(row.paidAt, locale, "short")}
                 </TableCell>
 
                 <TableCell className="hidden w-72 max-w-72 px-4 lg:table-cell">
