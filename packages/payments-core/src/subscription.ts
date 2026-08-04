@@ -1622,7 +1622,25 @@ export async function markPaymentFailed(
     .order("created_at", { ascending: false })
     .maybeSingle();
   if (invoiceErr) throw invoiceErr;
-  if (!invoice) return;
+  // No invoice means this is a one-off / payment-link intent, not a
+  // subscription renewal. This used to `return` here, which made the whole
+  // function a no-op for one-off payments: a declined charge left the intent
+  // stuck on `processing` and the checkout session `open`, so the customer sat
+  // on "checking with provider" forever and every retry with another card was
+  // rejected with payment_intent_not_submittable — the optimistic lock in the
+  // apply route only accepts requires_action / requires_payment_method /
+  // failed. On Atmos the reconciler cron eventually cleaned it up; on Uzum
+  // nothing did, because that sweep filters provider_id = 'atmos'.
+  //
+  // Dunning does not apply without an invoice to retry, so the correct
+  // terminal action is the standalone one: fail the intent and the session.
+  // The two call sites that already branch on intent kind (atmos-reconcile,
+  // webhook) call markStandaloneCheckoutFailed directly and never reach here,
+  // so this delegation cannot double-fire.
+  if (!invoice) {
+    await markStandaloneCheckoutFailed(supabase, input);
+    return;
+  }
 
   const nextAttemptCount = (invoice.attempt_count ?? 0) + 1;
   const invoiceMetadata = ((invoice.metadata ?? {}) as Record<string, unknown>);

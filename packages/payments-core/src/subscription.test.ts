@@ -3,6 +3,7 @@ import {
   RETRYABLE_INVOICE_STATUSES,
   chargeRenewal,
   finalizeInitialPayment,
+  markPaymentFailed,
   persistBindingPaymentMethodForCustomer,
   pickRetryTargetInvoice,
   runRenewalCycle,
@@ -119,6 +120,39 @@ describe("finalizeInitialPayment idempotency (double-finalize guard)", () => {
     expect(result).toEqual({ subscriptionId: null, invoiceId: null, paymentIntentId: "pi3" });
     expect(mutations).toContain("update:payment_intents"); // intent → succeeded
     expect(mutations).toContain("update:checkout_sessions"); // checkout → completed
+    expect(mutations).not.toContain("update:invoices");
+    expect(mutations).not.toContain("update:subscriptions");
+    expect(mutations).not.toContain("insert:subscription_events");
+  });
+});
+
+describe("markPaymentFailed on a one-off (no invoice)", () => {
+  it("marks the intent and the checkout session failed instead of doing nothing", async () => {
+    // The counterpart to the success case above. A declined payment-link charge
+    // has no invoice, and this used to `return` on that — leaving the intent on
+    // `processing` and the session `open`. The customer then sat on "checking
+    // with provider" indefinitely, and every retry with a different card was
+    // rejected, because the apply route's optimistic lock only accepts
+    // requires_action / requires_payment_method / failed.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        payment_intents: { id: "pi4", status: "processing", metadata: {} },
+        // no invoices row — this is what makes it a one-off
+      },
+      mutations,
+    );
+
+    await markPaymentFailed(supa, {
+      paymentIntentId: "pi4",
+      providerId: "atmos",
+      providerPaymentId: "254180",
+    });
+
+    expect(mutations).toContain("update:payment_intents"); // intent → failed
+    expect(mutations).toContain("update:checkout_sessions"); // session → failed
+    // Dunning is meaningless without an invoice to retry, so none of the
+    // subscription bookkeeping should run.
     expect(mutations).not.toContain("update:invoices");
     expect(mutations).not.toContain("update:subscriptions");
     expect(mutations).not.toContain("insert:subscription_events");
