@@ -284,6 +284,52 @@ describe("finalizeInitialPayment ignores merchant-forged invoice/subscription id
   });
 });
 
+describe("markPaymentFailed records the decline on the attempt", () => {
+  it("fails the attempt when the caller names one", async () => {
+    // Without this the attempt stays `requires_action` forever, and
+    // selectProviderCreateAttempt keeps handing the customer the same dead
+    // Uzum order — which is what "a declined Uzum payment cannot be retried"
+    // actually was.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      { payment_intents: { id: "pi5", status: "processing", metadata: {} } },
+      mutations,
+    );
+
+    await markPaymentFailed(supa, {
+      paymentIntentId: "pi5",
+      providerId: "uzum",
+      providerPaymentId: "ref5",
+      attemptId: "att5",
+    });
+
+    expect(mutations).toContain("update:payment_attempts");
+    expect(mutations).toContain("update:payment_intents");
+  });
+
+  it("leaves the attempt alone on the dunning path, which mints its own", async () => {
+    // A subscription retry creates a fresh attempt. Failing the old one here
+    // would rewrite history rather than record it.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        payment_intents: { id: "pi6", status: "processing", metadata: {} },
+        invoices: { id: "inv6", subscription_id: "sub6", attempt_count: 0, metadata: {} },
+      },
+      mutations,
+    );
+
+    await markPaymentFailed(supa, {
+      paymentIntentId: "pi6",
+      providerId: "uzum",
+      providerPaymentId: "ref6",
+      attemptId: "att6",
+    });
+
+    expect(mutations).not.toContain("update:payment_attempts");
+  });
+});
+
 describe("markPaymentFailed on a one-off (no invoice)", () => {
   it("marks the intent and the checkout session failed instead of doing nothing", async () => {
     // The counterpart to the success case above. A declined payment-link charge

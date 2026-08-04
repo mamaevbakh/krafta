@@ -1280,7 +1280,7 @@ export async function completeStandaloneCheckoutSession(
 
 export async function markStandaloneCheckoutFailed(
   supabase: SupabaseClient,
-  input: MarkFailedInput & { attemptId?: string | null },
+  input: MarkFailedInput,
 ) {
   const nowIso = new Date().toISOString();
   const attemptId = input.attemptId ?? null;
@@ -1631,6 +1631,12 @@ type MarkFailedInput = {
   payload?: unknown;
   /** Surfaced on `payment.failed` so a merchant can re-send the live link. */
   payUrl?: string | null;
+  /**
+   * Only the standalone (one-off) branch consumes this. The dunning branch
+   * deliberately ignores it: an invoice retry mints a fresh attempt, so failing
+   * the old one there would rewrite history rather than record it.
+   */
+  attemptId?: string | null;
 };
 
 /**
