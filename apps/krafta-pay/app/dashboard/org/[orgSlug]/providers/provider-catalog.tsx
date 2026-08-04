@@ -1,17 +1,19 @@
+import Image from "next/image";
+
 import { cn } from "@/lib/utils";
+import { getProviderLogo } from "@/lib/provider-logos";
 
 /**
  * The providers Krafta Pay can talk to, and how they present.
  *
  * ON THE MARKS
  * ------------
- * These are brand-coloured monogram tiles, NOT the providers' official logos —
- * we do not have licensed copies of those, and shipping an approximation while
- * calling it their logo would misrepresent a company we integrate with.
- *
- * Each provider's mark is a single component below, so replacing one with an
- * official SVG the provider supplies is a one-function change and touches
- * nothing else. The brand colour is kept in `brand` for exactly that reason.
+ * A provider with a supplied logo file renders it; the rest fall back to a
+ * brand-coloured monogram tile. The monogram is explicitly NOT a stand-in for
+ * a logo we do not have — it never approximates the provider's real artwork,
+ * because shipping a lookalike and calling it their logo would misrepresent a
+ * company we integrate with. Asset paths live in `@/lib/provider-logos` so this
+ * page and the hosted checkout picker cannot drift apart.
  *
  * ON `status`
  * -----------
@@ -57,6 +59,31 @@ function MarkTile({
   );
 }
 
+/**
+ * A supplied logo, sized and cornered to match `MarkTile` exactly so a list
+ * mixing logos and monograms still reads as one column of marks.
+ */
+function LogoTile({
+  providerId,
+  name,
+  className,
+}: {
+  providerId: CatalogProviderId;
+  name: string;
+  className?: string;
+}) {
+  const src = getProviderLogo(providerId);
+  return (
+    <Image
+      src={src ?? ""}
+      alt={name}
+      width={40}
+      height={40}
+      className={cn("size-10 shrink-0 rounded-xl object-cover", className)}
+    />
+  );
+}
+
 export const PROVIDER_CATALOG: Record<CatalogProviderId, CatalogProvider> = {
   atmos: {
     id: "atmos",
@@ -65,9 +92,7 @@ export const PROVIDER_CATALOG: Record<CatalogProviderId, CatalogProvider> = {
     status: "available",
     brand: "#0F62FE",
     Mark: ({ className }) => (
-      <MarkTile brand="#0F62FE" className={className}>
-        A
-      </MarkTile>
+      <LogoTile providerId="atmos" name="Atmos" className={className} />
     ),
   },
   uzum: {
@@ -77,9 +102,7 @@ export const PROVIDER_CATALOG: Record<CatalogProviderId, CatalogProvider> = {
     status: "available",
     brand: "#7F4DFF",
     Mark: ({ className }) => (
-      <MarkTile brand="#7F4DFF" className={className}>
-        U
-      </MarkTile>
+      <LogoTile providerId="uzum" name="Uzum" className={className} />
     ),
   },
   payme: {

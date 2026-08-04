@@ -5,6 +5,7 @@ import { useT } from "@/lib/locales/context";
 import { useState } from "react";
 
 import { AtmosCardForm } from "./atmos-card-form.client";
+import { ProviderRow } from "./provider-row";
 
 type Provider = {
   id: string;
@@ -101,30 +102,20 @@ export function ProviderPicker({
   }
 
   return (
-    <div className="mt-3 space-y-3">
+    <div className="mt-3 space-y-2">
       {providers.map((p) => (
-        <div key={p.id} className="rounded-md border p-1">
-          <button
-            type="button"
-            className="w-full rounded-md px-4 py-3 text-left hover:bg-muted disabled:opacity-60"
-            disabled={isStarting}
-            onClick={() => startProvider(p.id, "REDIRECT")}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-medium">{p.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {p.id === "atmos"
-                    ? t("checkout.inlineCard")
-                    : t("checkout.redirectCard")}
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {isStarting ? t("checkout.starting") : t("checkout.continue")}
-              </span>
-            </div>
-          </button>
-        </div>
+        <ProviderRow
+          key={p.id}
+          providerId={p.id}
+          name={p.name}
+          description={
+            p.id === "atmos" ? t("checkout.inlineCard") : t("checkout.redirectCard")
+          }
+          hint={isStarting ? t("checkout.starting") : t("checkout.continue")}
+          variant="brand"
+          disabled={isStarting}
+          onSelect={() => startProvider(p.id, "REDIRECT")}
+        />
       ))}
 
       {error ? (
