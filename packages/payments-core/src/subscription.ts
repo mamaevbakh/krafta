@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { createUzumRecurringCharge, extractUzumChargeProviderRefs } from "./providers/uzum";
+import {
+  createUzumRecurringCharge,
+  extractUzumChargeProviderRefs,
+  uzumOrderNumber,
+} from "./providers/uzum";
 import { createAtmosRecurringCharge, extractAtmosChargeProviderRefs } from "./providers/atmos";
 import type { AtmosCardDetails } from "./providers/atmos";
 import { redactSensitive } from "./redact";
@@ -2439,9 +2443,11 @@ export async function chargeRenewal(
           providerToken: paymentMethod.provider_token,
           clientId: customer?.id ?? subscription.org_id,
           description: "Subscription renewal",
-          // Uzum register may be idempotent by orderNumber. Renewal retries create a
-          // new payment_attempt, so use attempt id to force a fresh charge orderId.
-          orderNumber: `renewal-${attempt.id}`,
+          // Uzum rejects a repeat orderNumber (3027). Renewal retries create a
+          // new payment_attempt, so key it to the attempt id to force a fresh
+          // charge orderId. `renewal-<uuid>` was 44 chars against Uzum's
+          // documented maxLength of 36 — uzumOrderNumber keeps it legal.
+          orderNumber: uzumOrderNumber("r", attempt.id),
           currency: plan.currency,
           amountMinor: amountDueMinor,
           uzumCart: renewalUzumCart,
