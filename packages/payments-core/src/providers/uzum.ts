@@ -306,7 +306,23 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
     customerPhone = customer?.phone ?? null;
   }
 
-  const viewType = ctx.viewType ?? "WEB_VIEW";
+  // REDIRECT, not WEB_VIEW.
+  //
+  // Uzum's three display modes describe where their payment page is being
+  // rendered. WEB_VIEW is for a page embedded inside a NATIVE app's browser
+  // view. Nothing we have is a native app — the customer is on pay.krafta.uz in
+  // an ordinary mobile browser, and we hand them to Uzum with a full
+  // `window.location.assign`. REDIRECT is the mode that actually describes
+  // that.
+  //
+  // It also matters for the customer. A web page can only hand off to an
+  // installed app through a real browser navigation; inside a webview container
+  // that handoff is typically blocked. Asking for WEB_VIEW is the likeliest
+  // reason tapping "pay" never offers to open the Uzum app on a phone.
+  //
+  // Callers can still override per attempt — a future Telegram Mini App or a
+  // native shell genuinely wants WEB_VIEW, and that is exactly when to pass it.
+  const viewType = ctx.viewType ?? "REDIRECT";
   const body = {
     amount: intent.amount_minor,
     clientId: session.customer_id ?? session.org_id,
