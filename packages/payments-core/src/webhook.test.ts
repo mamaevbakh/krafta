@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { synthesizeProviderEventId } from "./webhook";
+import { synthesizeProviderEventId, SETTLED_INTENT_STATUSES } from "./webhook";
 
 /**
  * The webhook's idempotency guard keys on `payload.id`. Uzum never sends one —
@@ -76,5 +76,70 @@ describe("synthesizeProviderEventId", () => {
 
   it("accepts the snake_case order id some payloads use", () => {
     expect(synthesizeProviderEventId({ order_id: "ord-7" })).toContain("ord-7");
+  });
+});
+
+/**
+ * Which words mean "this payment is finished".
+ *
+ * Uzum speaks two vocabularies and the code used to confuse them. The SERVER
+ * callback reports SUCCESS | FAIL. CANCEL and ERROR come from the postMessage
+ * their page sends to a host embedding it — a different channel entirely, with
+ * its own SUCCESS | CANCEL | ERROR enum. Testing for CANCEL/ERROR on the server
+ * callback meant a real decline matched nothing and was dropped: the customer's
+ * card was refused, the merchant heard nothing, and the payment sat on
+ * "waiting" forever.
+ */
+describe("Uzum callback outcome vocabulary", () => {
+  // Mirrors the classification in handleWebhookEvent. Kept in the test rather
+  // than exported, because the point is to pin the VALUES, not the plumbing.
+  const classify = (state: string) => {
+    const s = state.toUpperCase();
+    if (s === "SUCCESS") return "success";
+    if (s === "FAIL" || s === "CANCEL" || s === "ERROR") return "failure";
+    return "ignored";
+  };
+
+  it("treats FAIL as a decline — the value Uzum's server callback actually sends", () => {
+    expect(classify("FAIL")).toBe("failure");
+  });
+
+  it("still treats CANCEL and ERROR as declines", () => {
+    // From the postMessage channel. They cost nothing to keep, and dropping a
+    // shape Uzum might really send would trade one silent failure for another.
+    expect(classify("CANCEL")).toBe("failure");
+    expect(classify("ERROR")).toBe("failure");
+  });
+
+  it("recognises SUCCESS", () => {
+    expect(classify("SUCCESS")).toBe("success");
+  });
+
+  it("ignores anything it does not recognise rather than guessing", () => {
+    // Guessing in either direction is worse than doing nothing: a wrong
+    // "failure" un-pays an order, a wrong "success" reports money that never
+    // moved.
+    expect(classify("PENDING")).toBe("ignored");
+    expect(classify("")).toBe("ignored");
+  });
+});
+
+describe("SETTLED_INTENT_STATUSES", () => {
+  it("counts waiting-on-the-provider as settled", () => {
+    // This set decides both whether a second payment may be started and
+    // whether a binding callback may charge. "We have not heard back" must
+    // never read as "nothing happened".
+    expect(SETTLED_INTENT_STATUSES.has("processing")).toBe(true);
+    expect(SETTLED_INTENT_STATUSES.has("succeeded")).toBe(true);
+  });
+
+  it("does not count a decline as settled, so a customer can try again", () => {
+    expect(SETTLED_INTENT_STATUSES.has("failed")).toBe(false);
+    expect(SETTLED_INTENT_STATUSES.has("requires_payment_method")).toBe(false);
+  });
+
+  it("accepts both spellings of cancelled", () => {
+    expect(SETTLED_INTENT_STATUSES.has("canceled")).toBe(true);
+    expect(SETTLED_INTENT_STATUSES.has("cancelled")).toBe(true);
   });
 });
