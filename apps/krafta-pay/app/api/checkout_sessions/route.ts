@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createCheckoutSession } from "@krafta/payments-core";
 import { authenticateMerchantApiKey } from "@/lib/api-keys";
+import {
+  beginIdempotent,
+  readIdempotencyKey,
+  releaseIdempotencyClaim,
+} from "@/lib/idempotency";
+import { V1Error } from "@/lib/v1";
+
+const ENDPOINT = "POST /api/checkout_sessions";
 
 export async function POST(req: Request) {
   const supabase = createAdminSupabase();
@@ -29,8 +37,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  let idempotencyKey: string | null = null;
   try {
     const body = await req.json();
+    idempotencyKey = readIdempotencyKey(req);
+
+    // Opt-in: with no Idempotency-Key header this is byte-identical to before,
+    // which is what makes it safe to ship ahead of anyone using it.
+    //
+    // With one, the claim is taken BEFORE any work. A retry that arrives while
+    // the first request is still running is answered 409 rather than allowed to
+    // mint a second payment intent, a second session and a second payUrl for one
+    // order — which is what a Medusa backend retrying on timeout would otherwise
+    // produce, with nothing linking the two.
+    const idem = await beginIdempotent<Record<string, unknown>>(supabase, {
+      key: idempotencyKey,
+      orgId: merchantOrgId,
+      environment,
+      endpoint: ENDPOINT,
+      body,
+    });
+
+    if (idem.kind === "replay") {
+      return NextResponse.json(idem.body as Record<string, unknown>, {
+        status: idem.status,
+        headers: { "Idempotent-Replay": "true" },
+      });
+    }
 
     const payBaseUrl = process.env.PAY_BASE_URL;
     if (!payBaseUrl) {
@@ -65,11 +98,27 @@ export async function POST(req: Request) {
     // Echo the resolved environment, as the v1 subscription endpoint does. A
     // merchant who believes they are testing can check one field instead of
     // discovering the answer on their card statement.
-    return NextResponse.json(
-      { ...result, livemode: environment === "live" },
-      { status: 201 },
-    );
+    const payload = { ...result, livemode: environment === "live" };
+    if (idem.kind === "fresh") await idem.complete(201, payload);
+
+    return NextResponse.json(payload, { status: 201 });
   } catch (error) {
+    // A claim whose handler threw must not answer 409 to the retry of something
+    // that never happened.
+    await releaseIdempotencyClaim(supabase, {
+      key: idempotencyKey,
+      orgId: merchantOrgId,
+      environment,
+      endpoint: ENDPOINT,
+    });
+
+    if (error instanceof V1Error) {
+      return NextResponse.json(
+        { error: error.code, message: error.message },
+        { status: error.status },
+      );
+    }
+
     // Never echo provider/DB error internals (message/code/details/hint) to the
     // caller — they can leak schema or identifiers. Keep details server-side.
     console.error("checkout_sessions POST failed", error);
