@@ -251,6 +251,13 @@ const EN = {
   "payments.status.awaiting": "Awaiting payment",
   "payments.status.failed": "Failed",
   "payments.status.canceled": "Canceled",
+  "payments.link.send": "Send this link to the customer",
+  "payments.link.retry": "The card was declined. This link still works — the customer can try again.",
+  "payLink.copy": "Copy",
+  "payLink.copied": "Copied",
+  "payLink.copyAria": "Copy payment link",
+  "payLink.copiedAria": "Payment link copied",
+  "payLink.openAria": "Open payment page",
   "nav.payments": "Payments",
 
   // ── subscriptions ───────────────────────────────────────────────────────
@@ -670,6 +677,13 @@ const RU: Catalog = {
   "payments.status.awaiting": "Ждёт оплаты",
   "payments.status.failed": "Не прошёл",
   "payments.status.canceled": "Отменён",
+  "payments.link.send": "Отправьте ссылку клиенту",
+  "payments.link.retry": "Карта не прошла. Ссылка рабочая — клиент может оплатить ещё раз.",
+  "payLink.copy": "Копировать",
+  "payLink.copied": "Скопировано",
+  "payLink.copyAria": "Копировать ссылку на оплату",
+  "payLink.copiedAria": "Ссылка на оплату скопирована",
+  "payLink.openAria": "Открыть страницу оплаты",
   "nav.payments": "Платежи",
 
   // ── subscriptions ───────────────────────────────────────────────────────
@@ -1075,6 +1089,13 @@ const UZ: Catalog = {
   "payments.status.awaiting": "To‘lov kutilmoqda",
   "payments.status.failed": "O‘tmadi",
   "payments.status.canceled": "Bekor qilingan",
+  "payments.link.send": "Havolani mijozga yuboring",
+  "payments.link.retry": "Karta o‘tmadi. Havola ishlaydi — mijoz yana urinib ko‘rishi mumkin.",
+  "payLink.copy": "Nusxalash",
+  "payLink.copied": "Nusxalandi",
+  "payLink.copyAria": "To‘lov havolasini nusxalash",
+  "payLink.copiedAria": "To‘lov havolasi nusxalandi",
+  "payLink.openAria": "To‘lov sahifasini ochish",
   "nav.payments": "To‘lovlar",
 
   // ── subscriptions ───────────────────────────────────────────────────────

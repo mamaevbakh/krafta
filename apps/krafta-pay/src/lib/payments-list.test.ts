@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildPaymentRow,
+  payLinkIntent,
   paymentDisplayStatus,
   resolvePaidAt,
   shouldOfferPayLink,
@@ -18,6 +19,26 @@ const intent = (over: Partial<PaymentIntentRow> = {}): PaymentIntentRow => ({
   order_id: "ORD-42",
   created_at: "2026-08-04T09:00:00.000Z",
   ...over,
+});
+
+describe("payLinkIntent", () => {
+  it("is null whenever there is no link, whatever the status", () => {
+    expect(payLinkIntent("failed", false)).toBeNull();
+    expect(payLinkIntent("awaiting", false)).toBeNull();
+  });
+
+  it("never invites action on a settled or canceled payment", () => {
+    // These cannot reach here via buildPaymentRow (shouldOfferPayLink gates
+    // them), but the function is exported and must not be a footgun on its own.
+    expect(payLinkIntent("succeeded", false)).toBeNull();
+    expect(payLinkIntent("canceled", false)).toBeNull();
+  });
+
+  it("treats processing as send, not retry — the money may still land", () => {
+    // "Try again" on a payment that is mid-settlement is how a customer pays
+    // twice.
+    expect(payLinkIntent("processing", true)).toBe("send");
+  });
 });
 
 const attempt = (over: Partial<PaymentAttemptRow> = {}): PaymentAttemptRow => ({
@@ -136,6 +157,45 @@ describe("buildPaymentRow", () => {
       payBaseUrl: "https://pay.krafta.org",
     });
     expect(row.payUrl).toBeNull();
+  });
+
+  it("asks the merchant to retry after a decline, and to send when nobody has tried", () => {
+    const declined = buildPaymentRow({
+      intent: intent({ status: "failed" }),
+      attempts: [],
+      openPublicToken: "tok_abc",
+      payBaseUrl: "https://pay.krafta.org",
+    });
+    expect(declined.payLinkIntent).toBe("retry");
+
+    const untouched = buildPaymentRow({
+      intent: intent({ status: "requires_payment_method" }),
+      attempts: [],
+      openPublicToken: "tok_abc",
+      payBaseUrl: "https://pay.krafta.org",
+    });
+    expect(untouched.payLinkIntent).toBe("send");
+  });
+
+  it("offers no intent when it offers no link", () => {
+    // Otherwise the row would prompt "send this to the customer" with nothing
+    // to send, or worse, invite a retry on a payment that already settled.
+    const settled = buildPaymentRow({
+      intent: intent({ status: "succeeded" }),
+      attempts: [],
+      openPublicToken: "tok_abc",
+      payBaseUrl: "https://pay.krafta.org",
+    });
+    expect(settled.payUrl).toBeNull();
+    expect(settled.payLinkIntent).toBeNull();
+
+    const noSession = buildPaymentRow({
+      intent: intent({ status: "failed" }),
+      attempts: [],
+      openPublicToken: null,
+      payBaseUrl: "https://pay.krafta.org",
+    });
+    expect(noSession.payLinkIntent).toBeNull();
   });
 
   it("keeps the amount in minor units for the formatter", () => {
