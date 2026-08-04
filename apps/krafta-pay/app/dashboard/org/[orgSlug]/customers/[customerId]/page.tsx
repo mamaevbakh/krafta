@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireOrgAccess } from "@/lib/org-access";
+import { payDateFormatter } from "@/lib/format-date";
+import { getPayLocale, getPayT } from "@/lib/locales/server";
+import type { PayMessageKey } from "@/lib/locales/catalog";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { formatMinorAmount } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -83,15 +86,24 @@ type MethodRow = {
 
 const SUB_STATUS: Record<
   string,
-  { label: string; variant: "success" | "warning" | "secondary" | "outline" }
+  { labelKey: PayMessageKey; variant: "success" | "warning" | "secondary" | "outline" }
 > = {
-  active: { label: "Active", variant: "success" },
-  trialing: { label: "Trialing", variant: "secondary" },
-  past_due: { label: "Past due", variant: "warning" },
-  incomplete: { label: "Incomplete", variant: "warning" },
-  incomplete_expired: { label: "Expired", variant: "outline" },
-  paused: { label: "Paused", variant: "secondary" },
-  canceled: { label: "Canceled", variant: "outline" },
+  active: { labelKey: "subscriptions.status.active", variant: "success" },
+  trialing: { labelKey: "subscriptions.status.trialing", variant: "secondary" },
+  past_due: { labelKey: "subscriptions.status.past_due", variant: "warning" },
+  incomplete: { labelKey: "subscriptions.status.incomplete", variant: "warning" },
+  incomplete_expired: { labelKey: "subscriptions.status.incomplete_expired", variant: "outline" },
+  paused: { labelKey: "subscriptions.status.paused", variant: "secondary" },
+  canceled: { labelKey: "subscriptions.status.canceled", variant: "outline" },
+};
+
+/** Invoice status copy, keyed the same way so an unknown value falls back loudly. */
+const INVOICE_STATUS_LABEL: Record<string, PayMessageKey> = {
+  paid: "invoice.status.paid",
+  open: "invoice.status.open",
+  uncollectible: "invoice.status.uncollectible",
+  void: "invoice.status.void",
+  draft: "invoice.status.draft",
 };
 
 const INVOICE_STATUS: Record<string, "success" | "warning" | "outline"> = {
@@ -102,12 +114,6 @@ const INVOICE_STATUS: Record<string, "success" | "warning" | "outline"> = {
   draft: "outline",
 };
 
-function fmtDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
 
 function billingSuffix(plan: { interval?: string | null; interval_count?: number | null } | null) {
   if (!plan?.interval) return null;
@@ -116,6 +122,8 @@ function billingSuffix(plan: { interval?: string | null; interval_count?: number
 }
 
 export default async function CustomerDetailPage({ params }: { params: Params }) {
+  const t = await getPayT();
+  const fmtDate = payDateFormatter(await getPayLocale());
   const { orgSlug, customerId } = await params;
   const org = await requireOrgAccess(orgSlug);
   const admin = createAdminSupabase();
@@ -226,24 +234,24 @@ export default async function CustomerDetailPage({ params }: { params: Params })
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" aria-hidden />
-          Subscriptions
+          {t("page.subscriptions.title")}
         </Link>
 
         <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              {person.email ?? person.phone ?? "Customer"}
+              {person.email ?? person.phone ?? t("customer.fallbackName")}
             </h1>
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
               {person.email && person.phone ? <span>{person.phone}</span> : null}
-              <span>Customer since {fmtDate(person.created_at)}</span>
+              <span>{t("customer.since", { date: fmtDate(person.created_at) })}</span>
               {person.external_id ? (
                 <span className="font-mono text-xs">{person.external_id}</span>
               ) : null}
             </p>
           </div>
           {person.environment === "test" ? (
-            <Badge variant="warning">Test</Badge>
+            <Badge variant="warning">{t("customer.testBadge")}</Badge>
           ) : null}
         </header>
       </div>
@@ -272,29 +280,28 @@ export default async function CustomerDetailPage({ params }: { params: Params })
       </dl>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">Subscriptions</h2>
+        <h2 className="text-sm font-medium">{t("page.subscriptions.title")}</h2>
         {subscriptions.length === 0 ? (
           <div className="rounded-lg border p-6 text-sm text-muted-foreground">
-            No subscriptions.
+            {t("customer.subscriptions.empty")}
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="px-4 text-xs text-muted-foreground">Plan</TableHead>
-                  <TableHead className="text-xs text-muted-foreground">Status</TableHead>
-                  <TableHead className="text-right text-xs text-muted-foreground">Amount</TableHead>
-                  <TableHead className="text-xs text-muted-foreground">Started</TableHead>
-                  <TableHead className="px-4 text-xs text-muted-foreground">Next invoice</TableHead>
+                  <TableHead className="px-4 text-xs text-muted-foreground">{t("subscriptions.col.plan")}</TableHead>
+                  <TableHead className="text-xs text-muted-foreground">{t("subscriptions.col.status")}</TableHead>
+                  <TableHead className="text-right text-xs text-muted-foreground">{t("subscriptions.col.amount")}</TableHead>
+                  <TableHead className="text-xs text-muted-foreground">{t("customer.col.started")}</TableHead>
+                  <TableHead className="px-4 text-xs text-muted-foreground">{t("subscriptions.col.nextInvoice")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {subscriptions.map((s) => {
-                  const st = SUB_STATUS[s.status] ?? {
-                    label: s.status,
-                    variant: "outline" as const,
-                  };
+                  const st = SUB_STATUS[s.status];
+                  const statusLabel = st ? t(st.labelKey) : s.status;
+                  const statusVariant = st?.variant ?? ("outline" as const);
                   const plan = s.plans;
                   return (
                     <TableRow key={s.id} className="hover:bg-transparent">
@@ -307,10 +314,12 @@ export default async function CustomerDetailPage({ params }: { params: Params })
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={st.variant}>{st.label}</Badge>
+                        <Badge variant={statusVariant}>{statusLabel}</Badge>
                         {s.cancel_at_period_end && s.status !== "canceled" ? (
                           <span className="ml-2 text-xs text-muted-foreground">
-                            Cancels {fmtDate(s.current_period_end)}
+                            {t("subscriptions.cancelsOn", {
+                              date: fmtDate(s.current_period_end),
+                            })}
                           </span>
                         ) : null}
                       </TableCell>
@@ -343,20 +352,20 @@ export default async function CustomerDetailPage({ params }: { params: Params })
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">Invoices</h2>
+        <h2 className="text-sm font-medium">{t("customer.invoices.heading")}</h2>
         {invoices.length === 0 ? (
-          <div className="rounded-lg border p-6 text-sm text-muted-foreground">No invoices.</div>
+          <div className="rounded-lg border p-6 text-sm text-muted-foreground">{t("customer.invoices.empty")}</div>
         ) : (
           <div className="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="px-4 text-xs text-muted-foreground">Status</TableHead>
-                  <TableHead className="text-right text-xs text-muted-foreground">Amount</TableHead>
-                  <TableHead className="text-xs text-muted-foreground">Created</TableHead>
-                  <TableHead className="text-xs text-muted-foreground">Due</TableHead>
-                  <TableHead className="text-xs text-muted-foreground">Paid</TableHead>
-                  <TableHead className="px-4 text-xs text-muted-foreground">Send link</TableHead>
+                  <TableHead className="px-4 text-xs text-muted-foreground">{t("subscriptions.col.status")}</TableHead>
+                  <TableHead className="text-right text-xs text-muted-foreground">{t("subscriptions.col.amount")}</TableHead>
+                  <TableHead className="text-xs text-muted-foreground">{t("payments.col.created")}</TableHead>
+                  <TableHead className="text-xs text-muted-foreground">{t("customer.col.due")}</TableHead>
+                  <TableHead className="text-xs text-muted-foreground">{t("payments.col.paid")}</TableHead>
+                  <TableHead className="px-4 text-xs text-muted-foreground">{t("subscriptions.col.sendLink")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -366,7 +375,9 @@ export default async function CustomerDetailPage({ params }: { params: Params })
                     <TableRow key={inv.id} className="hover:bg-transparent">
                       <TableCell className="px-4">
                         <Badge variant={INVOICE_STATUS[inv.status] ?? "outline"}>
-                          {inv.status}
+                          {INVOICE_STATUS_LABEL[inv.status]
+                            ? t(INVOICE_STATUS_LABEL[inv.status])
+                            : inv.status}
                         </Badge>
                         {Number(inv.attempt_count ?? 0) > 1 ? (
                           <span className="ml-2 text-xs text-muted-foreground">
@@ -401,11 +412,10 @@ export default async function CustomerDetailPage({ params }: { params: Params })
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">Payment methods</h2>
+        <h2 className="text-sm font-medium">{t("customer.methods.heading")}</h2>
         {methods.length === 0 ? (
           <div className="rounded-lg border p-6 text-sm text-muted-foreground">
-            No saved card. A card is stored once the customer completes a payment that
-            allows recurring charges.
+            {t("customer.methods.empty")}
           </div>
         ) : (
           <ul className="divide-y overflow-hidden rounded-lg border">
@@ -420,10 +430,10 @@ export default async function CustomerDetailPage({ params }: { params: Params })
                     {String(m.exp_month).padStart(2, "0")}/{String(m.exp_year).slice(-2)}
                   </span>
                 ) : null}
-                {m.is_default ? <Badge variant="secondary">Default</Badge> : null}
+                {m.is_default ? <Badge variant="secondary">{t("customer.methods.default")}</Badge> : null}
                 {m.status !== "active" ? <Badge variant="outline">{m.status}</Badge> : null}
                 <span className="ml-auto text-xs text-muted-foreground">
-                  Added {fmtDate(m.created_at)}
+                  {t("customer.methods.added", { date: fmtDate(m.created_at) })}
                 </span>
               </li>
             ))}

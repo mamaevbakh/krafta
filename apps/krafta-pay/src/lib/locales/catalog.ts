@@ -210,6 +210,26 @@ const EN = {
   "page.webhooks.title": "Webhooks",
   "page.webhooks.subtitle":
     "Krafta Pay tells your app when a payment lands and when a subscription renews, fails, or recovers — so you can release an order or grant access without polling.",
+  // ── customer detail ─────────────────────────────────────────────────────
+  "customer.fallbackName": "Customer",
+  "customer.since": "Customer since {date}",
+  "customer.testBadge": "Test",
+  "customer.subscriptions.empty": "No subscriptions.",
+  "customer.col.started": "Started",
+  "customer.invoices.heading": "Invoices",
+  "customer.invoices.empty": "No invoices.",
+  "customer.col.due": "Due",
+  "customer.methods.heading": "Payment methods",
+  "customer.methods.empty":
+    "No saved card. A card is stored once the customer completes a payment that allows recurring charges.",
+  "customer.methods.default": "Default",
+  "customer.methods.added": "Added {date}",
+  "invoice.status.paid": "Paid",
+  "invoice.status.open": "Open",
+  "invoice.status.uncollectible": "Uncollectible",
+  "invoice.status.void": "Void",
+  "invoice.status.draft": "Draft",
+
   // ── payments (one-off) ──────────────────────────────────────────────────
   "page.payments.title": "Payments",
   "page.payments.subtitle": "One-off charges — create a link, send it, and watch it land.",
@@ -609,6 +629,26 @@ const RU: Catalog = {
   "page.webhooks.title": "Вебхуки",
   "page.webhooks.subtitle":
     "Krafta Pay сообщает вашему приложению, когда прошёл платёж и когда подписка продлилась, сорвалась или восстановилась — чтобы отдавать заказ и выдавать доступ, не опрашивая API.",
+  // ── customer detail ─────────────────────────────────────────────────────
+  "customer.fallbackName": "Клиент",
+  "customer.since": "Клиент с {date}",
+  "customer.testBadge": "Тест",
+  "customer.subscriptions.empty": "Подписок нет.",
+  "customer.col.started": "Начата",
+  "customer.invoices.heading": "Счета",
+  "customer.invoices.empty": "Счетов нет.",
+  "customer.col.due": "Срок",
+  "customer.methods.heading": "Способы оплаты",
+  "customer.methods.empty":
+    "Сохранённой карты нет. Карта сохраняется, когда клиент проходит оплату с возможностью списаний.",
+  "customer.methods.default": "Основная",
+  "customer.methods.added": "Добавлена {date}",
+  "invoice.status.paid": "Оплачен",
+  "invoice.status.open": "Ожидает оплаты",
+  "invoice.status.uncollectible": "Безнадёжный",
+  "invoice.status.void": "Аннулирован",
+  "invoice.status.draft": "Черновик",
+
   // ── payments (one-off) ──────────────────────────────────────────────────
   "page.payments.title": "Платежи",
   "page.payments.subtitle": "Разовые оплаты — создайте ссылку, отправьте и следите за оплатой.",
@@ -994,6 +1034,26 @@ const UZ: Catalog = {
   "page.webhooks.title": "Vebxuklar",
   "page.webhooks.subtitle":
     "To‘lov o‘tganda hamda obuna uzaytirilganda, uzilganda yoki tiklanganda Krafta Pay ilovangizga xabar beradi — API’ni so‘rab turmasdan buyurtmani berish yoki ruxsatni ochish uchun.",
+  // ── customer detail ─────────────────────────────────────────────────────
+  "customer.fallbackName": "Mijoz",
+  "customer.since": "{date} dan beri mijoz",
+  "customer.testBadge": "Sinov",
+  "customer.subscriptions.empty": "Obunalar yo‘q.",
+  "customer.col.started": "Boshlangan",
+  "customer.invoices.heading": "Hisoblar",
+  "customer.invoices.empty": "Hisoblar yo‘q.",
+  "customer.col.due": "Muddat",
+  "customer.methods.heading": "To‘lov usullari",
+  "customer.methods.empty":
+    "Saqlangan karta yo‘q. Karta mijoz takroriy to‘lovlarga ruxsat beruvchi to‘lovni yakunlaganda saqlanadi.",
+  "customer.methods.default": "Asosiy",
+  "customer.methods.added": "{date} da qo‘shilgan",
+  "invoice.status.paid": "To‘langan",
+  "invoice.status.open": "To‘lov kutilmoqda",
+  "invoice.status.uncollectible": "Undirib bo‘lmaydi",
+  "invoice.status.void": "Bekor qilingan",
+  "invoice.status.draft": "Qoralama",
+
   // ── payments (one-off) ──────────────────────────────────────────────────
   "page.payments.title": "To‘lovlar",
   "page.payments.subtitle": "Bir martalik to‘lovlar — havola yarating, yuboring va to‘lovni kuzating.",
