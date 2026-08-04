@@ -40,11 +40,12 @@ export async function POST(
     const requestedSubscriptionId = String(formData.get("subscriptionId") ?? "").trim() || null;
 
     let subscriptionId: string | null = null;
+    let subscriptionEnvironment: "test" | "live" | null = null;
     if (requestedSubscriptionId) {
       const { data: subscription, error: subscriptionErr } = await supabase
         .schema("payments")
         .from("subscriptions")
-        .select("id")
+        .select("id, environment")
         .eq("id", requestedSubscriptionId)
         .eq("org_id", portalSession.session.org_id)
         .eq("customer_id", portalSession.session.customer_id)
@@ -54,13 +55,39 @@ export async function POST(
         return redirectToPortal(req, session_token, { error: "subscription_not_found" });
       }
       subscriptionId = subscription.id;
+      subscriptionEnvironment = subscription.environment === "test" ? "test" : "live";
     }
 
     const payBaseUrl = process.env.PAY_BASE_URL?.replace(/\/+$/, "");
     if (!payBaseUrl) {
       return redirectToPortal(req, session_token, { error: "pay_base_url_missing" });
     }
-    const environment = (process.env.PAY_ENV ?? "live") as "test" | "live";
+    // From the record, never from a process global.
+    //
+    // This read `process.env.PAY_ENV ?? "live"` and then passed it only to
+    // selectProviderCreateAttempt — createCheckoutSession below never received
+    // it and fell back to defaultPayEnvironment(). So a card update for a TEST
+    // subscription created a LIVE intent and a LIVE session on any production
+    // deploy, and under BYOA "live" is a different set of the merchant's real
+    // acquirer credentials, not a sandbox flag.
+    //
+    // The cast was unsound too: a PAY_ENV of anything other than test/live —
+    // "production", a typo — passed straight through as a literal environment
+    // value that matches no provider account and no CHECK constraint.
+    //
+    // A portal card update always belongs to a customer, and usually to a named
+    // subscription. Both carry `environment`, so there is a real answer here.
+    const { data: portalCustomer, error: portalCustomerErr } = await supabase
+      .schema("payments")
+      .from("customers")
+      .select("environment")
+      .eq("id", portalSession.session.customer_id)
+      .maybeSingle();
+    if (portalCustomerErr) throw portalCustomerErr;
+
+    const environment: "test" | "live" =
+      subscriptionEnvironment ??
+      (portalCustomer?.environment === "test" ? "test" : "live");
     const portalBaseUrl = new URL(`/portal/${encodeURIComponent(session_token)}`, req.url);
     const successUrl = new URL(portalBaseUrl);
     successUrl.searchParams.set("success", "payment_method_updated");
@@ -71,6 +98,8 @@ export async function POST(
       supabase,
       {
         orgId: portalSession.session.org_id,
+        // Must match the value handed to selectProviderCreateAttempt below.
+        environment,
         amountMinor: 0,
         currency: "UZS",
         description: "Customer portal payment method update",
