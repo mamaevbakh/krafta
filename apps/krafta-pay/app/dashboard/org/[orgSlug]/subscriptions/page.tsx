@@ -1,4 +1,5 @@
 import { getDashboardEnvironment } from "@/lib/dashboard-env";
+import { getPayT } from "@/lib/locales/server";
 import { requireOrgAccess } from "@/lib/org-access";
 import { getOrgProviderStatus } from "@/lib/provider-status";
 import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-first";
@@ -41,6 +42,7 @@ export default async function DashboardSubscriptionsPage({
   const org = await requireOrgAccess(orgSlug);
   const orgId = org.orgId;
   const sp = await searchParams;
+  const t = await getPayT();
 
   const admin = createAdminSupabase();
   const environment = await getDashboardEnvironment();
@@ -63,9 +65,9 @@ export default async function DashboardSubscriptionsPage({
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Subscriptions</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("page.subscriptions.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Create a subscription and track lifecycle + billing states.
+          {t("page.subscriptions.subtitle")}
         </p>
       </header>
 
@@ -78,9 +80,9 @@ export default async function DashboardSubscriptionsPage({
         ) : plans.length === 0 ? (
           <Card size="sm" className="max-w-md">
             <CardHeader>
-              <CardTitle className="text-sm">No plans yet</CardTitle>
+              <CardTitle className="text-sm">{t("subscriptions.noPlans.title")}</CardTitle>
               <CardDescription>
-                Create a subscription plan before you can start a subscription.
+                {t("subscriptions.noPlans.description")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -89,7 +91,7 @@ export default async function DashboardSubscriptionsPage({
                 size="sm"
                 variant="outline"
               >
-                Create a plan
+                {t("subscriptions.noPlans.cta")}
               </LinkButton>
             </CardContent>
           </Card>
@@ -106,7 +108,7 @@ export default async function DashboardSubscriptionsPage({
                   className="text-xs font-medium text-muted-foreground"
                   htmlFor="sub-email"
                 >
-                  Customer email
+                  {t("subscriptions.form.email")}
                 </label>
                 <Input
                   id="sub-email"
@@ -122,7 +124,7 @@ export default async function DashboardSubscriptionsPage({
                   className="text-xs font-medium text-muted-foreground"
                   htmlFor="sub-plan"
                 >
-                  Plan
+                  {t("subscriptions.form.plan")}
                 </label>
                 <select
                   id="sub-plan"
@@ -133,21 +135,22 @@ export default async function DashboardSubscriptionsPage({
                   {plans.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} — {formatMinorAmount(p.amount_minor, p.currency)} /{" "}
-                      {p.interval_count === 1 ? "month" : `${p.interval_count} months`}
+                      {p.interval_count === 1
+                        ? t("subscriptions.interval.month")
+                        : t("subscriptions.interval.months", { count: p.interval_count })}
                     </option>
                   ))}
                 </select>
               </div>
 
-              <Button type="submit">Create subscription</Button>
+              <Button type="submit">{t("subscriptions.form.submit")}</Button>
             </form>
 
             {/* Says it plainly, because the field looked like a "send to" box
                 and there is no sender behind it. One line under the row rather
                 than wedged between the fields. */}
             <p className="mt-2 text-xs text-muted-foreground">
-              The email identifies the customer — we don&apos;t contact them. You&apos;ll
-              get a payment link to send yourself.
+              {t("subscriptions.form.emailHint")}
             </p>
           </div>
         )}
@@ -164,10 +167,9 @@ export default async function DashboardSubscriptionsPage({
             className="mt-4 max-w-md border-emerald-500/30 bg-emerald-500/5"
           >
             <CardHeader>
-              <CardTitle>Subscription created</CardTitle>
+              <CardTitle>{t("subscriptions.created.title")}</CardTitle>
               <CardDescription>
-                Send this link to the customer. It stays on the subscription below,
-                so you can copy it again later.
+                {t("subscriptions.created.description")}
               </CardDescription>
             </CardHeader>
             <CardContent>
