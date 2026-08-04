@@ -224,6 +224,64 @@ Also clears a scheduled cancel on a subscription that has not lapsed yet.
 
 ---
 
+## Payments (one-off)
+
+A single charge, not a subscription. Create one with `POST /api/checkout_sessions`
+and send the customer to the `payUrl` it returns; the `paymentIntentId` from that
+response is the `id` used below.
+
+### `GET /v1/payments`
+
+Filters: `status`, `orderId`, `limit`.
+
+```
+GET /api/v1/payments?status=succeeded&limit=25
+Authorization: Bearer krp_live_...
+```
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "payment",
+      "id": "pi_...",
+      "status": "succeeded",
+      "amountMinor": 25000000,
+      "currency": "UZS",
+      "description": "Tuition, August",
+      "orderId": "ORD-42",
+      "providerId": "uzum",
+      "providerPaymentId": "254179",
+      "createdAt": "2026-08-04T09:00:00.000Z",
+      "settledAt": "2026-08-04T09:05:00.000Z",
+      "metadata": { "cartId": "c-9" },
+      "livemode": true
+    }
+  ],
+  "hasMore": false
+}
+```
+
+### `GET /v1/payments/{id}`
+
+Same object, or `404 payment_not_found`. A payment belonging to another merchant
+returns 404 rather than 403 — the alternative is an oracle over other people's
+ids. A subscription charge also returns 404 here; use `/v1/subscriptions`, which
+carries the invoice and period context this shape has nowhere to put.
+
+**Together with webhooks.** `payment.succeeded` tells you the moment it happens;
+this tells you what you missed. A handler that was down for an afternoon
+reconciles by listing `?status=succeeded` and matching on `orderId`.
+
+**`metadata` is what you sent**, minus a few keys Krafta Pay writes into the same
+field for its own bookkeeping (`subscription_id`, `invoice_id`, `purpose`,
+`uzumCart`, and the portal keys). Avoid those names if you need them round-tripped.
+
+**Scoping.** Every read is scoped to the key's organisation *and* environment. A
+`krp_test_` key cannot see live payments and vice versa. Note that payments
+created before 2026-08-03 predate the environment column and all read as `live`.
+
 ## Webhooks
 
 Register endpoints under **Dashboard → Webhooks**. Without one, your app has to poll to learn about renewals — and a renewal that lands at 3am while nobody polls is a customer whose access you silently revoked.

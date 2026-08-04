@@ -704,12 +704,21 @@ export function requireWebhookSecretKey(env: NodeJS.ProcessEnv = process.env): s
 // ── one-off payment events ──────────────────────────────────────────────────
 
 /**
- * Keys Krafta Pay writes into `payment_intents.metadata` itself.
+ * Keys withheld from anything we hand back to a merchant.
  *
- * The merchant's own metadata lands in the same jsonb column (checkout.ts copies
- * the create request body onto the intent), so echoing the column back verbatim
- * would hand a merchant our internal bookkeeping and invite them to depend on
- * it. Stripped on the way out; the merchant gets back only what they put in.
+ * The merchant's own metadata and our bookkeeping share one jsonb column —
+ * checkout.ts copies the create request body straight onto the intent — so
+ * echoing the column back whole would hand them our internals and invite them to
+ * depend on them.
+ *
+ * Be honest about the trade: this is a denylist, not a proof of ownership. Two
+ * of these are genuinely ambiguous. `uzumCart` / `uzum` may be merchant-supplied
+ * (getUzumCartFromMetadata accepts them and merchant-supplied wins over the one
+ * we synthesise), and `subscription_id` / `invoice_id` can be sent by anyone
+ * since they are plain jsonb keys. They are withheld anyway: the cart can carry
+ * the placeholder fiscal identifiers the dashboard action attaches, and echoing
+ * the id keys back would imply they mean something to us. A merchant who sends a
+ * colliding key will not see it come back — withholding is the safer failure.
  */
 const INTERNAL_INTENT_METADATA_KEYS = new Set([
   "subscription_id",
@@ -724,7 +733,7 @@ const INTERNAL_INTENT_METADATA_KEYS = new Set([
   "portalSessionId",
 ]);
 
-function merchantMetadata(raw: unknown): Record<string, unknown> {
+export function merchantMetadata(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   return Object.fromEntries(
     Object.entries(raw as Record<string, unknown>).filter(
