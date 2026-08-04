@@ -1335,17 +1335,56 @@ export async function finalizeInitialPayment(
   const { data: intent, error: intentErr } = await supabase
     .schema("payments")
     .from("payment_intents")
-    .select("id, status, metadata, amount_minor, currency")
+    .select("id, org_id, status, metadata, amount_minor, currency")
     .eq("id", input.paymentIntentId)
     .maybeSingle();
   if (intentErr) throw intentErr;
   if (!intent) throw new Error("payment_intent_not_found");
 
+  // `metadata` is MERCHANT-WRITABLE. createCheckoutSession copies the caller's
+  // body straight onto the intent, and POST /api/checkout_sessions passes
+  // `body.metadata` through untouched — so anything read out of here is
+  // attacker-controlled input, not our own bookkeeping, even though
+  // createSubscriptionCheckout also writes these two keys legitimately.
+  //
+  // That matters because the ids below select which rows get marked paid and
+  // active further down, and those updates are keyed on id alone. Without an
+  // ownership check, a merchant could POST
+  // `metadata: { subscription_id: "<someone else's uuid>" }`, pay 1 som with
+  // their own card, and have us mark another org's invoice paid and extend
+  // their subscription. Pointing it at their OWN subscription is the cheaper
+  // version of the same trick and needs no stolen id at all.
   const metadata = (intent.metadata ?? {}) as Record<string, unknown>;
-  const invoiceIdFromMetadata =
+  const claimedInvoiceId =
     typeof metadata.invoice_id === "string" ? metadata.invoice_id : null;
-  const subscriptionIdFromMetadata =
+  const claimedSubscriptionId =
     typeof metadata.subscription_id === "string" ? metadata.subscription_id : null;
+
+  // Confirm each claimed id belongs to this intent's org before it is allowed
+  // to steer a write. A claim that fails is dropped, not fatal: the invoice
+  // lookup by payment_intent_id below is the trustworthy path and is what the
+  // legitimate subscription flow lands on anyway.
+  const verifyOwnedBy = async (table: "invoices" | "subscriptions", id: string | null) => {
+    if (!id) return null;
+    const { data, error } = await supabase
+      .schema("payments")
+      .from(table)
+      .select("id")
+      .eq("id", id)
+      .eq("org_id", intent.org_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) return id;
+    await writePaymentLog(supabase, {
+      scope: "security",
+      event: "finalize.metadata_id_rejected",
+      level: "warn",
+      paymentIntentId: intent.id,
+      orgId: intent.org_id,
+      data: { table, claimedId: id },
+    });
+    return null;
+  };
 
   const { data: invoice, error: invoiceErr } = await supabase
     .schema("payments")
@@ -1356,8 +1395,6 @@ export async function finalizeInitialPayment(
     .maybeSingle();
   if (invoiceErr) throw invoiceErr;
 
-  const invoiceId = invoiceIdFromMetadata ?? invoice?.id ?? null;
-  const subscriptionId = subscriptionIdFromMetadata ?? invoice?.subscription_id ?? null;
   // A subscription charge carries both an invoice and a subscription; a one-off
   // payment-link / hosted-checkout charge carries neither. A successful charge
   // must finalize the intent in BOTH cases — we must never leave the intent
@@ -1367,8 +1404,26 @@ export async function finalizeInitialPayment(
   // apply succeeded and a late provider webhook arrives for the same charge), do
   // not re-run side effects — no duplicate subscription_events, no period reset.
   if (intent.status === "succeeded") {
-    return { subscriptionId, invoiceId, paymentIntentId: intent.id };
+    // Report what the database says, not what the caller claimed — this path
+    // runs before any claim has been checked for ownership.
+    return {
+      subscriptionId: invoice?.subscription_id ?? null,
+      invoiceId: invoice?.id ?? null,
+      paymentIntentId: intent.id,
+    };
   }
+
+  // Only past the idempotency guard is a claim worth checking: an already
+  // finalized intent does no writes, so there is nothing for a forged id to
+  // steer, and re-verifying on every late duplicate webhook would be noise.
+  const invoiceIdFromMetadata = await verifyOwnedBy("invoices", claimedInvoiceId);
+  const subscriptionIdFromMetadata = await verifyOwnedBy(
+    "subscriptions",
+    claimedSubscriptionId,
+  );
+
+  const invoiceId = invoiceIdFromMetadata ?? invoice?.id ?? null;
+  const subscriptionId = subscriptionIdFromMetadata ?? invoice?.subscription_id ?? null;
 
   let attempt: {
     id: string;

@@ -126,6 +126,97 @@ describe("finalizeInitialPayment idempotency (double-finalize guard)", () => {
   });
 });
 
+// The shared fake above ignores .eq() entirely — every read returns the canned
+// row for its table. That is fine for asserting which side effects ran, but it
+// cannot express "this row exists, but not for your org", which is the whole
+// question below. This fake applies every .eq() filter, treating a column the
+// row does not carry as a non-match, the way Postgres would.
+function filteringFakeSupabase(
+  rows: Record<string, Record<string, unknown>>,
+  mutations: string[],
+) {
+  function builder(table: string) {
+    const filters: Record<string, unknown> = {};
+    const b: Record<string, unknown> = {
+      select: () => b,
+      order: () => b,
+      eq: (col: string, val: unknown) => {
+        filters[col] = val;
+        return b;
+      },
+      update: (_v: unknown) => {
+        mutations.push(`update:${table}`);
+        return b;
+      },
+      insert: (_v: unknown) => {
+        mutations.push(`insert:${table}`);
+        return b;
+      },
+      maybeSingle: () => {
+        const row = rows[table];
+        const matches =
+          row && Object.entries(filters).every(([col, val]) => row[col] === val);
+        return Promise.resolve({ data: matches ? row : null, error: null });
+      },
+      then: (resolve: (v: { data: null; error: null }) => unknown) =>
+        Promise.resolve({ data: null, error: null }).then(resolve),
+    };
+    return b;
+  }
+  return { schema: () => ({ from: (table: string) => builder(table) }) } as never;
+}
+
+describe("finalizeInitialPayment ignores merchant-forged invoice/subscription ids", () => {
+  it("does not mark another org's invoice paid or their subscription active", async () => {
+    // payment_intents.metadata is merchant input: createCheckoutSession copies
+    // the request body onto the intent and POST /api/checkout_sessions passes
+    // body.metadata through untouched. finalizeInitialPayment reads invoice_id
+    // and subscription_id out of it and lets them WIN over the invoice looked
+    // up by payment_intent_id, then updates those rows keyed on id alone.
+    //
+    // So without an ownership check, a merchant could point those at another
+    // org's uuids, pay 1 som with their own card, and have us mark that org's
+    // invoice paid and extend their subscription. Aiming it at their own
+    // subscription is the same trick for free and needs no stolen id.
+    const mutations: string[] = [];
+    const supa = filteringFakeSupabase(
+      {
+        payment_intents: {
+          id: "pi_attacker",
+          org_id: "org_attacker",
+          status: "processing",
+          metadata: { invoice_id: "inv_victim", subscription_id: "sub_victim" },
+        },
+        // Both rows exist — they just belong to somebody else.
+        invoices: { id: "inv_victim", org_id: "org_victim", subscription_id: "sub_victim" },
+        subscriptions: { id: "sub_victim", org_id: "org_victim", customer_id: "cust_victim" },
+        payment_attempts: { id: "att_attacker", org_provider_account_id: "opa1" },
+      },
+      mutations,
+    );
+
+    const result = await finalizeInitialPayment(supa, {
+      paymentIntentId: "pi_attacker",
+      providerId: "atmos",
+      providerPaymentId: "999999",
+      attemptId: "att_attacker",
+    });
+
+    // Falls back to the one-off shape, because neither claim survived the check.
+    expect(result.invoiceId).toBeNull();
+    expect(result.subscriptionId).toBeNull();
+    // The attacker's own intent still settles — refusing the claim must not
+    // strand a customer who really was charged.
+    expect(mutations).toContain("update:payment_intents");
+    // But nothing of the victim's is touched.
+    expect(mutations).not.toContain("update:invoices");
+    expect(mutations).not.toContain("update:subscriptions");
+    expect(mutations).not.toContain("insert:subscription_events");
+    // And the rejection is recorded rather than swallowed.
+    expect(mutations).toContain("insert:logs");
+  });
+});
+
 describe("markPaymentFailed on a one-off (no invoice)", () => {
   it("marks the intent and the checkout session failed instead of doing nothing", async () => {
     // The counterpart to the success case above. A declined payment-link charge
