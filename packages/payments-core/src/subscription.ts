@@ -1304,15 +1304,23 @@ export async function markStandaloneCheckoutFailed(
     .eq("id", input.paymentIntentId);
   if (intentUpdateErr) throw intentUpdateErr;
 
-  const { error: sessionUpdateErr } = await supabase
-    .schema("payments")
-    .from("checkout_sessions")
-    .update({
-      status: "failed",
-      updated_at: nowIso,
-    })
-    .eq("payment_intent_id", input.paymentIntentId);
-  if (sessionUpdateErr) throw sessionUpdateErr;
+  // The checkout session is deliberately left `open`.
+  //
+  // This used to write status: "failed", which was wrong twice over. First,
+  // `checkout_sessions_status_check` only permits open / completed / expired /
+  // canceled (baseline migration), so the write raises 23514 and the caller
+  // rethrows — the inbound webhook route then answers 5xx, the provider retries,
+  // and the retry short-circuits on the event-id guard. A declined payment ends
+  // up permanently ambiguous.
+  //
+  // Second, even if the constraint allowed it, closing the session is the
+  // opposite of what a decline should do. The pay page reads
+  // `isRecoverable={session.status === "open"}` and treats a non-open session as
+  // terminal, so marking it failed would take away the "try another card" path
+  // this function exists to unblock. Failing the intent is enough: the apply
+  // route's optimistic lock accepts `failed`, so the customer can submit a
+  // different card against the same session. A session that is never paid ages
+  // out to `expired` on its own.
 }
 
 export async function finalizeInitialPayment(

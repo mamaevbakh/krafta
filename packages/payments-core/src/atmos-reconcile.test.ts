@@ -141,7 +141,7 @@ describe("reconcileAtmosPaymentIntent", () => {
     expect(result.outcome).toBe("succeeded");
   });
 
-  it("marks a one-off intent failed (intent + checkout) when Atmos reports failed", async () => {
+  it("fails a one-off intent but leaves the checkout session open when Atmos reports failed", async () => {
     const mutations: string[] = [];
     const supa = fakeSupabase(
       {
@@ -165,8 +165,14 @@ describe("reconcileAtmosPaymentIntent", () => {
 
     expect(result.outcome).toBe("failed");
     expect(mutations).toContain("update:payment_intents"); // -> failed
-    expect(mutations).toContain("update:checkout_sessions"); // -> failed
     expect(mutations).toContain("update:payment_attempts"); // attempt -> failed
+    // This assertion used to be the opposite, and it was wrong in a way this
+    // fake cannot catch: it does not enforce CHECK constraints, so a write of
+    // status "failed" passed here while raising 23514 against a real database —
+    // `checkout_sessions_status_check` allows only open/completed/expired/
+    // canceled. Leaving the session open is also the correct product behaviour:
+    // the pay page reads an open session as "you can try another card".
+    expect(mutations).not.toContain("update:checkout_sessions");
   });
 
   it("never auto-fails when no transaction id is resolvable (manual review)", async () => {

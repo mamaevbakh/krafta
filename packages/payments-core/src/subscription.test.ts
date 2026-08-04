@@ -150,7 +150,11 @@ describe("markPaymentFailed on a one-off (no invoice)", () => {
     });
 
     expect(mutations).toContain("update:payment_intents"); // intent → failed
-    expect(mutations).toContain("update:checkout_sessions"); // session → failed
+    // The session must be left alone. `checkout_sessions_status_check` permits
+    // only open/completed/expired/canceled, so writing "failed" raises 23514 and
+    // 5xxs the provider's webhook — and the pay page reads an open session as
+    // "you can try another card", which is exactly what a decline should allow.
+    expect(mutations).not.toContain("update:checkout_sessions");
     // Dunning is meaningless without an invoice to retry, so none of the
     // subscription bookkeeping should run.
     expect(mutations).not.toContain("update:invoices");
