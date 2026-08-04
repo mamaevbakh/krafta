@@ -9,13 +9,22 @@ export async function POST(req: Request) {
   // Require a merchant API key. orgId is derived from the authenticated key, so a
   // caller can never create checkout sessions (or capture card data, once Atmos
   // inline lands) under another merchant's organization.
+  //
+  // `environment` is derived from the key for the same reason, and it is the more
+  // dangerous of the two to get wrong. This route used to drop it and let
+  // createCheckoutSession fall back to defaultPayEnvironment(), which reads a
+  // process-wide PAY_ENV — "live" in production. A merchant integrating with a
+  // krp_test_ key therefore created a LIVE session and charged a real card
+  // against their live acquirer while believing they were in test mode.
   let merchantOrgId: string;
+  let environment: "test" | "live";
   try {
     const auth = await authenticateMerchantApiKey({
       supabase,
       authorizationHeader: req.headers.get("authorization"),
     });
     merchantOrgId = auth.merchantOrgId;
+    environment = auth.environment;
   } catch {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -39,6 +48,7 @@ export async function POST(req: Request) {
       supabase,
       {
         orgId: merchantOrgId,
+        environment,
         amountMinor: body.amountMinor,
         currency: body.currency,
         description: body.description,
@@ -52,7 +62,13 @@ export async function POST(req: Request) {
       payBaseUrl
     );
 
-    return NextResponse.json(result, { status: 201 });
+    // Echo the resolved environment, as the v1 subscription endpoint does. A
+    // merchant who believes they are testing can check one field instead of
+    // discovering the answer on their card statement.
+    return NextResponse.json(
+      { ...result, livemode: environment === "live" },
+      { status: 201 },
+    );
   } catch (error) {
     // Never echo provider/DB error internals (message/code/details/hint) to the
     // caller — they can leak schema or identifiers. Keep details server-side.
