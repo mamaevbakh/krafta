@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
+import { payDateFormatter } from "@/lib/format-date";
+import { usePayLocale, useT } from "@/lib/locales/context";
+import type { PayMessageKey } from "@/lib/locales/catalog";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { formatMinorAmount } from "@/lib/format";
@@ -37,12 +41,7 @@ type SubscriptionRow = {
   } | null;
 };
 
-function fmtDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
+
 
 /**
  * `success` and `warning` are the two ratified status tokens (DESIGN.md) and
@@ -52,15 +51,15 @@ function fmtDate(value?: string | null) {
  */
 const STATUS: Record<
   string,
-  { label: string; variant: "success" | "warning" | "secondary" | "outline" }
+  { labelKey: PayMessageKey; variant: "success" | "warning" | "secondary" | "outline" }
 > = {
-  active: { label: "Active", variant: "success" },
-  trialing: { label: "Trialing", variant: "secondary" },
-  past_due: { label: "Past due", variant: "warning" },
-  incomplete: { label: "Incomplete", variant: "warning" },
-  incomplete_expired: { label: "Expired", variant: "outline" },
-  paused: { label: "Paused", variant: "secondary" },
-  canceled: { label: "Canceled", variant: "outline" },
+  active: { labelKey: "subscriptions.status.active", variant: "success" },
+  trialing: { labelKey: "subscriptions.status.trialing", variant: "secondary" },
+  past_due: { labelKey: "subscriptions.status.past_due", variant: "warning" },
+  incomplete: { labelKey: "subscriptions.status.incomplete", variant: "warning" },
+  incomplete_expired: { labelKey: "subscriptions.status.incomplete_expired", variant: "outline" },
+  paused: { labelKey: "subscriptions.status.paused", variant: "secondary" },
+  canceled: { labelKey: "subscriptions.status.canceled", variant: "outline" },
 };
 
 function billingSuffix(plan: SubscriptionRow["plans"]) {
@@ -77,6 +76,8 @@ export function SubscriptionsListClient({
   orgSlug: string;
 }) {
   const router = useRouter();
+  const t = useT();
+  const fmtDate = payDateFormatter(usePayLocale());
   const [rows, setRows] = useState<SubscriptionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,7 +123,7 @@ export function SubscriptionsListClient({
   if (rows === null) {
     return (
       <div className="rounded-lg border p-6 text-sm text-muted-foreground">
-        Loading subscriptions…
+        {t("subscriptions.list.loading")}
       </div>
     );
   }
@@ -130,7 +131,7 @@ export function SubscriptionsListClient({
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border p-6 text-sm text-muted-foreground">
-        No subscriptions yet.
+        {t("subscriptions.list.empty")}
       </div>
     );
   }
@@ -145,19 +146,21 @@ export function SubscriptionsListClient({
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">
-            <TableHead className="px-4 text-xs text-muted-foreground">Customer</TableHead>
-            <TableHead className="text-xs text-muted-foreground">Status</TableHead>
-            <TableHead className="text-xs text-muted-foreground">Plan</TableHead>
-            <TableHead className="text-right text-xs text-muted-foreground">Amount</TableHead>
-            <TableHead className="text-xs text-muted-foreground">Next invoice</TableHead>
-            <TableHead className="text-xs text-muted-foreground">Send link</TableHead>
+            <TableHead className="px-4 text-xs text-muted-foreground">{t("subscriptions.col.customer")}</TableHead>
+            <TableHead className="text-xs text-muted-foreground">{t("subscriptions.col.status")}</TableHead>
+            <TableHead className="text-xs text-muted-foreground">{t("subscriptions.col.plan")}</TableHead>
+            <TableHead className="text-right text-xs text-muted-foreground">{t("subscriptions.col.amount")}</TableHead>
+            <TableHead className="text-xs text-muted-foreground">{t("subscriptions.col.nextInvoice")}</TableHead>
+            <TableHead className="text-xs text-muted-foreground">{t("subscriptions.col.sendLink")}</TableHead>
             <TableHead className="w-0 px-4" />
           </TableRow>
         </TableHeader>
 
         <TableBody>
           {rows.map((row) => {
-            const s = STATUS[row.status] ?? { label: row.status, variant: "outline" as const };
+            const s = STATUS[row.status];
+            const statusLabel = s ? t(s.labelKey) : row.status;
+            const statusVariant = s?.variant ?? ("outline" as const);
 
             return (
               <TableRow
@@ -177,18 +180,20 @@ export function SubscriptionsListClient({
                 </TableCell>
 
                 <TableCell>
-                  <Badge variant={s.variant}>{s.label}</Badge>
+                  <Badge variant={statusVariant}>{statusLabel}</Badge>
                   {/* Stripe surfaces a pending cancellation next to the status,
                       because "Active" alone hides that billing is about to stop. */}
                   {row.cancel_at_period_end && row.status !== "canceled" ? (
                     <span className="ml-2 text-xs text-muted-foreground">
-                      Cancels {fmtDate(row.current_period_end)}
+                      {t("subscriptions.cancelsOn", {
+                        date: fmtDate(row.current_period_end),
+                      })}
                     </span>
                   ) : null}
                 </TableCell>
 
                 <TableCell>
-                  <span>{row.plans?.name ?? "Unknown plan"}</span>
+                  <span>{row.plans?.name ?? t("subscriptions.unknownPlan")}</span>
                   {row.plans?.code ? (
                     <span className="ml-2 font-mono text-xs text-muted-foreground">
                       {row.plans.code}

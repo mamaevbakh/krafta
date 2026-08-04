@@ -23,6 +23,20 @@ export function fallbackPayEnvironment(): PayEnvironment {
   return process.env.PAY_ENV === "test" ? "test" : "live";
 }
 
+/**
+ * What the caller stated, or null if it said nothing.
+ *
+ * Distinct from `toPayEnvironment`, which folds "said nothing" and "said
+ * something unrecognised" into the same fallback. A trusted internal caller that
+ * knows which environment a merchant is on should win over a process global, and
+ * a route can only prefer it if it can tell silence from noise.
+ */
+export function readRequestEnvironment(value: unknown): PayEnvironment | null {
+  if (value === "test") return "test";
+  if (value === "live") return "live";
+  return null;
+}
+
 export function toPayEnvironment(value: unknown): PayEnvironment {
   if (value === "test") return "test";
   if (value === "live") return "live";

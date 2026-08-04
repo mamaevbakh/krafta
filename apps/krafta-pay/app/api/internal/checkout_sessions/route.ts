@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { verifyInternalRequest } from "@/lib/internal-auth";
 import { createCheckoutSession } from "@krafta/payments-core";
-import { resolvePayEnvironment } from "@/lib/providers/atmos-connect";
+import {
+  fallbackPayEnvironment,
+  readRequestEnvironment,
+} from "@/lib/checkout-environment";
 
 // Internal (HMAC-signed) one-off payment. The main Krafta app calls this to
 // collect a storefront ORDER by card, on behalf of the merchant org. Unlike the
@@ -21,6 +24,11 @@ type Body = {
   returnUrl?: string;
   customer?: { email?: string; phone?: string; customerUserRef?: string };
   metadata?: Record<string, unknown>;
+  /**
+   * Which set of the merchant's acquirer credentials to charge. The caller knows
+   * this per merchant; we can only guess it from a deployment-wide variable.
+   */
+  environment?: "test" | "live";
 };
 
 export async function POST(req: Request) {
@@ -46,7 +54,25 @@ export async function POST(req: Request) {
     }
 
     const admin = createAdminSupabase();
-    const environment = resolvePayEnvironment();
+
+    // ONE value, used for both the pre-flight and the session.
+    //
+    // This route used to resolve the provider account with resolvePayEnvironment()
+    // — `PAY_ENV === "live" ? "live" : "test"` — and then omit `environment` from
+    // createCheckoutSession entirely, letting it fall back to
+    // defaultPayEnvironment(), which is the INVERSE: `PAY_ENV === "test" ? "test"
+    // : "live"`. On any deploy where PAY_ENV is not exactly "live" the pre-flight
+    // checked the merchant's TEST account and the session was then stamped LIVE.
+    //
+    // That is not a mismatched label. Under BYOA a row marked `test` holds the
+    // merchant's own real Atmos credentials, so the two environments are two real
+    // acquirer accounts — the pay page resolves the session's, and the customer is
+    // charged through an account nobody checked was connected.
+    //
+    // The caller wins where it states one, because it knows which environment a
+    // given merchant is on and we do not.
+    const environment =
+      readRequestEnvironment(body.environment) ?? fallbackPayEnvironment();
 
     // Fail fast if the merchant has not connected an active provider for this
     // environment — otherwise the customer would be redirected to a pay page
@@ -72,6 +98,9 @@ export async function POST(req: Request) {
       admin,
       {
         orgId: body.orgId,
+        // Must be the same value the pre-flight above used. Omitting it is the
+        // original bug.
+        environment,
         amountMinor: body.amountMinor,
         currency: body.currency,
         description: body.description,

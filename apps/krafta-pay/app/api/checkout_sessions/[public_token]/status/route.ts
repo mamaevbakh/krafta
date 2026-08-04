@@ -1,6 +1,24 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 
+/**
+ * Public checkout status, by `public_token`.
+ *
+ * DELIBERATELY UNAUTHENTICATED, and the one place in this app that is exempt
+ * from the org + environment scoping rule the rest of the API follows. The
+ * hosted pay page polls it from the customer's browser, where there is no
+ * merchant session and no API key to present — locking it down would break the
+ * page it exists to serve.
+ *
+ * What stands in for auth is the token: 18 crypto-random bytes, unique-indexed,
+ * and already in the customer's address bar. It is a capability, not an
+ * identifier, so it is not enumerable and it grants exactly one checkout.
+ *
+ * Keep the response minimal for that reason. It carries status, amount and
+ * currency — no metadata, no orderId, no customer record. A merchant who wants
+ * those reads `GET /api/v1/payments/{id}` with an API key.
+ */
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ public_token: string }> }

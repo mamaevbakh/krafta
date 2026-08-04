@@ -91,11 +91,30 @@ export default async function PayPage({
   const otherProviders = providers.filter((p) => p.id !== "atmos");
   const amountMinor = intent?.amount_minor ?? 0;
   const currency = intent?.currency ?? "UZS";
-  // Storefront one-off order payments link an order_id → "Payment complete"
-  // copy; subscription billing has none → "Your subscription is active".
-  const payMode: "subscription" | "payment" = (intent as any)?.order_id
-    ? "payment"
-    : "subscription";
+  // What the customer is told they just bought.
+  //
+  // This used to key off `order_id`: storefront orders carry one, subscriptions
+  // do not. That held while those were the only two callers. Payment links from
+  // the dashboard and from POST /api/checkout_sessions are a third kind — no
+  // order_id and no subscription — so they fell through to the subscription
+  // branch and told a one-off buyer "Your subscription is active", alongside a
+  // hint about saving their card for future charges. Neither is true, and on a
+  // payment screen an untrue reassurance is the worst kind.
+  //
+  // The reliable discriminator is whether the intent is attached to a
+  // subscription at all, which is the same check `atmos-reconcile` makes when
+  // it decides between dunning and a standalone failure.
+  const { data: intentInvoice, error: intentInvoiceErr } = await supabase
+    .schema("payments")
+    .from("invoices")
+    .select("subscription_id")
+    .eq("payment_intent_id", session.payment_intent_id)
+    .not("subscription_id", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (intentInvoiceErr) throw intentInvoiceErr;
+
+  const payMode: "subscription" | "payment" = intentInvoice ? "subscription" : "payment";
 
   return (
     <PayLocaleProvider locale={locale}>

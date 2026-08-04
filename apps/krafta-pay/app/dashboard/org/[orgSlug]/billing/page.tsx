@@ -4,7 +4,8 @@ import { ChevronRight } from "lucide-react";
 import { requireOrgAccess } from "@/lib/org-access";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { getPlatformBillingExemption, loadPlatformBilling } from "@/lib/platform-billing-view";
-import { getPayT } from "@/lib/locales/server";
+import { payDateFormatter } from "@/lib/format-date";
+import { getPayLocale, getPayT } from "@/lib/locales/server";
 import { formatMinorAmount } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,12 +51,6 @@ const INVOICE_STATUS_KEY = {
   draft: "billing.status.draft",
 } as const;
 
-function fmtDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
 
 export default async function BillingPage({
   params,
@@ -68,6 +63,7 @@ export default async function BillingPage({
   const { cardError } = await searchParams;
   const org = await requireOrgAccess(orgSlug);
   const t = await getPayT();
+  const fmtDate = payDateFormatter(await getPayLocale());
 
   const admin = createAdminSupabase();
   // The generated Supabase types lag the payments schema (features and

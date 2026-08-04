@@ -132,12 +132,24 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
 
-    await disableAtmosProviderAccount(admin, {
+    const { disabled } = await disableAtmosProviderAccount(admin, {
       orgId: body.orgId,
       environment: resolvePayEnvironment(),
     });
 
-    return NextResponse.json({ disconnected: true });
+    // A disconnect that matched no row is not a success. It means the account is
+    // stored under a different environment than the one this deploy resolved,
+    // and the merchant is about to be shown as disconnected while their account
+    // keeps taking card payments. The caller currently ignores this field, so
+    // the log is what makes it findable.
+    if (!disabled) {
+      console.warn("internal atmos disconnect matched no account", {
+        orgId: body.orgId,
+        environment: resolvePayEnvironment(),
+      });
+    }
+
+    return NextResponse.json({ disconnected: disabled });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "internal_atmos_disconnect_failed";

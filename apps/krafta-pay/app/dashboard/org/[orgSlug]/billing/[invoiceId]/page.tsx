@@ -4,7 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { requireOrgAccess } from "@/lib/org-access";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { loadPlatformInvoice } from "@/lib/platform-billing-view";
-import { getPayT } from "@/lib/locales/server";
+import { payDateFormatter } from "@/lib/format-date";
+import { getPayLocale, getPayT } from "@/lib/locales/server";
 import { formatMinorAmount } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -46,17 +47,12 @@ const INVOICE_STATUS_KEY = {
   draft: "billing.status.draft",
 } as const;
 
-function fmtDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
 
 export default async function InvoiceDetailPage({ params }: { params: Params }) {
   const { orgSlug, invoiceId } = await params;
   const org = await requireOrgAccess(orgSlug);
   const t = await getPayT();
+  const fmtDate = payDateFormatter(await getPayLocale());
 
   const admin = createAdminSupabase();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

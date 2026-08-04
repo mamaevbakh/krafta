@@ -6,16 +6,12 @@ import { CreditCard, KeyRound, Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { requireOrgAccess } from "@/lib/org-access";
-import { getOrgProviderStatus } from "@/lib/provider-status";
 import { createAdminSupabase } from "@/lib/supabase-admin";
-import { createHostedCheckoutAction } from "@/app/dashboard/actions";
-import { ConnectProviderFirst } from "@/components/dashboard/connect-provider-first";
 import { MetricsPanel } from "@/components/dashboard/metrics-panel";
 import { loadBillingMetrics } from "@/lib/metrics";
 import { getPayT } from "@/lib/locales/server";
+import { LinkButton } from "@/components/ui/link-button";
 import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -64,17 +60,12 @@ export default async function DashboardPage({
   const environment = await getDashboardEnvironment();
   const t = await getPayT();
   const admin = createAdminSupabase();
-  const [providerStatus, metrics] = await Promise.all([
-    activeOrgId
-      ? getOrgProviderStatus(admin, activeOrgId, environment)
-      : Promise.resolve({ hasActive: false, providers: [], environment }),
-    activeOrgId
-      ? loadBillingMetrics(admin, {
-          orgId: activeOrgId,
-          environment: environment === "test" ? "test" : "live",
-        })
-      : Promise.resolve(null),
-  ]);
+  const metrics = activeOrgId
+    ? await loadBillingMetrics(admin, {
+        orgId: activeOrgId,
+        environment: environment === "test" ? "test" : "live",
+      })
+    : null;
 
   return (
     <div className="space-y-10">
@@ -142,64 +133,15 @@ export default async function DashboardPage({
         <p className="mt-1 text-sm text-muted-foreground">
           {t("paymentLink.subtitle")}
         </p>
-
-        {!providerStatus.hasActive ? (
-          <ConnectProviderFirst
-            orgId={activeOrgId}
-            environment={environment}
-            what={t("paymentLink.what")}
-          />
-        ) : (
-          <Card size="sm" className="mt-4 max-w-md">
-            <CardContent>
-              <form action={createHostedCheckoutAction} className="grid gap-4">
-                {/* The org comes from the URL now, so the picker is gone. It
-                    still travels with the POST because the server action reads
-                    it from the form body. */}
-                <input type="hidden" name="orgId" value={activeOrgId} />
-
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium" htmlFor="amount">
-                    {t("paymentLink.amount")}
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="amount"
-                      name="amount"
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      step={1}
-                      required
-                      defaultValue={200000}
-                      // Suppress the native number spinners so they don't collide
-                      // with the absolutely-positioned UZS affix.
-                      className="pr-12 font-mono tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-                      UZS
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium" htmlFor="description">
-                    {t("paymentLink.description")}
-                  </label>
-                  <Input
-                    id="description"
-                    name="description"
-                    placeholder={t("paymentLink.descriptionPlaceholder")}
-                  />
-                </div>
-
-                <Button type="submit" className="justify-self-start">
-                  {t("paymentLink.submit")}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+        <div className="mt-4">
+          <LinkButton
+            href={`/dashboard/org/${orgSlug}/payments`}
+            size="sm"
+            variant="outline"
+          >
+            {t("page.payments.title")}
+          </LinkButton>
+        </div>
       </section>
     </div>
   );

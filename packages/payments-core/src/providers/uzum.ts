@@ -35,9 +35,31 @@ function uzumCurrencyCode(currency: string): number {
   throw new Error(`uzum_unsupported_currency:${currency}`);
 }
 
-function pickOrderNumber(intentId: string, orderId: string | null) {
-  if (orderId && orderId.length >= 1 && orderId.length <= 36) return orderId;
-  return intentId;
+/**
+ * A distinct, spec-legal Uzum `orderNumber` derived from one of our uuids.
+ *
+ * Two Uzum constraints collide here. `orderNumber` has maxLength 36, and a uuid
+ * is exactly 36 — so a prefixed form like `charge-<uuid>` (43) or
+ * `renewal-<uuid>` (44) is over the limit and invites errorCode 2000
+ * (ValidationError). But the prefix is load-bearing: a repeat orderNumber is
+ * rejected with 3027, and the same attempt legitimately registers two different
+ * Uzum orders — one to bind the card, one to charge it.
+ *
+ * Stripping the dashes buys the room: `c-` + 32 hex = 34 characters, and it is a
+ * different string from the dashed uuid the binding leg registers under.
+ */
+export function uzumOrderNumber(prefix: string, id: string) {
+  return `${prefix}-${id.replace(/-/g, "")}`.slice(0, 36);
+}
+
+// Uzum caps `paymentDetails` at 1024 chars. The merchant's own order id used to
+// travel as `orderNumber`; that slot now belongs to the attempt (see
+// createUzumAttempt), so the reference rides along here instead — it is what the
+// merchant recognises in Uzum's cabinet when reconciling.
+function buildPaymentDetails(description: string | null, orderId: string | null) {
+  const base = description ?? "Card binding";
+  const detail = orderId ? `${base} · ${orderId}` : base;
+  return detail.length > 1024 ? detail.slice(0, 1024) : detail;
 }
 
 function pickCheckoutCallbackUrls(payBaseUrl: string, publicToken: string) {
@@ -289,8 +311,21 @@ export async function createUzumAttempt(ctx: CreateAttemptCtx): Promise<Provider
     amount: intent.amount_minor,
     clientId: session.customer_id ?? session.org_id,
     currency: uzumCurrencyCode(intent.currency),
-    paymentDetails: intent.description ?? "Card binding",
-    orderNumber: pickOrderNumber(intent.id, intent.order_id),
+    paymentDetails: buildPaymentDetails(intent.description, intent.order_id),
+    // One Uzum order per ATTEMPT, not per intent.
+    //
+    // Uzum register is not idempotent on orderNumber: a repeat comes back as
+    // errorCode 3027 ("Payment with this order number already exists"), which
+    // createUzumAttempt throws on. Keying this to the intent therefore made a
+    // second registration for the same checkout impossible — so once the first
+    // order aged out of its 30-minute window (sessionTimeoutSecs below is
+    // Uzum's documented maximum, not our choice), the customer could only ever
+    // be handed the same dead link back. Attempt ids give every re-open a fresh,
+    // live order. Every other Uzum register here already works this way.
+    //
+    // Attempt ids are uuids — exactly Uzum's `orderNumber` maxLength of 36, so
+    // no prefix fits. Do not add one.
+    orderNumber: ctx.paymentAttemptId,
     viewType,
     sessionTimeoutSecs: 1800,
     successUrl,

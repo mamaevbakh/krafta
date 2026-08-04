@@ -195,13 +195,22 @@ export async function disableAtmosProviderAccount(
   admin: SupabaseClient,
   input: { orgId: string; environment: "test" | "live" },
 ): Promise<{ disabled: boolean }> {
-  const { error } = await admin
+  // `disabled` reports what actually happened, not that the statement ran.
+  //
+  // This returned true unconditionally, so a disconnect that matched no row —
+  // because the caller resolved a different environment than the one the
+  // merchant's account is stored under — still reported success. The caller
+  // then flips its own is_active flag off, and the merchant is shown as
+  // disconnected while their account keeps taking card payments. Reporting the
+  // row count makes that a visible failure instead of a silent one.
+  const { data, error } = await admin
     .schema("payments")
     .from("org_provider_accounts")
     .update({ status: "disabled", updated_at: new Date().toISOString() })
     .eq("org_id", input.orgId)
     .eq("provider_id", "atmos")
-    .eq("environment", input.environment);
+    .eq("environment", input.environment)
+    .select("id");
   if (error) throw error;
-  return { disabled: true };
+  return { disabled: (data ?? []).length > 0 };
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Banknote,
   BookText,
   ChevronsUpDown,
   CreditCard,
@@ -14,6 +15,7 @@ import {
   Receipt,
   Repeat,
   ScrollText,
+  Users,
   Wallet,
   Webhook,
   X,
@@ -48,9 +50,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: "nav.group.payments",
     items: [
+      { href: "/payments", titleKey: "nav.payments", Icon: Banknote, orgScoped: true },
       { href: "/providers", titleKey: "nav.providers", Icon: CreditCard, orgScoped: true },
       { href: "/plans", titleKey: "nav.plans", Icon: Layers, orgScoped: true },
       { href: "/subscriptions", titleKey: "nav.subscriptions", Icon: Repeat, orgScoped: true },
+      { href: "/customers", titleKey: "nav.customers", Icon: Users, orgScoped: true },
       { href: "/tax-codes", titleKey: "nav.taxCodes", Icon: Receipt, orgScoped: true },
     ],
   },

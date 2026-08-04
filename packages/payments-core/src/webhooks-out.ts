@@ -42,6 +42,10 @@ export const WEBHOOK_EVENT_TYPES = [
   "subscription.paused",
   /** Billing resumed after a pause. */
   "subscription.resumed",
+  /** A one-off payment settled at the acquirer. Release the order. */
+  "payment.succeeded",
+  /** A one-off payment attempt was declined. `data.payUrl` may still be live. */
+  "payment.failed",
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
@@ -695,4 +699,198 @@ export function requireWebhookSecretKey(env: NodeJS.ProcessEnv = process.env): s
   const key = resolveSecretDecryptionKey(env);
   if (!key) throw new Error("pay_credentials_secret_missing");
   return key;
+}
+
+// ── one-off payment events ──────────────────────────────────────────────────
+
+/**
+ * Keys withheld from anything we hand back to a merchant.
+ *
+ * The merchant's own metadata and our bookkeeping share one jsonb column —
+ * checkout.ts copies the create request body straight onto the intent — so
+ * echoing the column back whole would hand them our internals and invite them to
+ * depend on them.
+ *
+ * Be honest about the trade: this is a denylist, not a proof of ownership. Two
+ * of these are genuinely ambiguous. `uzumCart` / `uzum` may be merchant-supplied
+ * (getUzumCartFromMetadata accepts them and merchant-supplied wins over the one
+ * we synthesise), and `subscription_id` / `invoice_id` can be sent by anyone
+ * since they are plain jsonb keys. They are withheld anyway: the cart can carry
+ * the placeholder fiscal identifiers the dashboard action attaches, and echoing
+ * the id keys back would imply they mean something to us. A merchant who sends a
+ * colliding key will not see it come back — withholding is the safer failure.
+ */
+const INTERNAL_INTENT_METADATA_KEYS = new Set([
+  "subscription_id",
+  "invoice_id",
+  "customer_id",
+  "customer_org_id",
+  "purpose",
+  "uzumCart",
+  "uzum",
+  "portalFlowType",
+  "portalSubscriptionId",
+  "portalSessionId",
+]);
+
+export function merchantMetadata(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>).filter(
+      ([key]) => !INTERNAL_INTENT_METADATA_KEYS.has(key),
+    ),
+  );
+}
+
+/**
+ * A zero-amount intent minted to re-bind a card on an existing subscription
+ * (see `card-setup.ts`). Nobody bought anything, so a `payment.*` event would be
+ * a lie — the subscription events already describe what happened.
+ *
+ * Read from the intent AND the session metadata, because the portal's own
+ * discriminator (`getPortalFlowFromMetadata`) is deliberately handed both.
+ */
+function isCardSetupIntent(...metadatas: unknown[]): boolean {
+  return metadatas.some(
+    (meta) =>
+      Boolean(meta) &&
+      typeof meta === "object" &&
+      (meta as Record<string, unknown>).purpose === "card_update",
+  );
+}
+
+export type PaymentEventInput = {
+  eventType: "payment.succeeded" | "payment.failed";
+  paymentIntentId: string;
+  providerId: string;
+  providerPaymentId?: string | null;
+  /** The attempt this event describes. Also supplies the settle timestamp. */
+  attemptId?: string | null;
+  /** Only meaningful on failure, and only while the session is still open. */
+  payUrl?: string | null;
+};
+
+/**
+ * Tell a merchant's backend that a one-off payment settled or was declined.
+ *
+ * This is what lets an integrator release an order without polling. Before it
+ * existed, `WEBHOOK_EVENT_TYPES` held only `subscription.*` and every emit site
+ * ran through `emitSubscriptionEvent`, which requires a non-null subscription —
+ * so a one-off payment produced no outbound event at all.
+ *
+ * Like the rest of this module, NEVER THROWS. It runs inside charge
+ * finalization, and a merchant's endpoint config must not be able to fail a
+ * payment that already settled at the acquirer.
+ */
+export async function emitPaymentEvent(
+  supabase: SupabaseClient,
+  params: PaymentEventInput,
+): Promise<string | null> {
+  try {
+    const { data: intent, error } = await supabase
+      .schema("payments")
+      .from("payment_intents")
+      .select(
+        "id, org_id, environment, amount_minor, currency, status, description, order_id, metadata, created_at",
+      )
+      .eq("id", params.paymentIntentId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!intent) return null;
+
+    const { data: session } = await supabase
+      .schema("payments")
+      .from("checkout_sessions")
+      .select("id, public_token, status, metadata, customer_id")
+      .eq("payment_intent_id", params.paymentIntentId)
+      .maybeSingle();
+
+    if (isCardSetupIntent(intent.metadata, session?.metadata)) {
+      await writePaymentLog(supabase, {
+        type: "webhook_out",
+        event: "payment_event_skipped_card_setup",
+        paymentIntentId: params.paymentIntentId,
+        orgId: String(intent.org_id ?? ""),
+        data: { eventType: params.eventType },
+      });
+      return null;
+    }
+
+    // The moment the money moved. There is no `paid_at` on payment_intents and
+    // no updated_at trigger anywhere in this schema — finalizeInitialPayment
+    // writes the intent's status without touching updated_at — so the attempt,
+    // which IS stamped on settle, is the only honest source.
+    let settledAt: string | null = null;
+    if (params.attemptId) {
+      const { data: attempt } = await supabase
+        .schema("payments")
+        .from("payment_attempts")
+        .select("updated_at")
+        .eq("id", params.attemptId)
+        .maybeSingle();
+      settledAt = (attempt?.updated_at as string | null) ?? null;
+    }
+
+    let customer: Record<string, unknown> | null = null;
+    if (session?.customer_id) {
+      const { data: customerRow } = await supabase
+        .schema("payments")
+        .from("customers")
+        .select("id, external_id, email, phone, customer_user_ref, customer_org_id")
+        .eq("id", session.customer_id)
+        .maybeSingle();
+      if (customerRow) {
+        customer = {
+          id: customerRow.id,
+          externalId: customerRow.external_id,
+          email: customerRow.email,
+          phone: customerRow.phone,
+          customerUserRef: customerRow.customer_user_ref,
+          customerOrgId: customerRow.customer_org_id,
+        };
+      }
+    }
+
+    return await emitWebhookEvent(supabase, {
+      orgId: String(intent.org_id),
+      // From the intent, not from a process global: test and live coexist on one
+      // deployment and a test payment must never reach a live endpoint.
+      environment: intent.environment === "test" ? "test" : "live",
+      eventType: params.eventType,
+      // A one-off has no subscription, which is exactly why this function had to
+      // exist alongside emitSubscriptionEvent.
+      subscriptionId: null,
+      data: {
+        payment: {
+          id: intent.id,
+          status: intent.status,
+          amountMinor: intent.amount_minor,
+          currency: intent.currency,
+          description: intent.description,
+          // The merchant's own reference — their handle for correlating this to
+          // whatever they are about to release.
+          orderId: intent.order_id,
+          providerId: params.providerId,
+          providerPaymentId: params.providerPaymentId ?? null,
+          createdAt: intent.created_at,
+          settledAt,
+        },
+        customer,
+        metadata: merchantMetadata(intent.metadata),
+        payUrl: params.payUrl ?? null,
+      },
+    });
+  } catch (error) {
+    await writePaymentLog(supabase, {
+      type: "webhook_out",
+      event: "payment_event_emit_failed",
+      level: "error",
+      paymentIntentId: params.paymentIntentId,
+      data: {
+        eventType: params.eventType,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    return null;
+  }
 }

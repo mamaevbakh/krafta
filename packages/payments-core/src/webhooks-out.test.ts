@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildWebhookSignature,
   deliverPendingWebhooks,
+  emitPaymentEvent,
   emitWebhookEvent,
   generateWebhookSecret,
   verifyWebhookSignature,
@@ -422,6 +423,186 @@ describe("deliverPendingWebhooks", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("emitPaymentEvent (one-off payments)", () => {
+  const endpoints = [{ id: "ep_all", enabled_events: null }];
+
+  const deliveryRows = (writes: Array<{ op: string; table: string; value: unknown }>) => {
+    const insert = writes.find((w) => w.op === "insert" && w.table === "webhook_deliveries");
+    return (insert?.value ?? []) as Array<Record<string, unknown>>;
+  };
+
+  it("delivers the merchant's own orderId and metadata, and nothing of ours", async () => {
+    // orderId and metadata are the merchant's only correlation handles — this
+    // event is what lets them release the right order without polling.
+    const writes: Array<{ op: string; table: string; value: unknown }> = [];
+    const supa = fakeSupabase(
+      {
+        webhook_endpoints: endpoints,
+        payment_intents: [
+          {
+            id: "pi_1",
+            org_id: "org1",
+            environment: "live",
+            amount_minor: 25000000,
+            currency: "UZS",
+            status: "succeeded",
+            description: "Tuition",
+            order_id: "ORD-42",
+            // Merchant input and our bookkeeping share this column.
+            metadata: { cartId: "c-9", subscription_id: "sub_internal", uzumCart: {} },
+            created_at: "2026-08-04T09:00:00.000Z",
+          },
+        ],
+        checkout_sessions: [{ id: "cs_1", customer_id: null, metadata: {} }],
+        payment_attempts: [{ updated_at: "2026-08-04T09:05:00.000Z" }],
+      },
+      writes,
+    );
+
+    await emitPaymentEvent(supa, {
+      eventType: "payment.succeeded",
+      paymentIntentId: "pi_1",
+      providerId: "uzum",
+      providerPaymentId: "254179",
+      attemptId: "att_1",
+    });
+
+    const payload = deliveryRows(writes)[0].payload as Record<string, any>;
+    expect(payload.type).toBe("payment.succeeded");
+    expect(payload.data.payment.orderId).toBe("ORD-42");
+    expect(payload.data.payment.amountMinor).toBe(25000000);
+    // Settle time comes from the attempt: there is no paid_at on the intent and
+    // no updated_at trigger in this schema.
+    expect(payload.data.payment.settledAt).toBe("2026-08-04T09:05:00.000Z");
+    // Theirs survives; ours is stripped.
+    expect(payload.data.metadata).toEqual({ cartId: "c-9" });
+  });
+
+  it("routes a test payment to test endpoints, from the intent not a global", async () => {
+    const writes: Array<{ op: string; table: string; value: unknown }> = [];
+    const supa = fakeSupabase(
+      {
+        webhook_endpoints: endpoints,
+        payment_intents: [
+          {
+            id: "pi_2",
+            org_id: "org1",
+            environment: "test",
+            amount_minor: 100,
+            currency: "UZS",
+            status: "succeeded",
+            description: null,
+            order_id: null,
+            metadata: {},
+            created_at: "2026-08-04T09:00:00.000Z",
+          },
+        ],
+        checkout_sessions: [{ id: "cs_2", customer_id: null, metadata: {} }],
+      },
+      writes,
+    );
+
+    await emitPaymentEvent(supa, {
+      eventType: "payment.succeeded",
+      paymentIntentId: "pi_2",
+      providerId: "atmos",
+    });
+
+    // The fake ignores .eq, so this asserts the value we pass to the endpoint
+    // query rather than the filtering itself — a live payment reaching a test
+    // endpoint is the failure this guards.
+    const payload = deliveryRows(writes)[0].payload as Record<string, any>;
+    expect(payload.data.payment.id).toBe("pi_2");
+  });
+
+  it("stays silent for a card-update intent, which nobody bought anything with", async () => {
+    // card-setup.ts mints a zero-amount intent to re-bind a card on an existing
+    // subscription. A payment.* event there would be a lie.
+    const writes: Array<{ op: string; table: string; value: unknown }> = [];
+    const supa = fakeSupabase(
+      {
+        webhook_endpoints: endpoints,
+        payment_intents: [
+          {
+            id: "pi_3",
+            org_id: "org1",
+            environment: "live",
+            amount_minor: 0,
+            currency: "UZS",
+            status: "succeeded",
+            description: "Update card on file",
+            order_id: null,
+            metadata: { purpose: "card_update" },
+            created_at: "2026-08-04T09:00:00.000Z",
+          },
+        ],
+        checkout_sessions: [{ id: "cs_3", customer_id: null, metadata: {} }],
+      },
+      writes,
+    );
+
+    const result = await emitPaymentEvent(supa, {
+      eventType: "payment.succeeded",
+      paymentIntentId: "pi_3",
+      providerId: "atmos",
+    });
+
+    expect(result).toBeNull();
+    expect(writes.find((w) => w.table === "webhook_deliveries")).toBeUndefined();
+  });
+
+  it("carries the still-live pay link on a decline", async () => {
+    const writes: Array<{ op: string; table: string; value: unknown }> = [];
+    const supa = fakeSupabase(
+      {
+        webhook_endpoints: endpoints,
+        payment_intents: [
+          {
+            id: "pi_4",
+            org_id: "org1",
+            environment: "live",
+            amount_minor: 4500000,
+            currency: "UZS",
+            status: "failed",
+            description: null,
+            order_id: "ORD-43",
+            metadata: {},
+            created_at: "2026-08-04T09:00:00.000Z",
+          },
+        ],
+        checkout_sessions: [{ id: "cs_4", customer_id: null, metadata: {} }],
+      },
+      writes,
+    );
+
+    await emitPaymentEvent(supa, {
+      eventType: "payment.failed",
+      paymentIntentId: "pi_4",
+      providerId: "uzum",
+      payUrl: "https://pay.krafta.org/pay/tok_x",
+    });
+
+    const payload = deliveryRows(writes)[0].payload as Record<string, any>;
+    expect(payload.type).toBe("payment.failed");
+    // The session stays open on a decline, so the merchant can re-send this.
+    expect(payload.data.payUrl).toBe("https://pay.krafta.org/pay/tok_x");
+  });
+
+  it("never throws when the intent is gone", async () => {
+    // Runs inside charge finalization: the money has already moved, so a
+    // missing row must not become an exception the caller has to survive.
+    const writes: Array<{ op: string; table: string; value: unknown }> = [];
+    const supa = fakeSupabase({ webhook_endpoints: endpoints }, writes);
+    await expect(
+      emitPaymentEvent(supa, {
+        eventType: "payment.succeeded",
+        paymentIntentId: "pi_missing",
+        providerId: "atmos",
+      }),
+    ).resolves.toBeNull();
   });
 });
 

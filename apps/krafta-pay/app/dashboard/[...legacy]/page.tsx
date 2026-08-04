@@ -24,6 +24,7 @@ import { forwardQuery } from "./forward-query";
  */
 
 const KNOWN_SECTIONS = new Set([
+  "payments",
   "providers",
   "plans",
   "subscriptions",

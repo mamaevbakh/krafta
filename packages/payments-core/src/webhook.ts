@@ -13,8 +13,18 @@ import {
 import {
   createUzumRecurringCharge,
   extractUzumChargeProviderRefs,
+  uzumOrderNumber,
   verifyUzumWebhookSignature,
 } from "./providers/uzum";
+
+// Intent states that mean the money question is already answered. A binding
+// callback arriving for an intent in one of these must not start another charge.
+const SETTLED_INTENT_STATUSES = new Set([
+  "succeeded",
+  "processing",
+  "canceled",
+  "cancelled",
+]);
 
 export async function handleWebhookEvent(
   supabase: SupabaseClient,
@@ -276,6 +286,26 @@ export async function handleWebhookEvent(
                   });
                 }
               }
+            } else if (SETTLED_INTENT_STATUSES.has(String(intent.status ?? "").toLowerCase())) {
+            // A customer who re-opens an expired checkout now gets a brand-new
+            // Uzum order (see createUzumAttempt), so more than one live order can
+            // exist for a single intent. If they then go back and complete an
+            // older one too, its binding callback lands here — and the
+            // binding-setup check above is per-ATTEMPT, so that stale attempt
+            // passes it happily and would charge the customer a second time.
+            // The intent is the thing that must only ever be paid once.
+            await writePaymentDebugLog(supabase, {
+              scope: "webhook",
+              event: "binding.charge_skipped_intent_settled",
+              providerId: input.providerId,
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              paymentAttemptId: matchedAttempt.id,
+              level: "warn",
+              data: {
+                intentStatus: intent.status,
+                bindingProviderPaymentId: providerPaymentId,
+              },
+            });
             } else {
             const chargeResult = await createUzumRecurringCharge({
               supabase,
@@ -284,11 +314,12 @@ export async function handleWebhookEvent(
               providerToken: bindingId,
               clientId: session?.customer_id ?? session?.org_id ?? "unknown",
               description: intent.description ?? "Checkout payment",
-              // IMPORTANT: Uzum register appears idempotent by orderNumber.
-              // The binding flow already used paymentIntent/orderNumber, so the
-              // post-bind charge must use a distinct orderNumber to get a new
-              // charge orderId (which is then passed to merchantPay).
-              orderNumber: `charge-${matchedAttempt.id}`,
+              // IMPORTANT: a repeat orderNumber is rejected by Uzum (3027), so
+              // the post-bind charge must use a distinct one from the binding
+              // leg to get a new charge orderId (which is then passed to
+              // merchantPay). `charge-<uuid>` was 43 chars against Uzum's
+              // documented maxLength of 36 — uzumOrderNumber keeps it legal.
+              orderNumber: uzumOrderNumber("c", matchedAttempt.id),
               // Binding order and charge order are separate operations.
               // We intentionally omit chargeOrderId here so the provider client
               // registers a fresh payment order before merchantPay.
@@ -342,13 +373,45 @@ export async function handleWebhookEvent(
               failurePayload: chargeResult.raw,
             });
             }
-          } else {
+          } else if (!bindingId) {
+            // No bindingId means this is the CHARGE order reporting in, not the
+            // card-binding one. That is the async settlement path: when
+            // merchantPay returns `processing` rather than a terminal answer,
+            // this callback is the only thing that ever records the money.
+            // Finalizing here is correct and must not be removed.
             await finalizeInitialPayment(supabase, {
               paymentIntentId: matchedAttempt.payment_intent_id,
               providerId: input.providerId,
               providerPaymentId,
               payload,
               attemptId: matchedAttempt.id,
+            });
+          } else {
+            // A BINDING callback for an attempt that is no longer in a
+            // binding-setup state — because a charge already failed against it,
+            // or a retry moved it on.
+            //
+            // This used to fall into the branch above and finalize: intent
+            // `succeeded`, session `completed`, `payment.succeeded` emitted —
+            // off the back of a card being tokenised, with no merchantPay and
+            // no money taken. Every Uzum checkout registers TWO_STEP/BINDING
+            // (providers/uzum.ts), so a binding success proves only that a card
+            // exists, never that it was charged.
+            //
+            // It is reachable today: a charge that fails before returning refs
+            // leaves the attempt's provider_payment_id set to the BINDING order
+            // id, so a duplicate binding callback still matches this attempt.
+            await writePaymentDebugLog(supabase, {
+              scope: "webhook",
+              event: "binding.success_for_non_setup_attempt",
+              level: "warn",
+              providerId: input.providerId,
+              paymentIntentId: matchedAttempt.payment_intent_id,
+              paymentAttemptId: matchedAttempt.id,
+              data: {
+                attemptStatus: matchedAttempt.status,
+                bindingProviderPaymentId: providerPaymentId,
+              },
             });
           }
         } else {
@@ -412,6 +475,16 @@ export async function handleWebhookEvent(
               providerId: input.providerId,
               providerPaymentId,
               payload,
+              // Record the decline on the attempt, not just the intent. Without
+              // this the attempt stays `requires_action` forever, so
+              // selectProviderCreateAttempt keeps handing the customer back the
+              // same dead Uzum order. Only the one-off branch reads it; the
+              // dunning branch mints a fresh attempt and ignores it.
+              //
+              // Safe only because the binding branch above no longer decides
+              // "already charged" from the attempt's status — see the
+              // bindingId split. Do not reintroduce that coupling.
+              attemptId: matchedAttempt.id,
             });
           }
         }

@@ -1,11 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { createUzumRecurringCharge, extractUzumChargeProviderRefs } from "./providers/uzum";
+import {
+  createUzumRecurringCharge,
+  extractUzumChargeProviderRefs,
+  uzumOrderNumber,
+} from "./providers/uzum";
 import { createAtmosRecurringCharge, extractAtmosChargeProviderRefs } from "./providers/atmos";
 import type { AtmosCardDetails } from "./providers/atmos";
 import { redactSensitive } from "./redact";
 import { writePaymentLog } from "./debug-log";
-import { emitSubscriptionEvent } from "./webhooks-out";
+import { emitPaymentEvent, emitSubscriptionEvent } from "./webhooks-out";
 import {
   buildPlatformInvoiceLines,
   computePlatformUsage,
@@ -1276,7 +1280,7 @@ export async function completeStandaloneCheckoutSession(
 
 export async function markStandaloneCheckoutFailed(
   supabase: SupabaseClient,
-  input: MarkFailedInput & { attemptId?: string | null },
+  input: MarkFailedInput,
 ) {
   const nowIso = new Date().toISOString();
   const attemptId = input.attemptId ?? null;
@@ -1304,15 +1308,50 @@ export async function markStandaloneCheckoutFailed(
     .eq("id", input.paymentIntentId);
   if (intentUpdateErr) throw intentUpdateErr;
 
-  const { error: sessionUpdateErr } = await supabase
-    .schema("payments")
-    .from("checkout_sessions")
-    .update({
-      status: "failed",
-      updated_at: nowIso,
-    })
-    .eq("payment_intent_id", input.paymentIntentId);
-  if (sessionUpdateErr) throw sessionUpdateErr;
+  // Tell the merchant's backend the charge was declined, so they can stop
+  // waiting on an order that is not coming and tell the customer themselves.
+  //
+  // DELIBERATELY UNGATED. The design this came from gated the emit on a
+  // pre-read of the intent's status, reasoning that a genuine second decline
+  // always passes because the Atmos apply route moves the intent through
+  // `processing` first. That holds for Atmos and NOT for Uzum, where a retry can
+  // arrive with the intent already `failed` — so the guard would silently
+  // swallow every Uzum decline after the first, on the provider Kinza uses.
+  //
+  // The asymmetry decides it: a duplicate `payment.failed` costs a merchant a
+  // redundant notification, while a missing one means a customer is never told
+  // their card was declined. Duplicate provider callbacks are already stopped
+  // upstream by the webhook's event-id guard, so each call here is one real
+  // decline. Consumers dedupe on the payload `id` regardless — that is the
+  // documented contract for at-least-once delivery.
+  await emitPaymentEvent(supabase, {
+    eventType: "payment.failed",
+    paymentIntentId: input.paymentIntentId,
+    providerId: input.providerId,
+    providerPaymentId: input.providerPaymentId ?? null,
+    attemptId,
+    // The session stays open on a decline (see below), so the link the customer
+    // was given still works — the merchant can re-send it rather than starting over.
+    payUrl: input.payUrl ?? null,
+  });
+
+  // The checkout session is deliberately left `open`.
+  //
+  // This used to write status: "failed", which was wrong twice over. First,
+  // `checkout_sessions_status_check` only permits open / completed / expired /
+  // canceled (baseline migration), so the write raises 23514 and the caller
+  // rethrows — the inbound webhook route then answers 5xx, the provider retries,
+  // and the retry short-circuits on the event-id guard. A declined payment ends
+  // up permanently ambiguous.
+  //
+  // Second, even if the constraint allowed it, closing the session is the
+  // opposite of what a decline should do. The pay page reads
+  // `isRecoverable={session.status === "open"}` and treats a non-open session as
+  // terminal, so marking it failed would take away the "try another card" path
+  // this function exists to unblock. Failing the intent is enough: the apply
+  // route's optimistic lock accepts `failed`, so the customer can submit a
+  // different card against the same session. A session that is never paid ages
+  // out to `expired` on its own.
 }
 
 export async function finalizeInitialPayment(
@@ -1323,17 +1362,56 @@ export async function finalizeInitialPayment(
   const { data: intent, error: intentErr } = await supabase
     .schema("payments")
     .from("payment_intents")
-    .select("id, status, metadata, amount_minor, currency")
+    .select("id, org_id, status, metadata, amount_minor, currency")
     .eq("id", input.paymentIntentId)
     .maybeSingle();
   if (intentErr) throw intentErr;
   if (!intent) throw new Error("payment_intent_not_found");
 
+  // `metadata` is MERCHANT-WRITABLE. createCheckoutSession copies the caller's
+  // body straight onto the intent, and POST /api/checkout_sessions passes
+  // `body.metadata` through untouched — so anything read out of here is
+  // attacker-controlled input, not our own bookkeeping, even though
+  // createSubscriptionCheckout also writes these two keys legitimately.
+  //
+  // That matters because the ids below select which rows get marked paid and
+  // active further down, and those updates are keyed on id alone. Without an
+  // ownership check, a merchant could POST
+  // `metadata: { subscription_id: "<someone else's uuid>" }`, pay 1 som with
+  // their own card, and have us mark another org's invoice paid and extend
+  // their subscription. Pointing it at their OWN subscription is the cheaper
+  // version of the same trick and needs no stolen id at all.
   const metadata = (intent.metadata ?? {}) as Record<string, unknown>;
-  const invoiceIdFromMetadata =
+  const claimedInvoiceId =
     typeof metadata.invoice_id === "string" ? metadata.invoice_id : null;
-  const subscriptionIdFromMetadata =
+  const claimedSubscriptionId =
     typeof metadata.subscription_id === "string" ? metadata.subscription_id : null;
+
+  // Confirm each claimed id belongs to this intent's org before it is allowed
+  // to steer a write. A claim that fails is dropped, not fatal: the invoice
+  // lookup by payment_intent_id below is the trustworthy path and is what the
+  // legitimate subscription flow lands on anyway.
+  const verifyOwnedBy = async (table: "invoices" | "subscriptions", id: string | null) => {
+    if (!id) return null;
+    const { data, error } = await supabase
+      .schema("payments")
+      .from(table)
+      .select("id")
+      .eq("id", id)
+      .eq("org_id", intent.org_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) return id;
+    await writePaymentLog(supabase, {
+      scope: "security",
+      event: "finalize.metadata_id_rejected",
+      level: "warn",
+      paymentIntentId: intent.id,
+      orgId: intent.org_id,
+      data: { table, claimedId: id },
+    });
+    return null;
+  };
 
   const { data: invoice, error: invoiceErr } = await supabase
     .schema("payments")
@@ -1344,8 +1422,6 @@ export async function finalizeInitialPayment(
     .maybeSingle();
   if (invoiceErr) throw invoiceErr;
 
-  const invoiceId = invoiceIdFromMetadata ?? invoice?.id ?? null;
-  const subscriptionId = subscriptionIdFromMetadata ?? invoice?.subscription_id ?? null;
   // A subscription charge carries both an invoice and a subscription; a one-off
   // payment-link / hosted-checkout charge carries neither. A successful charge
   // must finalize the intent in BOTH cases — we must never leave the intent
@@ -1355,8 +1431,26 @@ export async function finalizeInitialPayment(
   // apply succeeded and a late provider webhook arrives for the same charge), do
   // not re-run side effects — no duplicate subscription_events, no period reset.
   if (intent.status === "succeeded") {
-    return { subscriptionId, invoiceId, paymentIntentId: intent.id };
+    // Report what the database says, not what the caller claimed — this path
+    // runs before any claim has been checked for ownership.
+    return {
+      subscriptionId: invoice?.subscription_id ?? null,
+      invoiceId: invoice?.id ?? null,
+      paymentIntentId: intent.id,
+    };
   }
+
+  // Only past the idempotency guard is a claim worth checking: an already
+  // finalized intent does no writes, so there is nothing for a forged id to
+  // steer, and re-verifying on every late duplicate webhook would be noise.
+  const invoiceIdFromMetadata = await verifyOwnedBy("invoices", claimedInvoiceId);
+  const subscriptionIdFromMetadata = await verifyOwnedBy(
+    "subscriptions",
+    claimedSubscriptionId,
+  );
+
+  const invoiceId = invoiceIdFromMetadata ?? invoice?.id ?? null;
+  const subscriptionId = subscriptionIdFromMetadata ?? invoice?.subscription_id ?? null;
 
   let attempt: {
     id: string;
@@ -1417,6 +1511,21 @@ export async function finalizeInitialPayment(
   // settle. The intent + checkout are finalized and the charge is recorded — we
   // are done (and crucially we did NOT throw after the money moved).
   if (!invoiceId || !subscriptionId) {
+    // The one place a one-off success converges, and therefore the only place
+    // this event can fire. A subscription charge always resolves both ids and
+    // returns further down, so it never reaches here — which is what makes the
+    // subscription path provably unaffected rather than merely careful.
+    //
+    // emitPaymentEvent never throws. That matters here more than anywhere: the
+    // acquirer has already moved the money, and a merchant with a broken
+    // endpoint must not be able to turn a settled payment into an error.
+    await emitPaymentEvent(supabase, {
+      eventType: "payment.succeeded",
+      paymentIntentId: intent.id,
+      providerId: input.providerId,
+      providerPaymentId: input.providerPaymentId ?? null,
+      attemptId: attempt?.id ?? null,
+    });
     return { subscriptionId: null, invoiceId: null, paymentIntentId: intent.id };
   }
 
@@ -1520,6 +1629,14 @@ type MarkFailedInput = {
   providerId: string;
   providerPaymentId?: string | null;
   payload?: unknown;
+  /** Surfaced on `payment.failed` so a merchant can re-send the live link. */
+  payUrl?: string | null;
+  /**
+   * Only the standalone (one-off) branch consumes this. The dunning branch
+   * deliberately ignores it: an invoice retry mints a fresh attempt, so failing
+   * the old one there would rewrite history rather than record it.
+   */
+  attemptId?: string | null;
 };
 
 /**
@@ -1622,7 +1739,25 @@ export async function markPaymentFailed(
     .order("created_at", { ascending: false })
     .maybeSingle();
   if (invoiceErr) throw invoiceErr;
-  if (!invoice) return;
+  // No invoice means this is a one-off / payment-link intent, not a
+  // subscription renewal. This used to `return` here, which made the whole
+  // function a no-op for one-off payments: a declined charge left the intent
+  // stuck on `processing` and the checkout session `open`, so the customer sat
+  // on "checking with provider" forever and every retry with another card was
+  // rejected with payment_intent_not_submittable — the optimistic lock in the
+  // apply route only accepts requires_action / requires_payment_method /
+  // failed. On Atmos the reconciler cron eventually cleaned it up; on Uzum
+  // nothing did, because that sweep filters provider_id = 'atmos'.
+  //
+  // Dunning does not apply without an invoice to retry, so the correct
+  // terminal action is the standalone one: fail the intent and the session.
+  // The two call sites that already branch on intent kind (atmos-reconcile,
+  // webhook) call markStandaloneCheckoutFailed directly and never reach here,
+  // so this delegation cannot double-fire.
+  if (!invoice) {
+    await markStandaloneCheckoutFailed(supabase, input);
+    return;
+  }
 
   const nextAttemptCount = (invoice.attempt_count ?? 0) + 1;
   const invoiceMetadata = ((invoice.metadata ?? {}) as Record<string, unknown>);
@@ -2413,9 +2548,11 @@ export async function chargeRenewal(
           providerToken: paymentMethod.provider_token,
           clientId: customer?.id ?? subscription.org_id,
           description: "Subscription renewal",
-          // Uzum register may be idempotent by orderNumber. Renewal retries create a
-          // new payment_attempt, so use attempt id to force a fresh charge orderId.
-          orderNumber: `renewal-${attempt.id}`,
+          // Uzum rejects a repeat orderNumber (3027). Renewal retries create a
+          // new payment_attempt, so key it to the attempt id to force a fresh
+          // charge orderId. `renewal-<uuid>` was 44 chars against Uzum's
+          // documented maxLength of 36 — uzumOrderNumber keeps it legal.
+          orderNumber: uzumOrderNumber("r", attempt.id),
           currency: plan.currency,
           amountMinor: amountDueMinor,
           uzumCart: renewalUzumCart,
