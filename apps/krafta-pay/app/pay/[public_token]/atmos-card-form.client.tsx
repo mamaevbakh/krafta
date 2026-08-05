@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/input-otp";
 import {
   type ApplyResult,
-  errorMessage,
+  errorMessageKey,
   resolveApplyOutcome,
 } from "./atmos-apply-outcome";
 
@@ -154,7 +154,7 @@ export function AtmosCardForm({
       .catch(() => ({ ok: false, error: "network_error" }) as const);
     setPending(false);
     if (!result.ok) {
-      setError(errorMessage(result.error));
+      setError(t(errorMessageKey(result.error)));
       return;
     }
     setMaskedPhone(result.maskedPhone ?? null);
@@ -176,7 +176,7 @@ export function AtmosCardForm({
     // explicit "succeeded", a decline error on anything else.
     const outcome = resolveApplyOutcome(result);
     if (outcome.kind === "error") {
-      setError(errorMessage(outcome.code));
+      setError(t(errorMessageKey(outcome.code)));
       return;
     }
     setStep("success");

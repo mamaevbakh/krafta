@@ -20,6 +20,27 @@ import type { PayLocale } from "./locale";
 
 const EN = {
   // ── hosted checkout (customer-facing) ───────────────────────────────────
+  // What a customer is told when a payment does not go through. Every one of
+  // these has to name the actual problem and the way out — a generic "something
+  // went wrong" leaves them re-entering a correct card, or waiting for money
+  // that was never taken.
+  "checkout.error.network": "Connection problem. Check your internet and try again.",
+  "checkout.error.temporary": "Something went wrong on the payment network. Please try again.",
+  "checkout.error.cardInvalid": "That card number or expiry doesn't look right. Please re-check it.",
+  "checkout.error.otpInvalid": "That code didn't match. Re-enter the code from the SMS.",
+  "checkout.error.insufficientFunds":
+    "There isn't enough money on the card. Nothing was taken — try another card.",
+  "checkout.error.declined":
+    "Your bank declined the payment. Nothing was taken — please try another card.",
+  "checkout.error.generic": "We couldn't complete the payment. Please try again.",
+  "checkout.error.statusCheck": "We couldn't check the status just now — trying again.",
+  "checkout.result.continuingIn": "Continuing in {seconds}s…",
+  "checkout.status.paid": "Paid",
+  "checkout.status.failed": "Failed",
+  "checkout.status.processing": "Processing",
+  "checkout.status.awaitingConfirmation": "Awaiting confirmation",
+  "checkout.status.open": "Open",
+  "checkout.status.unknown": "Unknown",
   "checkout.testBadge": "Test mode",
   "checkout.testHint": "No real money will be charged. Use a test card from your provider cabinet.",
   "checkout.amountDue": "Amount due",
@@ -451,6 +472,24 @@ export type PayMessageKey = keyof typeof EN;
 type Catalog = Record<PayMessageKey, string>;
 
 const RU: Catalog = {
+  "checkout.error.network": "Проблема с соединением. Проверьте интернет и попробуйте ещё раз.",
+  "checkout.error.temporary":
+    "На стороне платёжной системы сбой. Попробуйте ещё раз.",
+  "checkout.error.cardInvalid": "Номер карты или срок действия не сходятся. Проверьте их.",
+  "checkout.error.otpInvalid": "Код не подошёл. Введите код из SMS ещё раз.",
+  "checkout.error.insufficientFunds":
+    "На карте недостаточно средств. Деньги не списаны — попробуйте другую карту.",
+  "checkout.error.declined":
+    "Банк отклонил платёж. Деньги не списаны — попробуйте другую карту.",
+  "checkout.error.generic": "Не удалось провести платёж. Попробуйте ещё раз.",
+  "checkout.error.statusCheck": "Не получилось проверить статус — пробуем ещё раз.",
+  "checkout.result.continuingIn": "Продолжим через {seconds} с…",
+  "checkout.status.paid": "Оплачен",
+  "checkout.status.failed": "Не прошёл",
+  "checkout.status.processing": "В обработке",
+  "checkout.status.awaitingConfirmation": "Ждём подтверждения",
+  "checkout.status.open": "Открыт",
+  "checkout.status.unknown": "Неизвестно",
   "checkout.testBadge": "Тестовый режим",
   "checkout.testHint": "Реальные деньги не спишутся. Используйте тестовую карту из кабинета провайдера.",
   "checkout.amountDue": "К оплате",
@@ -865,6 +904,24 @@ const RU: Catalog = {
 };
 
 const UZ: Catalog = {
+  "checkout.error.network": "Aloqada muammo. Internetni tekshirib, qayta urinib ko‘ring.",
+  "checkout.error.temporary": "To‘lov tizimida nosozlik. Qayta urinib ko‘ring.",
+  "checkout.error.cardInvalid":
+    "Karta raqami yoki amal qilish muddati mos kelmayapti. Tekshirib chiqing.",
+  "checkout.error.otpInvalid": "Kod mos kelmadi. SMS dagi kodni qayta kiriting.",
+  "checkout.error.insufficientFunds":
+    "Kartada mablag‘ yetarli emas. Pul yechilmadi — boshqa karta bilan urinib ko‘ring.",
+  "checkout.error.declined":
+    "Bank to‘lovni rad etdi. Pul yechilmadi — boshqa karta bilan urinib ko‘ring.",
+  "checkout.error.generic": "To‘lovni amalga oshirib bo‘lmadi. Qayta urinib ko‘ring.",
+  "checkout.error.statusCheck": "Holatni hozir tekshirib bo‘lmadi — qayta urinmoqdamiz.",
+  "checkout.result.continuingIn": "{seconds} soniyadan so‘ng davom etamiz…",
+  "checkout.status.paid": "To‘landi",
+  "checkout.status.failed": "O‘tmadi",
+  "checkout.status.processing": "Ishlanmoqda",
+  "checkout.status.awaitingConfirmation": "Tasdiq kutilmoqda",
+  "checkout.status.open": "Ochiq",
+  "checkout.status.unknown": "Noma’lum",
   "checkout.testBadge": "Sinov rejimi",
   "checkout.testHint": "Haqiqiy pul yechilmaydi. Provayder kabinetidagi sinov kartasidan foydalaning.",
   "checkout.amountDue": "To‘lov summasi",
