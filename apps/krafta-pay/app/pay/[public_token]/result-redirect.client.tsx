@@ -266,7 +266,7 @@ export function PayResultRedirect({
 
         {error ? (
           <p className="mt-6 text-sm text-muted-foreground">
-            We hit a snag checking the status — retrying automatically.
+            {t("checkout.error.statusCheck")}
           </p>
         ) : null}
 
@@ -275,9 +275,8 @@ export function PayResultRedirect({
         ) : null}
 
         {countdown !== null ? (
-          <p className="mt-6 text-sm">
-            Continuing in{" "}
-            <span className="font-medium tabular-nums">{countdown}</span>s…
+          <p className="mt-6 text-sm tabular-nums">
+            {t("checkout.result.continuingIn", { seconds: String(countdown) })}
           </p>
         ) : null}
 

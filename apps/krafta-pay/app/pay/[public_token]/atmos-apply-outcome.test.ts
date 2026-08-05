@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { resolveApplyOutcome, errorMessage } from "./atmos-apply-outcome";
+import { resolveApplyOutcome, errorMessageKey } from "./atmos-apply-outcome";
+import { PAY_MESSAGES } from "@/lib/locales/catalog";
 
 describe("resolveApplyOutcome", () => {
   // The P1 regression: a DECLINED first subscription charge comes back from the
@@ -44,10 +45,51 @@ describe("resolveApplyOutcome", () => {
   });
 });
 
-describe("errorMessage", () => {
+describe("errorMessageKey", () => {
   it("gives declined charges honest, actionable copy — not the generic fallback", () => {
-    const declined = errorMessage("atmos_charge_declined");
-    expect(declined).not.toBe(errorMessage("some_unknown_code"));
-    expect(declined.toLowerCase()).toContain("declined");
+    const declined = errorMessageKey("atmos_charge_declined");
+    expect(declined).not.toBe(errorMessageKey("some_unknown_code"));
+  });
+
+  it("names insufficient funds specifically, so the customer knows to use another card", () => {
+    expect(errorMessageKey("atmos_insufficient_funds")).toBe(
+      "checkout.error.insufficientFunds",
+    );
+  });
+
+  it("falls back to a generic failure for a code we have never seen", () => {
+    // A new provider code must still leave the customer with a next step,
+    // never a blank error.
+    expect(errorMessageKey("brand_new_code")).toBe("checkout.error.generic");
+    expect(errorMessageKey(undefined)).toBe("checkout.error.generic");
+  });
+
+  it("has real copy in every language for every code it can return", () => {
+    // The whole point of returning a key: a Russian-speaking customer at a
+    // checkout must not be handed an English decline. This fails if any locale
+    // is missing a key or left it as the English string.
+    const codes = [
+      "network_error",
+      "atmos_temporary_error",
+      "atmos_card_invalid",
+      "atmos_otp_invalid",
+      "atmos_insufficient_funds",
+      "atmos_charge_declined",
+      "anything_unknown",
+    ];
+    for (const code of codes) {
+      const key = errorMessageKey(code);
+      const en = PAY_MESSAGES.en[key];
+      const ru = PAY_MESSAGES.ru[key];
+      const uz = PAY_MESSAGES["uz-Latn"][key];
+      for (const value of [en, ru, uz]) {
+        expect(typeof value).toBe("string");
+        expect(value.trim().length).toBeGreaterThan(0);
+      }
+      expect(ru).not.toBe(en);
+      expect(uz).not.toBe(en);
+      // Cyrillic in the Russian copy — catches a key quietly left in English.
+      expect(ru).toMatch(/[\u0400-\u04FF]/);
+    }
   });
 });

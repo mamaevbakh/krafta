@@ -76,13 +76,16 @@ export function CheckoutStatusWatcher({
 
   const statusLabel = useMemo(() => {
     const s = (data?.paymentIntent?.status ?? data?.checkoutSession.status ?? "unknown").toLowerCase();
-    if (s === "succeeded") return "Paid";
-    if (s === "failed") return "Failed";
-    if (s === "processing") return "Processing";
-    if (s === "requires_action") return "Awaiting confirmation";
-    if (s === "open") return "Open";
-    return s.replace(/_/g, " ") || "Unknown";
-  }, [data]);
+    if (s === "succeeded") return t("checkout.status.paid");
+    if (s === "failed") return t("checkout.status.failed");
+    if (s === "processing") return t("checkout.status.processing");
+    if (s === "requires_action") return t("checkout.status.awaitingConfirmation");
+    if (s === "open") return t("checkout.status.open");
+    // A status we have no name for used to be shown to the customer as the raw
+    // database value with its underscores swapped out ("requires payment
+    // method"). Better to say nothing specific than to leak our schema at them.
+    return t("checkout.status.unknown");
+  }, [data, t]);
 
   useEffect(() => {
     // Load latest status once on mount.
