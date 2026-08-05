@@ -7,6 +7,7 @@ import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { formatMinorAmount } from "@/lib/format";
+import { resolveResultView } from "./result-view";
 
 type StatusResponse = {
   checkoutSession: {
@@ -206,6 +207,26 @@ export function PayResultRedirect({
       : isFailed
         ? t("checkout.result.notCompletedBody")
         : t("checkout.result.checkingBody");
+
+  // Paid, and on the way back to the merchant: show a spinner and nothing else.
+  // The rule itself lives in result-view.ts with its tests — it decides what a
+  // customer sees about money they have already handed over, which is not
+  // something to leave as an inline `&&`.
+  if (
+    resolveResultView({ mode, intentStatus, hasReturnTarget: Boolean(statusTarget) }) ===
+    "loader_only"
+  ) {
+    return (
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6 py-10">
+        <Spinner className="size-6" />
+        {/* A spinner alone is silence to a screen reader, and this is the
+            moment a customer most needs to know the payment landed. */}
+        <span role="status" aria-live="polite" className="sr-only">
+          {title}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
