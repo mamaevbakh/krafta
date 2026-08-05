@@ -26,6 +26,9 @@ export async function POST(
 ) {
   const supabase = createAdminSupabase();
   const { public_token } = await params;
+  // Hoisted so the catch below can release the lock this request took. The
+  // intent itself is loaded inside the try and is out of scope down there.
+  let lockedIntentId: string | null = null;
 
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -98,6 +101,7 @@ export async function POST(
       .select("id")
       .maybeSingle();
     if (lockErr) throw lockErr;
+    if (locked) lockedIntentId = intent.id as string;
     if (!locked) {
       return NextResponse.json(
         { error: "payment_intent_not_submittable", paymentIntentStatus: intent.status },
@@ -283,13 +287,38 @@ export async function POST(
     // Atmos but our write failed). The pay/get reconciler recovers it — do NOT
     // blindly reset the intent, which could hide a real charge.
     //
+    // EXCEPT for an outright decline. "Do not reset" is caution about not
+    // knowing what happened, and a decline is the one case where we DO know:
+    // Atmos looked at the card and refused it, so no money moved. Leaving those
+    // as `processing` was strictly harmful — the reconciler will not touch an
+    // intent it cannot prove anything about (it logs skipped_no_transaction_id
+    // and moves on), and a settled intent cannot be paid again. So a customer
+    // whose card merely had no money on it was told "we couldn't complete the
+    // payment", concluded the code they typed was wrong, and retried into a
+    // link that could never work again. Releasing the intent back to `failed`
+    // is safe here and is what makes the retry real.
+    const failureKind = classifyAtmosFailure(error);
+    if (failureKind === "declined" && lockedIntentId) {
+      const { error: releaseErr } = await supabase
+        .schema("payments")
+        .from("payment_intents")
+        .update({ status: "failed", updated_at: new Date().toISOString() })
+        // Only release the lock THIS request took. If anything moved the intent
+        // on in the meantime, leave it alone.
+        .eq("id", lockedIntentId)
+        .eq("status", "processing");
+      if (releaseErr) console.error("atmos decline release failed", releaseErr);
+    }
+
     // A known-transient Atmos glitch (ERR-001) or a transport blip gets the
-    // retryable copy; a genuine decline or unknown charge failure keeps the
-    // cautious generic code (both invite a retry the reconciler makes safe).
+    // retryable copy; a decline names the actual reason so the cardholder can
+    // act on it; an unknown charge failure keeps the cautious generic code.
     const code =
-      classifyAtmosFailure(error) === "temporary"
+      failureKind === "temporary"
         ? "atmos_temporary_error"
-        : "atmos_apply_failed";
+        : failureKind === "declined"
+          ? "atmos_insufficient_funds"
+          : "atmos_apply_failed";
     await writePaymentDebugLog(supabase, {
       scope: "atmos",
       event: "apply.error",

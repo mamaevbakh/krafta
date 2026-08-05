@@ -480,12 +480,33 @@ export class AtmosError extends Error {
 //                 transport/timeout failure — retryable, not the card's fault.
 //   other         any other Atmos result code (e.g. a genuine charge decline or
 //                 a store-config error); the caller keeps its own default copy.
-export type AtmosFailureKind = "card_invalid" | "temporary" | "other";
+export type AtmosFailureKind = "card_invalid" | "temporary" | "declined" | "other";
 
 // Match on the trailing "ERR-0NN" token so a partner prefix ("STPIMS-ERR-009")
 // or a bare "ERR-009" both classify. Atmos codes are 3-digit and non-overlapping.
 const ATMOS_CARD_INVALID_CODES = ["ERR-009", "ERR-067"] as const;
 const ATMOS_TEMPORARY_CODES = ["ERR-001"] as const;
+
+/**
+ * The bank looked at the card and said no. Nothing was taken.
+ *
+ * This is a different thing from `other`, and the difference is worth money.
+ * `other` means we do not know what happened, so the intent is deliberately
+ * left `processing` for the reconciler rather than reset — resetting could hide
+ * a real charge. A DECLINE carries no such doubt: Atmos told us the card was
+ * refused, so no money moved and the payment can safely be marked failed and
+ * offered again.
+ *
+ * Without this distinction ERR-112 fell into `other`, and a customer whose card
+ * simply had no money on it was shown "we couldn't complete the payment", while
+ * the payment itself sat in limbo forever — the reconciler will not touch it
+ * (it cannot prove what happened), and a settled intent cannot be retried. The
+ * customer reads that as "the code I typed was wrong", and tries again into a
+ * dead end.
+ *
+ * ERR-112 — "Недостаточно средств на балансе карты для проведения платежа".
+ */
+const ATMOS_DECLINED_CODES = ["ERR-112"] as const;
 
 function atmosResultCode(raw: Record<string, unknown> | null | undefined): string | null {
   const code = (raw as { result?: { code?: unknown } } | null)?.result?.code;
@@ -500,5 +521,6 @@ export function classifyAtmosFailure(error: unknown): AtmosFailureKind {
   if (!code) return "temporary";
   if (ATMOS_CARD_INVALID_CODES.some((c) => code.includes(c))) return "card_invalid";
   if (ATMOS_TEMPORARY_CODES.some((c) => code.includes(c))) return "temporary";
+  if (ATMOS_DECLINED_CODES.some((c) => code.includes(c))) return "declined";
   return "other";
 }
