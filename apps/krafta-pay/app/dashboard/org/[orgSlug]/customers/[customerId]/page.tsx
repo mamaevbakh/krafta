@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireOrgAccess } from "@/lib/org-access";
+import { PortalLinkButton } from "../portal-link-button.client";
 import { payDateFormatter } from "@/lib/format-date";
 import { getPayLocale, getPayT } from "@/lib/locales/server";
 import type { PayMessageKey } from "@/lib/locales/catalog";
@@ -250,9 +251,15 @@ export default async function CustomerDetailPage({ params }: { params: Params })
               ) : null}
             </p>
           </div>
-          {person.environment === "test" ? (
-            <Badge variant="warning">{t("customer.testBadge")}</Badge>
-          ) : null}
+          <div className="flex flex-col items-end gap-2">
+            {person.environment === "test" ? (
+              <Badge variant="warning">{t("customer.testBadge")}</Badge>
+            ) : null}
+            {/* The portal has existed and worked for months; until now the only
+                way to open a session was the API, so a merchant without an
+                engineer could not give their customer access at all. */}
+            <PortalLinkButton orgSlug={orgSlug} customerId={person.id} />
+          </div>
         </header>
       </div>
 

@@ -240,6 +240,10 @@ const EN = {
   "customer.fallbackName": "Customer",
   "customer.since": "Customer since {date}",
   "customer.testBadge": "Test",
+  "customer.portal.create": "Billing link for this customer",
+  "customer.portal.hint":
+    "Send this to the customer. They can see their invoices, change their card or cancel — without asking you. The link works for 3 days.",
+  "customer.portal.error": "Could not create the link. Please try again.",
   "customer.subscriptions.empty": "No subscriptions.",
   "customer.col.started": "Started",
   "customer.invoices.heading": "Invoices",
@@ -689,6 +693,10 @@ const RU: Catalog = {
   "customer.fallbackName": "Клиент",
   "customer.since": "Клиент с {date}",
   "customer.testBadge": "Тест",
+  "customer.portal.create": "Ссылка для клиента",
+  "customer.portal.hint":
+    "Отправьте её клиенту. Он сам увидит свои платежи, поменяет карту или отменит подписку — без вас. Ссылка работает 3 дня.",
+  "customer.portal.error": "Не удалось создать ссылку. Попробуйте ещё раз.",
   "customer.subscriptions.empty": "Подписок нет.",
   "customer.col.started": "Начата",
   "customer.invoices.heading": "Счета",
@@ -1124,6 +1132,10 @@ const UZ: Catalog = {
   "customer.fallbackName": "Mijoz",
   "customer.since": "{date} dan beri mijoz",
   "customer.testBadge": "Sinov",
+  "customer.portal.create": "Mijoz uchun havola",
+  "customer.portal.hint":
+    "Uni mijozga yuboring. U o‘z to‘lovlarini ko‘radi, kartani almashtiradi yoki obunani bekor qiladi — sizsiz. Havola 3 kun ishlaydi.",
+  "customer.portal.error": "Havolani yaratib bo‘lmadi. Qayta urinib ko‘ring.",
   "customer.subscriptions.empty": "Obunalar yo‘q.",
   "customer.col.started": "Boshlangan",
   "customer.invoices.heading": "Hisoblar",
