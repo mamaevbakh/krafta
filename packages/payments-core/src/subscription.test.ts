@@ -16,6 +16,7 @@ function fakeSupabase(rows: Record<string, unknown>, mutations: string[]) {
     const b: Record<string, unknown> = {
       select: () => b,
       eq: () => b,
+      in: () => b,
       order: () => b,
       update: (_v: unknown) => {
         mutations.push(`update:${table}`);
@@ -281,6 +282,98 @@ describe("finalizeInitialPayment ignores merchant-forged invoice/subscription id
     expect(mutations).not.toContain("insert:subscription_events");
     // And the rejection is recorded rather than swallowed.
     expect(mutations).toContain("insert:logs");
+  });
+});
+
+/**
+ * A nine-month course must produce nine charges — not eight, not ten.
+ *
+ * Ten is a refund and an angry parent, and it is the school's reputation that
+ * pays. Eight is a month the school is owed and has to chase by hand. The dates
+ * below are worked through explicitly rather than described, because an
+ * off-by-one here is invisible until the wrong month arrives.
+ *
+ * Billed monthly from 1 September: the initial payment covers September, eight
+ * renewals carry it to 1 May, and the period beginning 1 June is refused. So
+ * `ends_at` is the first period start plus nine months — 1 June.
+ */
+describe("a fixed-term subscription stops itself", () => {
+  const ENDS_AT = "2027-06-01T00:00:00.000Z";
+
+  const subAt = (periodEnd: string, over: Record<string, unknown> = {}) => ({
+    id: "sub_term",
+    org_id: "org_1",
+    status: "active",
+    customer_id: "cus_1",
+    plan_id: "plan_1",
+    default_payment_method_id: "pm_1",
+    current_period_start: "2027-04-01T00:00:00.000Z",
+    current_period_end: periodEnd,
+    cancel_at_period_end: false,
+    ends_at: ENDS_AT,
+    environment: "test",
+    metadata: {},
+    ...over,
+  });
+
+  it("charges the final period, the one beginning the month before the term ends", async () => {
+    // periodStart = 1 May, ends_at = 1 June. This is charge nine and the school
+    // is owed it. Refusing here is the undercharge failure.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      { subscriptions: subAt("2027-05-01T00:00:00.000Z") },
+      mutations,
+    );
+
+    // Reaching the plan lookup is the proof: the guard sits above it, so a
+    // subscription it refused would have returned before ever getting here.
+    await expect(chargeRenewal(supa, { subscriptionId: "sub_term" })).rejects.toThrow(
+      "plan_not_found",
+    );
+  });
+
+  it("refuses the period that begins exactly when the term ends", async () => {
+    // periodStart = 1 June = ends_at. This is the tenth charge, and it is the
+    // one the whole feature exists to prevent.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      { subscriptions: subAt("2027-06-01T00:00:00.000Z") },
+      mutations,
+    );
+
+    const result = await chargeRenewal(supa, { subscriptionId: "sub_term" });
+    expect(result).toEqual({ skipped: true, reason: "subscription_term_completed" });
+    expect(mutations).toContain("update:subscriptions");
+    // Nothing is billed and no money is asked for.
+    expect(mutations).not.toContain("insert:invoices");
+  });
+
+  it("refuses a period beginning after the term, however late the retry", async () => {
+    // The retry loop and manual retry routes both reach chargeRenewal directly.
+    // A subscription that went past_due before the term ended must not be
+    // rescued into a charge weeks afterwards.
+    const supa = fakeSupabase(
+      {
+        subscriptions: subAt("2027-08-01T00:00:00.000Z", { status: "past_due" }),
+      },
+      [],
+    );
+    const result = await chargeRenewal(supa, { subscriptionId: "sub_term" });
+    expect(result).toEqual({ skipped: true, reason: "subscription_term_completed" });
+  });
+
+  it("leaves a subscription with no term exactly as it was", async () => {
+    // This ships onto live subscriptions. Every one of them has ends_at null and
+    // must keep renewing until somebody cancels.
+    const supa = fakeSupabase(
+      {
+        subscriptions: subAt("2027-06-01T00:00:00.000Z", { ends_at: null }),
+      },
+      [],
+    );
+    await expect(chargeRenewal(supa, { subscriptionId: "sub_term" })).rejects.toThrow(
+      "plan_not_found",
+    );
   });
 });
 
