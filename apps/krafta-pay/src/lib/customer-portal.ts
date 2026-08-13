@@ -3,6 +3,24 @@ import crypto from "crypto";
 const PORTAL_SESSION_TTL_MS = 5 * 60 * 1000;
 const PORTAL_ACTIVE_SESSION_EXTENSION_MS = 30 * 60 * 1000;
 
+/**
+ * For a link a human sends, rather than one a backend mints on a click.
+ *
+ * The five-minute TTL above is correct for the API: a customer presses "manage
+ * billing" on the merchant's site, we mint, they land immediately. A link a
+ * merchant pastes into Telegram is read whenever the parent next picks up their
+ * phone — tonight, tomorrow morning, after work. At five minutes, or even
+ * thirty, that link is dead before it is opened, and the merchant looks broken
+ * to their own customer.
+ *
+ * Three days is the compromise. The token is a bearer credential — anyone
+ * holding it sees that customer's invoices and can change their card — so this
+ * is not "make it long enough to never fail". It is long enough for a message
+ * to be read at human pace, and short enough that a link forwarded into a
+ * family group chat stops working within the week.
+ */
+const PORTAL_SHARED_LINK_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
 function getPortalSessionSecret() {
   return (
     process.env.KRAFTA_PAY_PORTAL_SESSION_SECRET ??
@@ -81,6 +99,11 @@ export function getCustomerPortalSessionExpiry() {
 
 export function getExtendedCustomerPortalSessionExpiry() {
   return new Date(Date.now() + PORTAL_ACTIVE_SESSION_EXTENSION_MS).toISOString();
+}
+
+/** Expiry for a link the merchant sends by hand — see PORTAL_SHARED_LINK_TTL_MS. */
+export function getSharedCustomerPortalSessionExpiry() {
+  return new Date(Date.now() + PORTAL_SHARED_LINK_TTL_MS).toISOString();
 }
 
 type CustomerPortalEventInput = {
