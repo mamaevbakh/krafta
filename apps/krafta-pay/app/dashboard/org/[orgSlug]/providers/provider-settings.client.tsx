@@ -9,13 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,24 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronRight, CreditCard, PenLine, Plus, Trash2 } from "lucide-react";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from "@/components/ui/item";
+import { Check, ChevronRight, PenLine, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -72,15 +48,7 @@ import {
 type ProviderId = "atmos" | "uzum";
 type Environment = "test" | "live";
 
-const PROVIDER_LABEL: Record<ProviderId, string> = { atmos: "Atmos", uzum: "Uzum" };
 const ATMOS_DEFAULT_API_BASE = "https://apigw.atmos.uz";
-
-const PROVIDER_ENV_COMBOS: Array<{ provider: ProviderId; environment: Environment }> = [
-  { provider: "atmos", environment: "live" },
-  { provider: "atmos", environment: "test" },
-  { provider: "uzum", environment: "live" },
-  { provider: "uzum", environment: "test" },
-];
 
 type AccountView = {
   provider: ProviderId;
@@ -123,70 +91,44 @@ async function fetchAccount(
   }
 }
 
-/**
- * Provider setup.
- *
- * Previously this rendered a permanently-visible "Connect or update a provider"
- * form with segmented Provider/Environment pickers, whether or not anything was
- * connected — a settings panel wearing the clothes of a task. A merchant
- * arriving with nothing connected saw a dashed box telling them to use the form
- * below, then a form asking four questions before it asked the only one that
- * matters: which provider?
- *
- * Now it is a task: an empty state with one action, a picker, then a form that
- * only asks for what we cannot already know.
- */
 type DialogState =
-  | { step: "pick" }
   | { step: "form"; provider: ConnectableProviderId; environment: Environment; existing: boolean }
   | null;
 
-export function ProviderSettingsClient({ orgId }: { orgId: string }) {
-  const t = useT();
+export function ProviderSettingsClient({
+  orgId,
+  environment,
+}: {
+  orgId: string;
+  environment: Environment;
+}) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [dialog, setDialog] = useState<DialogState>(null);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  const startEdit = useCallback((p: ProviderId, env: Environment) => {
-    setDialog({ step: "form", provider: p, environment: env, existing: true });
-  }, []);
-
   if (!orgId) return null;
 
   return (
     <div className="space-y-8">
-      <ConnectedAccounts
+      <ProviderDirectory
         orgId={orgId}
+        environment={environment}
         refreshKey={refreshKey}
-        onEdit={startEdit}
+        onConnect={(provider, existing) =>
+          setDialog({ step: "form", provider, environment, existing })
+        }
         onChanged={refresh}
-        onAdd={() => setDialog({ step: "pick" })}
       />
 
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && setDialog(null)}>
         <DialogContent className="sm:max-w-lg">
-          {dialog?.step === "pick" ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>{t("providers.pick.title")}</DialogTitle>
-                <DialogDescription>{t("providers.pick.description")}</DialogDescription>
-              </DialogHeader>
-              <ProviderPicker
-                onPick={(provider) =>
-                  setDialog({ step: "form", provider, environment: "live", existing: false })
-                }
-              />
-            </>
-          ) : dialog?.step === "form" ? (
+          {dialog?.step === "form" ? (
             <ProviderFormDialog
               orgId={orgId}
               provider={dialog.provider}
               environment={dialog.environment}
               existing={dialog.existing}
-              onEnvironmentChange={(environment) =>
-                setDialog({ ...dialog, environment })
-              }
               onSaved={() => {
                 refresh();
                 setDialog(null);
@@ -200,94 +142,68 @@ export function ProviderSettingsClient({ orgId }: { orgId: string }) {
 }
 
 /**
- * The picker. Big tiles, because choosing your acquirer is the single most
- * consequential decision on this page and a `<select>` makes it look like a
- * preference.
+ * Every rail we support, in one list, in the environment the merchant is
+ * currently looking at.
  *
- * Providers whose adapter is still a stub are shown, disabled, with a "soon"
- * badge. That is deliberate: a merchant on Payme needs to know we are not
- * hiding it from them, and letting them connect it would produce a checkout
- * that throws at the first charge.
+ * This replaced an empty state with a "connect a provider" button behind which
+ * sat a picker dialog. Two problems with that. A merchant who has connected
+ * nothing — which is every merchant on day one — was shown a dashed box and a
+ * verb, with no way to learn what we actually support without clicking; and the
+ * rails we are still building were invisible until you opened the picker, so
+ * "do you support Payme?" could only be answered by a salesperson. Showing the
+ * whole directory answers that question before it is asked, and connecting
+ * becomes one click on the provider you already recognise.
+ *
+ * ONE ENVIRONMENT AT A TIME. The old list rendered every (provider,
+ * environment) pair together, so a merchant in test mode saw their live account
+ * sitting in the same list — and the reverse, which is worse: a connected test
+ * account read as "we are ready to take money". The page now shows only the
+ * environment the sidebar switch is on, and connecting here connects THAT
+ * environment. Nothing else on this page asks which one you meant.
  */
-function ProviderPicker({ onPick }: { onPick: (p: ConnectableProviderId) => void }) {
-  const t = useT();
-
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {CATALOG_ORDER.map((id) => {
-        const provider = PROVIDER_CATALOG[id];
-        const available = isConnectable(id);
-        const { Mark } = provider;
-
-        return (
-          <button
-            key={id}
-            type="button"
-            disabled={!available}
-            onClick={() => available && onPick(id as ConnectableProviderId)}
-            className={cn(
-              "group flex flex-col items-start gap-3 rounded-xl border p-4 text-left transition-colors",
-              available
-                ? "hover:border-foreground/30 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                : "cursor-not-allowed opacity-55",
-            )}
-          >
-            <div className="flex w-full items-start justify-between gap-2">
-              <Mark className={available ? "" : "grayscale"} />
-              {!available ? (
-                <Badge variant="outline" className="rounded-full text-[11px]">
-                  {t("providers.soon")}
-                </Badge>
-              ) : null}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-medium">{provider.name}</div>
-              <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                {t(provider.taglineKey as never)}
-              </div>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Connected accounts — one row per (provider, environment), with actions.
-// ---------------------------------------------------------------------------
-
-function ConnectedAccounts({
+function ProviderDirectory({
   orgId,
+  environment,
   refreshKey,
-  onEdit,
+  onConnect,
   onChanged,
-  onAdd,
 }: {
   orgId: string;
+  environment: Environment;
   refreshKey: number;
-  onEdit: (p: ProviderId, env: Environment) => void;
+  onConnect: (provider: ConnectableProviderId, existing: boolean) => void;
   onChanged: () => void;
-  onAdd: () => void;
 }) {
   const t = useT();
-  const [rows, setRows] = useState<AccountView[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Loaded rows carry the environment they belong to, and `loading` is derived
+  // from whether that matches what we are showing. Tracking a separate boolean
+  // meant flipping it inside the effect — and, more importantly, the previous
+  // environment's rows stayed on screen through the fetch after a mode switch,
+  // which is the one moment this page must never be ambiguous.
+  const [loaded, setLoaded] = useState<{
+    environment: Environment;
+    accounts: Record<string, AccountView>;
+  } | null>(null);
+  const loading = loaded === null || loaded.environment !== environment;
 
   useEffect(() => {
     let ignore = false;
-    setLoading(true);
+    // Only the connectable rails, only this environment. Four fetches became
+    // two, and neither can return a row the merchant is not currently looking at.
     Promise.all(
-      PROVIDER_ENV_COMBOS.map((c) => fetchAccount(c.provider, orgId, c.environment)),
+      CATALOG_ORDER.filter(isConnectable).map((p) =>
+        fetchAccount(p as ConnectableProviderId, orgId, environment),
+      ),
     ).then((results) => {
       if (ignore) return;
-      setRows(results.filter((r): r is AccountView => r !== null));
-      setLoading(false);
+      const accounts: Record<string, AccountView> = {};
+      for (const row of results) if (row) accounts[row.provider] = row;
+      setLoaded({ environment, accounts });
     });
     return () => {
       ignore = true;
     };
-  }, [orgId, refreshKey]);
+  }, [orgId, environment, refreshKey]);
 
   if (loading) {
     return (
@@ -297,83 +213,81 @@ function ConnectedAccounts({
     );
   }
 
-  // Nothing connected is the FIRST-RUN state, not an error state. One heading,
-  // one sentence saying why this matters, one button. The old dashed box told
-  // the merchant to "use the form below" — which only works if you already
-  // know what a provider is.
-  if (rows.length === 0) {
-    return (
-      <Empty className="border border-dashed">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <CreditCard />
-          </EmptyMedia>
-          <EmptyTitle>{t("providers.empty.title")}</EmptyTitle>
-          <EmptyDescription>{t("providers.empty.description")}</EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button onClick={onAdd}>
-            <Plus className="size-4" />
-            {t("providers.add")}
-          </Button>
-        </EmptyContent>
-      </Empty>
-    );
-  }
-
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium">{t("providers.connected")}</h2>
-        <Button variant="outline" size="sm" onClick={onAdd}>
-          <Plus className="size-4" />
-          {t("providers.add")}
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">{t("providers.directory.title")}</h2>
+        <Badge
+          variant={environment === "live" ? "default" : "outline"}
+          className={cn("rounded-full", environment === "test" && "border-dashed")}
+        >
+          {environment === "live" ? t("providers.env.live") : t("providers.env.test")}
+        </Badge>
       </div>
 
-      <ItemGroup className="rounded-lg border">
-        {rows.map((account, index) => (
-          <AccountRow
-            key={`${account.provider}-${account.environment}`}
-            account={account}
+      {/* One column at 375px — DESIGN.md §Layout makes the phone the primary
+          viewport, and these rows carry a logo, a name, a description and a
+          control, which do not fit side by side there. */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {CATALOG_ORDER.map((id) => (
+          <ProviderCard
+            key={id}
+            providerId={id}
+            account={loaded.accounts[id] ?? null}
             orgId={orgId}
-            onEdit={onEdit}
+            environment={environment}
+            onConnect={onConnect}
             onChanged={onChanged}
-            isLast={index === rows.length - 1}
           />
         ))}
-      </ItemGroup>
+      </div>
 
-      <p className="text-xs text-muted-foreground">{t("providers.env.hint")}</p>
+      <p className="text-xs text-muted-foreground">
+        {environment === "live"
+          ? t("providers.directory.hint.live")
+          : t("providers.directory.hint.test")}
+      </p>
     </section>
   );
 }
 
-function AccountRow({
+/**
+ * One rail. Three states, and the difference between them has to be readable at
+ * a glance, because it is the difference between "you can take money" and "you
+ * cannot".
+ *
+ *   connected  — a tick, the account's own identifier, and the way to change it
+ *   available  — a plus; one click opens the credential form for this rail
+ *   soon       — visibly present but inert, so "do you support Payme?" is
+ *                answered honestly without letting anyone connect a rail whose
+ *                adapter would throw at the first charge
+ */
+function ProviderCard({
+  providerId,
   account,
   orgId,
-  onEdit,
+  environment,
+  onConnect,
   onChanged,
-  isLast,
 }: {
-  account: AccountView;
+  providerId: CatalogProviderId;
+  account: AccountView | null;
   orgId: string;
-  onEdit: (p: ProviderId, env: Environment) => void;
+  environment: Environment;
+  onConnect: (provider: ConnectableProviderId, existing: boolean) => void;
   onChanged: () => void;
-  isLast: boolean;
 }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const catalog = PROVIDER_CATALOG[account.provider];
+  const catalog = PROVIDER_CATALOG[providerId];
   const { Mark } = catalog;
-  const isActive = account.status === "active";
+  const available = isConnectable(providerId);
+  const connected = account !== null;
+  const isActive = account?.status === "active";
 
-  // Only the identifier that distinguishes one account from another. The API
-  // base URL used to be shown here and it is the same for every Atmos account —
-  // noise dressed as information.
-  const detail = account.storeOrTerminal
+  const detail = account?.storeOrTerminal
     ? `${account.provider === "atmos" ? "store" : "terminal"} ${account.storeOrTerminal}`
     : null;
 
@@ -382,7 +296,7 @@ function AccountRow({
     setError(null);
     try {
       const res = await fetch(
-        `/api/dashboard/providers/${account.provider}?orgId=${encodeURIComponent(orgId)}&environment=${account.environment}`,
+        `/api/dashboard/providers/${providerId}?orgId=${encodeURIComponent(orgId)}&environment=${environment}`,
         { method: "DELETE" },
       );
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -400,103 +314,108 @@ function AccountRow({
   }
 
   return (
-    <>
-      <Item className={cn(!isLast && "border-b")}>
-        <ItemMedia>
-          <Mark />
-        </ItemMedia>
-        <ItemContent>
-          <ItemTitle className="flex flex-wrap items-center gap-2">
-            {catalog.name}
-            <Badge
-              variant={account.environment === "live" ? "default" : "outline"}
-              className={cn("rounded-full", account.environment === "test" && "border-dashed")}
-            >
-              {account.environment === "live" ? t("providers.env.live") : t("providers.env.test")}
-            </Badge>
-            {!isActive ? (
-              <span className="text-xs text-destructive">{account.status}</span>
-            ) : null}
-          </ItemTitle>
-          {detail ? (
-            <ItemDescription className="font-mono text-xs">{detail}</ItemDescription>
-          ) : null}
-          {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
-        </ItemContent>
-        <ItemActions>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onEdit(account.provider, account.environment)}
-          >
-            <PenLine className="size-4" />
-            {t("providers.edit")}
-          </Button>
-          <AlertDialog>
-            {/* base-ui takes `render`, not `asChild` — the two look
-                interchangeable and are not. */}
-            <AlertDialogTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  aria-label={t("providers.disconnect")}
-                />
-              }
-            >
-              <Trash2 className="size-4" />
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {t("providers.disconnect")} {catalog.name}?
-                </AlertDialogTitle>
-                <AlertDialogDescription>{t("providers.disconnect.confirm")}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t("providers.form.cancel")}</AlertDialogCancel>
-                <AlertDialogAction onClick={onDisconnect}>
-                  {t("providers.disconnect")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </ItemActions>
-      </Item>
-    </>
-  );
-}
+    <div
+      className={cn(
+        "flex items-start gap-3 rounded-xl border p-4",
+        !available && "opacity-55",
+      )}
+    >
+      <Mark className={available ? "" : "grayscale"} />
 
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: Array<{ value: T; label: string }>;
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-md border p-0.5">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "rounded-[6px] px-3 py-1 text-sm font-medium transition-colors",
-            value === o.value
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground",
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">{catalog.name}</span>
+          {!available ? (
+            <Badge variant="outline" className="rounded-full text-[11px]">
+              {t("providers.soon")}
+            </Badge>
+          ) : null}
+          {connected && !isActive ? (
+            <span className="text-xs text-destructive">{account.status}</span>
+          ) : null}
+        </div>
+
+        <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+          {connected && detail ? (
+            <span className="font-mono">{detail}</span>
+          ) : (
+            t(catalog.taglineKey as never)
           )}
+        </p>
+
+        {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
+
+        {connected ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onConnect(providerId as ConnectableProviderId, true)}
+            >
+              <PenLine className="size-4" />
+              {t("providers.edit")}
+            </Button>
+            <AlertDialog>
+              {/* base-ui takes `render`, not `asChild` — the two look
+                  interchangeable and are not. */}
+              <AlertDialogTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    aria-label={t("providers.disconnect")}
+                  />
+                }
+              >
+                <Trash2 className="size-4" />
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t("providers.disconnect")} {catalog.name}?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("providers.disconnect.confirm")}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t("providers.form.cancel")}</AlertDialogCancel>
+                  <AlertDialogAction onClick={onDisconnect}>
+                    {t("providers.disconnect")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        ) : null}
+      </div>
+
+      {/* The affordance sits where the eye lands last, mirroring the row order:
+          what it is, then what you can do about it. */}
+      {connected ? (
+        <span
+          aria-label={t("providers.connected")}
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
         >
-          {o.label}
-        </button>
-      ))}
+          <Check className="size-4" aria-hidden />
+        </span>
+      ) : available ? (
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label={`${t("providers.add")} ${catalog.name}`}
+          onClick={() => onConnect(providerId as ConnectableProviderId, false)}
+        >
+          <Plus className="size-4" />
+        </Button>
+      ) : null}
     </div>
   );
 }
+
+
 
 /**
  * The credential form, inside the picker dialog.
@@ -510,14 +429,12 @@ function ProviderFormDialog({
   provider,
   environment,
   existing,
-  onEnvironmentChange,
   onSaved,
 }: {
   orgId: string;
   provider: ConnectableProviderId;
   environment: Environment;
   existing: boolean;
-  onEnvironmentChange: (env: Environment) => void;
   onSaved: () => void;
 }) {
   const t = useT();
@@ -542,19 +459,10 @@ function ProviderFormDialog({
         </div>
       </DialogHeader>
 
-      <div className="space-y-1.5">
-        <Label>{t("providers.env.label")}</Label>
-        <Segmented
-          options={[
-            { value: "live", label: t("providers.env.live") },
-            { value: "test", label: t("providers.env.test") },
-          ]}
-          value={environment}
-          onChange={onEnvironmentChange}
-        />
-        <p className="text-xs text-muted-foreground">{t("providers.env.hint")}</p>
-      </div>
-
+      {/* Environment is NOT asked here any more. The page is already in one
+          mode and the card that opened this dialog was in that mode, so a
+          second control could only ever disagree with it — and the cost of
+          disagreeing is live credentials filed under test, or the reverse. */}
       <Separator />
 
       {provider === "atmos" ? (

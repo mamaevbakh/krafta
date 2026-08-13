@@ -178,6 +178,11 @@ const EN = {
 
   // ── providers ───────────────────────────────────────────────────────────
   "providers.connected": "Connected accounts",
+  "providers.directory.title": "Payment providers",
+  "providers.directory.hint.live":
+    "You are viewing live credentials. Anything connected here charges real cards.",
+  "providers.directory.hint.test":
+    "You are viewing test credentials. Nothing connected here can charge a real card — switch to live mode to take money.",
   "providers.empty.title": "No payment provider yet",
   "providers.empty.description":
     "Krafta Pay runs your billing, but the charge itself goes through your own acquirer. Connect one to start taking money.",
@@ -623,6 +628,11 @@ const RU: Catalog = {
   "checkout.testCardsLink": "Тестовые карты",
 
   "providers.connected": "Подключённые аккаунты",
+  "providers.directory.title": "Платёжные провайдеры",
+  "providers.directory.hint.live":
+    "Показаны рабочие ключи. Всё, что подключено здесь, списывает деньги с настоящих карт.",
+  "providers.directory.hint.test":
+    "Показаны тестовые ключи. Ничего из подключённого здесь не спишет деньги с настоящей карты — для приёма оплат переключитесь в рабочий режим.",
   "providers.empty.title": "Провайдер ещё не подключён",
   "providers.empty.description":
     "Krafta Pay ведёт биллинг, но само списание идёт через ваш эквайринг. Подключите его, чтобы начать принимать деньги.",
@@ -1053,6 +1063,11 @@ const UZ: Catalog = {
   "checkout.testCardsLink": "Sinov kartalari",
 
   "providers.connected": "Ulangan hisoblar",
+  "providers.directory.title": "To‘lov provayderlari",
+  "providers.directory.hint.live":
+    "Ishchi kalitlar ko‘rsatilgan. Bu yerda ulangan hamma narsa haqiqiy kartadan pul yechadi.",
+  "providers.directory.hint.test":
+    "Sinov kalitlari ko‘rsatilgan. Bu yerda ulangan hech narsa haqiqiy kartadan pul yecha olmaydi — to‘lov qabul qilish uchun ishchi rejimga o‘ting.",
   "providers.empty.title": "Provayder hali ulanmagan",
   "providers.empty.description":
     "Krafta Pay billingni yuritadi, lekin pul o‘z ekvayringingiz orqali yechiladi. Uni ulang va to‘lov qabul qilishni boshlang.",
