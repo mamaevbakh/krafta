@@ -1,0 +1,20 @@
+# Vercel installs dependencies itself and builds the eve agents from source,
+# so uploading these is pure round-trip cost — 18k files on the first attempt,
+# past Vercel's 15k limit.
+#
+# Do NOT add `agents/` here: withEve builds each agent from its source at
+# deploy time, and excluding it would produce a console with no runtime.
+node_modules
+**/node_modules
+
+.next
+.vercel
+.eve
+**/.eve
+.output
+.nitro
+
+.git
+.claude
+.env*
+*.log
