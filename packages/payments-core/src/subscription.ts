@@ -2301,7 +2301,7 @@ export async function chargeRenewal(
     .schema("payments")
     .from("subscriptions")
     .select(
-      "id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_start, current_period_end, cancel_at_period_end, environment, metadata",
+      "id, org_id, status, customer_id, plan_id, default_payment_method_id, current_period_start, current_period_end, cancel_at_period_end, ends_at, environment, metadata",
     )
     .eq("id", params.subscriptionId)
     .maybeSingle();
@@ -2317,6 +2317,62 @@ export async function chargeRenewal(
   const periodStart = subscription.current_period_end
     ? new Date(subscription.current_period_end)
     : now;
+
+  // A fixed-term subscription stops itself.
+  //
+  // THIS GUARD LIVES HERE, NOT IN THE RENEWAL LOOP. There are three ways a
+  // renewal charge happens: runRenewalCycle's primary loop, its retry loop over
+  // overdue open invoices, and manual retry routes. All three funnel through
+  // chargeRenewal, and only chargeRenewal. A check placed next to the
+  // cancel_at_period_end branch in the loop would be bypassed by the other two —
+  // which is exactly how a parent gets charged in month ten of a nine-month
+  // course, on a retry, weeks after the term ended.
+  //
+  // The comparison is on the period ABOUT TO BE CHARGED, not on the clock.
+  // `periodStart` is where the next period begins, and `ends_at` is the instant
+  // the term is over, so a period beginning at or after it is one nobody owes.
+  // Worked through for nine monthly payments from 1 September: the initial
+  // charge covers September, eight renewals carry it to 1 May, and the period
+  // beginning 1 June is refused here. Nine charges, which is what "nine months"
+  // means to the school that sold it.
+  //
+  // Comparing `now` instead would be wrong in both directions — a cron running
+  // late would skip a period the merchant was owed, and a subscription whose
+  // period is still running would be cut short mid-month.
+  const endsAt = (subscription as { ends_at?: string | null }).ends_at;
+  if (endsAt && periodStart >= new Date(endsAt)) {
+    const { error: endErr } = await supabase
+      .schema("payments")
+      .from("subscriptions")
+      .update({
+        // `canceled` because the status constraint has no ninth value, and
+        // adding one would mean teaching every status map in the dashboard, the
+        // portal and three locales about it. `ended_at` is what lets those
+        // surfaces say "завершена" rather than "отменена" — the school needs to
+        // know the course ran its length, not that the parent walked away.
+        status: "canceled",
+        canceled_at: now.toISOString(),
+        ended_at: now.toISOString(),
+      })
+      .eq("id", subscription.id)
+      // Only end a subscription still in a chargeable state. If anything moved
+      // it on between the read above and here, leave it alone.
+      .in("status", ["active", "past_due"]);
+    if (endErr) throw endErr;
+
+    await writePaymentLog(supabase, {
+      scope: "subscription",
+      event: "renewal.term_completed",
+      orgId: subscription.org_id,
+      data: {
+        subscriptionId: subscription.id,
+        endsAt,
+        periodStart: periodStart.toISOString(),
+      },
+    });
+
+    return { skipped: true, reason: "subscription_term_completed" as const };
+  }
 
   if (subscription.cancel_at_period_end && periodStart <= now) {
     const { error: cancelErr } = await supabase
