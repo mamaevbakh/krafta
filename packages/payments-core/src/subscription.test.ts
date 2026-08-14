@@ -8,6 +8,8 @@ import {
   persistBindingPaymentMethodForCustomer,
   pickRetryTargetInvoice,
   runRenewalCycle,
+  isAbandonedSubscriptionLink,
+  expireAbandonedSubscriptionLinks,
 } from "./subscription";
 
 // Minimal chainable Supabase fake: reads return canned rows per table; writes
@@ -18,6 +20,8 @@ function fakeSupabase(rows: Record<string, unknown>, mutations: string[]) {
       select: () => b,
       eq: () => b,
       in: () => b,
+      lte: () => b,
+      gte: () => b,
       order: () => b,
       update: (_v: unknown) => {
         mutations.push(`update:${table}`);
@@ -988,5 +992,81 @@ describe("resolveOrCreateCustomer records the payer's name", () => {
       email: "aziza@example.uz",
     });
     expect(written.patched.some((p) => "name" in p)).toBe(false);
+  });
+});
+
+describe("abandoned subscription links expire", () => {
+  // The rule a merchant lives with: a link they sent is alive long enough to
+  // survive a payday, and a link nobody used stops shouting at them. Both
+  // failure modes are silent — an early cutoff kills a live link while the
+  // customer is standing there, a late one leaves the Customers page listing
+  // ghosts as debtors.
+  const runAt = new Date("2026-08-14T12:00:00.000Z");
+  const daysAgo = (n: number) =>
+    new Date(runAt.getTime() - n * 24 * 60 * 60 * 1000).toISOString();
+
+  it("leaves a link sent this morning alone", () => {
+    expect(
+      isAbandonedSubscriptionLink({ status: "incomplete", created_at: daysAgo(0) }, runAt),
+    ).toBe(false);
+  });
+
+  it("still honours a link on the far side of a payday", () => {
+    expect(
+      isAbandonedSubscriptionLink({ status: "incomplete", created_at: daysAgo(13) }, runAt),
+    ).toBe(false);
+  });
+
+  it("closes one nobody used for a fortnight", () => {
+    expect(
+      isAbandonedSubscriptionLink({ status: "incomplete", created_at: daysAgo(14) }, runAt),
+    ).toBe(true);
+    expect(
+      isAbandonedSubscriptionLink({ status: "incomplete", created_at: daysAgo(60) }, runAt),
+    ).toBe(true);
+  });
+
+  it("never touches a subscription that was actually paid", () => {
+    // `active` and `past_due` belong to the renewal loop. Expiring either one
+    // would stop billing a paying customer, which is the worst outcome in the
+    // file — so status is checked before age, not alongside it.
+    for (const status of ["active", "past_due", "paused", "canceled", "incomplete_expired"]) {
+      expect(
+        isAbandonedSubscriptionLink({ status, created_at: daysAgo(365) }, runAt),
+      ).toBe(false);
+    }
+  });
+
+  it("leaves a row with no creation date alone rather than guessing", () => {
+    expect(isAbandonedSubscriptionLink({ status: "incomplete", created_at: null }, runAt)).toBe(
+      false,
+    );
+    expect(
+      isAbandonedSubscriptionLink({ status: "incomplete", created_at: "not a date" }, runAt),
+    ).toBe(false);
+  });
+
+  it("closes the link before it voids the money it was collecting", async () => {
+    // Ordering is the point: the checkout session and the intent shut first, so
+    // the URL stops taking cards before the invoice stops expecting payment. A
+    // charge landing in the gap would settle against a voided invoice.
+    const mutations: string[] = [];
+    const supa = fakeSupabase(
+      {
+        subscriptions: [{ id: "sub_dead", status: "incomplete", created_at: daysAgo(30) }],
+        invoices: [{ id: "inv_1", payment_intent_id: "pi_1", status: "open" }],
+      },
+      mutations,
+    );
+
+    const expired = await expireAbandonedSubscriptionLinks(supa, runAt);
+
+    expect(expired).toBe(1);
+    expect(mutations).toEqual([
+      "update:checkout_sessions",
+      "update:payment_intents",
+      "update:invoices",
+      "update:subscriptions",
+    ]);
   });
 });

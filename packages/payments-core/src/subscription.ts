@@ -2854,12 +2854,151 @@ export async function runRenewalCycle(
     }
   }
 
+  const expired = await expireAbandonedSubscriptionLinks(supabase, runAt);
+
   return {
     chargedSubscriptions: charged,
     canceledSubscriptions: canceled,
     retriedInvoices: retried,
     erroredSubscriptions: errored,
+    expiredSubscriptionLinks: expired,
   };
+}
+
+/**
+ * How long a subscription payment link stays alive before we call it dead.
+ *
+ * Stripe expires an incomplete subscription after 23 hours, which suits a
+ * checkout that means "pay now". Ours means "here is your bill" — a school
+ * hands out a link on Monday and the parent pays on payday. Two weeks clears
+ * both halves of the month, so nobody loses a link they were still going to
+ * use, and nothing sits in the merchant's face for a second month.
+ */
+export const SUBSCRIPTION_LINK_GRACE_DAYS = 14;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Has this subscription link been sitting unpaid long enough to be dead?
+ *
+ * `incomplete` means the first payment never went through. That is the correct
+ * state five minutes after the merchant sent the link and a wrong one two
+ * months later — and until now nothing ever moved it, because the renewal loop
+ * only looks at subscriptions that were actually started. So every link a
+ * customer ignored stayed on the Customers page forever, wearing the same
+ * "unpaid" pill as a real debt.
+ *
+ * Split out and exported because the cost of getting the cutoff wrong is
+ * asymmetric and invisible: too early and we kill a live payment link while the
+ * customer is standing at the till; too late and the merchant keeps chasing
+ * ghosts. It gets a test rather than a comment promising it is fine.
+ */
+export function isAbandonedSubscriptionLink(
+  subscription: { status?: string | null; created_at?: string | null },
+  runAt: Date,
+  graceDays: number = SUBSCRIPTION_LINK_GRACE_DAYS,
+): boolean {
+  if (subscription.status !== "incomplete") return false;
+  if (!subscription.created_at) return false;
+  const createdAt = new Date(subscription.created_at);
+  if (Number.isNaN(createdAt.getTime())) return false;
+  return runAt.getTime() - createdAt.getTime() >= graceDays * DAY_MS;
+}
+
+/**
+ * Close out subscription links nobody ever paid.
+ *
+ * Everything the link touches moves together, or the merchant is left with a
+ * contradiction: an expired subscription whose invoice still says money is owed
+ * and whose URL still takes a card. Order matters — the checkout session and
+ * the intent go first, so the link stops accepting money before the invoice
+ * stops expecting it. A payment landing in between would otherwise settle
+ * against a voided invoice.
+ *
+ * One failure does not stop the sweep. This runs inside the renewal cron, and a
+ * single malformed row must not block the charges that share the run.
+ */
+export async function expireAbandonedSubscriptionLinks(
+  supabase: SupabaseClient,
+  runAt = new Date(),
+  graceDays: number = SUBSCRIPTION_LINK_GRACE_DAYS,
+): Promise<number> {
+  const cutoffIso = new Date(runAt.getTime() - graceDays * DAY_MS).toISOString();
+
+  const { data: stale, error: staleErr } = await supabase
+    .schema("payments")
+    .from("subscriptions")
+    .select("id, status, created_at")
+    .eq("status", "incomplete")
+    .lte("created_at", cutoffIso);
+  if (staleErr) throw staleErr;
+
+  const nowIso = runAt.toISOString();
+  let expired = 0;
+
+  for (const subscription of stale ?? []) {
+    // The query already filtered, but the shared helper is what the test pins
+    // the cutoff to — re-checking here keeps the two from drifting apart.
+    if (!isAbandonedSubscriptionLink(subscription, runAt, graceDays)) continue;
+
+    try {
+      const { data: invoices, error: invoicesErr } = await supabase
+        .schema("payments")
+        .from("invoices")
+        .select("id, payment_intent_id, status")
+        .eq("subscription_id", subscription.id)
+        .in("status", ["draft", "open"]);
+      if (invoicesErr) throw invoicesErr;
+
+      const intentIds = (invoices ?? [])
+        .map((invoice) => invoice.payment_intent_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      if (intentIds.length > 0) {
+        const { error: sessionErr } = await supabase
+          .schema("payments")
+          .from("checkout_sessions")
+          .update({ status: "expired", updated_at: nowIso })
+          .in("payment_intent_id", intentIds)
+          .eq("status", "open");
+        if (sessionErr) throw sessionErr;
+
+        // Only intents still waiting. `processing` is a payment in flight —
+        // cancelling that would tell the customer their money vanished while
+        // the provider was still deciding.
+        const { error: intentErr } = await supabase
+          .schema("payments")
+          .from("payment_intents")
+          .update({ status: "canceled", updated_at: nowIso })
+          .in("id", intentIds)
+          .in("status", ["requires_payment_method", "requires_action"]);
+        if (intentErr) throw intentErr;
+      }
+
+      const { error: invoiceErr } = await supabase
+        .schema("payments")
+        .from("invoices")
+        .update({ status: "void", updated_at: nowIso })
+        .eq("subscription_id", subscription.id)
+        .in("status", ["draft", "open"]);
+      if (invoiceErr) throw invoiceErr;
+
+      const { error: subscriptionErr } = await supabase
+        .schema("payments")
+        .from("subscriptions")
+        .update({ status: "incomplete_expired", updated_at: nowIso })
+        .eq("id", subscription.id)
+        .eq("status", "incomplete");
+      if (subscriptionErr) throw subscriptionErr;
+
+      expired += 1;
+    } catch {
+      // Swallowed on purpose: see the note above. The row stays `incomplete`
+      // and the next hourly run tries it again.
+    }
+  }
+
+  return expired;
 }
 
 /**
