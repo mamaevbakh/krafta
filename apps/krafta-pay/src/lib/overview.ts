@@ -39,11 +39,33 @@ export type OverviewData = {
   collectedLastMonthMinor: number;
   outstandingMinor: number;
   needsAttentionCount: number;
-  /** Oldest first, six entries, for the chart. */
+  /** Oldest first, six entries, for the 3- and 6-month ranges. */
   monthly: Array<{ month: string; collectedMinor: number }>;
+  /**
+   * Oldest first, one entry per day for the last 30 days.
+   *
+   * A separate series rather than a finer monthly one: "today" and "last week"
+   * are questions about days, and answering them by slicing a monthly array
+   * would show a single bar covering a month the merchant is standing in.
+   */
+  daily: Array<{ day: string; collectedMinor: number }>;
   /** Most overdue first. */
   rows: OverviewRow[];
 };
+
+/** Day key in UTC, e.g. "2026-08-14". Same timezone reasoning as monthKey. */
+export function dayKey(iso: string | Date): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  return d.toISOString().slice(0, 10);
+}
+
+/** The last `count` day keys, oldest first, ending on the day of `now`. */
+export function recentDays(now: Date, count = 30): string[] {
+  const out: string[] = [];
+  const base = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  for (let i = count - 1; i >= 0; i--) out.push(dayKey(new Date(base - i * 86_400_000)));
+  return out;
+}
 
 /** Month key in UTC, e.g. "2026-08". Stable across the merchant's timezone. */
 export function monthKey(iso: string | Date): string {
@@ -154,11 +176,14 @@ export async function loadOverview(
   }
 
   const collectedByMonth = new Map<string, number>();
+  const collectedByDay = new Map<string, number>();
   for (const [intentId, when] of settledAt) {
     const intent = byId.get(intentId);
     if (!intent) continue;
-    const key = monthKey(when);
-    collectedByMonth.set(key, (collectedByMonth.get(key) ?? 0) + intent.amount_minor);
+    const mKey = monthKey(when);
+    collectedByMonth.set(mKey, (collectedByMonth.get(mKey) ?? 0) + intent.amount_minor);
+    const dKey = dayKey(when);
+    collectedByDay.set(dKey, (collectedByDay.get(dKey) ?? 0) + intent.amount_minor);
   }
 
   const thisMonth = monthKey(now);
@@ -198,6 +223,10 @@ export async function loadOverview(
     monthly: months.map((month) => ({
       month,
       collectedMinor: collectedByMonth.get(month) ?? 0,
+    })),
+    daily: recentDays(now, 30).map((day) => ({
+      day,
+      collectedMinor: collectedByDay.get(day) ?? 0,
     })),
     rows: rows.slice(0, 25),
   };

@@ -80,7 +80,11 @@ export default async function DashboardPage({
 
       {hasHistory ? (
         <div className="px-4 lg:px-6">
-          <CollectedChart data={overview.monthly} currency={overview.currency} />
+          <CollectedChart
+            monthly={overview.monthly}
+            daily={overview.daily}
+            currency={overview.currency}
+          />
         </div>
       ) : null}
 

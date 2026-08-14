@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronsUpDown } from "lucide-react";
 
 import { AreaChart } from "@/components/dither-kit/area-chart";
 import { Area } from "@/components/dither-kit/area";
@@ -9,63 +10,97 @@ import { Tooltip } from "@/components/dither-kit/tooltip";
 import {
   Card,
   CardAction,
-  CardDescription,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatMinorAmount } from "@/lib/format";
 import { useT, usePayLocale } from "@/lib/locales/context";
 import { payLocaleTag } from "@/lib/locales/locale";
+import type { PayMessageKey } from "@/lib/locales/messages";
 
 /**
- * Money collected, by month.
+ * Money collected, over a range the merchant picks.
  *
- * IN A CARD, WITH A HEADER AND A RANGE. The first version was a bare canvas
- * dropped into the page with no frame, no axis and no controls, and it read as
- * a decoration rather than a figure. A chart needs to say what it is measuring
- * and over what window, or the reader has to reconstruct both from context.
+ * TWO SERIES BEHIND ONE CONTROL. "Today" and "last week" are questions about
+ * days; "3 months" and "6 months" are questions about months. Answering the
+ * short ranges by slicing the monthly series would draw one bar covering a
+ * month the merchant is standing in the middle of — so the short ranges read
+ * the daily series and the long ones read the monthly one.
  *
- * ONE SERIES, DELIBERATELY. The obvious second is "expected", and it would be
- * a lie at this resolution: a subscription's expected charge is only known for
- * periods already invoiced, so the current month would always render as a
- * shortfall that has not happened yet.
- *
- * Monthly, not daily. A school collecting from forty students bills on a
- * handful of days — a daily axis is mostly empty space pretending to be
- * information.
+ * A DROPDOWN, NOT A ROW OF TOGGLES. Five ranges do not fit across a card
+ * header at 375px, and a control that wraps to a second line stops reading as
+ * a single choice. Same shape as the organisation switcher so the two behave
+ * alike.
  *
  * ON THE COLOUR. dither-kit's palette is a fixed set of names rather than our
  * oklch tokens, so this cannot reference --chart-1. `blue` sits closest to the
- * existing chart accent and, unlike purple or pink, does not collide with
- * DESIGN.md's colour blacklist.
+ * existing chart accent and, unlike purple or pink, avoids DESIGN.md's colour
+ * blacklist.
  */
+
+type RangeKey = "today" | "week" | "month" | "3mo" | "6mo";
+
+const RANGES: Array<{ key: RangeKey; labelKey: PayMessageKey; captionKey: PayMessageKey }> = [
+  { key: "today", labelKey: "overview.range.today", captionKey: "overview.range.todayCaption" },
+  { key: "week", labelKey: "overview.range.week", captionKey: "overview.range.weekCaption" },
+  { key: "month", labelKey: "overview.range.month", captionKey: "overview.range.monthCaption" },
+  { key: "3mo", labelKey: "overview.range.3mo", captionKey: "overview.range.3moCaption" },
+  { key: "6mo", labelKey: "overview.range.6mo", captionKey: "overview.range.6moCaption" },
+];
+
+/** How many days each short range covers; absent means it reads months. */
+const DAYS: Partial<Record<RangeKey, number>> = { today: 1, week: 7, month: 30 };
+
 export function CollectedChart({
-  data,
+  monthly,
+  daily,
   currency,
 }: {
-  data: Array<{ month: string; collectedMinor: number }>;
+  monthly: Array<{ month: string; collectedMinor: number }>;
+  daily: Array<{ day: string; collectedMinor: number }>;
   currency: string;
 }) {
   const t = useT();
   const locale = usePayLocale();
-  const [months, setMonths] = useState<"3" | "6">("6");
+  const [range, setRange] = useState<RangeKey>("6mo");
+  const active = RANGES.find((r) => r.key === range) ?? RANGES[4];
 
-  const window = data.slice(months === "3" ? -3 : -6);
+  const tag = payLocaleTag(locale);
+  const days = DAYS[range];
 
-  const points = window.map((d) => {
-    const [year, month] = d.month.split("-").map(Number);
-    return {
-      month: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(payLocaleTag(locale), {
-        month: "short",
-        timeZone: "UTC",
-      }),
-      // Major units: the axis and tooltip both read this, and minor units would
-      // render UZS amounts two orders of magnitude too large.
-      collected: d.collectedMinor / 100,
-    };
-  });
+  const points = days
+    ? daily.slice(-days).map((d) => ({
+        label: new Date(`${d.day}T00:00:00.000Z`).toLocaleDateString(tag, {
+          day: "numeric",
+          month: "short",
+          timeZone: "UTC",
+        }),
+        collected: d.collectedMinor / 100,
+      }))
+    : monthly.slice(range === "3mo" ? -3 : -6).map((d) => {
+        const [year, month] = d.month.split("-").map(Number);
+        return {
+          label: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(tag, {
+            month: "short",
+            timeZone: "UTC",
+          }),
+          // Major units: minor would render UZS two orders of magnitude high.
+          collected: d.collectedMinor / 100,
+        };
+      });
+
+  // The total for the chosen window, so the range answers "how much" without
+  // the reader having to add the plot up by eye.
+  const total = points.reduce((sum, p) => sum + p.collected, 0) * 100;
 
   const config = {
     collected: { label: t("overview.chart.collected"), color: "blue" as const },
@@ -76,35 +111,37 @@ export function CollectedChart({
       <CardHeader>
         <CardTitle>{t("overview.chart.title")}</CardTitle>
         <CardDescription>
-          {months === "3" ? t("overview.chart.range.3") : t("overview.chart.range.6")}
+          {t(active.captionKey)} · {formatMinorAmount(total, currency)}
         </CardDescription>
         <CardAction>
-          {/* Base UI's ToggleGroup is multi-select by nature — the value is an
-              array, not a string as it is in Radix. Keeping a single-element
-              array is what makes it behave as a radio. */}
-          <ToggleGroup
-            value={[months]}
-            onValueChange={(v) => {
-              const next = v[v.length - 1];
-              if (next === "3" || next === "6") setMonths(next);
-            }}
-            variant="outline"
-            size="sm"
-          >
-            <ToggleGroupItem value="6">{t("overview.chart.toggle.6")}</ToggleGroupItem>
-            <ToggleGroupItem value="3">{t("overview.chart.toggle.3")}</ToggleGroupItem>
-          </ToggleGroup>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="outline" size="sm" className="gap-2">
+                  {t(active.labelKey)}
+                  <ChevronsUpDown className="size-3.5 opacity-60" aria-hidden />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-44">
+              {RANGES.map((r) => (
+                <DropdownMenuItem key={r.key} onClick={() => setRange(r.key)}>
+                  {t(r.labelKey)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </CardAction>
       </CardHeader>
       <CardContent>
         <AreaChart data={points} config={config} className="h-[240px] w-full" bloom="low">
-          {/* Grid and YAxis are OMITTED on purpose: adding either makes
-              dither-kit's Area render nothing at all — the SVG mounts at the
-              right size and stays empty. Not yet diagnosed; the scale lives in
-              the tooltip and in the card above until it is. */}
-          <XAxis dataKey="month" />
+          {/* Grid and YAxis are omitted deliberately: adding either makes
+              dither-kit's Area draw nothing at all — the SVG mounts at the
+              right size and stays empty. The scale lives in the caption above
+              and in the tooltip until that is understood. */}
+          <XAxis dataKey="label" />
           <Tooltip
-            labelKey="month"
+            labelKey="label"
             valueFormatter={(value: number) => formatMinorAmount(value * 100, currency)}
           />
           <Area dataKey="collected" variant="gradient" />
