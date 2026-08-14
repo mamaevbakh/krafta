@@ -74,12 +74,15 @@ Both have been on the task list all session.
   `text-3xl` in mono is wider than Stripe's `$1,250.00` in sans. DESIGN.md
   requires mono for money, so the options are a smaller step or an abbreviated
   form with the full number in a tooltip. **Ask before trading away the rule.**
-- **The generated Supabase types are stale** in both
-  `apps/krafta-pay/src/lib/supabase/types.ts` and
-  `packages/supabase/src/database.types.ts`. Neither knew about
-  `payments.customers.external_id` or `.environment`, which shipped weeks ago. I
-  hand-patched only `name`. This needs a real `supabase gen types` run and a look
-  at what else has drifted — stale types hide genuine errors.
+- ~~**The generated Supabase types are stale**~~ — **resolved 2026-08-14.**
+  `packages/supabase/src/database.types.ts` was regenerated from the dev branch
+  and now carries `payments.customers.external_id` / `.environment` / `.name` /
+  `.is_guest` and `payments.checkout_sessions.customer_creation` /
+  `.customer_details`. The second, unimported copy at
+  `apps/krafta-pay/src/lib/supabase/types.ts` was deleted — the app has only
+  ever read types through `@krafta/supabase/database.types`, and a stale
+  duplicate is something a future reader hand-patches instead of regenerating.
+  There is now exactly one generated types file; regenerate that one.
 - **`agent_transcripts` is pending on prod.** Legitimately not applied, and it is
   the agent branch's schema, not Krafta Pay's. The founder decides whether it
   ships: `supabase db push --linked --include-all`.
