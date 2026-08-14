@@ -87,7 +87,7 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .schema("payments")
       .from("customers")
-      .select("id, external_id, email, phone, metadata, created_at")
+      .select("id, external_id, name, email, phone, metadata, created_at")
       .eq("id", customerId)
       .single();
     if (error) throw error;
@@ -116,7 +116,7 @@ export async function GET(req: Request) {
     let query = supabase
       .schema("payments")
       .from("customers")
-      .select("id, external_id, email, phone, metadata, created_at")
+      .select("id, external_id, name, email, phone, metadata, created_at")
       .eq("org_id", auth.merchantOrgId)
       .eq("environment", auth.environment)
       .order("created_at", { ascending: false })
@@ -145,6 +145,9 @@ export async function PATCH(req: Request) {
     const externalId = requireString(body.externalId, "externalId");
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    // Present-key semantics, not truthiness: sending `name: null` clears it,
+    // omitting the key leaves whatever the merchant set in the dashboard alone.
+    if ("name" in body) patch.name = optionalString(body.name);
     if ("email" in body) patch.email = optionalString(body.email);
     if ("phone" in body) patch.phone = optionalString(body.phone);
     if (body.metadata && typeof body.metadata === "object") patch.metadata = body.metadata;
@@ -156,7 +159,7 @@ export async function PATCH(req: Request) {
       .eq("org_id", auth.merchantOrgId)
       .eq("environment", auth.environment)
       .eq("external_id", externalId)
-      .select("id, external_id, email, phone, metadata, created_at")
+      .select("id, external_id, name, email, phone, metadata, created_at")
       .maybeSingle();
     if (error) throw error;
     if (!data) {
