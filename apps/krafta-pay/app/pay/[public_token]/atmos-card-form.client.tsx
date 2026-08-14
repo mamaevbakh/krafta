@@ -218,7 +218,7 @@ export function AtmosCardForm({
         <InputOTP
           maxLength={6}
           value={otp}
-          onChange={(v) => setOtp(v.replace(/\D/g, ""))}
+          onChange={(v: string) => setOtp(v.replace(/\D/g, ""))}
           inputMode="numeric"
           autoFocus
           containerClassName="w-full justify-center gap-3"
