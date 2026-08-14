@@ -304,7 +304,6 @@ const EN = {
   "customers.col.subscriptions": "Subscriptions",
   "customers.col.monthly": "Monthly",
   "customers.col.created": "Created",
-  "customers.loading": "Loading customers…",
   "customers.empty": "No customers yet.",
   "customers.empty.hint":
     "Add one here, or one appears by itself the first time you start a subscription.",
@@ -872,7 +871,6 @@ const RU: Catalog = {
   "customers.col.subscriptions": "Подписки",
   "customers.col.monthly": "В месяц",
   "customers.col.created": "Создан",
-  "customers.loading": "Загружаем клиентов…",
   "customers.empty": "Клиентов пока нет.",
   "customers.empty.hint":
     "Добавьте вручную — или клиент появится сам, когда вы оформите ему первую подписку.",
@@ -1427,7 +1425,6 @@ const UZ: Catalog = {
   "customers.col.subscriptions": "Obunalar",
   "customers.col.monthly": "Oyiga",
   "customers.col.created": "Yaratilgan",
-  "customers.loading": "Mijozlar yuklanmoqda…",
   "customers.empty": "Hozircha mijoz yo‘q.",
   "customers.empty.hint":
     "O‘zingiz qo‘shing — yoki birinchi obunani rasmiylashtirganingizda mijoz o‘zi paydo bo‘ladi.",

@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AddCustomer, type NewCustomer } from "./add-customer.client";
+import { CustomersTableSkeleton } from "./customers-skeleton";
 
 type CustomerRow = NewCustomer;
 
@@ -179,13 +180,10 @@ export function CustomersListClient({
       );
     }
 
-    if (rows === null) {
-      return (
-        <div className="rounded-lg border p-6 text-sm text-muted-foreground">
-          {t("customers.loading")}
-        </div>
-      );
-    }
+    // The same table the route skeleton drew a moment ago, not a one-line
+    // "loading" box — otherwise the page renders a table, collapses to a strip
+    // while this fetch runs, then expands into a table again.
+    if (rows === null) return <CustomersTableSkeleton />;
 
     if (rows.length === 0) {
       return (

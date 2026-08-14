@@ -33,6 +33,10 @@ export default function CustomerDetailLoading() {
               <Skeleton className="h-7 w-56" />
               <Skeleton className="mt-2 h-4 w-72" />
             </div>
+            {/* The billing-link button lives on the right of this row. Without
+                it here the heading spanned the full width and then snapped
+                narrower the moment the page arrived. */}
+            <Skeleton className="h-8 w-48" />
           </header>
         </div>
 
@@ -46,7 +50,11 @@ export default function CustomerDetailLoading() {
         </dl>
 
         <section className="space-y-3">
-          <Skeleton className="h-4 w-28" />
+          {/* Heading and the "start a subscription" button share this row. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-8 w-44" />
+          </div>
           <div className="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>

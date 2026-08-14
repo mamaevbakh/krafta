@@ -1,5 +1,16 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
+/**
+ * The spine of the checkout: amount, divider, card fields, pay button.
+ *
+ * Three blocks on this page are conditional and unknowable before the data
+ * loads — the test-mode banner, the "who's paying" fields (shown only when we
+ * cannot name the payer yet), and the alternative-provider list. They are
+ * deliberately not drawn. A skeleton is allowed to be shorter than the page it
+ * precedes; what it must never do is draw something that then disappears,
+ * because that collapses the layout under the customer's cursor while they are
+ * reaching for the card field.
+ */
 export default function PayLoading() {
   return (
     <div role="status" aria-label="Loading">
