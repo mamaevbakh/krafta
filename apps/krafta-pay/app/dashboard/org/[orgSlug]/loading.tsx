@@ -11,14 +11,14 @@ import { Skeleton } from "@/components/ui/skeleton";
  * it.
  *
  * Shapes and spacing are copied from the components themselves, including the
- * per-section px-4 lg:px-6, so nothing shifts when the real content lands.
+ * layout-level px-4 lg:px-6, so nothing shifts when the real content lands.
  */
 export default function OrgOverviewLoading() {
   return (
     <div role="status" aria-label="Loading">
       <div aria-hidden="true" className="flex flex-col gap-4 md:gap-6">
         {/* Four figure cards — same grid, same container breakpoints. */}
-        <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
+        <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
           {["collected", "outstanding", "failed", "attention"].map((k) => (
             <Card key={k} className="@container/card">
               <CardHeader>
@@ -34,7 +34,7 @@ export default function OrgOverviewLoading() {
         </div>
 
         {/* The chart card: header, range toggle, and the 240px plot area. */}
-        <div className="px-4 lg:px-6">
+        <div>
           <Card className="@container/card">
             <CardHeader>
               <Skeleton className="h-5 w-44" />
@@ -47,14 +47,14 @@ export default function OrgOverviewLoading() {
         </div>
 
         {/* Tabs and controls, then the table itself. */}
-        <div className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Skeleton className="h-9 w-72" />
           <div className="flex items-center gap-2">
             <Skeleton className="h-8 w-56" />
             <Skeleton className="h-8 w-24" />
           </div>
         </div>
-        <div className="mx-4 overflow-hidden rounded-lg border lg:mx-6">
+        <div className="overflow-hidden rounded-lg border">
           <div className="flex items-center gap-4 border-b bg-muted/40 px-4 py-3">
             <Skeleton className="size-4" />
             <Skeleton className="h-3.5 w-40" />

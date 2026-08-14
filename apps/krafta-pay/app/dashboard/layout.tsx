@@ -48,10 +48,20 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <SidebarInset>
           <SiteHeader />
           {/* The block wraps content in these exact two divs; the gap and the
-              vertical rhythm of every section below depend on them. */}
+              vertical rhythm of every section below depend on them.
+
+              HORIZONTAL PADDING LIVES HERE, not on each page. dashboard-01 puts
+              `px-4 lg:px-6` on every direct child of this container, which is
+              the same result and one place per page to forget it — and nine of
+              the eleven pages did, so Plans, Providers, API keys and the rest
+              sat flush against the sidebar while the overview and Customers did
+              not. Hoisted, it cannot drift again, and any section that genuinely
+              wants to bleed to the edge can undo it deliberately. */}
           <div className="flex flex-1 flex-col">
             <div className="@container/main flex flex-1 flex-col gap-2">
-              <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">{children}</div>
+              <div className="flex flex-col gap-4 px-4 py-4 md:gap-6 md:py-6 lg:px-6">
+                {children}
+              </div>
             </div>
           </div>
         </SidebarInset>

@@ -241,7 +241,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
   if (rows.length === 0) {
     // Not an error state — this is the state a merchant wants to be in.
     return (
-      <p className="mx-4 rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground lg:mx-6">
+      <p className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
         {t("overview.attention.empty")}
       </p>
     );
@@ -251,7 +251,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
 
   return (
     <div className="flex w-full flex-col justify-start gap-6">
-      <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
           <TabsList>
             <TabsTrigger value="all">
@@ -310,7 +310,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
       </div>
 
       {/* Phone: a stacked list. */}
-      <ul className="mx-4 divide-y overflow-hidden rounded-lg border sm:hidden lg:mx-6">
+      <ul className="divide-y overflow-hidden rounded-lg border sm:hidden">
         {table.getRowModel().rows.map(({ original: row }) => (
           <li key={row.paymentIntentId} className="space-y-2 p-4">
             <span className="block font-medium">
@@ -330,7 +330,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
         ))}
       </ul>
 
-      <div className="mx-4 hidden overflow-hidden rounded-lg border sm:block lg:mx-6">
+      <div className="hidden overflow-hidden rounded-lg border sm:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
@@ -365,7 +365,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
       {/* Pagination only once it earns its place. Controls under a five-row
           table are furniture. */}
       {scoped.length > page.pageSize ? (
-        <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm text-muted-foreground tabular-nums">
             {t("overview.attention.selected", {
               n: String(Object.keys(rowSelection).length),
