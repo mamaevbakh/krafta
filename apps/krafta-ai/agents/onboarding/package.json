@@ -1,0 +1,13 @@
+{
+  "name": "krafta-ai-onboarding",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.2",
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.112.3",
+    "eve": "0.32.0",
+    "zod": "4.4.3"
+  }
+}
