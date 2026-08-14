@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     let customerQuery = admin
       .schema("payments")
       .from("customers")
-      .select("id, email, phone, external_id, environment, created_at")
+      .select("id, name, email, phone, external_id, environment, created_at")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 

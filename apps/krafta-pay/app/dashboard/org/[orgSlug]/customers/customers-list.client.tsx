@@ -18,6 +18,7 @@ import {
 
 type CustomerRow = {
   id: string;
+  name: string | null;
   email: string | null;
   phone: string | null;
   external_id: string | null;
@@ -52,9 +53,13 @@ function avatarSeed(row: { id: string }) {
   return row.id;
 }
 
-/** Email is the identity the merchant recognises; phone is the fallback. */
+/**
+ * The name is what a merchant recognises — «мама Алишера», not an inbox. Email
+ * and phone are only fallbacks, for rows created before there was a name to
+ * store and for API callers that do not send one.
+ */
 function displayName(row: CustomerRow) {
-  return row.email ?? row.phone ?? "—";
+  return row.name ?? row.email ?? row.phone ?? "—";
 }
 
 export function CustomersListClient({
@@ -107,7 +112,7 @@ export function CustomersListClient({
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((row) =>
-      [row.email, row.phone, row.external_id]
+      [row.name, row.email, row.phone, row.external_id]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q)),
     );
@@ -217,6 +222,11 @@ export function CustomersListClient({
                     />
                     <span className="min-w-0">
                       <span className="block truncate">{displayName(row)}</span>
+                      {row.name && row.email ? (
+                        <span className="block truncate text-xs font-normal text-muted-foreground">
+                          {row.email}
+                        </span>
+                      ) : null}
                       {row.external_id ? (
                         <span className="block truncate font-mono text-xs font-normal text-muted-foreground">
                           {row.external_id}

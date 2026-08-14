@@ -25,6 +25,7 @@ import {
 type CustomerRow = {
   id: string;
   external_id: string | null;
+  name: string | null;
   email: string | null;
   phone: string | null;
   metadata: Record<string, unknown> | null;
@@ -36,6 +37,7 @@ function serializeCustomer(row: CustomerRow, environment: "test" | "live") {
     id: row.id,
     object: "customer",
     externalId: row.external_id,
+    name: row.name,
     email: row.email,
     phone: row.phone,
     metadata: row.metadata ?? {},
@@ -56,6 +58,7 @@ export async function POST(req: Request) {
     const body = await readJsonBody(req);
 
     const externalId = requireString(body.externalId, "externalId");
+    const name = optionalString(body.name);
     const email = optionalString(body.email);
     const phone = optionalString(body.phone);
 
@@ -63,6 +66,7 @@ export async function POST(req: Request) {
       merchantOrgId: auth.merchantOrgId,
       environment: auth.environment,
       externalId,
+      name,
       email,
       phone,
     });

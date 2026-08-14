@@ -88,6 +88,7 @@ curl -X POST https://pay.krafta.uz/api/v1/customers \
   -d '{
     "externalId": "tg_884213",
     "email": "customer@example.uz",
+    "name": "Азиза Каримова",
     "phone": "+998901234567",
     "metadata": {"channel": "@my_paid_channel"}
   }'
@@ -98,6 +99,7 @@ curl -X POST https://pay.krafta.uz/api/v1/customers \
   "id": "7a708975-c46d-4ea6-b382-4b831d420778",
   "object": "customer",
   "externalId": "tg_884213",
+  "name": "Азиза Каримова",
   "email": "customer@example.uz",
   "phone": "+998901234567",
   "metadata": {"channel": "@my_paid_channel"},
@@ -114,7 +116,14 @@ curl -X POST https://pay.krafta.uz/api/v1/customers \
 
 ### `PATCH /api/v1/customers`
 
-Addressed by `externalId`. Send `email`, `phone`, or `metadata`.
+Addressed by `externalId`. Send `name`, `email`, `phone`, or `metadata`.
+
+`name` is free text — how the merchant recognises this payer, shown as the
+first column of their Customers page. Send it: without one, the dashboard can
+only show an email address, and for a merchant collecting from parents or
+students that is not who they are looking for. Names here are not reliably
+two-part, so there is one field rather than given/family. A later request that
+omits `name` will not erase a name an earlier one set.
 
 ---
 

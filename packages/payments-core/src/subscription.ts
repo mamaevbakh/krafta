@@ -519,6 +519,8 @@ export type ResolveCustomerInput = {
   environment: PayEnvironment;
   customerOrgId?: string | null;
   externalId?: string | null;
+  /** How the merchant recognises this payer. Free text; see the column comment. */
+  name?: string | null;
   email?: string | null;
   phone?: string | null;
   customerUserRef?: string | null;
@@ -550,6 +552,7 @@ export async function resolveOrCreateCustomer(
   input: ResolveCustomerInput,
 ): Promise<{ customerId: string; identified: boolean; created: boolean }> {
   const externalId = normalizeExternalId(input.externalId);
+  const name = input.name ?? null;
   const email = input.email ?? null;
   const phone = input.phone ?? null;
   const customerUserRef = input.customerUserRef ?? null;
@@ -589,6 +592,9 @@ export async function resolveOrCreateCustomer(
   const existingId = await findExisting();
   if (existingId) {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    // Only overwrite when something was actually sent: a later call that omits
+    // the name must not wipe a name an earlier one established.
+    if (name) patch.name = name;
     if (email) patch.email = email;
     if (phone) patch.phone = phone;
     if (customerUserRef) patch.customer_user_ref = customerUserRef;
@@ -609,6 +615,7 @@ export async function resolveOrCreateCustomer(
       org_id: input.merchantOrgId,
       environment: input.environment,
       customer_org_id: input.customerOrgId ?? null,
+      name,
       external_id: externalId,
       email,
       phone,
