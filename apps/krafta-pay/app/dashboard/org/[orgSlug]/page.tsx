@@ -1,27 +1,31 @@
-import { getDashboardEnvironment } from "@/lib/dashboard-env";
 import Link from "next/link";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { CreditCard, KeyRound, Layers } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import { getUserSafely } from "@krafta/supabase/auth";
+
+import { getDashboardEnvironment } from "@/lib/dashboard-env";
 import { requireOrgAccess } from "@/lib/org-access";
 import { createAdminSupabase } from "@/lib/supabase-admin";
-import { MetricsPanel } from "@/components/dashboard/metrics-panel";
-import { loadBillingMetrics } from "@/lib/metrics";
 import { getPayT } from "@/lib/locales/server";
-import { LinkButton } from "@/components/ui/link-button";
-import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { getPayLocale } from "@/lib/locales/server";
+import { loadOverview, percentChange } from "@/lib/overview";
+import { formatMinorAmount } from "@/lib/format";
+import { CollectedChart } from "@/components/dashboard/collected-chart.client";
+import { NeedsAttention } from "@/components/dashboard/needs-attention.client";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Onboarding steps for the overview — the few things a merchant does to start
-// taking payments. Nav lives in the sidebar now, so this is setup, not wayfinding.
+/**
+ * The overview.
+ *
+ * This used to lead with three onboarding cards — connect a provider, create a
+ * plan, get API keys. That is a checklist for a developer, and it was the first
+ * thing a merchant saw every single day for the rest of their life with the
+ * product. Galaktika opens this to answer «сколько мне заплатили» and «кто ещё
+ * не заплатил».
+ *
+ * So: the money, then the trend, then the only list on the page a merchant can
+ * act on. Setup moved to the bottom and disappears entirely once there is
+ * anything to show — a checklist earns its place exactly once.
+ */
+
 const SETUP_STEPS = [
   {
     href: "/providers",
@@ -45,30 +49,31 @@ const SETUP_STEPS = [
 
 export default async function DashboardPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ orgSlug: string }>;
-  searchParams: Promise<{ error?: string; payUrl?: string; publicToken?: string }>;
 }) {
-  const sp = await searchParams;
   const { orgSlug } = await params;
-  // Auth + membership are both resolved here; a slug this user cannot reach
-  // 404s rather than falling through to an empty dashboard.
   const org = await requireOrgAccess(orgSlug);
-  const activeOrgId = org.orgId;
-
   const environment = await getDashboardEnvironment();
   const t = await getPayT();
+  const locale = await getPayLocale();
   const admin = createAdminSupabase();
-  const metrics = activeOrgId
-    ? await loadBillingMetrics(admin, {
-        orgId: activeOrgId,
-        environment: environment === "test" ? "test" : "live",
-      })
-    : null;
+
+  const overview = await loadOverview(admin, {
+    orgId: org.orgId,
+    environment,
+    payBaseUrl: process.env.PAY_BASE_URL ?? "",
+  });
+
+  const change = percentChange(
+    overview.collectedThisMonthMinor,
+    overview.collectedLastMonthMinor,
+  );
+  const hasHistory = overview.monthly.some((m) => m.collectedMinor > 0);
+  const isNew = !hasHistory && overview.needsAttentionCount === 0;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{t("overview.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -76,73 +81,93 @@ export default async function DashboardPage({
         </p>
       </header>
 
-      {metrics ? <MetricsPanel metrics={metrics} orgSlug={orgSlug} t={t} /> : null}
-
-      <section className="grid gap-3 sm:grid-cols-3">
-        {SETUP_STEPS.map((step) => {
-          const href = `/dashboard/org/${orgSlug}${step.href}`;
-          const Icon = step.Icon;
-          return (
-            <Link
-              key={step.href}
-              href={href}
-              className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Card
-                size="sm"
-                className="h-full transition-colors group-hover:bg-muted/40 group-focus-visible:bg-muted/40"
+      {/* Three numbers, not three cards with icons in circles — DESIGN.md bans
+          that grid, and a merchant reading a figure does not need an icon to
+          tell them it is money. Divider-separated cells, one border. */}
+      <dl className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
+        <div className="bg-background p-4">
+          <dt className="text-xs text-muted-foreground">{t("overview.collected")}</dt>
+          <dd className="mt-1 flex flex-wrap items-baseline gap-2">
+            <span className="font-mono text-lg font-semibold tabular-nums">
+              {formatMinorAmount(overview.collectedThisMonthMinor, overview.currency)}
+            </span>
+            {change !== null ? (
+              <span
+                className={
+                  change >= 0
+                    ? "text-xs text-emerald-600 dark:text-emerald-400"
+                    : "text-xs text-muted-foreground"
+                }
               >
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Icon className="size-4 text-muted-foreground" aria-hidden />
-                    {t(step.titleKey)}
-                  </CardTitle>
-                  <CardDescription>{t(step.descriptionKey)}</CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
-          );
-        })}
-      </section>
-
-      {sp.error ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {sp.error}
-        </div>
-      ) : null}
-
-      {sp.payUrl ? (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>{t("paymentLink.created.title")}</CardTitle>
-            <CardDescription>{t("paymentLink.created.description")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Link className="block break-all font-mono text-sm underline" href={sp.payUrl}>
-              {sp.payUrl}
-            </Link>
-            {sp.publicToken ? (
-              <p className="font-mono text-xs text-muted-foreground">token: {sp.publicToken}</p>
+                {change >= 0 ? "+" : ""}
+                {change}%
+              </span>
             ) : null}
-          </CardContent>
-        </Card>
+          </dd>
+        </div>
+        <div className="bg-background p-4">
+          <dt className="text-xs text-muted-foreground">{t("overview.outstanding")}</dt>
+          <dd className="mt-1 font-mono text-lg font-semibold tabular-nums">
+            {formatMinorAmount(overview.outstandingMinor, overview.currency)}
+          </dd>
+        </div>
+        <div className="bg-background p-4">
+          <dt className="text-xs text-muted-foreground">{t("overview.needsAttention")}</dt>
+          <dd className="mt-1 font-mono text-lg font-semibold tabular-nums">
+            {overview.needsAttentionCount}
+          </dd>
+        </div>
+      </dl>
+
+      {hasHistory ? (
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium">{t("overview.chart.title")}</h2>
+          <CollectedChart data={overview.monthly} currency={overview.currency} />
+        </section>
       ) : null}
 
-      <section>
-        <h2 className="text-sm font-medium">{t("paymentLink.title")}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("paymentLink.subtitle")}
-        </p>
-        <div className="mt-4">
-          <LinkButton
-            href={`/dashboard/org/${orgSlug}/payments`}
-            size="sm"
-            variant="outline"
-          >
-            {t("page.payments.title")}
-          </LinkButton>
-        </div>
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium">{t("overview.attention.title")}</h2>
+        <NeedsAttention rows={overview.rows} />
       </section>
+
+      {/* Setup, once. It vanishes as soon as there is any real activity — a
+          merchant who has taken money does not need to be told how to start. */}
+      {isNew ? (
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium">{t("overview.setup.title")}</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {SETUP_STEPS.map((step) => {
+              const Icon = step.Icon;
+              return (
+                <Link
+                  key={step.href}
+                  href={`/dashboard/org/${orgSlug}${step.href}`}
+                  className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Card
+                    size="sm"
+                    className="h-full transition-colors group-hover:bg-muted/40 group-focus-visible:bg-muted/40"
+                  >
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-sm">
+                        <Icon className="size-4 text-muted-foreground" aria-hidden />
+                        {t(step.titleKey)}
+                      </CardTitle>
+                      <CardDescription>{t(step.descriptionKey)}</CardDescription>
+                    </CardHeader>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      <p className="text-xs text-muted-foreground">
+        {environment === "test" ? t("overview.testHint") : null}
+      </p>
+      <span className="sr-only">{locale}</span>
     </div>
   );
 }

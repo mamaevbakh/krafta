@@ -157,7 +157,15 @@ export function DashboardSidebar({
     <div className="flex h-full flex-col gap-1 bg-sidebar text-sidebar-foreground">
       {/* Brand + environment */}
       <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-3">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        {/* Home means THIS organisation's overview, not "/dashboard".
+            Bare /dashboard has no org in it, so the server resolves it to the
+            merchant's first membership — which silently threw anyone working in
+            a second organisation back into their first one, mid-task. The
+            active org is already known here; use it. */}
+        <Link
+          href={activeOrg ? `/dashboard/org/${activeOrg.orgSlug}` : "/dashboard"}
+          className="flex items-center gap-2"
+        >
           <BrandWordmark text="Krafta•Pay" className="text-base" />
         </Link>
         <div className="flex items-center gap-1.5">
@@ -271,7 +279,8 @@ export function DashboardSidebar({
 
       {/* Mobile: sticky top bar */}
       <div className="sticky top-0 z-30 flex items-center justify-between border-b bg-sidebar px-4 py-3 md:hidden">
-        <Link href="/dashboard">
+        {/* Same as the desktop wordmark above — stay in the current org. */}
+        <Link href={activeOrg ? `/dashboard/org/${activeOrg.orgSlug}` : "/dashboard"}>
           <BrandWordmark text="Krafta•Pay" className="text-base" />
         </Link>
         <button
