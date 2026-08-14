@@ -47,6 +47,34 @@ goes silent.** Two voices contradicting each other in front of a customer
 destroys the merchant's trust permanently. Enforce it in the channel before a
 turn starts, never by asking the model to stay quiet.
 
+## Who this is for — decided 2026-08-14
+
+**Big businesses are the audience.** Payme-scale: a company with real systems, a
+support team, and money. Small shops are not realistically the market, though
+they should still be able to use it with a freer agent and good notifications.
+
+This reorders things, so do not assume otherwise:
+
+- **Integration depth beats Uzbek-language polish.** A big buyer's agent is
+  worthless if it cannot see an order, a balance, a settlement. That is why the
+  builder generates MCP connections (K2) rather than offering a settings form.
+- **Notifications matter less** than they would for a shop owner — these buyers
+  have people watching a screen. Still needed for the small-business case (J1a).
+- **Compliance, audit and isolation matter more.** Every guarantee in the
+  security section is now a sales question, not just hygiene.
+- **The demo is dressed for the wrong customer.** Templates are `venue-support`
+  and `order-desk`; the example business is a coffee shop. Payme does not see
+  itself in any of that. Fixing the surface is cheap and worth doing before any
+  serious pitch.
+
+Pricing will be **token-based**. Deliberately not designed yet — do not build
+billing UI or plan tiers until the founder says so. What this does mean: usage
+metering is the business model, not bookkeeping, and the ~15,600-token system
+prompt on every turn is a direct margin lever (prompt caching).
+
+Routing is settled: **each agent gets its own channel.** A business wanting a
+sales agent and a support agent runs two bots. No routing layer needed.
+
 ## What is actually built today (as of 2026-08-14)
 
 Be precise about this — the gap between the direction and the implementation is
