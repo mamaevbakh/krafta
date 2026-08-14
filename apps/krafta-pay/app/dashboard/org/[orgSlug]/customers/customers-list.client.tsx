@@ -23,7 +23,15 @@ type CustomerRow = NewCustomer;
 
 /** The three states a merchant sorts people into, in priority order. */
 type Bucket = "attention" | "active" | "none";
-type Tab = "all" | Bucket;
+/**
+ * `guests` is not a fourth bucket — it selects a different list.
+ *
+ * Stripe keeps guests on their own tab because they are not people you can act
+ * on: a one-off payer with no saved card, grouped read-only so you can see that
+ * four payments came from the same person. Folding them into "all" would make
+ * the count on the page a number the merchant cannot bill against.
+ */
+type Tab = "all" | Bucket | "guests";
 
 /**
  * Exactly one bucket per customer, so the tab counts add up to the total and a
@@ -99,8 +107,12 @@ export function CustomersListClient({
   }, [orgId, environment]);
 
   const counts = useMemo(() => {
-    const tally = { all: 0, attention: 0, active: 0, none: 0 };
+    const tally = { all: 0, attention: 0, active: 0, none: 0, guests: 0 };
     for (const row of rows ?? []) {
+      if (row.is_guest) {
+        tally.guests += 1;
+        continue;
+      }
       tally.all += 1;
       tally[bucketOf(row)] += 1;
     }
@@ -109,11 +121,14 @@ export function CustomersListClient({
 
   // Tabs appear only when they can actually split the list. With every customer
   // in one bucket they are four controls that all show the same rows — the
-  // total restated three times over.
-  const showTabs = [counts.attention, counts.active, counts.none].filter((n) => n > 0).length > 1;
+  // total restated three times over. Any guests at all are worth a tab, because
+  // otherwise there is no way to see them.
+  const showTabs =
+    [counts.attention, counts.active, counts.none].filter((n) => n > 0).length > 1 ||
+    counts.guests > 0;
   // Search earns its place once the list is long enough to scroll past; below
   // that it is chrome, so it only appears at a real threshold.
-  const showSearch = counts.all > 8;
+  const showSearch = counts.all + counts.guests > 8;
 
   // Derived, not stored: paying off the last overdue invoice can collapse the
   // tabs while "needs action" is selected, and a filter the merchant can no
@@ -124,7 +139,14 @@ export function CustomersListClient({
     if (!rows) return null;
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
-      if (activeTab !== "all" && bucketOf(row) !== activeTab) return false;
+      // Guests are a separate list, not a slice of this one. Every other tab
+      // means "customers I can bill", which a guest is not.
+      if (activeTab === "guests") {
+        if (!row.is_guest) return false;
+      } else {
+        if (row.is_guest) return false;
+        if (activeTab !== "all" && bucketOf(row) !== activeTab) return false;
+      }
       if (!q) return true;
       return [row.name, row.email, row.phone, row.external_id]
         .filter(Boolean)
@@ -175,6 +197,14 @@ export function CustomersListClient({
     }
 
     return (
+      <div className="space-y-2">
+        {/* Says what a guest is, where the merchant meets one. Without it, a
+            row you cannot bill and cannot rename looks like a broken customer
+            rather than a deliberately different kind of record. */}
+        {activeTab === "guests" ? (
+          <p className="text-xs text-muted-foreground">{t("customers.guests.hint")}</p>
+        ) : null}
+
       <div className="overflow-hidden rounded-lg border">
         <Table>
           <TableHeader>
@@ -296,6 +326,7 @@ export function CustomersListClient({
           </TableBody>
         </Table>
       </div>
+      </div>
     );
   }
 
@@ -338,6 +369,16 @@ export function CustomersListClient({
                   {counts.none}
                 </Badge>
               </TabsTrigger>
+              {/* Last, and only when there are any — it is a different list,
+                  not another way of slicing the four to its left. */}
+              {counts.guests > 0 ? (
+                <TabsTrigger value="guests">
+                  {t("customers.tab.guests")}
+                  <Badge variant="secondary" className="ml-1.5 tabular-nums">
+                    {counts.guests}
+                  </Badge>
+                </TabsTrigger>
+              ) : null}
             </TabsList>
           </Tabs>
         ) : (

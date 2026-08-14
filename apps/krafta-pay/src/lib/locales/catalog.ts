@@ -319,6 +319,9 @@ const EN = {
   "customers.tab.active": "Paying",
   "customers.tab.attention": "Needs action",
   "customers.tab.none": "Not paying",
+  "customers.tab.guests": "Guests",
+  "customers.guests.hint":
+    "People who paid a one-off link. Their payments are grouped by phone or email so you can see repeat payers, but there is no saved card — start a subscription for one and they become a real customer.",
   "customers.add": "Add customer",
   "customers.add.title": "Add a customer",
   "customers.add.description":
@@ -885,6 +888,9 @@ const RU: Catalog = {
   "customers.tab.active": "Платят",
   "customers.tab.attention": "Ждут оплаты",
   "customers.tab.none": "Не платят",
+  "customers.tab.guests": "Гости",
+  "customers.guests.hint":
+    "Те, кто оплатил разовую ссылку. Платежи собираются по телефону или почте, чтобы вы видели, кто платит не в первый раз. Карта не сохраняется — оформите такому человеку подписку, и он станет обычным клиентом.",
   "customers.add": "Добавить клиента",
   "customers.add.title": "Новый клиент",
   "customers.add.description":
@@ -1434,6 +1440,9 @@ const UZ: Catalog = {
   "customers.tab.active": "To‘layotgan",
   "customers.tab.attention": "To‘lov kutilmoqda",
   "customers.tab.none": "To‘lamayotgan",
+  "customers.tab.guests": "Mehmonlar",
+  "customers.guests.hint":
+    "Bir martalik havolani to‘laganlar. To‘lovlar telefon yoki pochta bo‘yicha guruhlanadi — kim qayta to‘laganini ko‘rasiz. Karta saqlanmaydi: bunday odamga obuna rasmiylashtirsangiz, u oddiy mijozga aylanadi.",
   "customers.add": "Mijoz qo‘shish",
   "customers.add.title": "Yangi mijoz",
   "customers.add.description":

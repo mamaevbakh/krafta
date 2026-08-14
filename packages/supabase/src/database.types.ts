@@ -1573,6 +1573,8 @@ export type Database = {
         Row: {
           cancel_url: string | null
           created_at: string
+          customer_creation: string
+          customer_details: Json
           customer_id: string | null
           environment: string
           id: string
@@ -1590,6 +1592,8 @@ export type Database = {
         Insert: {
           cancel_url?: string | null
           created_at?: string
+          customer_creation?: string
+          customer_details?: Json
           customer_id?: string | null
           environment?: string
           id?: string
@@ -1607,6 +1611,8 @@ export type Database = {
         Update: {
           cancel_url?: string | null
           created_at?: string
+          customer_creation?: string
+          customer_details?: Json
           customer_id?: string | null
           environment?: string
           id?: string
@@ -1772,6 +1778,7 @@ export type Database = {
           environment: string
           external_id: string | null
           id: string
+          is_guest: boolean
           metadata: Json
           name: string | null
           org_id: string
@@ -1786,6 +1793,7 @@ export type Database = {
           environment?: string
           external_id?: string | null
           id?: string
+          is_guest?: boolean
           metadata?: Json
           name?: string | null
           org_id: string
@@ -1800,6 +1808,7 @@ export type Database = {
           environment?: string
           external_id?: string | null
           id?: string
+          is_guest?: boolean
           metadata?: Json
           name?: string | null
           org_id?: string
@@ -1807,6 +1816,95 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      idempotency_keys: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          endpoint: string
+          environment: string
+          id: string
+          idempotency_key: string
+          org_id: string
+          request_fingerprint: string
+          response_body: Json | null
+          response_status: number | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          endpoint: string
+          environment: string
+          id?: string
+          idempotency_key: string
+          org_id: string
+          request_fingerprint: string
+          response_body?: Json | null
+          response_status?: number | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          endpoint?: string
+          environment?: string
+          id?: string
+          idempotency_key?: string
+          org_id?: string
+          request_fingerprint?: string
+          response_body?: Json | null
+          response_status?: number | null
+          status?: string
+        }
+        Relationships: []
+      }
+      invoice_line_items: {
+        Row: {
+          amount_minor: number
+          created_at: string
+          description: string
+          id: string
+          invoice_id: string
+          kind: string
+          metadata: Json
+          quantity: number
+          sort_order: number
+          unit_amount_minor: number
+        }
+        Insert: {
+          amount_minor: number
+          created_at?: string
+          description: string
+          id?: string
+          invoice_id: string
+          kind: string
+          metadata?: Json
+          quantity?: number
+          sort_order?: number
+          unit_amount_minor: number
+        }
+        Update: {
+          amount_minor?: number
+          created_at?: string
+          description?: string
+          id?: string
+          invoice_id?: string
+          kind?: string
+          metadata?: Json
+          quantity?: number
+          sort_order?: number
+          unit_amount_minor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_line_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invoices: {
         Row: {
@@ -1819,7 +1917,6 @@ export type Database = {
           due_at: string | null
           id: string
           metadata: Json
-          name: string | null
           org_id: string
           paid_at: string | null
           payment_intent_id: string | null
@@ -2212,6 +2309,7 @@ export type Database = {
       payment_intents: {
         Row: {
           amount_minor: number
+          card_binding: string
           client_secret: string
           created_at: string
           currency: string
@@ -2227,6 +2325,7 @@ export type Database = {
         }
         Insert: {
           amount_minor: number
+          card_binding?: string
           client_secret: string
           created_at?: string
           currency?: string
@@ -2242,6 +2341,7 @@ export type Database = {
         }
         Update: {
           amount_minor?: number
+          card_binding?: string
           client_secret?: string
           created_at?: string
           currency?: string
@@ -2394,6 +2494,7 @@ export type Database = {
           code: string
           created_at: string
           currency: string
+          features: Json
           id: string
           interval: string
           interval_count: number
@@ -2409,6 +2510,7 @@ export type Database = {
           code: string
           created_at?: string
           currency?: string
+          features?: Json
           id?: string
           interval?: string
           interval_count?: number
@@ -2424,6 +2526,7 @@ export type Database = {
           code?: string
           created_at?: string
           currency?: string
+          features?: Json
           id?: string
           interval?: string
           interval_count?: number
@@ -2433,6 +2536,27 @@ export type Database = {
           org_id?: string
           trial_days?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_billing_exemptions: {
+        Row: {
+          created_at: string
+          metadata: Json
+          org_id: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          metadata?: Json
+          org_id: string
+          reason: string
+        }
+        Update: {
+          created_at?: string
+          metadata?: Json
+          org_id?: string
+          reason?: string
         }
         Relationships: []
       }
@@ -2501,6 +2625,8 @@ export type Database = {
           current_period_start: string | null
           customer_id: string
           default_payment_method_id: string | null
+          ended_at: string | null
+          ends_at: string | null
           environment: string
           id: string
           metadata: Json
@@ -2517,6 +2643,8 @@ export type Database = {
           current_period_start?: string | null
           customer_id: string
           default_payment_method_id?: string | null
+          ended_at?: string | null
+          ends_at?: string | null
           environment?: string
           id?: string
           metadata?: Json
@@ -2533,6 +2661,8 @@ export type Database = {
           current_period_start?: string | null
           customer_id?: string
           default_payment_method_id?: string | null
+          ended_at?: string | null
+          ends_at?: string | null
           environment?: string
           id?: string
           metadata?: Json

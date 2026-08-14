@@ -24,6 +24,8 @@ export type NewCustomer = {
   phone: string | null;
   external_id: string | null;
   environment: string | null;
+  /** A one-off payer grouped read-only, in Stripe's sense — not someone you can bill. */
+  is_guest?: boolean | null;
   created_at: string | null;
   subscription_count: number;
   active_count: number;

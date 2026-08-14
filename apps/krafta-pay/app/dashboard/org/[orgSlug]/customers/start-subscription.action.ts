@@ -51,6 +51,23 @@ export async function startSubscriptionForCustomer(
   const supabase = createAdminSupabase();
 
   try {
+    // A guest who is about to be billed stops being a guest.
+    //
+    // Guests exist because a one-off payer has no saved card and cannot be
+    // charged again — that is what makes them read-only. The moment a merchant
+    // puts one on a plan, that is no longer true of them, and leaving them
+    // filed under Guests would hide a paying customer on a tab labelled
+    // "people you cannot bill". Scoped by org so an id from a form cannot
+    // promote somebody else's.
+    const { error: promoteErr } = await supabase
+      .schema("payments")
+      .from("customers")
+      .update({ is_guest: false, updated_at: new Date().toISOString() })
+      .eq("id", customerId)
+      .eq("org_id", org.orgId)
+      .eq("is_guest", true);
+    if (promoteErr) throw promoteErr;
+
     const result = await createSubscriptionCheckout(supabase, {
       merchantOrgId: org.orgId,
       // Follows the sidebar switch, like every other dashboard write. A test

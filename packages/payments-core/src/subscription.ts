@@ -536,6 +536,155 @@ export type ResolveCustomerInput = {
   customerUserRef?: string | null;
 };
 
+/**
+ * Turn "somebody paid" into "this person paid", at the moment the money lands.
+ *
+ * A one-off payment link creates no customer. Someone pays 250,000 UZS, the
+ * money arrives, and the Customers page shows nobody — the payment exists and
+ * the payer does not. Stripe's answer is the guest customer: a read-only
+ * grouping of completed payments from the same person, with no saved card, and
+ * it is created when the Checkout Session is CONFIRMED rather than when the
+ * link is made. This is our confirmation point.
+ *
+ * The creation order is the whole point. Subscriptions create their customer
+ * when the link is made, which is why two months of links nobody opened sat on
+ * the Customers page dressed as debtors. A one-off must not repeat that: no
+ * payment, no person.
+ *
+ * MATCHING. Stripe groups guests by card number. We cannot — a one-off intent
+ * carries `card_binding = 'none'`, so no token is kept, which is also true in
+ * Stripe (it does not save cards for guests either). So we match on the next
+ * keys Stripe names: phone, then email, within one org and environment. A payer
+ * who tells us nothing gets NO record rather than an anonymous row per payment:
+ * grouping is the entire purpose of a guest, and a guest with nothing to group
+ * by is the duplicate problem wearing a new name.
+ *
+ * Never throws. It runs after the acquirer has moved real money, and losing a
+ * name must never be able to turn a settled payment into an error.
+ */
+export async function materializeCheckoutCustomer(
+  supabase: SupabaseClient,
+  paymentIntentId: string,
+): Promise<{ customerId: string | null; created: boolean; isGuest: boolean }> {
+  const none = { customerId: null, created: false, isGuest: false };
+  try {
+    const { data: session, error: sessionErr } = await supabase
+      .schema("payments")
+      .from("checkout_sessions")
+      .select("id, org_id, environment, customer_id, customer_creation, customer_details")
+      .eq("payment_intent_id", paymentIntentId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (sessionErr) throw sessionErr;
+    // Already attached to somebody — a subscription checkout, or a link the
+    // merchant made from a customer's own page. Nothing to decide.
+    if (!session || session.customer_id) {
+      return { customerId: session?.customer_id ?? null, created: false, isGuest: false };
+    }
+
+    const details = (session.customer_details ?? {}) as Record<string, unknown>;
+    const str = (v: unknown, max: number) => {
+      if (typeof v !== "string") return null;
+      const t = v.trim();
+      return t.length > 0 ? t.slice(0, max) : null;
+    };
+    const name = str(details.name, 200);
+    const phone = str(details.phone, 40);
+    const email = str(details.email, 320);
+    if (!name && !phone && !email) return none;
+
+    const orgId = String(session.org_id);
+    const environment = String(session.environment ?? "live");
+    const isGuest = session.customer_creation !== "always";
+
+    // Reuse an existing guest before making another. This is what makes a guest
+    // a *grouping* rather than a row per payment — the third time the same
+    // parent pays for a class, the merchant sees one person with three
+    // payments, which is exactly what Stripe's Guests tab shows.
+    let existingId: string | null = null;
+    if (isGuest) {
+      for (const [column, value] of [
+        ["phone", phone],
+        ["email", email],
+      ] as const) {
+        if (!value) continue;
+        const { data, error } = await supabase
+          .schema("payments")
+          .from("customers")
+          .select("id")
+          .eq("org_id", orgId)
+          .eq("environment", environment)
+          .eq("is_guest", true)
+          .eq(column, value)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        if (data?.id) {
+          existingId = String(data.id);
+          break;
+        }
+      }
+    }
+
+    let customerId = existingId;
+    let created = false;
+
+    if (customerId) {
+      // Fill blanks only — an earlier payment may have carried a name this one
+      // did not, and the merchant may have renamed the guest since.
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      const { data: current } = await supabase
+        .schema("payments")
+        .from("customers")
+        .select("name, phone, email")
+        .eq("id", customerId)
+        .maybeSingle();
+      if (name && !current?.name) patch.name = name;
+      if (phone && !current?.phone) patch.phone = phone;
+      if (email && !current?.email) patch.email = email;
+      if (Object.keys(patch).length > 1) {
+        const { error } = await supabase
+          .schema("payments")
+          .from("customers")
+          .update(patch)
+          .eq("id", customerId);
+        if (error) throw error;
+      }
+    } else {
+      const { data: inserted, error: insertErr } = await supabase
+        .schema("payments")
+        .from("customers")
+        .insert({
+          org_id: orgId,
+          environment,
+          is_guest: isGuest,
+          name,
+          phone,
+          email,
+          metadata: {},
+        })
+        .select("id")
+        .single();
+      if (insertErr) throw insertErr;
+      customerId = String(inserted.id);
+      created = true;
+    }
+
+    const { error: attachErr } = await supabase
+      .schema("payments")
+      .from("checkout_sessions")
+      .update({ customer_id: customerId, updated_at: new Date().toISOString() })
+      .eq("id", session.id);
+    if (attachErr) throw attachErr;
+
+    return { customerId, created, isGuest };
+  } catch {
+    return none;
+  }
+}
+
 /** Thrown when a caller names a customer that is not theirs, or not in this mode. */
 export class CustomerNotFoundError extends Error {
   constructor(customerId: string) {
@@ -1573,6 +1722,16 @@ export async function finalizeInitialPayment(
   // settle. The intent + checkout are finalized and the charge is recorded — we
   // are done (and crucially we did NOT throw after the money moved).
   if (!invoiceId || !subscriptionId) {
+    // Stripe creates the customer when the Checkout Session is confirmed, not
+    // when the link is made. This is that moment: the money has landed, so
+    // there is now a person to record. Before this, a paid payment link
+    // produced a payment with nobody attached to it.
+    //
+    // Ordered before the webhook deliberately — an integrator handling
+    // `payment.succeeded` should be able to read the customer off the session.
+    // It never throws, so it cannot turn a settled payment into an error.
+    await materializeCheckoutCustomer(supabase, intent.id);
+
     // The one place a one-off success converges, and therefore the only place
     // this event can fire. A subscription charge always resolves both ids and
     // returns further down, so it never reaches here — which is what makes the

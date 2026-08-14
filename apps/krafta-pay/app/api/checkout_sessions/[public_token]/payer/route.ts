@@ -51,15 +51,37 @@ export async function POST(
     const { data: session, error: sessionErr } = await supabase
       .schema("payments")
       .from("checkout_sessions")
-      .select("id, status, customer_id")
+      .select("id, status, customer_id, customer_details")
       .eq("public_token", public_token)
       .maybeSingle();
     if (sessionErr) throw sessionErr;
-    if (!session || session.status !== "open" || !session.customer_id) {
-      // Deliberately not distinguished. This endpoint is reachable by anyone
-      // holding a link, and telling them which of the three it was would map
-      // out other merchants' checkouts one token at a time.
+    if (!session || session.status !== "open") {
+      // Deliberately not distinguished from the other refusals below. This
+      // endpoint is reachable by anyone holding a link, and saying which reason
+      // applied would map out other merchants' checkouts one token at a time.
       return NextResponse.json({ ok: true, saved: false });
+    }
+
+    // No customer yet — a one-off payment link. What the payer types is kept on
+    // the SESSION, and the customer is created from it if and when the payment
+    // succeeds. That is the order Stripe uses, and it is what stops an
+    // abandoned link from manufacturing a person nobody ever paid for.
+    if (!session.customer_id) {
+      const existing = (session.customer_details ?? {}) as Record<string, unknown>;
+      const { error: detailsErr } = await supabase
+        .schema("payments")
+        .from("checkout_sessions")
+        .update({
+          customer_details: {
+            ...existing,
+            ...(name ? { name } : {}),
+            ...(phone ? { phone } : {}),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", session.id);
+      if (detailsErr) throw detailsErr;
+      return NextResponse.json({ ok: true, saved: true });
     }
 
     const { data: customer, error: customerErr } = await supabase

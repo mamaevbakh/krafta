@@ -35,7 +35,7 @@ export default async function PayPage({
       // decides which provider account can charge. Both are load-bearing.
       // `customer_id` decides whether we still need to ask the payer who they
       // are; see the PayerDetails block below.
-      "id, status, org_id, public_token, payment_intent_id, customer_id, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, metadata, environment, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at, order_id)"
+      "id, status, org_id, public_token, payment_intent_id, customer_id, customer_details, selected_provider_id, selected_attempt_id, success_url, cancel_url, return_url, updated_at, metadata, environment, payment_intents:payment_intent_id(amount_minor, currency, description, status, updated_at, order_id)"
     )
     .eq("public_token", public_token)
     .maybeSingle();
@@ -123,22 +123,32 @@ export default async function PayPage({
   //
   // A merchant who created this link from the customer's own page already typed
   // the name, and asking that person to identify themselves again reads as a
-  // system that was not paying attention. A one-off payment link has no
-  // customer row at all, so there is nothing to write to and nothing to ask.
+  // system that was not paying attention.
+  //
+  // A one-off payment link has no customer at all — by design, because Stripe
+  // creates one at confirmation and so do we. There the answer lands on the
+  // session, and this is the only chance anyone gets to ask: without it a paid
+  // link produces money from a stranger.
   //
   // Read here rather than in the client so the fields never appear and then
   // vanish, and so the "empty only" rule is decided by the database — the same
   // rule the write endpoint enforces.
   let askPayer = false;
-  if (session.customer_id && session.status === "open" && !isTerminal) {
-    const { data: payer, error: payerErr } = await supabase
-      .schema("payments")
-      .from("customers")
-      .select("name, phone")
-      .eq("id", session.customer_id)
-      .maybeSingle();
-    if (payerErr) throw payerErr;
-    askPayer = Boolean(payer) && !payer?.name && !payer?.phone;
+  if (session.status === "open" && !isTerminal) {
+    if (session.customer_id) {
+      const { data: payer, error: payerErr } = await supabase
+        .schema("payments")
+        .from("customers")
+        .select("name, phone")
+        .eq("id", session.customer_id)
+        .maybeSingle();
+      if (payerErr) throw payerErr;
+      askPayer = Boolean(payer) && !payer?.name && !payer?.phone;
+    } else {
+      const details = ((session as { customer_details?: unknown }).customer_details ?? {}) as
+        Record<string, unknown>;
+      askPayer = !details.name && !details.phone;
+    }
   }
 
   return (

@@ -111,6 +111,9 @@ export async function createCheckoutSession(
       public_token: publicToken,
       environment,
       customer_id: customerId,
+      // Only meaningful when nobody was named. A caller who passed a customer
+      // has already answered the question this setting exists to ask.
+      customer_creation: customerId ? "if_required" : (input.customerCreation ?? "if_required"),
       metadata: input.metadata ?? {},
     })
     .select("id, public_token, payment_intent_id")

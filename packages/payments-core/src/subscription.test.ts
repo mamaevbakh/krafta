@@ -10,6 +10,7 @@ import {
   runRenewalCycle,
   isAbandonedSubscriptionLink,
   expireAbandonedSubscriptionLinks,
+  materializeCheckoutCustomer,
 } from "./subscription";
 
 // Minimal chainable Supabase fake: reads return canned rows per table; writes
@@ -1068,5 +1069,163 @@ describe("abandoned subscription links expire", () => {
       "update:invoices",
       "update:subscriptions",
     ]);
+  });
+});
+
+describe("a paid one-off link produces a person", () => {
+  /**
+   * A fake that can answer "no match" on a lookup and still return an id from
+   * an insert — the shared one above returns the same canned row for both, so
+   * it cannot tell "reused an existing guest" from "created a new one", which
+   * is the only thing these tests are about.
+   */
+  function guestSupabase(
+    rows: Record<string, unknown>,
+    mutations: string[],
+    inserted: Record<string, unknown>[],
+  ) {
+    function builder(table: string) {
+      let didInsert = false;
+      const b: Record<string, unknown> = {
+        select: () => b,
+        eq: () => b,
+        in: () => b,
+        lte: () => b,
+        order: () => b,
+        limit: () => b,
+        update: (v: unknown) => {
+          mutations.push(`update:${table}`);
+          void v;
+          return b;
+        },
+        insert: (v: unknown) => {
+          mutations.push(`insert:${table}`);
+          inserted.push(v as Record<string, unknown>);
+          didInsert = true;
+          return b;
+        },
+        maybeSingle: () =>
+          Promise.resolve({ data: didInsert ? { id: "new_1" } : (rows[table] ?? null), error: null }),
+        single: () =>
+          Promise.resolve({ data: didInsert ? { id: "new_1" } : (rows[table] ?? null), error: null }),
+      };
+      return b;
+    }
+    return { schema: () => ({ from: (table: string) => builder(table) }) } as never;
+  }
+
+  const session = (over: Record<string, unknown> = {}) => ({
+    id: "cs_1",
+    org_id: "org1",
+    environment: "live",
+    customer_id: null,
+    customer_creation: "if_required",
+    customer_details: {},
+    ...over,
+  });
+
+  it("does nothing when the checkout already belongs to someone", async () => {
+    // A subscription checkout, or a link the merchant made from a customer's
+    // own page. Inventing a second record here would be the duplicate bug.
+    const mutations: string[] = [];
+    const supa = guestSupabase(
+      { checkout_sessions: session({ customer_id: "cus_existing" }) },
+      mutations,
+      [],
+    );
+    const result = await materializeCheckoutCustomer(supa, "pi_1");
+    expect(result).toEqual({ customerId: "cus_existing", created: false, isGuest: false });
+    expect(mutations).toEqual([]);
+  });
+
+  it("records nobody when the payer said nothing", async () => {
+    // Stripe groups guests by card number; we cannot see one, so a payment with
+    // no phone, email or name has nothing to group by. A row per anonymous
+    // payment would be the duplicate problem under a new name.
+    const mutations: string[] = [];
+    const supa = guestSupabase({ checkout_sessions: session() }, mutations, []);
+    const result = await materializeCheckoutCustomer(supa, "pi_1");
+    expect(result.customerId).toBeNull();
+    expect(mutations).toEqual([]);
+  });
+
+  it("creates a guest from what the payer typed, and attaches it", async () => {
+    const mutations: string[] = [];
+    const inserted: Record<string, unknown>[] = [];
+    const supa = guestSupabase(
+      {
+        checkout_sessions: session({
+          customer_details: { name: "Гулнора Умарова", phone: "+998 90 777 11 22" },
+        }),
+      },
+      mutations,
+      inserted,
+    );
+
+    const result = await materializeCheckoutCustomer(supa, "pi_1");
+
+    expect(result).toEqual({ customerId: "new_1", created: true, isGuest: true });
+    expect(inserted[0]?.is_guest).toBe(true);
+    expect(inserted[0]?.name).toBe("Гулнора Умарова");
+    // Attached to the session, so `payment.succeeded` can be read against a
+    // customer rather than against nobody.
+    expect(mutations).toContain("update:checkout_sessions");
+  });
+
+  it("creates a real customer when the merchant asked for one", async () => {
+    const mutations: string[] = [];
+    const inserted: Record<string, unknown>[] = [];
+    const supa = guestSupabase(
+      {
+        checkout_sessions: session({
+          customer_creation: "always",
+          customer_details: { name: "Азиз" },
+        }),
+      },
+      mutations,
+      inserted,
+    );
+
+    const result = await materializeCheckoutCustomer(supa, "pi_1");
+
+    expect(result.isGuest).toBe(false);
+    expect(inserted[0]?.is_guest).toBe(false);
+  });
+
+  it("reuses the guest who paid before rather than making a second one", async () => {
+    // The point of a guest: the third time the same parent pays for a class,
+    // the merchant sees one person with three payments.
+    const mutations: string[] = [];
+    const inserted: Record<string, unknown>[] = [];
+    const supa = guestSupabase(
+      {
+        checkout_sessions: session({
+          customer_details: { phone: "+998 90 777 11 22" },
+        }),
+        customers: { id: "guest_seen_before", name: "Гулнора", phone: "+998 90 777 11 22" },
+      },
+      mutations,
+      inserted,
+    );
+
+    const result = await materializeCheckoutCustomer(supa, "pi_1");
+
+    expect(result).toEqual({ customerId: "guest_seen_before", created: false, isGuest: true });
+    expect(mutations).not.toContain("insert:customers");
+  });
+
+  it("never throws — the money has already moved", async () => {
+    const supa = {
+      schema: () => ({
+        from: () => {
+          throw new Error("database on fire");
+        },
+      }),
+    } as never;
+    await expect(materializeCheckoutCustomer(supa, "pi_1")).resolves.toEqual({
+      customerId: null,
+      created: false,
+      isGuest: false,
+    });
   });
 });

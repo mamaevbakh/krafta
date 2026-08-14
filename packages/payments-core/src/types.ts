@@ -23,6 +23,20 @@ export type CreateCheckoutSessionInput = {
    * to pay rather than to add a card, and no card is kept afterwards.
    */
   cardBinding?: "required" | "none";
+  /**
+   * What to do about a customer when this checkout is paid and none was given.
+   * Stripe's parameter of the same name, with the same default.
+   *
+   * `if_required` — a *guest* is created from whatever the payer told us at
+   * checkout: a read-only grouping of one-off payments from the same person,
+   * with no saved card. This is the right answer for a payment link.
+   *
+   * `always` — a real customer, one you can go on to bill.
+   *
+   * Ignored when `customerId` is supplied: the caller already said who this is.
+   * As in Stripe, sending both is a contradiction rather than a refinement.
+   */
+  customerCreation?: "if_required" | "always";
   customerId?: string;          // existing customer in payments.customers
   customer?: {
     /**

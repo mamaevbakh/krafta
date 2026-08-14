@@ -41,7 +41,7 @@ export async function GET(req: Request) {
     let customerQuery = admin
       .schema("payments")
       .from("customers")
-      .select("id, name, email, phone, external_id, environment, created_at")
+      .select("id, name, email, phone, external_id, environment, is_guest, created_at")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -212,7 +212,7 @@ export async function POST(req: Request) {
       external_id: externalId,
       metadata: {},
     })
-    .select("id, name, email, phone, external_id, environment, created_at")
+    .select("id, name, email, phone, external_id, environment, is_guest, created_at")
     .single();
 
   if (error) {
