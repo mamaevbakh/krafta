@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Search } from "lucide-react";
 import { formatMinorAmount } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
-import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/locales/context";
 import {
@@ -41,17 +40,6 @@ function fmtDate(value?: string | null) {
     month: "short",
     year: "numeric",
   });
-}
-
-/**
- * The avatar seed.
- *
- * Deliberately the customer id, not the display name: an email can be edited
- * and a phone can be reassigned, and either would silently change the mark a
- * merchant has learned to recognise. The id never moves.
- */
-function avatarSeed(row: { id: string }) {
-  return row.id;
 }
 
 /**
@@ -213,15 +201,7 @@ export function CustomersListClient({
                 }}
               >
                 <TableCell className="px-4 font-medium">
-                  <span className="flex items-center gap-2.5">
-                    {/* Generated from the identity itself, so the same parent
-                        is the same mark on every screen and after every reload.
-                        Nobody uploads anything, and a list of forty rows of
-                        near-identical email addresses becomes scannable. */}
-                    <DitherAvatar
-                      name={avatarSeed(row)}
-                      className="size-6 shrink-0 rounded-md opacity-70 saturate-50"
-                    />
+                  <span className="flex items-center">
                     <span className="min-w-0">
                       <span className="block truncate">
                         {displayName(row) ?? (
