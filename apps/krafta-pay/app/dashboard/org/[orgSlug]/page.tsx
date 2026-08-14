@@ -9,6 +9,7 @@ import { getPayLocale } from "@/lib/locales/server";
 import { loadOverview, percentChange } from "@/lib/overview";
 import { formatMinorAmount } from "@/lib/format";
 import { CollectedChart } from "@/components/dashboard/collected-chart.client";
+import { OverviewCards } from "@/components/dashboard/overview-cards";
 import { NeedsAttention } from "@/components/dashboard/needs-attention.client";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -81,49 +82,11 @@ export default async function DashboardPage({
         </p>
       </header>
 
-      {/* Three numbers, not three cards with icons in circles — DESIGN.md bans
-          that grid, and a merchant reading a figure does not need an icon to
-          tell them it is money. Divider-separated cells, one border. */}
-      <dl className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
-        <div className="bg-background p-4">
-          <dt className="text-xs text-muted-foreground">{t("overview.collected")}</dt>
-          <dd className="mt-1 flex flex-wrap items-baseline gap-2">
-            <span className="font-mono text-lg font-semibold tabular-nums">
-              {formatMinorAmount(overview.collectedThisMonthMinor, overview.currency)}
-            </span>
-            {change !== null ? (
-              <span
-                className={
-                  change >= 0
-                    ? "text-xs text-emerald-600 dark:text-emerald-400"
-                    : "text-xs text-muted-foreground"
-                }
-              >
-                {change >= 0 ? "+" : ""}
-                {change}%
-              </span>
-            ) : null}
-          </dd>
-        </div>
-        <div className="bg-background p-4">
-          <dt className="text-xs text-muted-foreground">{t("overview.outstanding")}</dt>
-          <dd className="mt-1 font-mono text-lg font-semibold tabular-nums">
-            {formatMinorAmount(overview.outstandingMinor, overview.currency)}
-          </dd>
-        </div>
-        <div className="bg-background p-4">
-          <dt className="text-xs text-muted-foreground">{t("overview.needsAttention")}</dt>
-          <dd className="mt-1 font-mono text-lg font-semibold tabular-nums">
-            {overview.needsAttentionCount}
-          </dd>
-        </div>
-      </dl>
+      <OverviewCards overview={overview} t={t} />
+
 
       {hasHistory ? (
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium">{t("overview.chart.title")}</h2>
-          <CollectedChart data={overview.monthly} currency={overview.currency} />
-        </section>
+        <CollectedChart data={overview.monthly} currency={overview.currency} />
       ) : null}
 
       <section className="space-y-3">
