@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation"
 import { AppSidebar } from "./_block/app-sidebar"
 import { ChartAreaInteractive } from "./_block/chart-area-interactive"
 import { DataTable } from "./_block/data-table"
@@ -11,6 +12,12 @@ import {
 import data from "./_block/data.json"
 
 export default function Page() {
+  // Dev only. This is the shadcn block verbatim, demo data and all, kept as a
+  // side-by-side reference while the dashboard is rebuilt against it. On
+  // production it is a page of invented "Acme Inc." revenue sitting on a real
+  // payments domain, which is worse than useless to a merchant who finds it.
+  if (process.env.NODE_ENV === "production") notFound();
+
   return (
     <SidebarProvider
       style={
