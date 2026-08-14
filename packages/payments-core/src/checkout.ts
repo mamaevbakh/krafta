@@ -71,13 +71,20 @@ export async function createCheckoutSession(
 
   // (optional) 2) customer record
   let customerId: string | null = input.customerId ?? null;
-  if (!customerId && (input.customer?.email || input.customer?.phone || input.customer?.customerUserRef)) {
+  if (
+    !customerId &&
+    (input.customer?.name ||
+      input.customer?.email ||
+      input.customer?.phone ||
+      input.customer?.customerUserRef)
+  ) {
     const { data: customer, error: custErr } = await supabase
       .schema("payments")
       .from("customers")
       .insert({
         org_id: input.orgId,
         environment,
+        name: input.customer.name ?? null,
         email: input.customer.email ?? null,
         phone: input.customer.phone ?? null,
         customer_user_ref: input.customer.customerUserRef ?? null,

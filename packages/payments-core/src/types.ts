@@ -25,6 +25,14 @@ export type CreateCheckoutSessionInput = {
   cardBinding?: "required" | "none";
   customerId?: string;          // existing customer in payments.customers
   customer?: {
+    /**
+     * How the merchant recognises this payer — the first column of their
+     * Customers page. Send it whenever you know it: without a name that page
+     * can only show an email address, and a school collecting from parents is
+     * not looking for an inbox. Free text; names here are not reliably
+     * two-part.
+     */
+    name?: string;
     email?: string;
     phone?: string;
     customerUserRef?: string;   // external user id in your app

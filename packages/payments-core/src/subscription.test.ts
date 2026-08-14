@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  resolveOrCreateCustomer,
   RETRYABLE_INVOICE_STATUSES,
   chargeRenewal,
   finalizeInitialPayment,
@@ -921,5 +922,71 @@ describe("pickRetryTargetInvoice (past_due self-serve recovery)", () => {
 
   it("treats both open and uncollectible as recoverable", () => {
     expect([...RETRYABLE_INVOICE_STATUSES].sort()).toEqual(["open", "uncollectible"]);
+  });
+});
+
+describe("resolveOrCreateCustomer records the payer's name", () => {
+  // The Customers page leads with the name; without one it can only show an
+  // email address, and a school collecting from parents is not looking for an
+  // inbox. In production every customer row has no name at all, so what matters
+  // is that a name sent now lands, and that a later call never wipes it.
+
+  /** Captures the rows written, which the shared fake deliberately does not. */
+  function capturingSupabase(existing: Record<string, unknown> | null) {
+    const written: { inserted: Record<string, unknown>[]; patched: Record<string, unknown>[] } = {
+      inserted: [],
+      patched: [],
+    };
+    const builder = () => {
+      const b: Record<string, unknown> = {};
+      Object.assign(b, {
+        select: () => b,
+        eq: () => b,
+        is: () => b,
+        in: () => b,
+        order: () => b,
+        limit: () => b,
+        maybeSingle: async () => ({ data: existing, error: null }),
+        single: async () => ({ data: existing ?? { id: "cus_new" }, error: null }),
+        insert: (v: Record<string, unknown>) => {
+          written.inserted.push(v);
+          return b;
+        },
+        update: (v: Record<string, unknown>) => {
+          written.patched.push(v);
+          return b;
+        },
+      });
+      return b;
+    };
+    return {
+      supa: { schema: () => ({ from: () => builder() }) } as never,
+      written,
+    };
+  }
+
+  it("stores the name when creating a customer", async () => {
+    const { supa, written } = capturingSupabase(null);
+    await resolveOrCreateCustomer(supa, {
+      merchantOrgId: "org1",
+      environment: "live",
+      name: "мама Алишера",
+      email: "aziza@example.uz",
+    });
+    expect(written.inserted[0]?.name).toBe("мама Алишера");
+  });
+
+  it("does not erase an existing name when a later call omits it", async () => {
+    // A renewal months later knows the card but not the person. If it patched
+    // name to null the merchant would watch their Customers page empty itself
+    // one payment at a time.
+    const { supa, written } = capturingSupabase({ id: "cus_1" });
+    await resolveOrCreateCustomer(supa, {
+      merchantOrgId: "org1",
+      environment: "live",
+      externalId: "student-42",
+      email: "aziza@example.uz",
+    });
+    expect(written.patched.some((p) => "name" in p)).toBe(false);
   });
 });

@@ -22,7 +22,7 @@ type Body = {
   successUrl?: string;
   cancelUrl?: string;
   returnUrl?: string;
-  customer?: { email?: string; phone?: string; customerUserRef?: string };
+  customer?: { name?: string; email?: string; phone?: string; customerUserRef?: string };
   metadata?: Record<string, unknown>;
   /**
    * Which set of the merchant's acquirer credentials to charge. The caller knows
