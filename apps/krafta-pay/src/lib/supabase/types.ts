@@ -1283,6 +1283,7 @@ export type Database = {
           email: string | null
           id: string
           metadata: Json
+          name: string | null
           org_id: string
           phone: string | null
           updated_at: string
@@ -1294,6 +1295,7 @@ export type Database = {
           email?: string | null
           id?: string
           metadata?: Json
+          name?: string | null
           org_id: string
           phone?: string | null
           updated_at?: string
@@ -1305,6 +1307,7 @@ export type Database = {
           email?: string | null
           id?: string
           metadata?: Json
+          name?: string | null
           org_id?: string
           phone?: string | null
           updated_at?: string
@@ -1322,6 +1325,7 @@ export type Database = {
           due_at: string | null
           id: string
           metadata: Json
+          name: string | null
           org_id: string
           paid_at: string | null
           payment_intent_id: string | null

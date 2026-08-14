@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PayLink } from "@/components/dashboard/pay-link.client";
+import { CustomerName } from "./customer-name.client";
 
 /**
  * Customer detail — the page a subscription row opens into.
@@ -45,6 +46,7 @@ type PlanRef = {
 
 type CustomerRow = {
   id: string;
+  name: string | null;
   email: string | null;
   phone: string | null;
   external_id: string | null;
@@ -141,7 +143,7 @@ export default async function CustomerDetailPage({ params }: { params: Params })
   const { data: customer, error: customerErr } = await adminAny
     .schema("payments")
     .from("customers")
-    .select("id, email, phone, external_id, environment, created_at, metadata")
+    .select("id, name, email, phone, external_id, environment, created_at, metadata")
     .eq("id", customerId)
     .eq("org_id", org.orgId)
     .maybeSingle();
@@ -240,9 +242,12 @@ export default async function CustomerDetailPage({ params }: { params: Params })
 
         <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {person.email ?? person.phone ?? t("customer.fallbackName")}
-            </h1>
+            <CustomerName
+              customerId={person.id}
+              orgSlug={orgSlug}
+              initialName={person.name}
+              fallback={person.email ?? person.phone ?? t("customer.fallbackName")}
+            />
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
               {person.email && person.phone ? <span>{person.phone}</span> : null}
               <span>{t("customer.since", { date: fmtDate(person.created_at) })}</span>
