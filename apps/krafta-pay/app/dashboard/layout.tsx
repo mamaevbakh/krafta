@@ -8,7 +8,7 @@ import { getUserSafely } from "@krafta/supabase/auth";
 import { getCurrentUserMemberships } from "@/lib/org-memberships";
 import { AppSidebar } from "@/components/dashboard/app-sidebar.client";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { SiteHeader } from "@/components/dashboard/site-header";
+import { SiteHeader } from "@/components/dashboard/site-header.client";
 import { getPayLocale, getPayT } from "@/lib/locales/server";
 import { PayLocaleProvider } from "@/lib/locales/context";
 
@@ -46,7 +46,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           locale={locale}
         />
         <SidebarInset>
-          <SiteHeader title={t("nav.overview")} />
+          <SiteHeader />
           {/* The block wraps content in these exact two divs; the gap and the
               vertical rhythm of every section below depend on them. */}
           <div className="flex flex-1 flex-col">

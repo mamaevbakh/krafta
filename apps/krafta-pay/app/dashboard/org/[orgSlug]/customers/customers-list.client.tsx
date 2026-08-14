@@ -7,6 +7,7 @@ import { formatMinorAmount } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/lib/locales/context";
 import {
   Table,
   TableBody,
@@ -59,7 +60,7 @@ function avatarSeed(row: { id: string }) {
  * store and for API callers that do not send one.
  */
 function displayName(row: CustomerRow) {
-  return row.name ?? row.email ?? row.phone ?? "—";
+  return row.name ?? row.email ?? row.phone ?? null;
 }
 
 export function CustomersListClient({
@@ -71,6 +72,7 @@ export function CustomersListClient({
   orgSlug: string;
   environment: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const [rows, setRows] = useState<CustomerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,9 +162,9 @@ export function CustomersListClient({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search email, phone, ID"
+            placeholder={t("customers.search")}
             className="pl-8"
-            aria-label="Search customers"
+            aria-label={t("customers.search")}
           />
         </div>
       ) : null}
@@ -175,12 +177,12 @@ export function CustomersListClient({
                 Customer
               </TableHead>
               <TableHead className="text-xs text-muted-foreground">
-                Subscriptions
+                {t("customers.col.subscriptions")}
               </TableHead>
               <TableHead className="text-right text-xs text-muted-foreground">
-                Monthly
+                {t("customers.col.monthly")}
               </TableHead>
-              <TableHead className="text-xs text-muted-foreground">Created</TableHead>
+              <TableHead className="text-xs text-muted-foreground">{t("customers.col.created")}</TableHead>
               <TableHead className="w-0 px-4" />
             </TableRow>
           </TableHeader>
@@ -218,18 +220,29 @@ export function CustomersListClient({
                         near-identical email addresses becomes scannable. */}
                     <DitherAvatar
                       name={avatarSeed(row)}
-                      className="size-6 shrink-0 rounded-md"
+                      className="size-6 shrink-0 rounded-md opacity-70 saturate-50"
                     />
                     <span className="min-w-0">
-                      <span className="block truncate">{displayName(row)}</span>
+                      <span className="block truncate">
+                        {displayName(row) ?? (
+                          <span className="text-muted-foreground italic">
+                            {t("customer.unnamed")}
+                          </span>
+                        )}
+                      </span>
                       {row.name && row.email ? (
                         <span className="block truncate text-xs font-normal text-muted-foreground">
                           {row.email}
                         </span>
                       ) : null}
                       {row.external_id ? (
-                        <span className="block truncate font-mono text-xs font-normal text-muted-foreground">
-                          {row.external_id}
+                        <span
+                          className="block truncate font-mono text-xs font-normal text-muted-foreground"
+                          title={row.external_id}
+                        >
+                          {row.external_id.length > 14
+                            ? `${row.external_id.slice(0, 8)}…${row.external_id.slice(-4)}`
+                            : row.external_id}
                         </span>
                       ) : null}
                     </span>
