@@ -27,6 +27,26 @@ low-traffic merchants pay a cold start on nearly every visit because nothing
 pools between projects. Idle projects are free and a full 1000-agent rebuild
 costs roughly **$42** — cost is not the objection anyone thought it was.
 
+## The full loop
+
+1. Owner describes what they need, in their own language.
+2. **Our builder writes their agent** — code, skills, instructions, and the MCP
+   connections that give it real tools against their systems.
+3. It **deploys with channels attached** (Telegram, Slack, web, phone) so real
+   external customers or internal staff talk to it.
+4. Krafta AI shows **every conversation** across every agent and channel.
+5. **Anyone with access to the organisation can take the wheel** — step into a
+   live conversation and continue as the agent, through the customer's channel.
+   **That is the escalation mechanism.** Not a notification. Not a ticket.
+
+Today step 5 is a dead end: the agent says "I've passed this to Dilnoza" and
+Dilnoza receives nothing. See ticket J1.
+
+**Hard interlock when it is built: the moment a human takes over, the agent
+goes silent.** Two voices contradicting each other in front of a customer
+destroys the merchant's trust permanently. Enforce it in the channel before a
+turn starts, never by asking the model to stay quiet.
+
 ## What is actually built today (as of 2026-08-14)
 
 Be precise about this — the gap between the direction and the implementation is
