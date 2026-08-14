@@ -156,7 +156,7 @@ export function AppSidebar({
                       >
                         <DitherAvatar
                           name={activeOrg.orgId}
-                          className="size-8 shrink-0 rounded-lg"
+                          className="size-6 shrink-0 rounded-md"
                         />
                         <span className="grid flex-1 text-left leading-tight">
                           <span className="truncate font-medium">{activeOrg.orgName}</span>
@@ -181,7 +181,7 @@ export function AppSidebar({
                         onClick={() => router.push(`/dashboard/org/${m.orgSlug}`)}
                         className="gap-2"
                       >
-                        <DitherAvatar name={m.orgId} className="size-6 shrink-0 rounded-md" />
+                        <DitherAvatar name={m.orgId} className="size-5 shrink-0 rounded-sm" />
                         <span className="truncate">{m.orgName}</span>
                       </DropdownMenuItem>
                     ))}
@@ -191,7 +191,7 @@ export function AppSidebar({
                 <SidebarMenuButton size="lg" className="pointer-events-none">
                   <DitherAvatar
                     name={activeOrg.orgId}
-                    className="size-8 shrink-0 rounded-lg"
+                    className="size-6 shrink-0 rounded-md"
                   />
                   <span className="grid flex-1 text-left leading-tight">
                     <span className="truncate font-medium">{activeOrg.orgName}</span>
@@ -254,7 +254,7 @@ export function AppSidebar({
                   <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
                     <DitherAvatar
                       name={userEmail ?? "krafta"}
-                      className="size-8 shrink-0 rounded-lg"
+                      className="size-6 shrink-0 rounded-md"
                     />
                     <span className="grid flex-1 text-left leading-tight">
                       <span className="truncate text-sm">{userEmail ?? "—"}</span>

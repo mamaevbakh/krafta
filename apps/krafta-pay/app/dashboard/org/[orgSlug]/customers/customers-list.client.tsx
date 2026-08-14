@@ -213,7 +213,7 @@ export function CustomersListClient({
                         near-identical email addresses becomes scannable. */}
                     <DitherAvatar
                       name={avatarSeed(row)}
-                      className="size-7 shrink-0 rounded-md"
+                      className="size-6 shrink-0 rounded-md"
                     />
                     <span className="min-w-0">
                       <span className="block truncate">{displayName(row)}</span>

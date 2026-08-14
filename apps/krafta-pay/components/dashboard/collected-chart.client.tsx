@@ -72,7 +72,7 @@ export function CollectedChart({
   };
 
   return (
-    <Card size="sm">
+    <Card className="@container/card">
       <CardHeader>
         <CardTitle>{t("overview.chart.title")}</CardTitle>
         <CardDescription>

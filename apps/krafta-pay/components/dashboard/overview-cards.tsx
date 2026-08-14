@@ -46,7 +46,7 @@ export function OverviewCards({
 
   return (
     <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
-      <Card size="sm" className="@container/card">
+      <Card className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.collected")}</CardDescription>
           <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
@@ -77,7 +77,7 @@ export function OverviewCards({
         </CardFooter>
       </Card>
 
-      <Card size="sm" className="@container/card">
+      <Card className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.outstanding")}</CardDescription>
           <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
@@ -97,7 +97,7 @@ export function OverviewCards({
         </CardFooter>
       </Card>
 
-      <Card size="sm" className="@container/card">
+      <Card className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.failed")}</CardDescription>
           <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">{failing}</CardTitle>
@@ -112,7 +112,7 @@ export function OverviewCards({
         </CardFooter>
       </Card>
 
-      <Card size="sm" className="@container/card">
+      <Card className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.needsAttention")}</CardDescription>
           <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
