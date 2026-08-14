@@ -45,11 +45,11 @@ export function OverviewCards({
   const awaiting = overview.rows.filter((r) => r.kind === "awaiting").length;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Card size="sm">
+    <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
+      <Card size="sm" className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.collected")}</CardDescription>
-          <CardTitle className="font-mono text-2xl tabular-nums">
+          <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {formatMinorAmount(overview.collectedThisMonthMinor, overview.currency)}
           </CardTitle>
           {change !== null ? (
@@ -62,7 +62,7 @@ export function OverviewCards({
             </CardAction>
           ) : null}
         </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <span className="flex items-center gap-1.5 font-medium">
             {change === null
               ? t("overview.card.collected.first")
@@ -77,10 +77,10 @@ export function OverviewCards({
         </CardFooter>
       </Card>
 
-      <Card size="sm">
+      <Card size="sm" className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.outstanding")}</CardDescription>
-          <CardTitle className="font-mono text-2xl tabular-nums">
+          <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {formatMinorAmount(overview.outstandingMinor, overview.currency)}
           </CardTitle>
           <CardAction>
@@ -89,7 +89,7 @@ export function OverviewCards({
             </Badge>
           </CardAction>
         </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <span className="font-medium">{t("overview.card.outstanding.headline")}</span>
           <span className="text-muted-foreground">
             {t("overview.card.outstanding.caption")}
@@ -97,12 +97,12 @@ export function OverviewCards({
         </CardFooter>
       </Card>
 
-      <Card size="sm">
+      <Card size="sm" className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.failed")}</CardDescription>
-          <CardTitle className="font-mono text-2xl tabular-nums">{failing}</CardTitle>
+          <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">{failing}</CardTitle>
         </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <span className="font-medium">
             {failing === 0
               ? t("overview.card.failed.none")
@@ -112,14 +112,14 @@ export function OverviewCards({
         </CardFooter>
       </Card>
 
-      <Card size="sm">
+      <Card size="sm" className="@container/card">
         <CardHeader>
           <CardDescription>{t("overview.needsAttention")}</CardDescription>
-          <CardTitle className="font-mono text-2xl tabular-nums">
+          <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {overview.needsAttentionCount}
           </CardTitle>
         </CardHeader>
-        <CardFooter className="flex-col items-start gap-1 text-sm">
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <span className="font-medium">
             {overview.needsAttentionCount === 0
               ? t("overview.card.attention.none")

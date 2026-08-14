@@ -7,25 +7,6 @@ import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { EDITION, HEADER_MENU } from "./editions";
 import { useScrollSpy } from "./ScrollSpy";
 
-function BagMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M4.6 6.2h10.8l1 11.3H3.6l1-11.3Z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7.3 8V5.4a2.7 2.7 0 0 1 5.4 0V8"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 export function SiteHeader() {
   const { surface, progress } = useScrollSpy();
   const [open, setOpen] = useState(false);
@@ -55,16 +36,15 @@ export function SiteHeader() {
       className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 ${fg}`}
     >
       <nav className="mx-auto flex h-[3.75rem] max-w-[105rem] items-center gap-4 px-5 sm:px-8">
-        <a
-          href="#top"
-          className="flex shrink-0 items-center gap-2 text-[0.8125rem] font-medium tracking-tight"
-        >
-          <BagMark className="size-[1.15rem]" />
+        {/* The wordmark is the whole logo — no mark beside it — so it also has
+            to hold the corner on its own at 390px, where it shares the row with
+            both buttons. Hence the smaller mobile step. */}
+        <a href="#top" className="flex shrink-0 items-center">
           {/* text-current beats the component's own black/white, so the wordmark
               inverts with the rest of the header over cream sections. */}
           <BrandWordmark
             text={EDITION.name}
-            className="hidden text-current sm:inline dark:text-current"
+            className="text-base text-current sm:text-xl dark:text-current"
           />
         </a>
 

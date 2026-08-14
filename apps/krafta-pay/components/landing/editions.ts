@@ -91,7 +91,13 @@ export const SECTIONS: Section[] = [
     narrative:
       // Kept under ~80 characters, like every other narrative here: the drop cap
       // floats three lines, and a fourth wraps out to the left margin.
-      "Uzcard and Humo are debit cards. What fails on the 1st clears on the 5th.",
+      //
+      // Deliberately names no retry date. RETRY_SCHEDULE_DAYS is [3, 7, 14], so
+      // a renewal failing on the 1st is retried on the 4th, the 8th and the
+      // 15th — never the 5th. The salary-day observation is real; a specific
+      // date the scheduler never attempts is not, and this page's whole
+      // credibility is that its specifics check out.
+      "Uzcard and Humo are debit cards. A decline is usually a date, not a decision.",
     surface: "canvas",
     accent: "#8051FF",
     features: [

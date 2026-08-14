@@ -1,5 +1,5 @@
 import { getDashboardEnvironment } from "@/lib/dashboard-env";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -29,7 +29,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   return (
     <PayLocaleProvider locale={locale}>
-      <SidebarProvider>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as CSSProperties
+        }
+      >
         <AppSidebar
           memberships={memberships}
           userEmail={user.email ?? null}
@@ -42,7 +49,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <header className="flex h-14 items-center gap-2 border-b px-4 md:px-6">
             <SidebarTrigger className="-ml-1" />
           </header>
-          <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
+          <main className="@container/main flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
         </SidebarInset>
       </SidebarProvider>
     </PayLocaleProvider>

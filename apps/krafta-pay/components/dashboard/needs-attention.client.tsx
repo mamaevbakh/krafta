@@ -2,15 +2,20 @@
 
 import { useMemo, useState } from "react";
 import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
+  columnFilteringFeature,
+  columnVisibilityFeature,
+  createColumnHelper,
+  createFilteredRowModel,
+  createPaginatedRowModel,
+  createSortedRowModel,
+  FlexRender,
+  globalFilteringFeature,
+  rowPaginationFeature,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
+  type ColumnVisibilityState,
   type SortingState,
-  type VisibilityState,
 } from "@tanstack/react-table";
 import {
   ChevronLeft,
@@ -69,13 +74,31 @@ import type { OverviewRow } from "@/lib/overview";
  * At 375px this becomes a stacked list. Six columns do not fit a phone, and
  * the phone is where this actually gets read (DESIGN.md §Layout).
  */
+// v9 requires declaring the features a table uses; anything unregistered is
+// tree-shaken rather than shipped.
+const features = tableFeatures({
+  // globalFilteringFeature and filteredRowModel both depend on this one; v9
+  // enforces that in the type system rather than failing at runtime.
+  columnFilteringFeature,
+  columnVisibilityFeature,
+  globalFilteringFeature,
+  rowPaginationFeature,
+  rowSortingFeature,
+  filteredRowModel: createFilteredRowModel(),
+  paginatedRowModel: createPaginatedRowModel(),
+  sortedRowModel: createSortedRowModel(),
+});
+
+const columnHelper = createColumnHelper<typeof features, OverviewRow>();
+
 export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
   const t = useT();
   const locale = usePayLocale();
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: false }]);
   const [filter, setFilter] = useState("");
   const [tab, setTab] = useState<"all" | "awaiting" | "failed">("all");
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
 
   const counts = useMemo(
     () => ({
@@ -91,41 +114,37 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
     [rows, tab],
   );
 
-  const columns = useMemo<ColumnDef<OverviewRow>[]>(
-    () => [
-      {
-        accessorKey: "description",
+  const columns = useMemo(
+    () => columnHelper.columns([
+      columnHelper.accessor("description", {
         header: () => t("payments.col.description"),
         cell: ({ row }) => (
           <span className="font-medium">
             {row.original.description ?? t("payments.noDescription")}
           </span>
         ),
-      },
-      {
-        accessorKey: "amountMinor",
+      }),
+      columnHelper.accessor("amountMinor", {
         header: () => t("payments.col.amount"),
         cell: ({ row }) => (
           <span className="font-mono tabular-nums">
             {formatMinorAmount(row.original.amountMinor, row.original.currency)}
           </span>
         ),
-      },
-      {
-        accessorKey: "kind",
+      }),
+      columnHelper.accessor("kind", {
         header: () => t("payments.col.status"),
         cell: ({ row }) => <StatusBadge kind={row.original.kind} t={t} />,
-      },
-      {
-        accessorKey: "createdAt",
+      }),
+      columnHelper.accessor("createdAt", {
         header: () => t("payments.col.created"),
         cell: ({ row }) => (
           <span className="text-sm text-muted-foreground">
             {formatPayDate(row.original.createdAt, locale, "short")}
           </span>
         ),
-      },
-      {
+      }),
+      columnHelper.display({
         id: "link",
         header: () => t("payments.col.link"),
         enableHiding: false,
@@ -135,23 +154,20 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
           ) : (
             <span className="text-sm text-muted-foreground">—</span>
           ),
-      },
-    ],
+      }),
+    ]),
     [t, locale],
   );
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data: scoped,
     columns,
-    state: { sorting, globalFilter: filter, columnVisibility },
+    state: { sorting, globalFilter: filter, columnVisibility, pagination },
     onSortingChange: setSorting,
     onGlobalFilterChange: setFilter,
     onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 10 } },
+    onPaginationChange: setPagination,
   });
 
   if (rows.length === 0) {
@@ -163,7 +179,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
     );
   }
 
-  const page = table.getState().pagination;
+  const page = pagination;
 
   return (
     <div className="space-y-3">
@@ -257,7 +273,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
                     onClick={header.column.getToggleSortingHandler()}
                     className="cursor-pointer px-4 text-xs text-muted-foreground select-none"
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    <FlexRender header={header} />
                     {{ asc: " ↑", desc: " ↓" }[header.column.getIsSorted() as string] ?? ""}
                   </TableHead>
                 ))}
@@ -269,7 +285,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
               <TableRow key={row.id}>
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id} className="px-4">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    <FlexRender cell={cell} />
                   </TableCell>
                 ))}
               </TableRow>
