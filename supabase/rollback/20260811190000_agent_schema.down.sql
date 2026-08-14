@@ -1,0 +1,87 @@
+-- Rollback for supabase/migrations/20260811190000_agent_schema.sql — remove
+-- Krafta AI's `agent` schema and nothing else.
+--
+-- WHY THIS FILE IS NOT IN supabase/migrations/
+-- --------------------------------------------
+-- The Supabase CLI matches migration files with `^([0-9]+)_(.*)\.sql$` and has
+-- no special case for `.down.sql`. Left next to the up migration this file
+-- would be picked up AS a migration, sorted BEFORE it (`.d` < `.s`), so
+-- `supabase db push` would run `drop schema agent cascade` first — against a
+-- database that also carries live subscriptions and invoices — and then fail on
+-- the duplicate migration version, because supabase_migrations.schema_migrations
+-- has PRIMARY KEY (version) and both files carry 20260811190000.
+--
+-- Keep it here. Run it by hand:
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+--     -f supabase/rollback/20260811190000_agent_schema.down.sql
+--
+-- WHAT THIS TOUCHES
+-- -----------------
+-- Schema `agent` and everything inside it: thirteen tables, their indexes,
+-- constraints and triggers, and the schema-local functions (set_updated_at,
+-- search_norm, freeze_org_id, doc_chunks_maintain, freeze_conversation_billing,
+-- stamp_conversation_period, block_invoiced_delete, audit_log_append_only,
+-- stamp_version_digest, freeze_published_version, settle_approval_once).
+--
+-- WHAT THIS CANNOT TOUCH, BY CONSTRUCTION
+-- ---------------------------------------
+-- The up migration created no object outside `agent` and altered nothing in
+-- `public`, `commerce` or `payments`. Every dependency points OUT of this
+-- schema (foreign keys to `public.organizations`), never in — no table
+-- anywhere else references `agent.*`, and the schema-local trigger functions
+-- exist precisely so nothing here hangs off `public.set_updated_at`. So
+-- `cascade` below can only reach objects this migration created.
+--
+-- Before running this on an environment that has traffic: verify that nothing
+-- outside has grown a dependency since. It must return zero rows.
+--
+--   select conrelid::regclass as referencing_table, conname
+--     from pg_constraint
+--    where confrelid in (
+--            select oid from pg_class
+--             where relnamespace = 'agent'::regnamespace
+--          )
+--      and connamespace <> 'agent'::regnamespace;
+--
+-- THIS DELETES BILLING EVIDENCE
+-- -----------------------------
+-- `agent.conversations` is the per-conversation billable record and
+-- `agent.audit_log` is what answers a merchant asking what the agent did on
+-- their behalf. Neither can be reconstructed from anywhere else, and the up
+-- migration deliberately makes both hard to delete (ON DELETE RESTRICT from
+-- organizations, no DELETE grant for service_role, an append-only trigger on
+-- the audit log, a delete-refused trigger on invoiced conversations). DROP
+-- SCHEMA CASCADE runs as the owner and bypasses all of it. On any environment
+-- that has served a real conversation, dump both first:
+--
+--   \copy (select * from agent.conversations) to 'conversations.csv' csv header
+--   \copy (select * from agent.audit_log)     to 'audit_log.csv'     csv header
+--
+-- A rollback that silently destroys the only copy of an invoice's backing data
+-- is not a rollback.
+--
+-- POSTGREST
+-- ---------
+-- Reverse the exposed-schemas patch as well, or PostgREST keeps advertising a
+-- schema that no longer exists. Send the FULL list minus `agent`; the field is
+-- replaced, not merged:
+--
+--   PATCH https://api.supabase.com/v1/projects/<ref>/postgrest
+--   { "db_schema": "public,graphql_public,commerce,payments" }
+--
+-- And revert the `agent` entry in supabase/config.toml so the declarative copy
+-- matches the project again.
+
+-- Default privileges granted in this schema are recorded in pg_default_acl with
+-- an AUTO dependency on the schema oid, so DROP SCHEMA reclaims them. Verified
+-- on this database:
+--   select deptype from pg_depend where classid = 'pg_default_acl'::regclass;
+--   -> 'a'
+--
+-- Reversing them explicitly here would make this file fail with
+-- `schema "agent" does not exist` when there is nothing to roll back — ALTER
+-- DEFAULT PRIVILEGES resolves the schema name and is not guarded by IF EXISTS —
+-- and a rollback that errors on the state it is trying to reach reads as broken
+-- at exactly the moment nobody has time to read SQL.
+
+drop schema if exists agent cascade;

@@ -1,5 +1,14 @@
 packages:
   - "apps/*"
+  # Krafta AI's two eve agents must each be their own package. eve resolves an
+  # agent root by walking up to the nearest package boundary, and without one
+  # it keeps walking and tries to treat the whole Next app as the agent.
+  #
+  # This lives here rather than in apps/krafta-ai/pnpm-workspace.yaml because
+  # pnpm has no nested workspaces — a workspace file inside a workspace is
+  # silently ignored, which would look like eve being broken rather than a
+  # missing glob.
+  - "apps/krafta-ai/agents/*"
   - "packages/*"
   - "templates/*"
   - studio-agent
