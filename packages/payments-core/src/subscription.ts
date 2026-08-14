@@ -485,6 +485,11 @@ export type CreateSubscriptionCheckoutInput = {
   // fresh customer row — which is exactly the duplicate-subscription bug that
   // made the null-org path unusable.
   customerExternalId?: string | null;
+  // A customer the merchant already has, picked off their own list. Takes
+  // precedence over every other identity key — the merchant pointed at a
+  // specific person, so there is nothing left to infer. Re-read scoped to
+  // (org, environment) before use; see resolveOrCreateCustomer.
+  customerId?: string | null;
   planId: string;
   payBaseUrl: string;
   environment?: PayEnvironment;
@@ -517,6 +522,11 @@ export function normalizeExternalId(value: unknown): string | null {
 export type ResolveCustomerInput = {
   merchantOrgId: string;
   environment: PayEnvironment;
+  /**
+   * A customer we already have. The merchant picked this person off their own
+   * list rather than describing them, so there is nothing to look up or invent.
+   */
+  customerId?: string | null;
   customerOrgId?: string | null;
   externalId?: string | null;
   /** How the merchant recognises this payer. Free text; see the column comment. */
@@ -526,11 +536,26 @@ export type ResolveCustomerInput = {
   customerUserRef?: string | null;
 };
 
+/** Thrown when a caller names a customer that is not theirs, or not in this mode. */
+export class CustomerNotFoundError extends Error {
+  constructor(customerId: string) {
+    super(`No customer \`${customerId}\` in this organization and environment.`);
+    this.name = "CustomerNotFoundError";
+  }
+}
+
 /**
  * Find-or-create the `payments.customers` row for a checkout.
  *
- * Two identity keys, checked in priority order:
+ * Three identity keys, checked in priority order:
  *
+ *   0. `customerId` — this exact person, already on the merchant's list. Added
+ *      so the dashboard can bill someone the merchant wrote down by hand
+ *      instead of re-describing them by email and getting a second copy. It is
+ *      re-read scoped to (org, environment) rather than trusted: a customer id
+ *      travels through a form, and an id alone must never be enough to attach a
+ *      subscription to another merchant's customer, or a live customer to a
+ *      test-mode charge.
  *   1. `externalId` — the merchant's own id for the subscriber. The identity
  *      key for every merchant that is not Krafta. Unique per
  *      (org_id, environment, external_id).
@@ -558,6 +583,23 @@ export async function resolveOrCreateCustomer(
   const customerUserRef = input.customerUserRef ?? null;
 
   const findExisting = async () => {
+    if (input.customerId) {
+      const { data, error } = await supabase
+        .schema("payments")
+        .from("customers")
+        .select("id")
+        .eq("id", input.customerId)
+        // Both filters are the point of re-reading. Without org_id a form field
+        // becomes a way to bill someone else's customer; without environment a
+        // test-mode link would resolve a live person.
+        .eq("org_id", input.merchantOrgId)
+        .eq("environment", input.environment)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new CustomerNotFoundError(input.customerId);
+      return data.id;
+    }
+
     if (externalId) {
       const { data, error } = await supabase
         .schema("payments")
@@ -747,6 +789,7 @@ export async function createSubscriptionCheckout(
   const { customerId, identified } = await resolveOrCreateCustomer(supabase, {
     merchantOrgId: input.merchantOrgId,
     environment,
+    customerId: input.customerId ?? null,
     customerOrgId: input.customerOrgId,
     externalId,
     email: input.customer?.email ?? null,

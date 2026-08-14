@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { PayLink } from "@/components/dashboard/pay-link.client";
 import { CustomerName } from "./customer-name.client";
+import { StartSubscription, type PlanOption } from "./start-subscription.client";
 
 /**
  * Customer detail — the page a subscription row opens into.
@@ -118,10 +119,23 @@ const INVOICE_STATUS: Record<string, "success" | "warning" | "outline"> = {
 };
 
 
-function billingSuffix(plan: { interval?: string | null; interval_count?: number | null } | null) {
+/**
+ * "/ месяц", not "/ month".
+ *
+ * `plan.interval` is a database value — the literal string `month` — and
+ * printing it put an English word next to a UZS amount on an otherwise Russian
+ * page. The pluralised English form ("/ 12 months") was worse: it never
+ * translated and never will.
+ */
+function billingSuffix(
+  plan: { interval?: string | null; interval_count?: number | null } | null,
+  t: Awaited<ReturnType<typeof getPayT>>,
+) {
   if (!plan?.interval) return null;
-  const n = plan.interval_count ?? 1;
-  return n === 1 ? `/ ${plan.interval}` : `/ ${n} ${plan.interval}s`;
+  const n = Number(plan.interval_count ?? 1) || 1;
+  return n === 1
+    ? `/ ${t("subscriptions.interval.month")}`
+    : `/ ${t("subscriptions.interval.months", { count: n })}`;
 }
 
 export default async function CustomerDetailPage({ params }: { params: Params }) {
@@ -229,6 +243,41 @@ export default async function CustomerDetailPage({ params }: { params: Params })
 
   const payUrlBase = (process.env.PAY_BASE_URL ?? "").replace(/\/+$/, "");
 
+  // The plans this merchant can put someone on. Read here rather than in the
+  // client component so the page arrives with them and the button does not
+  // flash empty — and so a merchant with no plans yet never sees the control at
+  // all, instead of a picker with nothing in it.
+  const { data: planRows, error: plansErr } = await adminAny
+    .schema("payments")
+    .from("plans")
+    .select("id, name, amount_minor, currency, interval, interval_count")
+    .eq("org_id", org.orgId)
+    .eq("is_active", true)
+    .order("amount_minor", { ascending: true });
+  if (plansErr) throw plansErr;
+
+  const planOptions: PlanOption[] = (planRows ?? []).map(
+    (plan: Record<string, unknown>) => {
+      const count = Number(plan.interval_count ?? 1) || 1;
+      // Name, price and cadence in one line, worded exactly as the plan picker
+      // on the Subscriptions page — a merchant choosing between two plans
+      // called "Pro" needs the amount, and the cadence has to be in their
+      // language rather than the raw `month` the column stores.
+      const cadence =
+        count === 1
+          ? t("subscriptions.interval.month")
+          : t("subscriptions.interval.months", { count });
+      const amount = formatMinorAmount(
+        Number(plan.amount_minor ?? 0),
+        String(plan.currency ?? "UZS"),
+      );
+      return {
+        id: String(plan.id),
+        label: `${String(plan.name ?? "—")} — ${amount} / ${cadence}`,
+      };
+    },
+  );
+
   return (
     <div className="space-y-8">
       <div>
@@ -271,15 +320,15 @@ export default async function CustomerDetailPage({ params }: { params: Params })
       {/* Stripe leads the customer page with the numbers you came to check. */}
       <dl className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
         <div className="bg-background p-4">
-          <dt className="text-xs text-muted-foreground">Total paid</dt>
+          <dt className="text-xs text-muted-foreground">{t("customer.stat.totalPaid")}</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums">{totalPaid}</dd>
         </div>
         <div className="bg-background p-4">
-          <dt className="text-xs text-muted-foreground">Active subscriptions</dt>
+          <dt className="text-xs text-muted-foreground">{t("customer.stat.activeSubs")}</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums">{activeCount}</dd>
         </div>
         <div className="bg-background p-4">
-          <dt className="text-xs text-muted-foreground">Outstanding</dt>
+          <dt className="text-xs text-muted-foreground">{t("customer.stat.outstanding")}</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums">
             {outstanding.length === 0
               ? "—"
@@ -292,7 +341,14 @@ export default async function CustomerDetailPage({ params }: { params: Params })
       </dl>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">{t("page.subscriptions.title")}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium">{t("page.subscriptions.title")}</h2>
+          <StartSubscription
+            orgSlug={orgSlug}
+            customerId={person.id}
+            plans={planOptions}
+          />
+        </div>
         {subscriptions.length === 0 ? (
           <div className="rounded-lg border p-6 text-sm text-muted-foreground">
             {t("customer.subscriptions.empty")}
@@ -340,9 +396,9 @@ export default async function CustomerDetailPage({ params }: { params: Params })
                           Number(plan?.amount_minor ?? 0),
                           String(plan?.currency ?? "UZS"),
                         )}
-                        {billingSuffix(plan) ? (
+                        {billingSuffix(plan, t) ? (
                           <span className="ml-1 text-xs text-muted-foreground">
-                            {billingSuffix(plan)}
+                            {billingSuffix(plan, t)}
                           </span>
                         ) : null}
                       </TableCell>
