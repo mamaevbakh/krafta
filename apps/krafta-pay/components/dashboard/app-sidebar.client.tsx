@@ -43,6 +43,7 @@ import {
 import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { EnvironmentSwitcher } from "@/components/dashboard/environment-switcher.client";
 import { LanguageSwitcher } from "@/components/dashboard/language-switcher.client";
+import { ThemeSwitcher } from "@/components/dashboard/theme-switcher.client";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
 import { NavMain } from "@/components/dashboard/nav-main.client";
 import { signOutAction } from "@/app/actions/auth";
@@ -121,6 +122,7 @@ export function AppSidebar({
     memberships[0] ??
     null;
   const base = activeOrg ? `/dashboard/org/${activeOrg.orgSlug}` : "/dashboard";
+  const onOverview = pathname === base;
 
   return (
     <Sidebar collapsible="offcanvas" variant="inset">
@@ -131,9 +133,13 @@ export function AppSidebar({
             silently moves anyone working in a second one. */}
         <SidebarMenu>
           <SidebarMenuItem>
+            {/* On the overview there is nowhere for this to go, so it is not a
+                link. Rendering it as one meant a click re-navigated to the page
+                you were already on, which reads as an unexplained reload. */}
             <SidebarMenuButton
               className="data-[slot=sidebar-menu-button]:p-1.5!"
-              render={<Link href={base} />}
+              render={onOverview ? <div /> : <Link href={base} />}
+              aria-current={onOverview ? "page" : undefined}
             >
               <BrandWordmark text="Krafta•Pay" className="text-base" />
             </SidebarMenuButton>
@@ -245,9 +251,6 @@ export function AppSidebar({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <LanguageSwitcher locale={locale} />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -269,6 +272,13 @@ export function AppSidebar({
                     {userEmail ?? "—"}
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                {/* Language belongs with the other account settings rather than
+                    loose in the sidebar, where it read as a nav item. */}
+                <div className="space-y-1.5 px-1 py-1">
+                  <LanguageSwitcher locale={locale} />
+                  <ThemeSwitcher />
+                </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
