@@ -34,6 +34,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -43,6 +44,7 @@ import { BrandWordmark } from "@/components/brand/brand-wordmark";
 import { EnvironmentSwitcher } from "@/components/dashboard/environment-switcher.client";
 import { LanguageSwitcher } from "@/components/dashboard/language-switcher.client";
 import { DitherAvatar } from "@/components/dither-kit/avatar";
+import { NavMain } from "@/components/dashboard/nav-main.client";
 import { signOutAction } from "@/app/actions/auth";
 import { useT } from "@/lib/locales/context";
 import type { MembershipOption } from "@/lib/org-memberships";
@@ -123,13 +125,21 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="offcanvas" variant="inset">
       <SidebarHeader>
-        <div className="flex items-center justify-between gap-2 px-2 py-1">
-          {/* Home is THIS organisation, never bare /dashboard — that path
-              carries no org and resolves to the merchant's first membership,
-              which silently moves anyone working in a second one. */}
-          <Link href={base} className="flex items-center gap-2">
-            <BrandWordmark text="Krafta•Pay" className="text-base" />
-          </Link>
+        {/* The block's brand row, verbatim apart from what sits inside it.
+            Home is THIS organisation, never bare /dashboard — that path carries
+            no org and resolves to the merchant's first membership, which
+            silently moves anyone working in a second one. */}
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="data-[slot=sidebar-menu-button]:p-1.5!"
+              render={<Link href={base} />}
+            >
+              <BrandWordmark text="Krafta•Pay" className="text-base" />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <div className="px-2">
           <EnvironmentSwitcher environment={environment === "test" ? "test" : "live"} />
         </div>
 
@@ -159,9 +169,12 @@ export function AppSidebar({
                     }
                   />
                   <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      {t("nav.switchOrg")}
-                    </DropdownMenuLabel>
+                    {/* Base UI throws if a label sits outside a group. */}
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        {t("nav.switchOrg")}
+                      </DropdownMenuLabel>
+                    </DropdownMenuGroup>
                     {memberships.map((m) => (
                       <DropdownMenuItem
                         key={m.orgId}
@@ -194,8 +207,17 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        {NAV.map((group, i) => (
-          <SidebarGroup key={group.groupKey ?? `g${i}`}>
+        <NavMain
+          items={NAV[0].items.map((i) => ({
+            titleKey: i.labelKey,
+            url: `${base}${i.href}`,
+            icon: <i.Icon aria-hidden />,
+          }))}
+          createHref={`${base}/payments`}
+          supportHref={`${base}/docs`}
+        />
+        {NAV.slice(1).map((group, i) => (
+          <SidebarGroup key={group.groupKey ?? `g${i}`} className={i === NAV.length - 2 ? "mt-auto" : undefined}>
             {group.groupKey ? (
               <SidebarGroupLabel>{t(group.groupKey)}</SidebarGroupLabel>
             ) : null}
@@ -242,9 +264,11 @@ export function AppSidebar({
                 }
               />
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="truncate text-xs text-muted-foreground">
-                  {userEmail ?? "—"}
-                </DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="truncate text-xs text-muted-foreground">
+                    {userEmail ?? "—"}
+                  </DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {

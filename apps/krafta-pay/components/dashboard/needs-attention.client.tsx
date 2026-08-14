@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   columnFilteringFeature,
   columnVisibilityFeature,
+  rowSelectionFeature,
   createColumnHelper,
   createFilteredRowModel,
   createPaginatedRowModel,
@@ -25,6 +26,9 @@ import {
   CircleAlert,
   Clock,
   Columns3,
+  Copy,
+  ExternalLink,
+  MoreVertical,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -33,8 +37,10 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -82,6 +88,7 @@ const features = tableFeatures({
   columnFilteringFeature,
   columnVisibilityFeature,
   globalFilteringFeature,
+  rowSelectionFeature,
   rowPaginationFeature,
   rowSortingFeature,
   filteredRowModel: createFilteredRowModel(),
@@ -99,6 +106,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
   const [tab, setTab] = useState<"all" | "awaiting" | "failed">("all");
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
+  const [rowSelection, setRowSelection] = useState({});
 
   const counts = useMemo(
     () => ({
@@ -116,6 +124,25 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
 
   const columns = useMemo(
     () => columnHelper.columns([
+      columnHelper.display({
+        id: "select",
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={table.getIsSomePageRowsSelected()}
+            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+            aria-label={t("overview.attention.selectAll")}
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(v) => row.toggleSelected(!!v)}
+            aria-label={t("overview.attention.selectRow")}
+          />
+        ),
+        enableHiding: false,
+      }),
       columnHelper.accessor("description", {
         header: () => t("payments.col.description"),
         cell: ({ row }) => (
@@ -155,6 +182,44 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
             <span className="text-sm text-muted-foreground">—</span>
           ),
       }),
+      columnHelper.display({
+        id: "actions",
+        header: () => null,
+        enableHiding: false,
+        cell: ({ row }) =>
+          row.original.payUrl ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-muted-foreground"
+                  >
+                    <MoreVertical className="size-4" aria-hidden />
+                    <span className="sr-only">{t("overview.attention.rowActions")}</span>
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={() => navigator.clipboard.writeText(row.original.payUrl!)}
+                  className="gap-2"
+                >
+                  <Copy className="size-4" aria-hidden />
+                  {t("payLink.copy")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => window.open(row.original.payUrl!, "_blank")}
+                  className="gap-2"
+                >
+                  <ExternalLink className="size-4" aria-hidden />
+                  {t("overview.attention.openLink")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null,
+      }),
     ]),
     [t, locale],
   );
@@ -163,17 +228,20 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
     features,
     data: scoped,
     columns,
-    state: { sorting, globalFilter: filter, columnVisibility, pagination },
+    state: { sorting, globalFilter: filter, columnVisibility, pagination, rowSelection },
     onSortingChange: setSorting,
     onGlobalFilterChange: setFilter,
     onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange: setPagination,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
+    getRowId: (row) => row.paymentIntentId,
   });
 
   if (rows.length === 0) {
     // Not an error state — this is the state a merchant wants to be in.
     return (
-      <p className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+      <p className="mx-4 rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground lg:mx-6">
         {t("overview.attention.empty")}
       </p>
     );
@@ -182,8 +250,8 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
   const page = pagination;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex w-full flex-col justify-start gap-6">
+      <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
           <TabsList>
             <TabsTrigger value="all">
@@ -242,7 +310,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
       </div>
 
       {/* Phone: a stacked list. */}
-      <ul className="divide-y rounded-lg border sm:hidden">
+      <ul className="mx-4 divide-y overflow-hidden rounded-lg border sm:hidden lg:mx-6">
         {table.getRowModel().rows.map(({ original: row }) => (
           <li key={row.paymentIntentId} className="space-y-2 p-4">
             <span className="block font-medium">
@@ -262,7 +330,7 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
         ))}
       </ul>
 
-      <div className="hidden overflow-hidden rounded-lg border sm:block">
+      <div className="mx-4 hidden overflow-hidden rounded-lg border sm:block lg:mx-6">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
@@ -297,8 +365,13 @@ export function NeedsAttention({ rows }: { rows: OverviewRow[] }) {
       {/* Pagination only once it earns its place. Controls under a five-row
           table are furniture. */}
       {scoped.length > page.pageSize ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 px-4 lg:px-6 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm text-muted-foreground tabular-nums">
+            {t("overview.attention.selected", {
+              n: String(Object.keys(rowSelection).length),
+              total: String(scoped.length),
+            })}{" "}
+            ·{" "}
             {t("overview.attention.page", {
               page: String(page.pageIndex + 1),
               total: String(table.getPageCount()),

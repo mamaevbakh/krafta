@@ -74,25 +74,17 @@ export default async function DashboardPage({
   const isNew = !hasHistory && overview.needsAttentionCount === 0;
 
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{t("overview.title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t("overview.subtitle", { name: org.orgName })}
-        </p>
-      </header>
-
+    <>
       <OverviewCards overview={overview} t={t} />
 
 
       {hasHistory ? (
-        <CollectedChart data={overview.monthly} currency={overview.currency} />
+        <div className="px-4 lg:px-6">
+          <CollectedChart data={overview.monthly} currency={overview.currency} />
+        </div>
       ) : null}
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium">{t("overview.attention.title")}</h2>
-        <NeedsAttention rows={overview.rows} />
-      </section>
+      <NeedsAttention rows={overview.rows} />
 
       {/* Setup, once. It vanishes as soon as there is any real activity — a
           merchant who has taken money does not need to be told how to start. */}
@@ -131,6 +123,6 @@ export default async function DashboardPage({
         {environment === "test" ? t("overview.testHint") : null}
       </p>
       <span className="sr-only">{locale}</span>
-    </div>
+    </>
   );
 }

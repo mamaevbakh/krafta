@@ -7,8 +7,9 @@ import { buildKraftaLoginUrl, getRequestOrigin } from "@/lib/auth-redirect";
 import { getUserSafely } from "@krafta/supabase/auth";
 import { getCurrentUserMemberships } from "@/lib/org-memberships";
 import { AppSidebar } from "@/components/dashboard/app-sidebar.client";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { getPayLocale } from "@/lib/locales/server";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SiteHeader } from "@/components/dashboard/site-header";
+import { getPayLocale, getPayT } from "@/lib/locales/server";
 import { PayLocaleProvider } from "@/lib/locales/context";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
@@ -26,6 +27,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const memberships = await getCurrentUserMemberships();
   const environment = await getDashboardEnvironment();
   const locale = await getPayLocale();
+  const t = await getPayT();
 
   return (
     <PayLocaleProvider locale={locale}>
@@ -44,12 +46,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           locale={locale}
         />
         <SidebarInset>
-          {/* The trigger has to live outside the sidebar so it survives the
-              collapsed state — that is the whole point of the inset layout. */}
-          <header className="flex h-14 items-center gap-2 border-b px-4 md:px-6">
-            <SidebarTrigger className="-ml-1" />
-          </header>
-          <main className="@container/main flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
+          <SiteHeader title={t("nav.overview")} />
+          {/* The block wraps content in these exact two divs; the gap and the
+              vertical rhythm of every section below depend on them. */}
+          <div className="flex flex-1 flex-col">
+            <div className="@container/main flex flex-1 flex-col gap-2">
+              <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">{children}</div>
+            </div>
+          </div>
         </SidebarInset>
       </SidebarProvider>
     </PayLocaleProvider>

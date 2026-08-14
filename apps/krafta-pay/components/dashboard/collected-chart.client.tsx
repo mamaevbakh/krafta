@@ -5,8 +5,6 @@ import { useState } from "react";
 import { AreaChart } from "@/components/dither-kit/area-chart";
 import { Area } from "@/components/dither-kit/area";
 import { XAxis } from "@/components/dither-kit/x-axis";
-import { YAxis } from "@/components/dither-kit/y-axis";
-import { Grid } from "@/components/dither-kit/grid";
 import { Tooltip } from "@/components/dither-kit/tooltip";
 import {
   Card,
@@ -73,17 +71,6 @@ export function CollectedChart({
     collected: { label: t("overview.chart.collected"), color: "blue" as const },
   };
 
-  /**
-   * Axis ticks only. UZS amounts run to eight digits, and a full
-   * "23,203,000 UZS" on every gridline is a wall rather than a scale — the
-   * exact figure belongs in the tooltip and in the card above.
-   */
-  const compact = (major: number) => {
-    if (major >= 1_000_000) return `${Math.round(major / 100_000) / 10}M`;
-    if (major >= 1_000) return `${Math.round(major / 100) / 10}K`;
-    return String(Math.round(major));
-  };
-
   return (
     <Card size="sm">
       <CardHeader>
@@ -111,11 +98,11 @@ export function CollectedChart({
       </CardHeader>
       <CardContent>
         <AreaChart data={points} config={config} className="h-[240px] w-full" bloom="low">
-          <Grid />
+          {/* Grid and YAxis are OMITTED on purpose: adding either makes
+              dither-kit's Area render nothing at all — the SVG mounts at the
+              right size and stays empty. Not yet diagnosed; the scale lives in
+              the tooltip and in the card above until it is. */}
           <XAxis dataKey="month" />
-          {/* The axis carries the scale the bare version was missing, so a
-              reader can size a month without opening the tooltip. */}
-          <YAxis tickFormatter={compact} />
           <Tooltip
             labelKey="month"
             valueFormatter={(value: number) => formatMinorAmount(value * 100, currency)}
