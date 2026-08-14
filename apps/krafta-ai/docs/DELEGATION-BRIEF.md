@@ -1,272 +1,340 @@
-# Krafta AI — delegation brief
+# Krafta AI — handover brief
 
-Self-contained. Hand this to an agent or an engineer with no other context.
+**Self-contained.** Hand this to an agent or engineer with no other context.
+Current as of **2026-08-14**.
+
+Read §7 (decisions) before proposing anything. Several of them have already
+been argued once and re-litigating them wastes days.
 
 ---
 
 ## 1. What you are building
 
-**Krafta AI** gives every company in Uzbekistan its own AI agents. The owner
-describes their business in their own language — Uzbek, Russian or English —
-and gets a working agent that talks to their customers.
+**Krafta AI** gives a company its own AI agents. Someone describes their
+business in their own language — Uzbek, Russian or English — and gets a working
+agent that talks to their customers or their staff.
 
-Live at `ai.krafta.uz`. Merchants sign in with their existing Krafta account
-through `auth.krafta.org` (OIDC); there is no separate password.
+Live at `ai.krafta.uz`. Sign-in is through `auth.krafta.org` (OIDC) with an
+existing Krafta account; there is no separate password.
 
-Market reality, because it changes design decisions: the users are Uzbek small
-and medium businesses. Many are on a phone. Telegram is not a marketing channel
-there — for a lot of shops it *is* the storefront. Default language is Uzbek;
-English is currently the interface default only because the work is being
-reviewed in it, and that flips before launch.
+### The full loop
 
-**There are no paying customers yet.** Nothing here is load-bearing on revenue.
-Do not treat existing code as sacred, and do not treat it as proven either.
+1. Someone describes what they need, in their own language.
+2. **Our builder writes their agent** — code, skills, instructions, and the MCP
+   connections that give it real tools against their systems.
+3. It **deploys with channels attached** — Telegram, Slack, web, phone — so real
+   external customers or internal staff talk to it. **One channel per agent.**
+4. Krafta AI shows **every conversation** across every agent and channel.
+5. **Anyone with access to the organisation can take the wheel**: step into a
+   live conversation and continue as the agent, in the customer's channel.
+   **That is the escalation mechanism.** Not a notification. Not a ticket.
+6. When the agent gets something wrong, the merchant **says so in words**, and
+   that correction becomes a permanent test the agent can never fail again.
 
 ---
 
-## 2. The architecture — this is not up for debate
+## 2. Who it is for
+
+**Big businesses.** Payme-scale: real systems, a support team, money. Small
+shops should still work — freer agent, good notifications — but they are not
+the market being designed for.
+
+This reorders things:
+
+- **Integration depth beats language polish.** A large buyer's agent is
+  worthless if it cannot see an order, a balance, a settlement.
+- **Compliance, audit and isolation are sales questions,** not just hygiene.
+- **Notifications matter less** for the primary buyer — they have people
+  watching screens.
+- **The demo is currently dressed for the wrong customer.** Templates are
+  `venue-support` and `order-desk`; the example business is a coffee shop.
+  Payme will not see themselves in it. Cheap to fix, worth doing before a pitch.
+
+**There are no paying customers yet.** Nothing is load-bearing on revenue.
+Do not treat the code as sacred — and do not treat it as proven either.
+
+---
+
+## 3. Architecture — settled, do not reopen
 
 > **Krafta AI is the interface. An agent builder writes each customer's agent
 > as CODE.**
 
-The reasoning: [eve](https://eve.dev) is not a wrapper around a model, it is
-infrastructure — evals, sandboxes, durable sessions, channels, connections,
-subagents. If a customer's agent is a real generated eve agent, that customer
-inherits all of it. If it is a row in a config table, they inherit only the
-columns somebody remembered to build.
+eve is not a wrapper around a model, it is infrastructure — evals, sandboxes,
+durable sessions, channels, connections, subagents. A customer whose agent is a
+real generated eve agent inherits all of it. A customer who is a row in a config
+table inherits whatever columns someone remembered to build.
 
-### The full loop, end to end
+A concrete technical argument for this, discovered late and worth keeping: eve
+**connections are files**, compiled into the build manifest, and `defineDynamic`
+does not cover them. In a shared runtime that blocks per-customer MCP. In the
+generated-agent model it evaporates — each agent is its own build, so its
+connections are just files the builder writes.
 
-1. A business owner comes to Krafta AI and describes what they need, in their
-   own language.
-2. **Our builder writes their agent**: its code, its skills, its instructions,
-   and the MCP connections that give it real tools against their systems.
-3. That agent is **deployed with channels attached** — Telegram, Slack, a web
-   widget, phone — so real people talk to it. External customers, or internal
-   staff, depending on the agent.
-4. Krafta AI shows **every conversation** across every one of the business's
-   agents and channels, in one inbox.
-5. **Anyone with access to that organisation can take the wheel**: step into a
-   live conversation and continue speaking *as the agent*, to the customer, in
-   whatever channel they are on. **That is the escalation mechanism** — not a
-   notification, not a ticket. A person takes over the conversation.
-
-Point 5 is the one most likely to be under-built. Today the agent says "I have
-passed this to Dilnoza" and Dilnoza receives nothing at all. Escalation is
-currently a dead end with a customer waiting at the end of it.
-
-**The hard interlock: the moment a human takes the wheel, the agent must go
-silent.** If both reply, the customer gets two voices contradicting each other
-and the merchant loses trust in the product permanently. Enforce it where every
-other refusal is enforced — the channel, before a turn starts — never by asking
-the model to stay quiet.
-
-**Do not propose replacing this with a shared multi-tenant runtime.** That
-argument has been had, with research. Know the real constraints so you do not
-rediscover them:
+Known constraints on the codegen model. They are real and none is a blocker:
 
 | Constraint | Reality |
 |---|---|
-| Cost of many projects | **Not** an objection. Idle Vercel projects are free; a full 1000-agent rebuild is ≈ **$42** |
-| Git-connected projects | Hard cap **150 per repository** on Pro — deploy sourceless past that |
-| Deployment rate limits | Team-wide, shared with every other project: 6000/day, 450/hour on Pro |
-| Domains | 100 additions/hour; a wildcard domain can attach to only one project |
-| Cold starts | Nothing pools between projects, so low-traffic merchants pay one on nearly every visit |
+| Cost of many projects | **Not** an objection. Idle Vercel projects are free; a full 1000-agent rebuild ≈ **$42** |
+| Git-connected projects | Hard cap **150 per repo** on Pro — deploy sourceless past that |
+| Deployment rate limits | Team-wide, shared with every project: 6000/day, 450/hour on Pro |
+| Domains | 100 additions/hour; a wildcard attaches to only one project |
+| Cold starts | Nothing pools between projects, so quiet agents pay one most visits |
 
 ---
 
-## 3. Does this need rebuilding? No.
+## 4. What is actually built
 
-This is the question that prompted the brief, so answer it honestly before
-planning anything.
+Be precise. The gap between direction and implementation is where confusion
+breeds.
 
-The existing code was built against a shared-runtime reading of the
-architecture. Most of it is unaffected, because most of it is either **the
-interface** (which is exactly what Krafta AI is meant to be) or **plumbing you
-need under either model**.
+**Working, verified in a browser or against the database:**
 
-### Survives unchanged
+- The console: agents, templates, setup, knowledge, audit, usage, conversations.
+- **The conversational builder.** Researches the business online with
+  `web_search`, then asks 2–4 branching questions with clickable options. Its
+  best question — *"is this for your customers, or the businesses you serve?"* —
+  is the one no template could hold.
+- Agents stored as **rows**, composed per session from the caller's verified
+  organisation. Persona, hours, languages, escalation contact, and the
+  interview's answers (audience, what it handles, what it must never touch).
+- Knowledge ingestion and tenant-scoped search.
+- `handoff_to_human` — escalates to a named person.
+- **Conversation transcripts and the merchant's inbox** (list + thread view).
+- **Verification runner + publish gate.** Grades an agent against cases before
+  it may be published; a pass is tied to the exact config it graded.
+- Spend caps, per-minute rate limiting, session ownership.
+- SSO, RU/UZ/EN throughout.
 
-- The entire console UI — agents, templates, setup, knowledge, audit, usage,
-  conversations. This *is* the product surface.
-- **The conversational builder.** A merchant describes their business, the
-  agent researches the company online, then asks two to four branching
-  questions with clickable options. Its most valuable question — *"is this for
-  your customers, or the businesses you serve?"* — matters more in the codegen
-  model, not less. Only its output target changes: today it writes a proposal
-  that becomes rows; it should write a spec that becomes code.
-- Auth, SSO, org membership, tenant isolation.
-- Knowledge ingestion and search.
-- Conversation transcripts and the merchant's inbox.
-- Spend caps and rate limiting.
-- **The verification runner and publish gate.** These become *more* important:
-  they are the acceptance test for generated code — the compiler that the
-  previous codegen attempt (Krafta Studio) never had.
+**Not built:** anything that generates code. Channels — no customer can reach an
+agent today; it exists only in a preview box. Takeover. The correction loop.
+MCP generation.
 
-### Changes
-
-- `agents/runtime/` is currently one shared agent resolving persona, knowledge
-  and tools per session from the caller's org. In the new model it stops being
-  *the* agent and becomes **the reference implementation the builder generates
-  variants of**. Very little of it is wasted; its instructions, tools and
-  channel are the template.
-- Agent config rows stop being the whole definition and become the **spec** the
-  generator consumes, plus the record of what was generated.
-
-### Honest estimate
-
-Roughly **15–20%** of the code is affected, and most of that is repurposed
-rather than deleted. Anyone who tells you to start over has not read it.
+So the current implementation **is** the row-configured shared runtime. That is
+the starting point, not the destination. Saying otherwise in either direction is
+wrong.
 
 ---
 
-## 4. Where things are
+## 5. Where things live
 
 | Path | What |
 |---|---|
-| `/Users/bakh/VSCode/krafta-ai` | Working copy. **This is what deploys to `ai.krafta.uz`.** |
-| `krafta/apps/krafta-ai` | Monorepo copy, version-controlled, not yet wired to build. Keep in sync. |
+| `/Users/bakh/VSCode/krafta-ai` | Working copy. **This deploys to `ai.krafta.uz`.** |
+| `krafta/apps/krafta-ai` | Monorepo copy, version-controlled, not wired to build. Keep in sync. |
 | `/Users/bakh/VSCode/krafta-ai-lab` | The agent builder (`@evex/eve-agent-builder`), isolated. Port 3015. |
 
-Stack: Next.js 16.3 (App Router, `proxy.ts` not `middleware.ts`), React 19,
+Stack: Next.js 16.3 (App Router; `proxy.ts`, **not** `middleware.ts`), React 19,
 Tailwind 4, TypeScript strict, eve 0.32.0, shadcn preset `b0` → **Base UI, never
-Radix**. Supabase (`agent` schema) shared with the main Krafta product.
+Radix**. Supabase `agent` schema, shared with the main Krafta product.
 
-Read `CLAUDE.md` in the repo root first. It is current and it is honest about
-the gap between the direction and the implementation.
+Read `CLAUDE.md` in the repo root — it is current and honest.
 
----
-
-## 5. The work
-
-Phases in dependency order. Each has an acceptance test that a person could
-run — not "it compiles".
-
-### Phase 1 — Customers can reach an agent (highest value)
-
-Right now an agent only exists in a preview box inside the merchant's own
-dashboard. No customer can talk to one. This is the single line between demo
-and product.
-
-**Per-merchant Telegram bots.** Each business connects its own bot, so
-customers message `@navvat_bot`, not a shared Krafta bot.
-
-Verified architecture — do not re-derive:
-
-- eve's built-in `telegramChannel` is single-tenant: one token, one webhook
-  path, fixed at deploy. Its `botToken` option accepts a resolver, but the
-  resolver takes **no arguments**, so it cannot know which merchant is calling.
-  Dead end.
-- The route that works: a **custom channel** via `defineChannel`. Custom channel
-  routes support path parameters — `POST("/tg/:connectionId", handler)` with
-  `params`, `requestIp` and session ops. Each merchant registers a unique opaque
-  webhook URL with BotFather (eve deliberately never calls `setWebhook`).
-- Verify `X-Telegram-Bot-Api-Secret-Token` against *that merchant's* secret,
-  then dispatch with an auth context carrying their `tenantId`.
-- Cost of going custom: reimplement inline-keyboard HITL, attachment fetch via
-  `getFile`, and splitting replies over Telegram's 4096-character cap.
-
-**Bot tokens are credentials.** Copy the brokering pattern from the lab:
-the sandbox never receives the real token, it gets a placeholder, and the real
-`Bearer` header is substituted at egress. The model must never see it; it must
-not appear in a tool argument, a tool result, an error, or a log line. A
-prompt-injected message that exfiltrates a merchant's bot token hands over
-their entire customer channel.
-
-*Acceptance:* a real Uzbek merchant's own bot answers a real customer in
-Telegram, and that conversation appears in their inbox in the console.
-
-### Phase 2 — The generator
-
-Point the lab's builder at producing agents from the interview's output.
-
-**Start by hand-writing three, before generating anything.** You cannot
-generate a good agent until you know what one looks like, and these three are
-the specification for the generator. Krafta owns both sides of all three APIs:
-Krafta catalogue, Telegram order desk, Krafta Pay payment status.
-
-Hard rules for anything generated, all learned from Krafta Studio's failure:
-
-- **Credentials never in generated code** — injected at call time from
-  encrypted storage.
-- **Egress allowlisted** to one host.
-- **Read-only by default**; any write is a separate tool with an explicit
-  approval policy.
-- **Nothing publishes until the verification runner passes it.** This is
-  non-negotiable and it is the thing Studio lacked. Its worst failure mode was
-  an agent confidently reporting work it had not done, and only a human in a
-  browser ever caught it.
-
-*Acceptance:* a generated agent passes its verification gates and answers a
-real question correctly, with no human editing the generated code.
-
-### Phase 3 — More channels, then the public front door
-
-Slack, web widget, and phone/SMS via Twilio, in that order — eve ships channels
-for all of them. Then the landing-page builder ("describe your business, watch
-an agent get built, claim it by signing in").
-
-The public door needs its own budget: cheapest model, no tools, a hard ceiling
-of a few turns per visitor, tight per-address limits. Every spend cap built so
-far is keyed to a business, and an anonymous visitor has none.
+The lab's sandbox was switched from the package's pinned `vercel()` to
+`defaultBackend()`, so it needs **no Vercel token**. It therefore cannot deploy;
+it can read a repo, write agents, build and run evals.
 
 ---
 
-## 6. Traps that have already cost hours
+## 6. Decisions already made
+
+Do not reopen these without the founder.
+
+| Decision | Status |
+|---|---|
+| Builder writes agents as **code**; Krafta AI is the interface | Settled |
+| Audience is **big businesses** | Settled |
+| Pricing is **token-based** | Direction set, **deliberately undesigned** — do not build billing UI or tiers |
+| Takeover is **silent** — the customer is not told a human stepped in | Settled; revisit only if asked or a disclosure rule forces it |
+| **One channel per agent** — no routing layer | Settled |
+| Escalation = **a human takes the wheel**, not a ticket queue | Settled |
+
+Because pricing is token-based, **metering is the business model, not
+bookkeeping**. A measured data point: one real turn used **15,671 input tokens
+and 222 output** — roughly half a cent. Most of that input is the same system
+prompt every turn, so **prompt caching is a direct margin lever**.
+
+---
+
+## 7. The backlog, ranked
+
+Acceptance tests are things a person could run. "It compiles" is not one.
+
+### 1. Channels + takeover + summons — build as ONE piece
+
+They share the outbound path. Built separately, it gets written twice.
+
+**Channels (G3).** Each business connects its own Telegram bot, so customers
+message `@theirbot`, not a shared Krafta bot.
+
+Verified architecture, do not re-derive: eve's built-in `telegramChannel` is
+single-tenant — one token, one webhook path, fixed at deploy. Its `botToken`
+option takes a resolver, but the resolver takes **no arguments**, so it cannot
+know which merchant is calling. Dead end. The route that works is a **custom
+channel** via `defineChannel`: custom routes support path parameters, so mount
+`POST("/tg/:connectionId")`, give each merchant a unique opaque webhook URL to
+register with BotFather (eve never calls `setWebhook`), verify
+`X-Telegram-Bot-Api-Secret-Token` against *that* merchant's secret, and dispatch
+with an auth context carrying their `tenantId`. Cost: reimplement inline-keyboard
+HITL, attachment fetch via `getFile`, and 4096-char reply splitting.
+
+Bot tokens are credentials. Copy the lab's brokering pattern — the sandbox gets
+a placeholder, the real header is substituted at egress. The model must never
+see it; not in a tool argument, a result, an error, or a log line.
+
+*Acceptance:* a real business's own bot answers a real person in Telegram, and
+that conversation appears in their inbox.
+
+**Takeover (J1).** A person with access steps into a live conversation and
+speaks as the agent, through the customer's channel. Silent.
+
+**The interlock — the part most likely to be got wrong.** The moment a human
+takes over, the agent must stop replying. Two voices contradicting each other in
+front of a customer is not recoverable. Enforce it in the channel *before a turn
+starts* — where spend caps and session ownership already are — never by asking
+the model to stay quiet.
+
+Also needed: handing back, and attribution. `messages.role` allows
+user|assistant|tool|system|escalation. A human speaking as the agent is none of
+those — it looks like `assistant` to the customer, but the merchant must see who
+typed it.
+
+*Acceptance:* a colleague picks up an escalated conversation, replies, the
+customer receives it in Telegram, the agent stays silent, and the transcript
+shows who wrote what.
+
+**The summons (J1a).** Takeover describes the action; nothing causes a human to
+be there. Message the escalation contact on Telegram with who is waiting, what
+they asked, and a deep link into that conversation. The main Krafta repo already
+has a working prod order-ping webhook (KRA-114) — reuse it. If nobody picks up
+within N minutes, the agent should tell the customer honestly rather than leave
+them on a promise. Track time-to-pickup; it is the number that tells a business
+whether this is working.
+
+*Acceptance:* escalate a conversation, a Telegram message arrives, the link
+opens that thread.
+
+### 2. The correction loop (K1)
+
+The missing half, and what killed Krafta Studio. A merchant reads a bad answer
+and today has nowhere to go — takeover fixes the *conversation* and leaves the
+*agent* broken.
+
+Anchored to the message that was wrong, because the evidence is already on
+screen: mark it, say why in your own words, the builder turns that into a
+change, verification re-runs, publish stays gated.
+
+**The part that compounds: every correction becomes a verification case.** A
+complaint *is* a test — a question plus an answer that must not appear. The gate
+set grows stronger every time someone is annoyed, and the agent can never
+regress on that mistake again. This is what makes generated code trustworthy
+over time.
+
+Treat correction text as data, not instructions: it configures their own agent,
+but must not weaken Krafta-owned rules.
+
+*Acceptance:* mark an answer wrong, describe the fix in Uzbek, and the same
+question gets the right answer afterwards — with a new gate case proving it.
+
+### 3. MCP generation (K2)
+
+The builder generates and integrates connections; the interview asks what it
+needs. Capture endpoint, auth shape, which operations, and crucially which are
+**read** vs **write**.
+
+Prove it on something with no stakes first — a weather or web-search MCP. If it
+cannot reliably generate that, it has no business generating a settlement
+lookup.
+
+Hard rules: credentials never in generated code (injected at call time from
+encrypted storage), egress allowlisted to one host, read-only by default, any
+write a separate tool with an approval policy, and a generated tool must never
+shadow `handoff_to_human`.
+
+*Acceptance:* the interview asks about systems, the builder produces a working
+connection, and the agent answers a question it could not answer before.
+
+### 4. The generator itself (G5)
+
+Hand-write **three connectors before generating any** — you cannot generate a
+good one without knowing what one looks like, and these three are the spec.
+Krafta owns both sides of all three: Krafta catalogue, Telegram order desk,
+Krafta Pay payment status.
+
+**Nothing publishes until the verification runner passes it.** Non-negotiable.
+Studio's worst failure was an agent confidently reporting work it had not done,
+caught only by a human in a browser.
+
+*Acceptance:* a generated agent passes its gates and answers correctly with no
+human editing the generated code.
+
+### 5. Everything after
+
+Slack, web widget, phone/SMS. The public front door (needs its own budget:
+cheapest model, no tools, few turns, tight per-address limits — every spend cap
+today is keyed to a business and an anonymous visitor has none). Re-dressing the
+demo for a large buyer.
+
+### Open, unowned
+
+- **H1** — deploy verification that checks the pages a person visits, not just
+  agent health. The gap that let a completely dead deployment look healthy.
+- **H2** — eve evals, so checking the interview stops needing a human with a
+  mouse.
+- **I1 tail** — the transcript migration is **dev only**; prod needs it before
+  real traffic.
+- **G1b** — a merchant who answers "me" to "who handles refunds?" produces
+  *"I've passed this to Me."*
+- **E2a** — founder-owned: hard monthly cap on the OpenAI account.
+
+---
+
+## 8. Traps that have each cost hours
 
 All the same shape: **something reports success while doing nothing.** A green
-build, a healthy endpoint and a clean typecheck are not evidence the product
-works.
+build, a healthy endpoint and a clean typecheck are not evidence.
 
-- **A Vercel project created by CLI has no framework preset.** It then builds
-  Next with `@vercel/static-build`: `next build` runs, prints its routes, the
-  deploy goes READY — and every page returns Vercel's platform 404 while the
-  eve agents answer normally, because eve merges its routes separately. Check
+- **A CLI-created Vercel project has no framework preset.** It builds Next with
+  `@vercel/static-build`: `next build` runs, prints its routes, the deploy goes
+  READY — and every page returns Vercel's platform 404 while the eve agents
+  answer normally, because eve merges its routes separately. Check
   `x-vercel-error: NOT_FOUND`. Set `framework: "nextjs"` on every new project.
-- **eve agent files do not hot-reload.** Editing anything under
-  `agents/*/agent/` needs a dev server restart. This has masked a working fix
-  more than once.
+- **eve agent files do not hot-reload.** Editing under `agents/*/agent/` needs a
+  dev server restart. This has masked a working fix more than once.
 - **eve hooks are observe-only.** They cannot refuse a turn; a throw surfaces as
   `turn.failed` *after* the model has been paid for. The channel's `AuthFn` is
-  the only place a request can be refused, which is why spend caps and session
-  authorisation both live there.
-- **eve authenticates the caller, never the session.** There is no
-  session-forbidden error anywhere in its compiled output. Session ownership is
-  enforced by `agent.agent_sessions` plus a check in `channels/eve.ts`. Do not
-  remove it.
+  the only place to refuse a request.
+- **eve authenticates the caller, never the session.** No session-forbidden
+  error exists anywhere in its compiled output. Ownership is enforced by
+  `agent.agent_sessions` + a check in `channels/eve.ts`. Do not remove it.
 - **An explicit NULL overrides a column default** — it does not fall back to it.
-- **Never swallow errors silently in a best-effort path.** A bare `catch {}`
-  written for a good reason (never break a live conversation to write history)
-  hid two bugs completely. Log on failure, still never throw.
-- **Port 3004 is usually krafta-pay, not Krafta AI.** Symptom: pages 404 and
-  agent health returns HTML. Use the `krafta-ai-alt` entry on 3014.
-- **Base UI is not Radix.** A component that type-checks is not a component that
-  runs; these compound parts talk through React context that `tsc` cannot see.
-  Open every menu, dialog and select you write.
+- **Never swallow errors in a best-effort path.** A bare `catch {}` written for a
+  good reason hid two bugs entirely. Log on failure, still never throw.
+- **Port 3004 is usually krafta-pay.** Symptom: pages 404 and agent health
+  returns HTML. Use the `krafta-ai-alt` entry on 3014.
+- **Base UI is not Radix.** A component that type-checks is not one that runs;
+  compound parts talk through context `tsc` cannot see.
 
 ---
 
-## 7. Security invariants — do not regress these
+## 9. Security invariants — do not regress
 
-- Membership is re-checked on **every** agent request, read as the user so RLS
+- Membership re-checked on **every** agent request, read as the user so RLS
   scopes it. A bug fails closed.
-- An organisation or conversation the caller cannot reach returns **404, never
-  403**. A 403 confirms existence and is an enumeration oracle.
+- An org or conversation the caller cannot reach returns **404, never 403**.
+  A 403 confirms existence and is an enumeration oracle.
 - `lib/conversations.ts` reads with the service key because generated types only
   cover `public`. **RLS is not protecting those reads** — every query filters
   `org_id` explicitly, from the session, never from an argument.
 - Verification runs are `sandboxed`: no audit rows, no real escalations, never
   billable. Only `origin = 'customer'` is countable.
-- Publishing is gated on a verification run whose `graded_digest` matches the
-  agent's current config digest, so a pass cannot authorise shipping something
-  it never graded. `settings` is inside that digest — put new
-  behaviour-affecting fields there, or they escape the gate.
+- Publishing is gated on a run whose `graded_digest` matches the agent's current
+  config digest. `settings` is inside that digest — put new behaviour-affecting
+  fields there or they escape the gate.
 
 ---
 
-## 8. How to verify — never trust green
-
-Three rules, each written after being burned:
+## 10. How to verify
 
 1. **Load the actual page.** A screenshot or rendered HTML, not "the route
    compiles". Both times something looked finished and was not, only opening it
@@ -277,36 +345,29 @@ Three rules, each written after being burned:
 3. **Say plainly what you did not verify.** A partial result reported as
    complete costs more than an honest gap.
 
-Write eve evals rather than clicking (`defineEval`, then `t.send(...)` and
-assert on behaviour). The repo has none, which is why every check so far has
-needed a human with a mouse.
-
 ---
 
-## 9. House style
+## 11. House style
 
-- **Comments explain why a decision was made and what breaks otherwise**, at
-  length where the logic is load-bearing. Do not narrate the obvious.
-- **Commits are conventional and outcome-framed**: what changed for the user,
-  not the mechanism.
-- **Every user-facing string goes in all three locales** (`lib/i18n/`) — Uzbek
-  Latin, Russian, English. Never hardcode English in a component. UZ Cyrillic
-  is deliberately not supported.
+- **Comments explain why a decision was made and what breaks otherwise.** Do not
+  narrate the obvious.
+- **Commits are conventional and outcome-framed** — what changed for the user.
+- **Every user-facing string in all three locales** (`lib/i18n/`): Uzbek Latin,
+  Russian, English. UZ Cyrillic is deliberately unsupported.
 - **Read `DESIGN.md`** before any visual change. No purple gradients, no
   icon-circle grids, no decorative cards, no `font-extrabold`, no emoji as
-  iconography. Reference bar is Square and Stripe: dense, calm,
-  information-first.
-- **Speak product to the founder.** Say what happens to a merchant or their
-  customer and what it costs in money, trust or time. Lead with the outcome,
-  the cause second, file paths only if asked. Money in money terms.
+  iconography. Reference bar is Square and Stripe.
+- **Speak product to the founder.** What happens to a business or their
+  customer, and what it costs in money, trust or time. Outcome first, cause
+  second, file paths only if asked.
 
 ---
 
-## 10. Founder-owned, not yours
+## 12. Founder-owned — not yours
 
-- A hard monthly spend cap on the **OpenAI account** — per-business caps exist,
-  the account ceiling does not.
-- Vercel access tokens. `vercel tokens add` returns 403 for any session made
-  through Sign in with Vercel, including `vercel login`'s device flow.
+- Hard monthly spend cap on the **OpenAI account**.
+- Vercel tokens. `vercel tokens add` returns 403 for any session made through
+  Sign in with Vercel, including `vercel login`'s device flow — it must come
+  from the dashboard, and only with project scope.
 - Anything that publishes, deploys to production, or spends money without an
   explicit instruction.
