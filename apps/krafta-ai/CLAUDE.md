@@ -4,30 +4,85 @@ Guidance for Claude Code working in this repository.
 
 # What this is
 
-**Krafta AI** — every company in Uzbekistan builds its own AI agents: pick a template or describe it in Uzbek, and Krafta creates, verifies and runs it.
+**Krafta AI** — every company in Uzbekistan gets its own AI agents. The owner
+describes their business in their own language and gets a working agent.
 
-Separate repo, deliberately. It is **not** part of the `krafta` pnpm monorepo (`/Users/bakh/VSCode/krafta`) — that repo carries a live payments product and a production Supabase, and this one is allowed to move fast and be thrown away.
+## The intended architecture — read this before proposing anything
 
-Target domain: `ai.krafta.org/uz` — the locale is a path segment, which is why routing is `app/[locale]/…`.
+**Krafta AI is the interface. An agent builder writes the customer's agent as
+CODE.**
 
-# Status: UI-first
+That is the founder's stated direction and it has been re-argued more than
+once, so it is written here to stop that happening again. The reasoning: eve is
+not a wrapper around a model, it is infrastructure — evals, sandboxes, durable
+sessions, channels, connections, subagents. If a customer's agent is a real
+generated eve agent, that customer inherits all of it. If it is a row in a
+config table, they inherit whatever we remembered to build a column for.
 
-**There is no backend.** No database, no eve, no model calls, no auth. Every screen renders from `lib/mock/data.ts`. That is the point — the interface is being designed and reviewed before a line of infrastructure is committed to.
+**Do not "correct" this to a shared multi-tenant runtime.** That argument has
+been had, with research. The strongest points against codegen are worth knowing
+but are not blockers: Vercel projects connected to one git repo cap at **150**
+on Pro, team-wide deployment rate limits are shared across every project, and
+low-traffic merchants pay a cold start on nearly every visit because nothing
+pools between projects. Idle projects are free and a full 1000-agent rebuild
+costs roughly **$42** — cost is not the objection anyone thought it was.
 
-When you add a screen, add its data to `lib/mock/data.ts` in the shape the real row would have (the design's §11 data model), not the shape that is convenient for the component. Those types are the contract the backend will have to meet.
+## What is actually built today (as of 2026-08-14)
 
-Do not wire a real model, database or API without being asked.
+Be precise about this — the gap between the direction and the implementation is
+where confusion breeds.
+
+Built and working: a conversational builder that researches a business online
+and interviews it; agents stored as ROWS and composed per session from the
+caller's verified organisation; knowledge search; escalation to a named person;
+a verification runner that grades an agent before it may be published; spend
+caps; conversation transcripts; SSO through `auth.krafta.org`.
+
+**Not built:** anything that generates code. The builder that does that lives
+in a separate lab (below) and has produced nothing yet.
+
+So the current implementation IS the row-configured shared runtime. That is the
+starting point, not the destination, and saying otherwise in either direction
+is wrong.
+
+## The lab
+
+`/Users/bakh/VSCode/krafta-ai-lab` — `@evex/eve-agent-builder`, an eve agent
+that writes and deploys eve agents. Isolated on purpose: its own Vercel
+project, empty environment, port 3015.
+
+Its sandbox backend was changed from the package's pinned `vercel()` to
+`defaultBackend()`, so it needs **no Vercel token** — `vercel tokens add`
+returns 403 for any session made through Sign in with Vercel, which includes
+`vercel login`'s device flow. It therefore cannot deploy; it can read a repo,
+write agents, build and run evals, which is the question worth answering first.
+
+## Where the code lives
+
+Two copies, deliberately, until the deployment is cut over:
+
+- `/Users/bakh/VSCode/krafta-ai` — the working copy. **This is what deploys to
+  `ai.krafta.uz`.**
+- `krafta/apps/krafta-ai` — in the monorepo, version-controlled, not yet wired
+  to build. Keep it in sync when committing.
+
+Domain is `ai.krafta.uz`. Locale is a path segment, hence `app/[locale]/…`.
 
 # Commands
 
 ```bash
-pnpm dev            # next dev (use preview_start with name "krafta-ai", port 3004)
 pnpm build
-pnpm typecheck      # tsc --noEmit
+pnpm exec tsc --noEmit
 pnpm lint
 ```
 
-**Never start a dev server with Bash.** `.claude/launch.json` defines it; use `preview_start` with the name `krafta-ai`.
+**Never start a dev server with Bash.** Use `preview_start`.
+
+**Port 3004 is usually occupied by krafta-pay**, not this app. Symptom: pages
+404 and `/eve/agents/*/health` returns HTML — that is krafta-pay's 404 page,
+not a broken agent. Use the `krafta-ai-alt` launch entry on **3014** instead.
+Cookies are not port-scoped, so a session established on one port works on the
+other.
 
 # Design system
 
@@ -65,6 +120,55 @@ All three are the same failure: a Radix-era shadcn habit that compiles fine and 
 - **`DropdownMenuLabel` is Base UI's `Menu.GroupLabel` and must sit inside a `DropdownMenuGroup`.** Outside one it throws `MenuGroupContext is missing` at runtime — TypeScript will not catch it. Radix's `Label` is standalone, so this breaks on every copied menu.
 
 The general rule: **a component that type-checks is not a component that runs.** Base UI leans on React context between compound parts far more than Radix did, and those contracts are invisible to `tsc`. Open any menu, dialog or select you have just written.
+
+# Runtime traps that each cost hours
+
+The same shape every time: **something reports success while doing nothing.**
+A green build, a healthy endpoint and a clean typecheck are not evidence the
+product works.
+
+- **A Vercel project created by CLI has no framework preset.** It then builds
+  Next with `@vercel/static-build`: `next build` runs, prints its route table,
+  the deploy goes READY — and every page returns Vercel's platform 404 while
+  the eve agents answer normally, because eve merges its routes separately.
+  Check `x-vercel-error: NOT_FOUND`, which distinguishes "route absent from the
+  build output" from the app's own 404 page. Set `framework: "nextjs"` on any
+  new project.
+- **eve agent files do not hot-reload.** Editing anything under `agents/*/agent/`
+  requires a dev server restart. This has masked a working fix more than once.
+- **eve hooks are observe-only.** They cannot refuse a turn — a throw surfaces
+  as `turn.failed` after the event is durably recorded, i.e. after the model has
+  been paid for. The channel's `AuthFn` is the ONLY place a request can be
+  refused, which is why spend caps and session authorisation both live there.
+- **eve authenticates the caller, never the session.** There is no
+  session-forbidden error anywhere in its compiled output. Session ownership is
+  ours to enforce: `agent.agent_sessions` plus the check in `channels/eve.ts`.
+  Do not remove it.
+- **Passing an explicit NULL overrides a column default.** It does not fall back
+  to it. Two transcript bugs came from exactly this.
+- **Never swallow an error silently in a best-effort path.** The transcript
+  recorder was written with a bare `catch {}` for the right reason — never break
+  a live conversation to write history — and the wrong consequence: total
+  silence while nothing was recorded. Log on failure, still never throw. Adding
+  that one line found two bugs in a single run.
+- **Check the port before believing a 404.** See the note above about
+  krafta-pay on 3004.
+
+# Security invariants — do not regress these
+
+- Membership is re-checked on every agent request, read AS THE USER so RLS
+  scopes it. A bug fails closed.
+- An organisation or a conversation the caller cannot reach returns **404, never
+  403**. A 403 confirms existence and is an enumeration oracle.
+- `lib/conversations.ts` reads with the service key because the generated types
+  only cover `public`. **RLS is therefore not protecting those reads** — every
+  query filters `org_id` explicitly, from the session, never from an argument.
+- Verification runs are `sandboxed`: no audit rows, no real escalations, never
+  billable. Only `origin = 'customer'` is countable.
+- Publishing is gated on a verification run whose `graded_digest` matches the
+  agent's current config digest, so a pass cannot authorise shipping something
+  it never graded. `settings` is in that digest — put new behaviour-affecting
+  fields there rather than in new columns, or they escape the gate.
 
 ## Anti-slop
 
