@@ -66,7 +66,7 @@ One hosted Supabase project, schemas `public`, `commerce`, `payments` (exposed v
 
 - Every schema change is a timestamped file in `supabase/migrations/`, committed to git. Nothing is applied to the database without its file.
 - Before applying, run the file inside a `DO` block that ends in `RAISE EXCEPTION` with your assertions, so it executes for real and then rolls back.
-- Apply the committed file with the Supabase MCP `apply_migration`, then `update supabase_migrations.schema_migrations set version = '<file timestamp>'` on the row it created (it records its own timestamp otherwise, and history drifts from the repo).
+- Apply the committed file with `uv run --with certifi scripts/supabase/apply_migration.py <file>`: it sends the file byte for byte and records it under the file's own version in the same request. (The Supabase MCP `apply_migration` also works, but it records its own timestamp, so follow it with `update supabase_migrations.schema_migrations set version = '<file timestamp>'`, and retyping a long file into a tool call is a transcription risk.)
 - Put the rollback in `supabase/rollback/<version>_<name>.down.sql`, never inside `migrations/`.
 
 Row money is stored in `*_cents` columns as **major unit × 100 for every currency, UZS included**. There is no zero-decimal special case.
