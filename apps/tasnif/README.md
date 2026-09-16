@@ -21,35 +21,34 @@ The catalog lives in schema `tasnif` on the shared Supabase project (`supabase/m
 |---|---|
 | `tasnif.nodes` | The tree above a product: group › class › position › sub-position, with Russian and Uzbek names |
 | `tasnif.codes` | One row per IKPU: names, brand, attribute, barcode, units, benefit, `kind` (goods / service / catering), active or inactive |
-| `tasnif.packages` | Numeric package codes, the second number a receipt needs |
-| `tasnif.sync_runs` | Every import and backfill, for the "synced on" date |
+| `tasnif.packages` | Numeric package codes, the second number a receipt needs; `origin` says whether the tax committee fixed it or a business created it |
+| `tasnif.inactive_codes` | The committee's list of switched-off codes, kept so an old code can be answered with "switched off, try these" |
+| `tasnif.sync_runs` | Every import, for the "synced on" date |
 
 Official sources:
 
-| What | URL |
-|---|---|
-| Full catalog, Russian | `https://tasnif.soliq.uz/api/cls-api/excel/get/category?lang=ru` |
-| Full catalog, Uzbek Latin / Cyrillic | same, `lang=uz_latn` / `lang=uz_cyrl` |
-| Deactivated codes | `https://tasnif.soliq.uz/api/cls-api/excel/get/inactive-mxik?lang=ru` |
-| One code, with package codes | `https://tasnif.soliq.uz/api/cls-api/mxik/get/by-mxik?mxikCode=…&lang=…` |
+| What | Where | Script |
+|---|---|---|
+| Full catalog, Russian (codes, names, units, barcodes, benefits) | `https://tasnif.soliq.uz/api/cls-api/excel/get/category?lang=ru` | `catalog:import` |
+| Full catalog names, Uzbek Latin and Cyrillic | same URL with `lang=uz_latn` and `lang=uz_cyrl` | `catalog:names` |
+| Package codes for every code (fixed units + packages businesses created) | [tasnif.soliq.uz/catalog](https://tasnif.soliq.uz/catalog) → «Выгрузить в» → units → «Скачать» | `catalog:packages` |
+| Switched-off codes | `https://tasnif.soliq.uz/api/cls-api/excel/get/inactive-mxik?lang=ru` | `catalog:inactive` |
+| One code, live | `https://tasnif.soliq.uz/api/cls-api/mxik/get/by-mxik?mxikCode=…&lang=…` | `catalog:backfill` (fallback) |
 
-Package codes for the whole catalog are only offered on the site's catalog page behind a captcha. A person downloads that file by hand; scripts never go around the captcha.
+The three homepage URLs are plain public downloads. The units export sits behind a captcha on the catalog page, so a person downloads it; scripts never go around the captcha.
 
 ## Scripts
 
-Python, run with [uv](https://docs.astral.sh/uv/). Both default to a dry run that writes nothing.
+Python, run with [uv](https://docs.astral.sh/uv/). Every script is a dry run unless given `--apply`, and each records itself in `tasnif.sync_runs`. Run them in this order: the Russian catalog defines which codes exist, the rest attach to it.
 
 ```bash
-# Import the Excel export (Russian names, units, barcodes, benefits)
-pnpm --filter tasnif catalog:import --file ~/Downloads/category_0_ru.xlsx
-pnpm --filter tasnif catalog:import --file ~/Downloads/category_0_ru.xlsx --apply
-
-# Uzbek names, package codes, benefit names, one code at a time (3 requests/second)
-pnpm --filter tasnif catalog:backfill --limit 5
-pnpm --filter tasnif catalog:backfill --apply --scope core
+pnpm --filter tasnif catalog:import   --file ~/Downloads/category_0_ru.xlsx --apply
+pnpm --filter tasnif catalog:names    --latn ~/Downloads/category_0_lat.xlsx --cyrl ~/Downloads/category_0_uz.xlsx --apply
+pnpm --filter tasnif catalog:packages --file ~/Downloads/package_ru.xlsx --apply
+pnpm --filter tasnif catalog:inactive --file ~/Downloads/inactiveMxik_ru.xlsx --apply
 ```
 
-Both talk to the database through the Supabase Management API with your Supabase CLI login (`supabase login`), so no database password or service key is needed on disk.
+They talk to the database through the Supabase Management API with your Supabase CLI login (`supabase login`), so no database password or service key is needed on disk. Re-running any of them on an unchanged file writes nothing.
 
 ## Plan
 

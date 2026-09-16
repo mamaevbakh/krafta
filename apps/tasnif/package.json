@@ -7,7 +7,15 @@
     "build": "next build",
     "start": "next start -p 3005",
     "catalog:import": "uv run --with openpyxl --with certifi scripts/import_catalog.py",
-    "catalog:backfill": "uv run --with truststore --with certifi scripts/backfill_details.py"
+    "catalog:names": "uv run --with openpyxl --with certifi scripts/import_names.py",
+    "catalog:packages": "uv run --with openpyxl --with certifi scripts/import_packages.py",
+    "catalog:inactive": "uv run --with openpyxl --with certifi scripts/import_inactive.py",
+    "catalog:backfill": "uv run --with truststore --with certifi scripts/backfill_details.py",
+    "search:refresh": "uv run --with certifi scripts/refresh_search.py",
+    "search:embed": "uv run --with certifi scripts/embed_documents.py",
+    "search:score": "uv run --with certifi eval/score_tasnif.py",
+    "search:score-official": "python3 eval/score_official.py",
+    "search:terms": "uv run --with certifi scripts/everyday_terms.py"
   },
   "dependencies": {
     "geist": "^1.7.0",
