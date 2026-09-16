@@ -1,10 +1,13 @@
 """Import the official IKPU catalog Excel export into schema `tasnif`.
 
     # Dry run (default): parse, validate, print a report. Touches nothing remote.
-    uv run --with openpyxl --with certifi scripts/tasnif/import_catalog.py --file ~/Downloads/catalog-excel.xlsx
+    pnpm --filter tasnif catalog:import --file ~/Downloads/category_0_ru.xlsx
 
-    # Apply to a Supabase project.
-    uv run --with openpyxl --with certifi scripts/tasnif/import_catalog.py --file ... --apply --project-ref hlmcoirjaydrfqcmnuun
+    # Apply to a Supabase project (default: kraftabase).
+    pnpm --filter tasnif catalog:import --file ~/Downloads/category_0_ru.xlsx --apply
+
+    # Without pnpm, from apps/tasnif:
+    uv run --with openpyxl --with certifi scripts/import_catalog.py --file ... --apply
 
 Why it works the way it does:
 
@@ -267,9 +270,23 @@ def sql_json(payload: object) -> str:
     return "'" + json.dumps(payload, ensure_ascii=False).replace("'", "''") + "'::jsonb"
 
 
-def batched(items: list, size: int):
-    for start in range(0, len(items), size):
-        yield items[start:start + size]
+def batched(items: list, size: int, max_bytes: int = 600_000):
+    """Chunks of at most `size` items and roughly `max_bytes` of JSON.
+
+    The Management API rejects bodies over ~1 MB with HTTP 413, and row count alone
+    is a bad proxy: Cyrillic names are 2 bytes a character and some run to 600 chars.
+    """
+    chunk: list = []
+    chunk_bytes = 0
+    for item in items:
+        item_bytes = len(json.dumps(item, ensure_ascii=False).encode()) + 2
+        if chunk and (len(chunk) >= size or chunk_bytes + item_bytes > max_bytes):
+            yield chunk
+            chunk, chunk_bytes = [], 0
+        chunk.append(item)
+        chunk_bytes += item_bytes
+    if chunk:
+        yield chunk
 
 
 def apply(api: ManagementApi, path: Path, digest: str, codes: list[CodeRow], nodes: dict[str, str],
@@ -279,6 +296,8 @@ def apply(api: ManagementApi, path: Path, digest: str, codes: list[CodeRow], nod
         nodes = {k: v for k, v in nodes.items() if k[:3] in only_groups}
 
     active_before = api.query("select count(*)::int as n from tasnif.codes where status = 'active'")[0]["n"]
+    # One import at a time: anything still staged belongs to a run that died.
+    api.query("delete from tasnif.import_rows")
     notes = {"anomalies": issues["anomalies"], "only_groups": sorted(only_groups) if only_groups else None}
     run_id = api.query(
         "insert into tasnif.sync_runs (source, source_file, source_sha256, rows_seen, notes) values "
@@ -310,14 +329,16 @@ def apply(api: ManagementApi, path: Path, digest: str, codes: list[CodeRow], nod
         print(f"nodes: {node_added} added, {node_changed} renamed")
 
         columns = ", ".join(f"{field} text" for field in CODE_FIELDS)
+        staged = 0
         for number, chunk in enumerate(batched([asdict(c) for c in codes], batch_size), start=1):
             api.query(f"""
                 insert into tasnif.import_rows (run_id, {", ".join(CODE_FIELDS)})
                 select {run_id}, {", ".join(CODE_FIELDS)}
                 from jsonb_to_recordset({sql_json(chunk)}) as t({columns})
                 on conflict (run_id, ikpu) do nothing""")
+            staged += len(chunk)
             if number % 20 == 0:
-                print(f"  staged {min(number * batch_size, len(codes))}/{len(codes)}")
+                print(f"  staged {staged}/{len(codes)}", flush=True)
             time.sleep(pause)
 
         added = changed = 0
@@ -366,6 +387,7 @@ def apply(api: ManagementApi, path: Path, digest: str, codes: list[CodeRow], nod
               notes = notes || {sql_json({"nodes_added": node_added, "nodes_renamed": node_changed, **notes})}
             where id = {run_id}""")
     except Exception as error:
+        api.query(f"delete from tasnif.import_rows where run_id = {run_id}")
         api.query(f"update tasnif.sync_runs set finished_at = now(), error = {sql_text(str(error)[:2000])} where id = {run_id}")
         raise
 

@@ -12,6 +12,7 @@ pnpm workspace monorepo (`apps/*`, `packages/*`, `templates/*`, `studio-agent`).
 | `apps/krafta-auth` | 3001 | `auth.krafta.org` — Krafta's own OIDC identity provider. Prod-only; dev shows the direct login form. |
 | `apps/krafta-docs` | 3002 | Public docs site (Markdoc). |
 | `apps/krafta-pay` | 3003 | Krafta Pay — hosted checkout, subscription billing engine, merchant billing console. Standalone product; Krafta is just its first client. |
+| `apps/tasnif` | 3005 | `tasnif.krafta.uz` (not launched) — free, open search over Uzbekistan's national IKPU catalog, the product/service codes every receipt and e-invoice must carry. Data lives in schema `tasnif`; import scripts and plan in the app folder. Open-sourced at launch. |
 
 | Package | What it is |
 |---|---|
@@ -59,7 +60,14 @@ Read the schema name when in doubt. `commerce.*` is the merchant's ordering doma
 
 ## Data layer
 
-One hosted Supabase project, schemas `public`, `commerce`, `payments` (exposed via `supabase/config.toml`). Migrations are timestamped SQL in `supabase/migrations/` and applied to the dev branch first, then prod. Edge functions (`embed`, `embed_query`, `translate-worker`) back catalog search embeddings and translation.
+One hosted Supabase project, schemas `public`, `commerce`, `payments` (exposed via `supabase/config.toml`), plus `agent` (Krafta AI) and `tasnif` (the public IKPU catalog; service role only, not exposed). Edge functions (`embed`, `embed_query`, `translate-worker`) back catalog search embeddings and translation.
+
+**There is no dev database.** The dev branch was retired on 2026-09-17 and is not coming back; every migration goes to prod (`hlmcoirjaydrfqcmnuun`), which carries live shops and live payments. So:
+
+- Every schema change is a timestamped file in `supabase/migrations/`, committed to git. Nothing is applied to the database without its file.
+- Before applying, run the file inside a `DO` block that ends in `RAISE EXCEPTION` with your assertions, so it executes for real and then rolls back.
+- Apply the committed file with the Supabase MCP `apply_migration`, then `update supabase_migrations.schema_migrations set version = '<file timestamp>'` on the row it created (it records its own timestamp otherwise, and history drifts from the repo).
+- Put the rollback in `supabase/rollback/<version>_<name>.down.sql`, never inside `migrations/`.
 
 Row money is stored in `*_cents` columns as **major unit × 100 for every currency, UZS included**. There is no zero-decimal special case.
 

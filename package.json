@@ -11,9 +11,11 @@
     "dev:krafta-pay": "pnpm --filter krafta-pay dev",
     "dev:krafta-auth": "pnpm --filter krafta-auth dev",
     "dev:krafta-docs": "pnpm --filter krafta-docs dev",
+    "dev:tasnif": "pnpm --filter tasnif dev",
     "build": "pnpm -r build",
     "build:krafta": "pnpm --filter krafta build",
     "build:krafta-docs": "pnpm --filter krafta-docs build",
+    "build:tasnif": "pnpm --filter tasnif build",
     "start:krafta": "pnpm --filter krafta start",
     "start:krafta-docs": "pnpm --filter krafta-docs start",
     "lint": "pnpm -r lint"

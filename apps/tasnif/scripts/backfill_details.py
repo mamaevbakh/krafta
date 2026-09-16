@@ -7,10 +7,10 @@ per-code endpoint (tasnif.soliq.uz `cls-api/mxik/get/by-mxik`):
 * benefit (льгота) names, where the export only has an ID.
 
     # Dry run: fetch a few codes, print what would be written. Only reads the database.
-    uv run --with truststore --with certifi scripts/tasnif/backfill_details.py --limit 5
+    pnpm --filter tasnif catalog:backfill --limit 5
 
-    # Tier 1 (cafe, service and category-level codes, ~8k), politely.
-    uv run --with truststore --with certifi scripts/tasnif/backfill_details.py --apply --scope core
+    # Cafe, service and category-level codes (~8k), politely.
+    pnpm --filter tasnif catalog:backfill --apply --scope core
 
 Why it works the way it does:
 
