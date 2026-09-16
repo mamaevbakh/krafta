@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /*
  * Krafta's shared neutral token block (DESIGN.md). Each app keeps its own copy:
