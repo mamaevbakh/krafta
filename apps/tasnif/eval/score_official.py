@@ -98,6 +98,10 @@ def plan_requests(case: dict) -> tuple[str, dict[str, tuple[str, str]]]:
 
     if not query.isdigit():
         return "text", {"main": main_search, "suggest": suggest}
+    if case.get("mode") == "package":
+        # A receipt's package code (e.g. 1218835). The site has no lookup for these, so
+        # someone holding one can only type it into the main search box.
+        return "package", {"main": main_search, "suggest": suggest}
     if case.get("acceptable_prefix"):
         return "prefix", {"main": main_search, "suggest": suggest}
     by_params = "mxik/search/by-params"
