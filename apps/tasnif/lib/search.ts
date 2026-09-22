@@ -176,21 +176,35 @@ export async function getCodeDetails(ikpu: string): Promise<CodeDetails | null> 
   return null
 }
 
-/** When the Russian catalog export last finished importing cleanly. */
+/**
+ * When the Russian catalog export last finished importing cleanly, for the footer.
+ *
+ * Runs while the page is prerendered at build time. It must never throw: an error
+ * inside a cached function during prerendering fails the whole build even when the
+ * caller catches it, so a missing key or a database hiccup at deploy time would
+ * block every deploy over a footer line. It returns null instead, the footer drops
+ * the date, and the cache refreshes it within the hour.
+ */
 export async function getLastSync(): Promise<string | null> {
   "use cache"
   cacheLife("hours")
   cacheTag("catalog")
 
-  const { data, error } = await tasnifDb()
-    .from("sync_runs")
-    .select("finished_at")
-    .eq("source", "excel")
-    .is("error", null)
-    .not("finished_at", "is", null)
-    .order("finished_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (error) throw new Error(`tasnif.sync_runs failed: ${error.message}`)
-  return data?.finished_at ?? null
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return null
+  try {
+    const { data, error } = await tasnifDb()
+      .from("sync_runs")
+      .select("finished_at")
+      .eq("source", "excel")
+      .is("error", null)
+      .not("finished_at", "is", null)
+      .order("finished_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw error
+    return data?.finished_at ?? null
+  } catch (error) {
+    console.error("tasnif: last sync date unavailable", error)
+    return null
+  }
 }
