@@ -181,23 +181,27 @@ export function SearchExperience({ locale, t }: { locale: Locale; t: Dictionary 
               ) : null}
             </p>
             {status !== "error" && kindsPresent.length > 1 ? (
-              <ToggleGroup
-                aria-label={t.search.filterLabel}
-                variant="outline"
-                size="sm"
-                spacing={0}
-                value={[filter]}
-                onValueChange={(value: string[]) => setFilter((value.at(-1) as KindFilter | undefined) ?? "all")}
-              >
-                {(["all", ...kindsPresent] as KindFilter[]).map((kind) => (
-                  <ToggleGroupItem key={kind} value={kind} className="gap-1.5">
-                    {filterLabels[kind]}
-                    <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                      {kind === "all" ? results.length : counts[kind]}
-                    </span>
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              // Scrolls on its own when it is wider than the screen: in Uzbek the four
+              // filters are ~440px, and a phone is 375px.
+              <div className="max-w-full overflow-x-auto">
+                <ToggleGroup
+                  aria-label={t.search.filterLabel}
+                  variant="outline"
+                  size="sm"
+                  spacing={0}
+                  value={[filter]}
+                  onValueChange={(value: string[]) => setFilter((value.at(-1) as KindFilter | undefined) ?? "all")}
+                >
+                  {(["all", ...kindsPresent] as KindFilter[]).map((kind) => (
+                    <ToggleGroupItem key={kind} value={kind} className="gap-1.5">
+                      {filterLabels[kind]}
+                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                        {kind === "all" ? results.length : counts[kind]}
+                      </span>
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </div>
             ) : null}
           </div>
 
