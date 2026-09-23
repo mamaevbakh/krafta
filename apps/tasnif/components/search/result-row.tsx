@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { CheckIcon, ChevronDownIcon, CopyIcon, ExternalLinkIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -9,36 +10,9 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/co
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
-import type { CodeDetails, Kind, LocalizedName, Match, SearchResult } from "@/lib/types"
+import { kindLabel, localized, readable } from "@/lib/names"
+import type { CodeDetails, Match, SearchResult } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-/**
- * Names come from the official catalog, which has Russian and Uzbek but no
- * English. When the interface language has no official name, the Russian one
- * is shown in italics, per DESIGN.md: a visible hint, never a silent fallback.
- */
-function localized(name: LocalizedName, locale: Locale): { text: string; fallback: boolean } {
-  if (locale === "uz" && name.uzLatn) return { text: name.uzLatn, fallback: false }
-  return { text: name.ru, fallback: locale !== "ru" }
-}
-
-/**
- * Group names arrive in capitals ("УСЛУГИ ПО РАЗМЕЩЕНИЮ И ОРГАНИЗАЦИИ ПИТАНИЯ", and
- * "TURARJOY VA OVQATLANISh XIZMATLARI" with a stray lowercase digraph). In a
- * breadcrumb, shouting reads like an error, so mostly-capital names are shown in
- * sentence case. Only the display changes.
- */
-function readable(text: string) {
-  const letters = text.match(/\p{L}/gu) ?? []
-  const capitals = letters.filter((letter) => letter !== letter.toLowerCase()).length
-  if (letters.length < 4 || capitals / letters.length < 0.8) return text
-  const lower = text.toLocaleLowerCase()
-  return lower.charAt(0).toLocaleUpperCase() + lower.slice(1)
-}
-
-function kindLabel(kind: Kind, t: Dictionary) {
-  return { goods: t.result.kindGoods, service: t.result.kindService, catering: t.result.kindCatering }[kind]
-}
 
 function matchLabel(match: Match, t: Dictionary) {
   const labels: Partial<Record<Match, string>> = {
@@ -194,7 +168,21 @@ function CodeDetailsPanel({ id, ikpu, locale, t }: { id: string; ikpu: string; l
   )
 }
 
-function DetailsBody({ details, locale, t }: { details: CodeDetails; locale: Locale; t: Dictionary }) {
+/**
+ * Everything a receipt needs for one code. Shown under a search result, and as
+ * the body of the code's own page, where the link to that page is left out.
+ */
+export function DetailsBody({
+  details,
+  locale,
+  t,
+  showPermalink = true,
+}: {
+  details: CodeDetails
+  locale: Locale
+  t: Dictionary
+  showPermalink?: boolean
+}) {
   const facts: { label: string; value: string; mono?: boolean }[] = []
   if (details.path.length > 0) {
     facts.push({ label: t.details.path, value: details.path.map((node) => readable(localized(node, locale).text)).join(" › ") })
@@ -253,15 +241,25 @@ function DetailsBody({ details, locale, t }: { details: CodeDetails; locale: Loc
         )}
       </div>
 
-      <a
-        href={`https://tasnif.soliq.uz/attribute/${details.ikpu}`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex w-fit items-center gap-1.5 underline underline-offset-4 hover:text-muted-foreground"
-      >
-        {t.details.official}
-        <ExternalLinkIcon className="size-3.5" aria-hidden />
-      </a>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {showPermalink ? (
+          <Link
+            href={`/${locale}/code/${details.ikpu}`}
+            className="w-fit underline underline-offset-4 hover:text-muted-foreground"
+          >
+            {t.details.permalink}
+          </Link>
+        ) : null}
+        <a
+          href={`https://tasnif.soliq.uz/attribute/${details.ikpu}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex w-fit items-center gap-1.5 underline underline-offset-4 hover:text-muted-foreground"
+        >
+          {t.details.official}
+          <ExternalLinkIcon className="size-3.5" aria-hidden />
+        </a>
+      </div>
     </div>
   )
 }

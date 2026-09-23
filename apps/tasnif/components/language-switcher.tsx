@@ -1,10 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import { buttonVariants } from "@/components/ui/button"
-import { LOCALES, LOCALE_COOKIE, LOCALE_NAMES, LOCALE_SHORT, type Locale } from "@/lib/i18n"
+import { LOCALES, LOCALE_COOKIE, LOCALE_NAMES, LOCALE_SHORT, isLocale, type Locale } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 function languageLinkClass(active: boolean) {
@@ -16,23 +16,29 @@ function languageLinkClass(active: boolean) {
 }
 
 /**
- * RU · UZ · EN. Switching keeps the current search (?q=) so a merchant who
- * searched in Russian can hand the same results to an Uzbek-speaking colleague,
- * and remembers the choice for the next visit.
+ * RU · UZ · EN. Switching keeps the visitor where they are: the same code page,
+ * or the same search (?q=), so a merchant who searched in Russian can hand the
+ * same results to an Uzbek-speaking colleague. Remembers the choice for the
+ * next visit.
  */
 export function LanguageSwitcher({ current, label }: { current: Locale; label: string }) {
+  const segments = usePathname().split("/")
+  // "/ru/code/1020…" → "/code/1020…"; the search page is "".
+  const path = isLocale(segments[1]) ? segments.slice(2).filter(Boolean).map((s) => `/${s}`).join("") : ""
   const q = useSearchParams().get("q")
-  return <LanguageLinks current={current} label={label} query={q} />
+  return <LanguageLinks current={current} label={label} path={path} query={q} />
 }
 
-/** Same links without the query, for the first paint before search params are known. */
+/** Same links from what the server knows, for the first paint before the address bar is readable. */
 export function LanguageLinks({
   current,
   label,
+  path = "",
   query = null,
 }: {
   current: Locale
   label: string
+  path?: string
   query?: string | null
 }) {
   return (
@@ -40,7 +46,7 @@ export function LanguageLinks({
       {LOCALES.map((locale) => (
         <Link
           key={locale}
-          href={query ? `/${locale}?q=${encodeURIComponent(query)}` : `/${locale}`}
+          href={`/${locale}${path}${query ? `?q=${encodeURIComponent(query)}` : ""}`}
           hrefLang={locale === "uz" ? "uz-Latn" : locale}
           title={LOCALE_NAMES[locale]}
           aria-current={locale === current ? "true" : undefined}
