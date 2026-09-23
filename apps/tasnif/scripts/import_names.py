@@ -24,14 +24,13 @@ from __future__ import annotations
 
 import argparse
 import collections
-import hashlib
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from import_catalog import (  # noqa: E402
-    HIERARCHY_CELL, IKPU, NODE_LENGTHS, ManagementApi, batched, clean, sql_json, sql_text,
+    HIERARCHY_CELL, IKPU, NODE_LENGTHS, batched, clean, database, fingerprint, sql_json, sql_text,
 )
 
 # Only the columns this script reads are checked.
@@ -81,32 +80,25 @@ def merge(latn: dict[str, str], cyrl: dict[str, str]) -> list[dict]:
     return [{"key": key, "latn": latn.get(key), "cyrl": cyrl.get(key)} for key in sorted(latn.keys() | cyrl.keys())]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--latn", required=True, type=Path, help="category export with lang=uz_latn")
-    parser.add_argument("--cyrl", required=True, type=Path, help="category export with lang=uz_cyrl")
-    parser.add_argument("--apply", action="store_true", help="write to the database (default: dry run)")
-    parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
-    parser.add_argument("--pause", type=float, default=0.3, help="seconds between database requests")
-    args = parser.parse_args()
+def digest_of(latn: Path, cyrl: Path) -> str:
+    """One fingerprint for the pair, recorded with the run; the nightly job skips a pair it has seen."""
+    return fingerprint(latn, cyrl)
 
+
+def apply(api, latn_path: Path, cyrl_path: Path, pause: float = 0.3) -> dict:
     started = time.time()
-    latn_codes, latn_nodes, latn_issues = parse(args.latn.expanduser(), "uz_latn")
-    cyrl_codes, cyrl_nodes, cyrl_issues = parse(args.cyrl.expanduser(), "uz_cyrl")
+    latn_codes, latn_nodes, latn_issues = parse(latn_path, "uz_latn")
+    cyrl_codes, cyrl_nodes, cyrl_issues = parse(cyrl_path, "uz_cyrl")
     print(f"uz_latn: {len(latn_codes)} codes, {len(latn_nodes)} nodes, anomalies {dict(latn_issues)}")
     print(f"uz_cyrl: {len(cyrl_codes)} codes, {len(cyrl_nodes)} nodes, anomalies {dict(cyrl_issues)}")
     if latn_codes.keys() != cyrl_codes.keys():
         print(f"warning: the two files disagree on {len(latn_codes.keys() ^ cyrl_codes.keys())} codes")
-    print(f"parsed in {time.time() - started:.1f}s")
-    if not args.apply:
-        print("dry run: nothing written (pass --apply to import)")
-        return
+    print(f"parsed in {time.time() - started:.1f}s", flush=True)
 
-    api = ManagementApi(args.project_ref)
-    digest = hashlib.sha256(args.latn.expanduser().read_bytes() + args.cyrl.expanduser().read_bytes()).hexdigest()
     run_id = api.query(
         "insert into tasnif.sync_runs (source, source_file, source_sha256, rows_seen) values "
-        f"('excel_uz', {sql_text(args.latn.name + ' + ' + args.cyrl.name)}, '{digest}', {len(latn_codes)}) returning id"
+        f"('excel_uz', {sql_text(latn_path.name + ' + ' + cyrl_path.name)}, '{digest_of(latn_path, cyrl_path)}', "
+        f"{len(latn_codes)}) returning id"
     )[0]["id"]
 
     totals = collections.Counter()
@@ -135,7 +127,7 @@ def main() -> None:
                 totals[f"{table}_unknown"] += result[0]["unknown"]
                 if number % 20 == 0:
                     print(f"  {table}: {dict(totals)}", flush=True)
-                time.sleep(args.pause)
+                time.sleep(pause)
             print(f"{table}: {totals[table + '_updated']} updated, {totals[table + '_unknown']} not in tasnif.{table}", flush=True)
         api.query(f"""update tasnif.sync_runs set finished_at = now(), rows_changed = {totals['codes_updated']},
             notes = {sql_json({**totals, 'latn_anomalies': latn_issues, 'cyrl_anomalies': cyrl_issues})}
@@ -144,6 +136,28 @@ def main() -> None:
         api.query(f"update tasnif.sync_runs set finished_at = now(), error = {sql_text(str(error)[:2000])} where id = {run_id}")
         raise
     print(f"done in {time.time() - started:.1f}s")
+    return {"run_id": run_id, **totals}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--latn", required=True, type=Path, help="category export with lang=uz_latn")
+    parser.add_argument("--cyrl", required=True, type=Path, help="category export with lang=uz_cyrl")
+    parser.add_argument("--apply", action="store_true", help="write to the database (default: dry run)")
+    parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
+    parser.add_argument("--pause", type=float, default=0.3, help="seconds between database requests")
+    args = parser.parse_args()
+
+    latn, cyrl = args.latn.expanduser(), args.cyrl.expanduser()
+    if not args.apply:
+        started = time.time()
+        for path, lang in ((latn, "uz_latn"), (cyrl, "uz_cyrl")):
+            codes, nodes, issues = parse(path, lang)
+            print(f"{lang}: {len(codes)} codes, {len(nodes)} nodes, anomalies {dict(issues)}")
+        print(f"parsed in {time.time() - started:.1f}s")
+        print("dry run: nothing written (pass --apply to import)")
+        return
+    apply(database(args.project_ref), latn, cyrl, args.pause)
 
 
 if __name__ == "__main__":

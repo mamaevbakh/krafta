@@ -48,7 +48,25 @@ pnpm --filter tasnif catalog:packages --file ~/Downloads/package_ru.xlsx --apply
 pnpm --filter tasnif catalog:inactive --file ~/Downloads/inactiveMxik_ru.xlsx --apply
 ```
 
-They talk to the database through the Supabase Management API with your Supabase CLI login (`supabase login`), so no database password or service key is needed on disk. Re-running any of them on an unchanged file writes nothing.
+From a laptop they talk to the database through the Supabase Management API with your Supabase CLI login (`supabase login`), so no database password or service key is needed on disk. With `TASNIF_DATABASE_URL` set they connect directly instead, as the restricted `tasnif_sync` role. Re-running any of them on an unchanged file writes nothing.
+
+## Nightly sync
+
+The catalog updates itself every night. A Vercel cron (`vercel.json`) calls `api/nightly_sync.py` every 15 minutes between 02:00 and 05:00 Tashkent time. Each call carries the night's run forward: it downloads the three catalog exports and the switched-off list, imports only what changed (by content, not by file bytes), fetches package codes for new codes, rebuilds their search entries, and writes everyday words and embeddings for new categories. The steps and the reasons behind them are in `scripts/sync_catalog.py`. Each night is one `tasnif.sync_runs` row with `source = 'nightly'`: `notes` shows what happened, and `error` is set if the night didn't finish. The footer's "catalog updated" date is the last night that finished.
+
+```bash
+pnpm --filter tasnif catalog:sync --check   # what tonight would import; writes nothing
+pnpm --filter tasnif catalog:sync           # run tonight's sync from a laptop, start to finish
+```
+
+It needs two production environment variables on the Vercel project, besides the site's own:
+
+| Variable | What |
+|---|---|
+| `TASNIF_DATABASE_URL` | `postgresql://tasnif_sync.hlmcoirjaydrfqcmnuun:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require`. The role can reach schema `tasnif` and nothing else (`supabase/migrations/20260923233000_tasnif_sync_role.sql`). It has no login until someone sets a password in the Supabase SQL editor: `alter role tasnif_sync with login password '<long random password>';` |
+| `CRON_SECRET` | Any long random string. Vercel sends it with every cron call, and the function refuses calls without it. |
+
+`OPENAI_API_KEY` is shared with the site. The captcha-gated units export stays a manual download (`catalog:packages`); new codes get their package codes from the per-code endpoint instead.
 
 ## Plan
 

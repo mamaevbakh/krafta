@@ -12,6 +12,9 @@ per-code endpoint (tasnif.soliq.uz `cls-api/mxik/get/by-mxik`):
     # Cafe, service and category-level codes (~8k), politely.
     pnpm --filter tasnif catalog:backfill --apply --scope core
 
+    # Codes the nightly sync added (run by scripts/sync_catalog.py).
+    pnpm --filter tasnif catalog:backfill --apply --scope new
+
 Why it works the way it does:
 
 * It is a public government service, so the rate is capped (default 3 requests
@@ -45,7 +48,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from import_catalog import ManagementApi, sql_json  # noqa: E402
+from import_catalog import database, sql_json  # noqa: E402
 
 OFFICIAL = "https://tasnif.soliq.uz/api/cls-api/mxik/get/by-mxik"
 LANGS = ("ru", "uz_latn", "uz_cyrl")
@@ -56,6 +59,13 @@ SCOPES = {
     # Cafe and service codes, plus category-level goods codes (no brand, no attribute).
     "core": "(kind in ('catering', 'service') or right(ikpu, 6) = '000000')",
     "generic": "(kind in ('catering', 'service') or not is_branded)",
+    # Codes that appeared after the first full import: what the nightly sync brings in. Their
+    # package codes exist only here (the units export needs a captcha), so all of them, branded
+    # or not. Small: a few hundred a month.
+    "new": """(first_seen_at > (select finished_at from tasnif.sync_runs
+                          where source = 'excel' and error is null and finished_at is not null
+                            and notes->>'only_groups' is null
+                          order by id limit 1))""",
     "all": "true",
 }
 
@@ -167,7 +177,7 @@ def collect(ikpu: str, limiter: RateLimiter, context: ssl.SSLContext) -> dict:
     }
 
 
-def write(api: ManagementApi, records: list[dict]) -> None:
+def write(api, records: list[dict]) -> None:
     codes = [{k: r.get(k) for k in ("ikpu", "name_uz_latn", "name_uz_cyrl", "benefit_name_ru")} for r in records]
     nodes = {n["code"]: n for r in records if r["found"] for n in r["nodes"]}
     packages = [p for r in records if r["found"] for p in r["packages"]]
@@ -209,6 +219,63 @@ def write(api: ManagementApi, records: list[dict]) -> None:
     """)
 
 
+def fetch_details(api, scope: str, limit: int = 100000, rate: float = 3.0, workers: int = 3,
+                  batch: int = 50, apply: bool = True) -> dict:
+    pending = [row["ikpu"] for row in api.query(f"""
+        select ikpu from tasnif.codes
+        where details_fetched_at is null and status = 'active' and {SCOPES[scope]}
+        order by case kind when 'catering' then 0 when 'service' then 1 else 2 end,
+                 right(ikpu, 6) <> '000000', is_branded, ikpu
+        limit {int(limit)}""")]
+    print(f"{len(pending)} codes pending in scope '{scope}'", flush=True)
+    if not pending:
+        return {"pending": 0, "written": 0, "not_found": 0, "failed": 0}
+
+    limiter, context = RateLimiter(rate), official_context()
+    run_id = None
+    if apply:
+        run_id = api.query(
+            "insert into tasnif.sync_runs (source, rows_seen, notes) values "
+            f"('details_api', {len(pending)}, {sql_json({'scope': scope, 'rate': rate})}) returning id"
+        )[0]["id"]
+
+    done = not_found = failed = 0
+    buffer: list[dict] = []
+    started = time.time()
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(collect, ikpu, limiter, context): ikpu for ikpu in pending}
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    record = future.result()
+                except Exception as error:  # left pending; the next run retries it
+                    failed += 1
+                    print(f"  failed {futures[future]}: {error}", flush=True)
+                    continue
+                not_found += 0 if record["found"] else 1
+                if not apply:
+                    print(json.dumps(record, ensure_ascii=False)[:1500], flush=True)
+                    done += 1
+                    continue
+                buffer.append(record)
+                if len(buffer) >= batch:
+                    write(api, buffer)
+                    done += len(buffer)
+                    buffer = []
+                    speed = done / max(1.0, time.time() - started)
+                    print(f"  {done}/{len(pending)} written, {not_found} not found, {failed} failed, "
+                          f"{speed:.2f} codes/s", flush=True)
+            if buffer:
+                write(api, buffer)
+                done += len(buffer)
+    finally:
+        if run_id is not None:
+            api.query(f"""update tasnif.sync_runs set finished_at = now(), rows_changed = {done},
+                notes = notes || {sql_json({'not_found': not_found, 'failed': failed})} where id = {run_id}""")
+    print(f"done: {done} codes, {not_found} not found upstream, {failed} failed, {time.time() - started:.0f}s")
+    return {"pending": len(pending), "written": done, "not_found": not_found, "failed": failed}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--apply", action="store_true", help="write to the database (default: dry run)")
@@ -219,58 +286,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--batch", type=int, default=50, help="codes per database write")
     args = parser.parse_args()
-
-    api = ManagementApi(args.project_ref)
-    pending = [row["ikpu"] for row in api.query(f"""
-        select ikpu from tasnif.codes
-        where details_fetched_at is null and status = 'active' and {SCOPES[args.scope]}
-        order by case kind when 'catering' then 0 when 'service' then 1 else 2 end,
-                 right(ikpu, 6) <> '000000', is_branded, ikpu
-        limit {int(args.limit)}""")]
-    print(f"{len(pending)} codes pending in scope '{args.scope}'", flush=True)
-
-    limiter, context = RateLimiter(args.rate), official_context()
-    run_id = None
-    if args.apply:
-        run_id = api.query(
-            "insert into tasnif.sync_runs (source, rows_seen, notes) values "
-            f"('details_api', {len(pending)}, {sql_json({'scope': args.scope, 'rate': args.rate})}) returning id"
-        )[0]["id"]
-
-    done = not_found = failed = 0
-    buffer: list[dict] = []
-    started = time.time()
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-            futures = {pool.submit(collect, ikpu, limiter, context): ikpu for ikpu in pending}
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    record = future.result()
-                except Exception as error:  # left pending; the next run retries it
-                    failed += 1
-                    print(f"  failed {futures[future]}: {error}", flush=True)
-                    continue
-                not_found += 0 if record["found"] else 1
-                if not args.apply:
-                    print(json.dumps(record, ensure_ascii=False)[:1500], flush=True)
-                    done += 1
-                    continue
-                buffer.append(record)
-                if len(buffer) >= args.batch:
-                    write(api, buffer)
-                    done += len(buffer)
-                    buffer = []
-                    rate = done / max(1.0, time.time() - started)
-                    print(f"  {done}/{len(pending)} written, {not_found} not found, {failed} failed, "
-                          f"{rate:.2f} codes/s", flush=True)
-            if buffer:
-                write(api, buffer)
-                done += len(buffer)
-    finally:
-        if run_id is not None:
-            api.query(f"""update tasnif.sync_runs set finished_at = now(), rows_changed = {done},
-                notes = notes || {sql_json({'not_found': not_found, 'failed': failed})} where id = {run_id}""")
-    print(f"done: {done} codes, {not_found} not found upstream, {failed} failed, {time.time() - started:.0f}s")
+    fetch_details(database(args.project_ref), args.scope, args.limit, args.rate, args.workers, args.batch, args.apply)
 
 
 if __name__ == "__main__":

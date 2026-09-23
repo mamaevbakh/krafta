@@ -11,6 +11,7 @@
     "catalog:packages": "uv run --with openpyxl --with certifi scripts/import_packages.py",
     "catalog:inactive": "uv run --with openpyxl --with certifi scripts/import_inactive.py",
     "catalog:backfill": "uv run --with truststore --with certifi scripts/backfill_details.py",
+    "catalog:sync": "uv run --with openpyxl --with certifi --with truststore --with 'psycopg[binary]' scripts/sync_catalog.py",
     "search:refresh": "uv run --with certifi scripts/refresh_search.py",
     "search:embed": "uv run --with certifi scripts/embed_documents.py",
     "search:score": "uv run --with certifi eval/score_tasnif.py",

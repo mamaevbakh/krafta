@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/nightly_sync.py": {
+      "maxDuration": 800,
+      "includeFiles": "scripts/*.py",
+      "excludeFiles": "{.next,.data,node_modules,eval,app,components,lib,public}/**"
+    }
+  },
+  "crons": [
+    { "path": "/api/nightly_sync", "schedule": "*/15 21-23 * * *" }
+  ]
+}

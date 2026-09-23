@@ -48,7 +48,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from import_catalog import ManagementApi, batched, sql_json  # noqa: E402
+from import_catalog import batched, database, sql_json  # noqa: E402
 
 MODEL = "gpt-5.4-mini"
 
@@ -104,7 +104,7 @@ SCHEMA = {
 }
 
 
-def load_entries(api: ManagementApi, keys: list[str] | None, redo: bool, limit: int) -> list[dict]:
+def load_entries(api, keys: list[str] | None, redo: bool, limit: int) -> list[dict]:
     where = "true"
     if keys:
         where = "d.key in (" + ",".join("'" + k.replace("'", "") + "'" for k in keys if k.isdigit()) + ")"
@@ -145,7 +145,7 @@ def load_entries(api: ManagementApi, keys: list[str] | None, redo: bool, limit: 
         last = chunk[-1]["key"]
 
 
-def load_menu(api: ManagementApi) -> list[list[dict]]:
+def load_menu(api) -> list[list[dict]]:
     """Every catering entry (class 10202), grouped by position so siblings are judged together."""
     rows = api.query("""
         select d.key, d.level, d.kind, e.embed_text as path
@@ -203,6 +203,49 @@ def as_text(item: dict) -> str | None:
     return ", ".join(terms) if terms else ""
 
 
+def openai_context() -> ssl.SSLContext:
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def generate(api, entries: list[dict], batches: list[list[dict]], run, write: bool, workers: int) -> dict:
+    """Ask the model for each batch; write the answers (or print them when `write` is off)."""
+    started, done, usage, written = time.time(), 0, {"prompt_tokens": 0, "completion_tokens": 0}, []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        for answers, used in pool.map(run, batches):
+            usage["prompt_tokens"] += used.get("prompt_tokens", 0)
+            usage["completion_tokens"] += used.get("completion_tokens", 0)
+            rows = [{"key": k, "terms": as_text(v)} for k, v in answers.items()]
+            if not write:
+                for k, v in answers.items():
+                    print(f"{k}: ru={v['ru']} uz={v['uz']} en={v['en']}")
+            else:
+                for chunk in batched(rows, 1000, max_bytes=600_000):
+                    api.query(f"""update tasnif.search_documents d set everyday_terms = v.terms, updated_at = now()
+                                  from jsonb_to_recordset({sql_json(chunk)}) as v(key text, terms text)
+                                  where d.key = v.key""")
+                written.extend(row["key"] for row in rows)
+            done += len(rows)
+            if write and done % 500 < len(batches[0]):
+                print(f"  {done}/{len(entries)} written, tokens {usage}, {time.time() - started:.0f}s", flush=True)
+    print(f"done: {done} entries with answers, tokens {usage}, {time.time() - started:.0f}s")
+    return {"answered": done, "written_keys": written, **usage}
+
+
+def write_pending(api, key: str, batch: int = 25, workers: int = 6) -> dict:
+    """Everyday words for every category or service/cafe document that has none yet (new ones, nightly)."""
+    entries = load_entries(api, None, redo=False, limit=0)
+    print(f"{len(entries)} entries without everyday words", flush=True)
+    if not entries:
+        return {"answered": 0, "written_keys": []}
+    batches = [entries[i:i + batch] for i in range(0, len(entries), batch)]
+    return generate(api, entries, batches, functools.partial(ask, key=key, context=openai_context()),
+                    write=True, workers=workers)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
@@ -218,13 +261,9 @@ def main() -> None:
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
         raise SystemExit("OPENAI_API_KEY is not set.")
-    try:
-        import certifi
-        context = ssl.create_default_context(cafile=certifi.where())
-    except ImportError:
-        context = ssl.create_default_context()
+    context = openai_context()
 
-    api = ManagementApi(args.project_ref)
+    api = database(args.project_ref)
     keys = [k.strip() for k in args.keys.split(",")] if args.keys else None
     if args.menu:
         batches = load_menu(api)
@@ -236,26 +275,8 @@ def main() -> None:
         batches = [entries[i:i + args.batch] for i in range(0, len(entries), args.batch)]
         run = functools.partial(ask, key=key, context=context)
     print(f"{len(entries)} entries", flush=True)
-    write = args.apply and not keys
-
-    started, done, usage = time.time(), 0, {"prompt_tokens": 0, "completion_tokens": 0}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-        for answers, used in pool.map(run, batches):
-            usage["prompt_tokens"] += used.get("prompt_tokens", 0)
-            usage["completion_tokens"] += used.get("completion_tokens", 0)
-            rows = [{"key": k, "terms": as_text(v)} for k, v in answers.items()]
-            if not write:
-                for k, v in answers.items():
-                    print(f"{k}: ru={v['ru']} uz={v['uz']} en={v['en']}")
-            else:
-                for chunk in batched(rows, 1000, max_bytes=600_000):
-                    api.query(f"""update tasnif.search_documents d set everyday_terms = v.terms, updated_at = now()
-                                  from jsonb_to_recordset({sql_json(chunk)}) as v(key text, terms text)
-                                  where d.key = v.key""")
-            done += len(rows)
-            if write and done % 500 < args.batch:
-                print(f"  {done}/{len(entries)} written, tokens {usage}, {time.time() - started:.0f}s", flush=True)
-    print(f"done: {done} entries with answers, tokens {usage}, {time.time() - started:.0f}s")
+    if batches:
+        generate(api, entries, batches, run, write=args.apply and not keys, workers=args.workers)
 
 
 if __name__ == "__main__":

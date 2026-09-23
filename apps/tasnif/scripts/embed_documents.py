@@ -34,7 +34,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from import_catalog import ManagementApi, batched, sql_json  # noqa: E402
+from import_catalog import batched, database, sql_json  # noqa: E402
 
 MODEL = "text-embedding-3-large"
 DIMENSIONS = 1536
@@ -70,7 +70,7 @@ def embed(texts: list[str], key: str, context: ssl.SSLContext, attempts: int = 6
     raise AssertionError("unreachable")
 
 
-def pending(api: ManagementApi, page: int) -> list[dict]:
+def pending(api, page: int) -> list[dict]:
     """Every embeddable document whose text changed, read in key order a page at a time."""
     rows, last = [], ""
     while True:
@@ -84,29 +84,13 @@ def pending(api: ManagementApi, page: int) -> list[dict]:
         last = chunk[-1]["key"]
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
-    parser.add_argument("--dry-run", action="store_true", help="count and estimate cost; call nothing")
-    parser.add_argument("--batch", type=int, default=256, help="texts per OpenAI request")
-    parser.add_argument("--pause", type=float, default=0.3, help="seconds between database writes")
-    args = parser.parse_args()
-
-    api = ManagementApi(args.project_ref)
+def embed_pending(api, key: str, batch: int = 256, pause: float = 0.3) -> dict:
+    """Embed every document whose text changed since it was last embedded."""
     rows = pending(api, 2000)
-    characters = sum(len(r["embed_text"]) for r in rows)
-    # Cyrillic runs about one token per 2-3 characters; err high.
-    estimate = characters / 2.5 / 1_000_000 * PRICE_PER_MILLION_TOKENS
-    print(f"{len(rows)} documents to embed, {characters:,} characters, roughly ${estimate:.2f}")
-    if args.dry_run or not rows:
-        return
-
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key:
-        raise SystemExit("OPENAI_API_KEY is not set.")
+    print(f"{len(rows)} documents to embed", flush=True)
     context = openai_context()
     started, tokens, written = time.time(), 0, 0
-    for texts_batch in batched(rows, args.batch, max_bytes=10_000_000):
+    for texts_batch in batched(rows, batch, max_bytes=10_000_000):
         vectors, used = embed([r["embed_text"] for r in texts_batch], key, context)
         tokens += used
         payload = [{"key": r["key"], "t": r["embed_text"], "e": "[" + ",".join(f"{x:.5f}" for x in v) + "]"}
@@ -118,9 +102,33 @@ def main() -> None:
                 from jsonb_to_recordset({sql_json(chunk)}) as v(key text, t text, e text)
                 where d.key = v.key""")
             written += len(chunk)
-            time.sleep(args.pause)
+            time.sleep(pause)
         print(f"  {written}/{len(rows)} embedded, {tokens:,} tokens, {time.time() - started:.0f}s", flush=True)
-    print(f"done: {written} documents, {tokens:,} tokens (${tokens / 1_000_000 * PRICE_PER_MILLION_TOKENS:.3f})")
+    cost = tokens / 1_000_000 * PRICE_PER_MILLION_TOKENS
+    print(f"done: {written} documents, {tokens:,} tokens (${cost:.3f})")
+    return {"embedded": written, "tokens": tokens, "usd": round(cost, 4)}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
+    parser.add_argument("--dry-run", action="store_true", help="count and estimate cost; call nothing")
+    parser.add_argument("--batch", type=int, default=256, help="texts per OpenAI request")
+    parser.add_argument("--pause", type=float, default=0.3, help="seconds between database writes")
+    args = parser.parse_args()
+
+    api = database(args.project_ref)
+    if args.dry_run:
+        rows = pending(api, 2000)
+        characters = sum(len(r["embed_text"]) for r in rows)
+        # Cyrillic runs about one token per 2-3 characters; err high.
+        estimate = characters / 2.5 / 1_000_000 * PRICE_PER_MILLION_TOKENS
+        print(f"{len(rows)} documents to embed, {characters:,} characters, roughly ${estimate:.2f}")
+        return
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        raise SystemExit("OPENAI_API_KEY is not set.")
+    embed_pending(api, key, args.batch, args.pause)
 
 
 if __name__ == "__main__":

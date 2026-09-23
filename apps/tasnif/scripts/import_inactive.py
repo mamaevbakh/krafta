@@ -23,14 +23,15 @@ from __future__ import annotations
 
 import argparse
 import collections
-import hashlib
 import re
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from import_catalog import HIERARCHY_CELL, IKPU, NODE_LENGTHS, ManagementApi, batched, clean, sql_json, sql_text  # noqa: E402
+from import_catalog import (  # noqa: E402
+    HIERARCHY_CELL, IKPU, NODE_LENGTHS, batched, clean, database, fingerprint, sql_json, sql_text,
+)
 
 HEADER = ["Группа", "Класс", "Позиция", "Субпозиция", "Бренд", "Атрибут", "ИКПУ", "Название ИКПУ"]
 # In this export a missing brand is "<14 digits>---" (no space), a named one "<14 digits>-<name>".
@@ -78,25 +79,13 @@ def parse(path: Path) -> tuple[list[dict], collections.Counter]:
     return list(codes.values()), counts
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--file", required=True, type=Path)
-    parser.add_argument("--apply", action="store_true", help="write to the database (default: dry run)")
-    parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
-    parser.add_argument("--pause", type=float, default=0.3, help="seconds between database requests")
-    args = parser.parse_args()
-
-    path = args.file.expanduser()
+def apply(api, path: Path, pause: float = 0.3) -> dict:
     started = time.time()
     records, counts = parse(path)
     print(f"{len(records)} switched-off codes; {dict(counts)}; branded {sum(1 for r in records if r['brand_name'])}")
-    print(f"parsed in {time.time() - started:.1f}s")
-    if not args.apply:
-        print("dry run: nothing written (pass --apply to import)")
-        return
+    print(f"parsed in {time.time() - started:.1f}s", flush=True)
 
-    api = ManagementApi(args.project_ref)
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = fingerprint(path)
     run_id = api.query(
         "insert into tasnif.sync_runs (source, source_file, source_sha256, rows_seen, notes) values "
         f"('inactive_excel', {sql_text(path.name)}, '{digest}', {len(records)}, {sql_json(counts)}) returning id"
@@ -123,7 +112,7 @@ def main() -> None:
             totals["changed"] += result[0]["changed"]
             if number % 20 == 0:
                 print(f"  {dict(totals)}", flush=True)
-            time.sleep(args.pause)
+            time.sleep(pause)
         # Sanity check worth failing loudly on: the committee's two lists should never overlap.
         overlap = api.query("""select count(*)::int as n from tasnif.inactive_codes i
                                join tasnif.codes c on c.ikpu = i.ikpu and c.status = 'active'""")[0]["n"]
@@ -135,6 +124,26 @@ def main() -> None:
         api.query(f"update tasnif.sync_runs set finished_at = now(), error = {sql_text(str(error)[:2000])} where id = {run_id}")
         raise
     print(f"done in {time.time() - started:.1f}s")
+    return {"run_id": run_id, "also_active": overlap, **totals}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--file", required=True, type=Path)
+    parser.add_argument("--apply", action="store_true", help="write to the database (default: dry run)")
+    parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
+    parser.add_argument("--pause", type=float, default=0.3, help="seconds between database requests")
+    args = parser.parse_args()
+
+    path = args.file.expanduser()
+    if not args.apply:
+        started = time.time()
+        records, counts = parse(path)
+        print(f"{len(records)} switched-off codes; {dict(counts)}; branded {sum(1 for r in records if r['brand_name'])}")
+        print(f"parsed in {time.time() - started:.1f}s")
+        print("dry run: nothing written (pass --apply to import)")
+        return
+    apply(database(args.project_ref), path, args.pause)
 
 
 if __name__ == "__main__":

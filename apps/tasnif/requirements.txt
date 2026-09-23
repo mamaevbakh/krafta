@@ -1,0 +1,6 @@
+# Python packages for api/nightly_sync.py (the nightly catalog sync on Vercel). The same
+# scripts run on a laptop through `uv run --with ...` (package.json), which ignores this file.
+certifi>=2024.8.30
+openpyxl>=3.1,<4
+psycopg[binary]>=3.2,<4
+truststore>=0.10

@@ -177,7 +177,8 @@ export async function getCodeDetails(ikpu: string): Promise<CodeDetails | null> 
 }
 
 /**
- * When the Russian catalog export last finished importing cleanly, for the footer.
+ * When the catalog was last known to match the official one, for the footer: the
+ * last clean nightly sync (which may find nothing to change) or import.
  *
  * Runs while the page is prerendered at build time. It must never throw: an error
  * inside a cached function during prerendering fails the whole build even when the
@@ -195,7 +196,7 @@ export async function getLastSync(): Promise<string | null> {
     const { data, error } = await tasnifDb()
       .from("sync_runs")
       .select("finished_at")
-      .eq("source", "excel")
+      .in("source", ["excel", "nightly"])
       .is("error", null)
       .not("finished_at", "is", null)
       .order("finished_at", { ascending: false })

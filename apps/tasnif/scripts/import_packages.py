@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from import_catalog import IKPU, ManagementApi, batched, clean, sql_json, sql_text  # noqa: E402
+from import_catalog import IKPU, batched, clean, database, sql_json, sql_text  # noqa: E402
 
 SHEETS = {
     "Закрепленные единицы и упаковки": "fixed",
@@ -100,7 +100,7 @@ def main() -> None:
         print("dry run: nothing written (pass --apply to import)")
         return
 
-    api = ManagementApi(args.project_ref)
+    api = database(args.project_ref)
     stored_before = api.query("select count(*)::int as n from tasnif.packages")[0]["n"]
     api.query("delete from tasnif.import_packages")  # one import at a time; leftovers belong to a dead run
     digest = hashlib.sha256(path.read_bytes()).hexdigest()

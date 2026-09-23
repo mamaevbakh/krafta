@@ -11,10 +11,13 @@
 
 Why it works the way it does:
 
-* Transport is the Supabase Management API (`/v1/projects/{ref}/database/query`),
-  authenticated with the Supabase CLI token (env `SUPABASE_ACCESS_TOKEN`, else the
-  macOS keychain entry the CLI writes). It needs no database password, no service
-  key on disk and no PostgREST exposure of `tasnif`, which stays service-role only.
+* Two ways to reach the database, chosen by `database()`: with env
+  `TASNIF_DATABASE_URL` set (the nightly job on GitHub), a direct Postgres
+  connection as the `tasnif_sync` role, which can touch schema `tasnif` and nothing
+  else; otherwise (a laptop) the Supabase Management API
+  (`/v1/projects/{ref}/database/query`) with the Supabase CLI token (env
+  `SUPABASE_ACCESS_TOKEN`, else the macOS keychain entry the CLI writes). Either
+  way `tasnif` is never exposed through PostgREST.
 
 * `kraftabase` also serves Krafta's shops and payments on a small instance, so the
   import never rewrites what hasn't changed. Rows are staged into the UNLOGGED
@@ -74,6 +77,27 @@ CODE_FIELDS = [
 ]
 # Columns compared to decide whether an existing code really changed.
 COMPARED_FIELDS = CODE_FIELDS[1:]
+
+
+def fingerprint(*paths: Path) -> str:
+    """sha256 of what an export says, not of its bytes.
+
+    An .xlsx is a zip, and the tax committee's server rewrites its docProps/ (creation and
+    modification times) whenever it rebuilds a file: the 2026-09-21 and 2026-09-23 switched-off
+    lists differ byte for byte and are identical inside. Hashing every other entry, in name
+    order, lets the nightly sync skip an export that only has new timestamps.
+    """
+    import zipfile
+
+    digest = hashlib.sha256()
+    for path in paths:
+        with zipfile.ZipFile(path) as archive:
+            for name in sorted(archive.namelist()):
+                if name.startswith("docProps/"):
+                    continue
+                digest.update(name.encode())
+                digest.update(archive.read(name))
+    return digest.hexdigest()
 
 
 def clean(value: object) -> str | None:
@@ -266,6 +290,56 @@ class ManagementApi:
         raise AssertionError("unreachable")
 
 
+class PostgresApi:
+    """The same `query(sql) -> list[dict]` as ManagementApi, over a direct Postgres connection.
+
+    For the nightly job, which connects as `tasnif_sync` through Supabase's connection
+    pooler (session mode) instead of holding a token that can manage every project on
+    the account. Values come back the way the Management API's JSON has them (numbers
+    as int/float, timestamps as ISO strings), so the scripts can't tell the two apart.
+    Each query runs in its own transaction (autocommit), as it does over the API.
+    """
+
+    def __init__(self, dsn: str) -> None:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        # ClientCursor: simple query protocol, so a string may hold several statements (as the
+        # API allows) and nothing is server-side prepared, which a pooler would trip over.
+        self.connection = psycopg.connect(dsn, autocommit=True, row_factory=dict_row,
+                                          cursor_factory=psycopg.ClientCursor, prepare_threshold=None,
+                                          application_name="tasnif-sync")
+
+    @staticmethod
+    def _plain(value: object) -> object:
+        import datetime
+        import decimal
+        import uuid
+
+        if isinstance(value, decimal.Decimal):
+            return int(value) if value == value.to_integral_value() else float(value)
+        if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+            return value.isoformat()
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        return value
+
+    def query(self, sql: str, attempts: int = 1) -> list[dict]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(sql)
+            rows: list[dict] = []
+            while True:  # the API answers with the last statement's rows
+                rows = [{k: self._plain(v) for k, v in row.items()} for row in cursor.fetchall()] if cursor.description else []
+                if not cursor.nextset():
+                    return rows
+
+
+def database(project_ref: str) -> "ManagementApi | PostgresApi":
+    """A direct connection when TASNIF_DATABASE_URL is set (CI), else the Management API (a laptop)."""
+    dsn = os.environ.get("TASNIF_DATABASE_URL")
+    return PostgresApi(dsn) if dsn else ManagementApi(project_ref)
+
+
 def sql_json(payload: object) -> str:
     """A jsonb SQL literal. standard_conforming_strings is on, so only quotes need doubling."""
     return "'" + json.dumps(payload, ensure_ascii=False).replace("'", "''") + "'::jsonb"
@@ -290,8 +364,8 @@ def batched(items: list, size: int, max_bytes: int = 600_000):
         yield chunk
 
 
-def apply(api: ManagementApi, path: Path, digest: str, codes: list[CodeRow], nodes: dict[str, str],
-          issues: dict, batch_size: int, pause: float, only_groups: set[str] | None) -> None:
+def apply(api: ManagementApi | PostgresApi, path: Path, digest: str, codes: list[CodeRow], nodes: dict[str, str],
+          issues: dict, batch_size: int, pause: float, only_groups: set[str] | None) -> dict:
     if only_groups:
         codes = [c for c in codes if c.ikpu[:3] in only_groups]
         nodes = {k: v for k, v in nodes.items() if k[:3] in only_groups}
@@ -387,6 +461,8 @@ def apply(api: ManagementApi, path: Path, digest: str, codes: list[CodeRow], nod
               rows_deactivated = {deactivated},
               notes = notes || {sql_json({"nodes_added": node_added, "nodes_renamed": node_changed, **notes})}
             where id = {run_id}""")
+        return {"run_id": run_id, "added": added, "changed": changed, "deactivated": deactivated,
+                "nodes_added": node_added, "nodes_renamed": node_changed}
     except Exception as error:
         api.query(f"delete from tasnif.import_rows where run_id = {run_id}")
         api.query(f"update tasnif.sync_runs set finished_at = now(), error = {sql_text(str(error)[:2000])} where id = {run_id}")
@@ -408,7 +484,7 @@ def main() -> None:
     args = parser.parse_args()
 
     path = args.file.expanduser()
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = fingerprint(path)
     started = time.time()
     codes, nodes, issues = parse(path)
     report(path, digest, codes, nodes, issues)
@@ -418,7 +494,7 @@ def main() -> None:
         print("dry run: nothing written (pass --apply to import)")
         return
     only_groups = {g.strip() for g in args.only_groups.split(",")} if args.only_groups else None
-    apply(ManagementApi(args.project_ref), path, digest, codes, nodes, issues, args.batch_size, args.pause, only_groups)
+    apply(database(args.project_ref), path, digest, codes, nodes, issues, args.batch_size, args.pause, only_groups)
     print(f"done in {time.time() - started:.1f}s")
 
 
