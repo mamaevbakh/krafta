@@ -165,12 +165,13 @@ def main() -> int:
     parser.add_argument("--project-ref", default="hlmcoirjaydrfqcmnuun")
     parser.add_argument("--no-embeddings", action="store_true", help="words and typos only")
     parser.add_argument("--label", help="suffix for the results file")
+    parser.add_argument("--cases", type=Path, default=CASES, help="cases file (default: the reviewed benchmark)")
     parser.add_argument("--migration", type=Path, help="score as this migration file would leave the search, then roll back")
     parser.add_argument("--batch", type=int, default=MIGRATION_BATCH,
                         help="cases per rolled-back request with --migration (lower it for slow migrations)")
     args = parser.parse_args()
 
-    cases = load_cases(CASES)
+    cases = load_cases(args.cases)
     api = ManagementApi(args.project_ref)
     vectors = {} if args.no_embeddings else query_embeddings([c["query"] for c in cases])
 
@@ -208,12 +209,13 @@ def main() -> int:
     RESULTS.mkdir(parents=True, exist_ok=True)
     out = RESULTS / f"tasnif-{today}{'-' + args.label if args.label else ''}.json"
     out.write_text(json.dumps({
-        "engine": "tasnif.search", "run_date": today, "cases_file": CASES.name,
+        "engine": "tasnif.search", "run_date": today, "cases_file": args.cases.name,
         "migration": args.migration.name if args.migration else None,
         "embeddings": None if args.no_embeddings else {"model": MODEL, "dimensions": DIMENSIONS},
         "summary": summary, "cases": results,
     }, ensure_ascii=False, indent=1), encoding="utf-8")
-    print_comparison(summary, latest_official())
+    # The official column only means something on the benchmark the official run scored.
+    print_comparison(summary, latest_official() if args.cases.resolve() == CASES.resolve() else None)
     print(f"results written to {out.relative_to(HERE)}")
     return 0
 
