@@ -81,6 +81,8 @@ STEPS = ["catalog", "names", "inactive", "details", "refresh", "words", "embed"]
 # night with changes.
 HEAVY_START_SECONDS = 90
 DETAILS_PER_CALL = 400
+# Codes per document-rebuild statement: a few seconds each, well inside any statement timeout.
+REFRESH_CHUNK = 5000
 
 
 class Budget:
@@ -193,6 +195,16 @@ def changed_groups(api, since: str) -> list[str]:
     return [row["g"] for row in rows]
 
 
+def worded_groups(api, since: str) -> list[str]:
+    """Groups of category and service/cafe documents written since `since` that have everyday words."""
+    rows = api.query(f"""
+        select distinct left(key, 3) as g from tasnif.search_documents
+        where updated_at >= {sql_text(since)}::timestamptz and everyday_terms is not null
+          and (entity = 'node' or kind <> 'goods')
+        order by 1""")
+    return [row["g"] for row in rows]
+
+
 def import_step(api, step: str, summary: dict, downloads: Downloads, force: bool) -> None:
     known = last_fingerprints(api)
     if step == "catalog":
@@ -252,15 +264,19 @@ def run(api, budget: Budget, force: bool = False) -> dict:
             elif step == "refresh":
                 groups = changed_groups(api, notes["since"])
                 summary["groups_rebuilt"] = groups
-                summary["refresh"] = refresh(api, groups, pause=0.05)
+                summary["refresh"] = refresh(api, groups, chunk=REFRESH_CHUNK, pause=0.05)
             elif step == "words":
                 if not openai_key:
                     raise RuntimeError("OPENAI_API_KEY is not set (everyday words for new entries)")
                 terms = write_pending(api, openai_key)
-                summary["everyday_words"] = len(terms["written_keys"])
-                if terms["written_keys"]:
-                    # Documents include their everyday words: rebuild every group that got new ones.
-                    refresh(api, sorted({key[:3] for key in terms["written_keys"]}), pause=0.05)
+                summary["everyday_words"] = summary.get("everyday_words", 0) + len(terms["written_keys"])
+                # Documents include their everyday words, so the groups of every entry that got words
+                # tonight are rebuilt. Taken from the data, not from this call's answers: a call that
+                # wrote the words and then failed mid-rebuild leaves nothing pending to answer, and the
+                # next call must still rebuild those groups.
+                groups = worded_groups(api, notes["since"])
+                if groups:
+                    refresh(api, groups, chunk=REFRESH_CHUNK, pause=0.05)
             elif step == "embed":
                 if not openai_key:
                     raise RuntimeError("OPENAI_API_KEY is not set (embeddings for changed documents)")

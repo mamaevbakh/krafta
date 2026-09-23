@@ -1,7 +1,8 @@
 """Backfill what the Excel export lacks, one code at a time, from the official
 per-code endpoint (tasnif.soliq.uz `cls-api/mxik/get/by-mxik`):
 
-* Uzbek Latin and Cyrillic names, for codes and for their tree nodes;
+* Uzbek Latin and Cyrillic names, for codes and tree nodes that have none (the Uzbek
+  Excel exports, import_names.py, are the source of names; this only fills gaps);
 * numeric package codes, which a fiscal receipt needs next to the IKPU
   (10202001010000002 cafe coffee drinks -> 1747305 "1 шт. (кружка/стакан)");
 * benefit (льгота) names, where the export only has an ID.
@@ -184,10 +185,16 @@ def write(api, records: list[dict]) -> None:
     found = [r["ikpu"] for r in records if r["found"]]
     # One request = one implicit transaction: a code is never marked fetched
     # without its names and packages landing with it.
+    #
+    # Uzbek names only fill gaps. The Uzbek Excel exports (import_names.py) are the source of
+    # names; this endpoint spells some of the same names differently (typographic apostrophes
+    # in group names), and letting it overwrite them renamed eleven whole groups on 2026-09-23,
+    # which changed the embedded text of 5,755 documents under them for nothing, and would have
+    # flipped back at the next Uzbek import.
     api.query(f"""
         update tasnif.codes c
-        set name_uz_latn = coalesce(i.name_uz_latn, c.name_uz_latn),
-            name_uz_cyrl = coalesce(i.name_uz_cyrl, c.name_uz_cyrl),
+        set name_uz_latn = coalesce(c.name_uz_latn, i.name_uz_latn),
+            name_uz_cyrl = coalesce(c.name_uz_cyrl, i.name_uz_cyrl),
             benefit_name_ru = coalesce(i.benefit_name_ru, c.benefit_name_ru),
             details_fetched_at = now(), updated_at = now()
         from jsonb_to_recordset({sql_json(codes)})
@@ -195,14 +202,14 @@ def write(api, records: list[dict]) -> None:
         where c.ikpu = i.ikpu;
 
         update tasnif.nodes n
-        set name_uz_latn = coalesce(i.name_uz_latn, n.name_uz_latn),
-            name_uz_cyrl = coalesce(i.name_uz_cyrl, n.name_uz_cyrl),
+        set name_uz_latn = coalesce(n.name_uz_latn, i.name_uz_latn),
+            name_uz_cyrl = coalesce(n.name_uz_cyrl, i.name_uz_cyrl),
             updated_at = now()
         from jsonb_to_recordset({sql_json(list(nodes.values()))})
           as i(code text, name_uz_latn text, name_uz_cyrl text)
         where n.code = i.code
-          and (n.name_uz_latn is distinct from coalesce(i.name_uz_latn, n.name_uz_latn)
-               or n.name_uz_cyrl is distinct from coalesce(i.name_uz_cyrl, n.name_uz_cyrl));
+          and ((n.name_uz_latn is null and i.name_uz_latn is not null)
+               or (n.name_uz_cyrl is null and i.name_uz_cyrl is not null));
 
         delete from tasnif.packages
         where ikpu in (select jsonb_array_elements_text({sql_json(found)}));

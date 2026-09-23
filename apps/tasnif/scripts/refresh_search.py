@@ -44,11 +44,16 @@ def refresh(api, groups: list[str] | None = None, chunk: int = 10000, pause: flo
         time.sleep(pause)
     print(f"nodes: {nodes} written across {len(groups)} groups, {time.time() - started:.0f}s", flush=True)
 
+    # Chunks never cross a group. refresh_search_codes(lo, hi) rebuilds every code between lo
+    # and hi, so a chunk counted over the selected groups alone but spanning a gap between them
+    # (groups 044 and 114, say) rebuilt everything in between: ~300k codes where 5k were meant,
+    # which ran past the statement timeout on 2026-09-23.
     ranges = api.query(f"""
         select min(ikpu) as lo, max(ikpu) as hi from (
-          select ikpu, (row_number() over (order by ikpu) - 1) / {int(chunk)} as chunk
+          select ikpu, left(ikpu, 3) as grp,
+                 (row_number() over (partition by left(ikpu, 3) order by ikpu) - 1) / {int(chunk)} as chunk
           from tasnif.codes {group_filter}
-        ) x group by chunk order by chunk""")
+        ) x group by grp, chunk order by grp, chunk""")
     codes = 0
     for number, rng in enumerate(ranges, start=1):
         codes += api.query(f"select tasnif.refresh_search_codes('{rng['lo']}', '{rng['hi']}') as n")[0]["n"]
