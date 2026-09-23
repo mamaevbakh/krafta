@@ -1,0 +1,30 @@
+-- tasnif: the search never reads the documents table end to end.
+--
+-- WHY THIS EXISTS
+-- ---------------
+-- For «шины 205/55 R16» the planner read tasnif.search_documents from the
+-- start (17,483 pages from disk, 4.4 of 5.2 seconds) to find 300 tyres,
+-- because it expected a word with many spellings to be almost everywhere and
+-- judged a scan cheaper than the index. Every leg of the search has an index
+-- made for it, so a full scan is never the right plan: tasnif.search now runs
+-- with sequential scans switched off. Postgres still falls back to one if no
+-- index applies (the package-code lookup, for example).
+--
+-- Plans only; results don't change. The capped scans (LIMIT 300 without an
+-- ORDER BY) now always read matching pages in the same physical order a
+-- bitmap scan uses, rather than wherever a synchronized sequential scan
+-- happened to start, so repeated searches return the same list.
+--
+-- A later `create or replace function tasnif.search` must repeat
+-- `set enable_seqscan = off` in its definition, or this is silently lost.
+--
+-- Considered and not shipped with it: giving each goods category's generic
+-- code its category's everyday words. It fixed «батарейки АА» and «osh tuzi»
+-- but made goods beat cafe dishes («шашлык» found skewers first) and scored
+-- 93.5% against v3's 94.8% on the benchmark, so it was dropped.
+--
+-- ADDITIVE AND REVERSIBLE
+-- -----------------------
+-- Rollback: `alter function tasnif.search(text, extensions.halfvec, integer) reset enable_seqscan;`
+
+alter function tasnif.search(text, extensions.halfvec, integer) set enable_seqscan = off;
