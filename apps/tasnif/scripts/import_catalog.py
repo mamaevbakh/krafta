@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import collections
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -258,7 +259,7 @@ class ManagementApi:
                 retryable = error.code == 429 or error.code >= 500
                 if not retryable or attempt == attempts:
                     raise RuntimeError(f"HTTP {error.code}: {detail}") from None
-            except (urllib.error.URLError, TimeoutError) as error:
+            except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as error:
                 if attempt == attempts:
                     raise RuntimeError(f"network: {error}") from None
             time.sleep(min(60, 2 ** attempt))

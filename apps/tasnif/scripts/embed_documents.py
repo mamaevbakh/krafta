@@ -23,6 +23,7 @@ Why it works the way it does:
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import ssl
@@ -62,7 +63,7 @@ def embed(texts: list[str], key: str, context: ssl.SSLContext, attempts: int = 6
             detail = error.read().decode("utf-8", "replace")[:500]
             if error.code != 429 and error.code < 500 or attempt == attempts:
                 raise RuntimeError(f"OpenAI HTTP {error.code}: {detail}") from None
-        except (urllib.error.URLError, TimeoutError) as error:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as error:
             if attempt == attempts:
                 raise RuntimeError(f"OpenAI network: {error}") from None
         time.sleep(min(60, 2 ** attempt))

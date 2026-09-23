@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import http.client
 import json
 import ssl
 import sys
@@ -105,7 +106,8 @@ def fetch(ikpu: str, lang: str, limiter: RateLimiter, context: ssl.SSLContext, a
                 raise NotFound(ikpu) from None
             if error.code not in (429,) and error.code < 500:
                 raise
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException,
+                json.JSONDecodeError):
             pass
         time.sleep(min(30, 2 ** attempt))
     raise RuntimeError(f"{ikpu} {lang}: gave up after {attempts} attempts")
