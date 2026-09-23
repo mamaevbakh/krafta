@@ -2,6 +2,7 @@
 
     OPENAI_API_KEY=... pnpm --filter tasnif search:terms --keys 02004001004,08517001001   # try a few, print only
     OPENAI_API_KEY=... pnpm --filter tasnif search:terms --apply                           # everything still missing
+    OPENAI_API_KEY=... pnpm --filter tasnif search:terms --menu [--apply]                  # redo the cafe menu entries
 
 Why this exists: the catalog names things the way a customs tariff does. Smartphones are
 "Сотовые телефоны, радиотелефоны", Lay's chips sit under "Не замороженные овощи, приготовленные
@@ -22,12 +23,21 @@ Why it works the way it does:
 * Structured output (JSON schema, strict) and a per-item `key` echo, so answers can't drift onto
   the wrong row. Items whose key doesn't come back are left pending for the next run.
 * gpt-5.4-mini with low reasoning effort: ~15k entries is ~600 requests of 25 entries each.
+
+The cafe menu (class 10202, 74 entries) gets its own pass, `--menu`. Cafes are who this site is
+for, and the general pass left their vocabulary thin: at 8 words a language, "Основные блюда, с
+мясом" had no шашлык and no osh, and самса landed under bread because the model saw that entry
+without its siblings. The menu pass sends each section's entries together, so every dish is
+placed once against the catalog's own split, allows 25 words a language, and asks for the
+spellings people actually type (шаурма and шаверма, самса and сомса), with the stronger model.
 """
 
 from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import functools
+import http.client
 import json
 import os
 import ssl
@@ -54,6 +64,21 @@ Rules:
 - Broad entries (group, class) get only broad category words.
 - Do not repeat the official name word for word, do not add brand names, codes, units, or spelling mistakes.
 - If you are not confident what belongs here, return empty lists. Empty is better than wrong.
+- Echo each entry's "key" exactly."""
+
+MENU_MODEL = "gpt-5.4"
+
+MENU_INSTRUCTIONS = """You help cafes and restaurants in Uzbekistan find the tax classification code (IKPU / MXIK) for every item on their menu and every extra they charge for.
+
+You receive all catalog entries of one section of the catering class ("Услуги общественного питания"), siblings together. For each entry, list what a cafe owner, cashier or accountant would type into a search box for the things that belong to it: menu items and drinks as they are written on menus and receipts in Uzbekistan (Uzbek, Russian, Central Asian, Caucasian, Turkish, Asian, European and fast-food dishes alike), and the charges and services as they appear on receipts and price lists.
+
+Rules:
+- Put each dish or drink under the ONE entry an accountant would use for it, following the split the catalog makes: by main ingredient (meat, poultry, fish and seafood, vegetables/grains/pasta, dough, eggs), and by course (snacks, salads, soups, sides and sauces, bread, desserts, teas, coffee, other soft drinks, cocktails). Dough-based dishes (dumplings, baked filled pastries, noodles served as a main) belong to the dough-based main dishes, not to bread; bread is flatbreads, loaves and buns.
+- Menu sections: be exhaustive, up to 25 items per language, most common first. Include regional names and the alternative spellings people really use on menus and in messages: Uzbek colloquial forms, Russian spellings of Uzbek dishes, common Russian variants, English menu names. People search the way they write.
+- Uzbek ("uz") in Latin script, with apostrophes as usually written (o', g').
+- Charges and services (table or room rent, service charge, deposit, entry fee, reservations, delivery, hookah, takeaway packaging, damage, catering, weddings and banquets, music, host, decoration, shows): the words used on receipts, price lists and in contracts, up to 12 per language.
+- Broad entries (the class, a position) get only broad words.
+- No brand names, prices or units. Empty lists are better than wrong ones.
 - Echo each entry's "key" exactly."""
 
 SCHEMA = {
@@ -120,14 +145,29 @@ def load_entries(api: ManagementApi, keys: list[str] | None, redo: bool, limit: 
         last = chunk[-1]["key"]
 
 
-def ask(entries: list[dict], key: str, context: ssl.SSLContext, attempts: int = 5) -> tuple[dict[str, dict], dict]:
+def load_menu(api: ManagementApi) -> list[list[dict]]:
+    """Every catering entry (class 10202), grouped by position so siblings are judged together."""
+    rows = api.query("""
+        select d.key, d.level, d.kind, e.embed_text as path
+        from tasnif.search_documents d
+        join tasnif.embedding_inputs e on e.key = d.key
+        where d.key like '10202%'
+        order by d.key""")
+    sections: dict[str, list[dict]] = {}
+    for row in rows:
+        sections.setdefault(row["key"][:8], []).append(row)
+    return list(sections.values())
+
+
+def ask(entries: list[dict], key: str, context: ssl.SSLContext, attempts: int = 5, *,
+        model: str = MODEL, instructions: str = INSTRUCTIONS, effort: str = "low") -> tuple[dict[str, dict], dict]:
     payload = [{"key": e["key"], "level": e["level"], "kind": e["kind"],
                 "path": (e["path"] or "").split("\n")[0], "examples_filed_here": e.get("examples") or ""}
                for e in entries]
     body = json.dumps({
-        "model": MODEL,
-        "reasoning_effort": "low",
-        "messages": [{"role": "system", "content": INSTRUCTIONS},
+        "model": model,
+        "reasoning_effort": effort,
+        "messages": [{"role": "system", "content": instructions},
                      {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
         "response_format": {"type": "json_schema", "json_schema": {"name": "everyday_terms", "strict": True, "schema": SCHEMA}},
     }).encode()
@@ -144,7 +184,8 @@ def ask(entries: list[dict], key: str, context: ssl.SSLContext, attempts: int = 
             detail = error.read().decode("utf-8", "replace")[:500]
             if error.code != 429 and error.code < 500 or attempt == attempts:
                 raise RuntimeError(f"OpenAI HTTP {error.code}: {detail}") from None
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError) as error:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException,
+                json.JSONDecodeError, KeyError) as error:
             if attempt == attempts:
                 raise RuntimeError(f"OpenAI: {error}") from None
         time.sleep(min(60, 2 ** attempt))
@@ -171,6 +212,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--batch", type=int, default=25)
     parser.add_argument("--workers", type=int, default=6)
+    parser.add_argument("--menu", action="store_true", help="redo the cafe menu entries (class 10202) with the menu pass")
     args = parser.parse_args()
 
     key = os.environ.get("OPENAI_API_KEY")
@@ -184,14 +226,21 @@ def main() -> None:
 
     api = ManagementApi(args.project_ref)
     keys = [k.strip() for k in args.keys.split(",")] if args.keys else None
-    entries = load_entries(api, keys, args.redo, args.limit)
+    if args.menu:
+        batches = load_menu(api)
+        entries = [e for section in batches for e in section]
+        run = functools.partial(ask, key=key, context=context, model=MENU_MODEL, instructions=MENU_INSTRUCTIONS,
+                                effort="medium")
+    else:
+        entries = load_entries(api, keys, args.redo, args.limit)
+        batches = [entries[i:i + args.batch] for i in range(0, len(entries), args.batch)]
+        run = functools.partial(ask, key=key, context=context)
     print(f"{len(entries)} entries", flush=True)
     write = args.apply and not keys
 
     started, done, usage = time.time(), 0, {"prompt_tokens": 0, "completion_tokens": 0}
-    batches = [entries[i:i + args.batch] for i in range(0, len(entries), args.batch)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-        for answers, used in pool.map(lambda b: ask(b, key, context), batches):
+        for answers, used in pool.map(run, batches):
             usage["prompt_tokens"] += used.get("prompt_tokens", 0)
             usage["completion_tokens"] += used.get("completion_tokens", 0)
             rows = [{"key": k, "terms": as_text(v)} for k, v in answers.items()]
