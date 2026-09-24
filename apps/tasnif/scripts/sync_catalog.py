@@ -188,17 +188,25 @@ def save(api, night: dict) -> None:
 
 
 def claim(api, night: dict, minutes: int) -> bool:
-    """Take tonight's run for `minutes`, unless another call holds it.
+    """Take tonight's run for `minutes`, unless any sync, tonight's or an earlier night's, holds a lease.
 
     Two calls must never import at once: Vercel's next tick while a slow one is still going,
     or a laptop run while the cron fires. The lease lives in the run row and expires on its
     own, so a call that is killed mid-step blocks nobody for long.
     """
+    # One sync at a time across all nights, not just this one: a laptop run that crosses
+    # midnight holds yesterday's row while the cron opens today's. The advisory lock
+    # serialises concurrent claims for the length of this one statement.
     rows = api.query(f"""
+        with serialised as (select pg_advisory_xact_lock(hashtext('tasnif-nightly-sync')))
         update tasnif.sync_runs
         set notes = jsonb_set(notes, '{{lease_until}}', to_jsonb((now() + interval '{int(minutes)} minutes')::text))
         where id = {night['id']} and finished_at is null
-          and (notes->>'lease_until' is null or (notes->>'lease_until')::timestamptz < now())
+          and (select true from serialised)
+          and not exists (
+            select 1 from tasnif.sync_runs other
+            where other.source = 'nightly' and other.finished_at is null
+              and (other.notes->>'lease_until')::timestamptz > now())
         returning notes->>'lease_until' as lease_until""")
     if not rows:
         return False
