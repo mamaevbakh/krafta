@@ -1,6 +1,6 @@
 # tasnif
 
-`tasnif.krafta.uz` — a free, open search over Uzbekistan's national product and service catalog (IKPU / MXIK codes). Not launched yet.
+`tasnif.krafta.uz` — a free, open search over Uzbekistan's national product and service catalog (IKPU / MXIK codes). Open to search engines since 2026-09-25.
 
 Every fiscal receipt and e-invoice in Uzbekistan must carry the 17-digit IKPU of what was sold, and a code that doesn't match the sale is fined. The official search at [tasnif.soliq.uz](https://tasnif.soliq.uz) only finds a code when you already type the catalog's own wording: «капучино» returns nothing, «услуги общественного питания» suggests Coca-Cola. This app searches the same catalog by meaning, in Russian, Uzbek (Latin and Cyrillic) and English.
 
@@ -104,6 +104,23 @@ The same sync also runs on Vercel, and was built to: `api/nightly_sync.py` carri
 3. Add the schedule back to `vercel.json`: `"crons": [{ "path": "/api/nightly_sync", "schedule": "*/15 21-23 * * *" }]` (02:00–04:45 Tashkent), and retire the Mac job.
 
 `OPENAI_API_KEY` is shared with the site. The captcha-gated units export stays a manual download (`catalog:packages`); new codes get their package codes from the per-code endpoint instead.
+
+## Search engines
+
+Russian comes first: most people look for IKPU codes in Russian, so `/ru` is the `x-default`, and the sitemaps list Russian addresses only. Every page names its Uzbek and English versions itself (`hreflang`), which is how search engines find those.
+
+| What | Where |
+|---|---|
+| `robots.txt` | Everything may be crawled except `/api/`. Points to the sitemap. |
+| `/sitemap.xml` | An index: `/sitemaps/catalog.xml` (home, catalog, 14,501 category pages), then `/sitemaps/codes-0.xml` … with 25,000 codes each. Rendered on request, cached by Vercel's CDN for a day, so a deploy never reads the catalog. |
+| `/ru/catalog`, `/ru/catalog/<code>` | The catalog tree as pages. A sub-position lists its codes 100 per page (`?page=2`). Every code is a few links from the home page. |
+| Page metadata | `lib/site.ts` `pageMetadata()`: title, description, canonical, `hreflang`, Open Graph. Each page sets its own; the layout only sets defaults, because a layout-level canonical would be inherited by every page. |
+| Structured data | Home: `WebSite` (the name "Tasnif" in results) and `FAQPage`. Categories and codes: `BreadcrumbList`. |
+| Crawlers get whole pages | `htmlLimitedBots` in `next.config.ts` adds Googlebot to Next's list (Yandex, Bing, link previews), so they get the full page with its metadata in `<head>` in the first response. |
+
+Unknown codes and categories answer with a friendly page and `noindex`, not a 404. Two indexes and `tasnif.sitemap_code_starts()` (`supabase/migrations/20260925100000_tasnif_catalog_pages.sql`) keep the deep catalog pages and the sitemaps fast.
+
+To register the site: [Google Search Console](https://search.google.com/search-console) and [Yandex Webmaster](https://webmaster.yandex.com), add `https://tasnif.krafta.uz`, verify, and submit `https://tasnif.krafta.uz/sitemap.xml`. A verification meta tag goes in `app/[locale]/layout.tsx` (`verification` in the metadata).
 
 ## Plan
 

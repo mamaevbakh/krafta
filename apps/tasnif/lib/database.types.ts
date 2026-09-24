@@ -471,6 +471,12 @@ export type Database = {
         }[]
       }
       search_text: { Args: { q: string }; Returns: string }
+      sitemap_code_starts: {
+        Args: { p_size: number }
+        Returns: {
+          ikpu: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

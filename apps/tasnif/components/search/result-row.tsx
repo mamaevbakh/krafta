@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import Link from "next/link"
 import { CheckIcon, ChevronDownIcon, CopyIcon, ExternalLinkIcon } from "lucide-react"
 
@@ -183,9 +183,21 @@ export function DetailsBody({
   t: Dictionary
   showPermalink?: boolean
 }) {
-  const facts: { label: string; value: string; mono?: boolean }[] = []
+  const facts: { label: string; value: React.ReactNode; mono?: boolean }[] = []
   if (details.path.length > 0) {
-    facts.push({ label: t.details.path, value: details.path.map((node) => readable(localized(node, locale).text)).join(" › ") })
+    // Each step opens that category's page, so a code is one click from its neighbours.
+    const path = details.path.map((node, index) => (
+      <Fragment key={node.code}>
+        {index > 0 ? " › " : null}
+        <Link
+          href={`/${locale}/catalog/${node.code}`}
+          className="underline decoration-border underline-offset-4 hover:decoration-foreground"
+        >
+          {readable(localized(node, locale).text)}
+        </Link>
+      </Fragment>
+    ))
+    facts.push({ label: t.details.path, value: path })
   }
   if (details.units) facts.push({ label: t.details.units, value: details.units })
   if (details.barcode) facts.push({ label: t.details.barcode, value: details.barcode, mono: true })

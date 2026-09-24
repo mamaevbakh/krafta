@@ -6,6 +6,7 @@ import { GeistSans } from "geist/font/sans"
 import { SiteFooter, SiteHeader } from "@/components/site-chrome"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { LOCALES, dictionary, isLocale } from "@/lib/i18n"
+import { SITE_NAME, SITE_URL } from "@/lib/site"
 
 import "../globals.css"
 
@@ -17,12 +18,16 @@ export async function generateMetadata({ params }: LayoutProps<"/[locale]">): Pr
   const { locale } = await params
   if (!isLocale(locale)) return {}
   const t = dictionary(locale)
+  // Defaults only. Each page sets its own canonical, hreflang and Open Graph
+  // (lib/site.ts pageMetadata); a layout-level canonical would be inherited by
+  // every page that forgot one.
   return {
-    title: t.meta.title,
+    metadataBase: new URL(SITE_URL),
+    applicationName: SITE_NAME,
+    title: { default: t.meta.title, template: `%s · ${SITE_NAME}` },
     description: t.meta.description,
-    // Not launched. A half-built page indexed under krafta.uz would teach search
-    // engines the wrong snippet; lift at launch.
-    robots: { index: false, follow: false },
+    // iOS would otherwise dial 17-digit codes as phone numbers.
+    formatDetection: { telephone: false },
   }
 }
 

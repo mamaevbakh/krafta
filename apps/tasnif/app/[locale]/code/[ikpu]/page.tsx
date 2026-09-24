@@ -4,13 +4,15 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeftIcon } from "lucide-react"
 
+import { CatalogList, CatalogRow } from "@/components/catalog"
 import { CopyCode, DetailsBody } from "@/components/search/result-row"
 import { Badge } from "@/components/ui/badge"
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 import { dictionary, format, isLocale, type Dictionary, type Locale } from "@/lib/i18n"
-import { kindLabel, localized } from "@/lib/names"
+import { kindLabel, localized, readable } from "@/lib/names"
 import { getCodeDetails, searchCatalog } from "@/lib/search"
+import { breadcrumbList, jsonLd, localeUrl, NOT_INDEXED, pageMetadata } from "@/lib/site"
 import type { CodeDetails } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -21,7 +23,9 @@ import { cn } from "@/lib/utils"
  * the active codes of its category, since that is what its owner needs next.
  *
  * The code is only known per request, so the page body streams in under
- * Suspense; the header and footer come with the layout's static shell.
+ * Suspense; the header and footer come with the layout's static shell. Search
+ * engines get the whole page in one piece instead (htmlLimitedBots in
+ * next.config.ts), and find these pages through /sitemap.xml and the catalog.
  */
 
 const IKPU = /^\d{17}$/
@@ -30,13 +34,22 @@ export async function generateMetadata({ params }: PageProps<"/[locale]/code/[ik
   const { locale, ikpu } = await params
   if (!isLocale(locale)) return {}
   const t = dictionary(locale)
-  const details = IKPU.test(ikpu) ? await getCodeDetails(ikpu).catch(() => null) : null
-  if (!details) return { title: t.code.notFoundTitle }
+  // No catch: a database hiccup must fail the request (a crawler retries), not answer
+  // "no such code" with a noindex that drops the page from search.
+  const details = IKPU.test(ikpu) ? await getCodeDetails(ikpu) : null
+  if (!details) return { title: t.code.notFoundTitle, robots: NOT_INDEXED }
   const name = localized(details.name, locale).text
-  return {
+  const category = details.path.at(-1)
+  return pageMetadata({
+    locale,
+    path: `/code/${ikpu}`,
     title: format(t.code.metaTitle, { code: ikpu, name }),
-    description: format(t.code.metaDescription, { code: ikpu, name }),
-  }
+    description: format(t.code.metaDescription, {
+      code: ikpu,
+      name,
+      category: category ? readable(localized(category, locale).text) : name,
+    }),
+  })
 }
 
 export default function CodePage({ params }: PageProps<"/[locale]/code/[ikpu]">) {
@@ -80,8 +93,18 @@ async function CodeView({ params }: { params: PageProps<"/[locale]/code/[ikpu]">
 
 function CodeBody({ details, locale, t }: { details: CodeDetails; locale: Locale; t: Dictionary }) {
   const name = localized(details.name, locale)
+  // The same path the "Category" line shows, for search engines to print instead of the URL.
+  const trail = breadcrumbList([
+    { name: t.catalog.root, url: localeUrl(locale, "/catalog") },
+    ...details.path.map((node) => ({
+      name: readable(localized(node, locale).text),
+      url: localeUrl(locale, `/catalog/${node.code}`),
+    })),
+    { name: name.text },
+  ])
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(trail) }} />
       <header className="flex flex-col gap-3">
         <h1
           className={cn("text-2xl leading-tight font-medium tracking-tight text-balance", name.fallback && "italic")}
@@ -121,22 +144,18 @@ async function ActiveAlternatives({ ikpu, locale, t }: { ikpu: string; locale: L
       {alternatives.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t.code.noAlternatives}</p>
       ) : (
-        <ul className="flex flex-col divide-y rounded-lg border">
-          {alternatives.map((alternative) => {
-            const name = localized(alternative.name, locale)
-            return (
-              <li key={alternative.ikpu}>
-                <Link
-                  href={`/${locale}/code/${alternative.ikpu}`}
-                  className="flex flex-col gap-1 px-4 py-3 transition-colors duration-150 hover:bg-muted/50 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
-                >
-                  <span className={cn("text-[15px] text-pretty", name.fallback && "italic")}>{name.text}</span>
-                  <span className="shrink-0 font-mono text-sm text-muted-foreground tabular-nums">{alternative.ikpu}</span>
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+        <CatalogList>
+          {alternatives.map((alternative) => (
+            <CatalogRow
+              key={alternative.ikpu}
+              href={`/${locale}/code/${alternative.ikpu}`}
+              name={alternative.name}
+              code={alternative.ikpu}
+              locale={locale}
+              t={t}
+            />
+          ))}
+        </CatalogList>
       )}
     </section>
   )

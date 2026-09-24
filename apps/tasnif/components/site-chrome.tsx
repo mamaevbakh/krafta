@@ -2,10 +2,12 @@ import { Suspense } from "react"
 import Link from "next/link"
 
 import { LanguageLinks, LanguageSwitcher } from "@/components/language-switcher"
+import { buttonVariants } from "@/components/ui/button"
 import { format, type Dictionary, type Locale } from "@/lib/i18n"
 import { getLastSync } from "@/lib/search"
+import { cn } from "@/lib/utils"
 
-/** Wordmark and language switch, the same on every page. */
+/** Wordmark, the catalog, and the language switch, the same on every page. */
 export function SiteHeader({ locale, t }: { locale: Locale; t: Dictionary }) {
   return (
     <header className="border-b">
@@ -13,9 +15,17 @@ export function SiteHeader({ locale, t }: { locale: Locale; t: Dictionary }) {
         <Link href={`/${locale}`} aria-label={t.header.home} className="text-[15px] font-medium tracking-tight">
           tasnif<span className="text-muted-foreground">.krafta.uz</span>
         </Link>
-        <Suspense fallback={<LanguageLinks current={locale} label={t.header.language} />}>
-          <LanguageSwitcher current={locale} label={t.header.language} />
-        </Suspense>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/${locale}/catalog`}
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-muted-foreground")}
+          >
+            {t.catalog.root}
+          </Link>
+          <Suspense fallback={<LanguageLinks current={locale} label={t.header.language} />}>
+            <LanguageSwitcher current={locale} label={t.header.language} />
+          </Suspense>
+        </div>
       </div>
     </header>
   )
