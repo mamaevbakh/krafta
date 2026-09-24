@@ -4,16 +4,18 @@
     pnpm --filter tasnif catalog:sync --check    # download and compare fingerprints; write nothing
     pnpm --filter tasnif catalog:sync --force    # import the exports even if their content is unchanged
 
-In production it runs on Vercel: a cron calls api/nightly_sync.py every 15 minutes
-between 02:00 and 05:00 Tashkent time, and each call carries tonight's run forward
-as far as it can within a time budget (a Vercel function has a hard limit; a night
-with new codes needs several calls). There it connects as the `tasnif_sync` role
-(TASNIF_DATABASE_URL, schema tasnif only); on a laptop it falls back to the
-Supabase CLI token, like the other scripts.
+In production it runs once a day on a Mac in Uzbekistan (scripts/mac/daily-sync.sh,
+started by launchd), because tasnif.soliq.uz only accepts connections from
+Uzbekistan: Vercel, Supabase and GitHub all time out. There it reaches the database
+through the Supabase CLI login, like the other scripts. It was also built to run on
+Vercel (api/nightly_sync.py, several short calls a night within a time budget,
+connecting as the `tasnif_sync` role through TASNIF_DATABASE_URL and reaching the
+site through TASNIF_EGRESS_PROXY_URL); that schedule is off until a proxy in
+Uzbekistan exists (apps/tasnif/README.md).
 
-Tonight's run is one tasnif.sync_runs row (source 'nightly', one per Tashkent
-date). Its notes hold which steps are done, so a call that runs out of time or
-fails leaves the rest to the next one. Steps, in order:
+A day's run is one tasnif.sync_runs row (source 'nightly', one per Tashkent date).
+Its notes hold which steps are done, so a run that stops or fails leaves the rest
+to the next one. Steps, in order:
 
   catalog   Download the Russian export; if its content fingerprint differs from
             the last import (import_catalog.fingerprint: the committee's server

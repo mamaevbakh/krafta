@@ -50,43 +50,60 @@ pnpm --filter tasnif catalog:inactive --file ~/Downloads/inactiveMxik_ru.xlsx --
 
 From a laptop they talk to the database through the Supabase Management API with your Supabase CLI login (`supabase login`), so no database password or service key is needed on disk. With `TASNIF_DATABASE_URL` set they connect directly instead, as the restricted `tasnif_sync` role. Re-running any of them on an unchanged file writes nothing.
 
-## Nightly sync
+## Daily catalog sync
 
-The catalog updates itself every night. A Vercel cron (`vercel.json`) calls `api/nightly_sync.py` every 15 minutes between 02:00 and 05:00 Tashkent time. Each call carries the night's run forward: it downloads the three catalog exports and the switched-off list, imports only what changed (by content, not by file bytes), fetches package codes for new codes, rebuilds their search entries, and writes everyday words and embeddings for new categories. The steps and the reasons behind them are in `scripts/sync_catalog.py`. Each night is one `tasnif.sync_runs` row with `source = 'nightly'`: `notes` shows what happened, and `error` is set if the night didn't finish. The footer's "catalog updated" date is the last night that finished.
+The catalog updates itself once a day, from a Mac in Uzbekistan. tasnif.soliq.uz only accepts connections from Uzbekistan: it timed out from Vercel's functions, the Supabase database and Supabase's edge functions (AWS, US and Frankfurt) and from GitHub's runners (Azure), and answered instantly from Tashkent (tested 2026-09-24/25). Without a server in Uzbekistan, the machine that fetches the exports has to be one.
+
+`scripts/mac/daily-sync.sh` runs `scripts/sync_catalog.py`, and launchd starts it at 09:30 every day, or when the Mac wakes if it was asleep then. A run downloads the three catalog exports and the switched-off list, imports only what changed (by content, not by file bytes), fetches package codes for new codes, rebuilds their search entries, and writes everyday words and embeddings for new categories. The steps and the reasons behind them are in `scripts/sync_catalog.py`. Each day is one `tasnif.sync_runs` row with `source = 'nightly'`: `notes` shows what happened, and `error` is set if the day didn't finish. The footer's "catalog updated" date is the last day that finished. The log is `~/Library/Logs/tasnif/sync.log`.
 
 ```bash
-pnpm --filter tasnif catalog:sync --check   # what tonight would import; writes nothing
-pnpm --filter tasnif catalog:sync           # run tonight's sync from a laptop, start to finish
+pnpm --filter tasnif catalog:sync --check   # what today would import; writes nothing
+pnpm --filter tasnif catalog:sync           # run today's sync now, start to finish
 ```
 
-It needs two production environment variables on the Vercel project, besides the site's own:
+Install the daily job (on the Mac, once):
 
-| Variable | What |
-|---|---|
-| `TASNIF_DATABASE_URL` | `postgresql://tasnif_sync.hlmcoirjaydrfqcmnuun:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require`. The role can reach schema `tasnif` and nothing else (`supabase/migrations/20260923233000_tasnif_sync_role.sql`). It has no login until someone sets a password in the Supabase SQL editor: `alter role tasnif_sync with login password '<long random password>';` |
-| `CRON_SECRET` | Any long random string. Vercel sends it with every cron call, and the function refuses calls without it. |
+```bash
+sed -e "s|SCRIPT_PATH|$PWD/scripts/mac/daily-sync.sh|" -e "s|LOG_DIR|$HOME/Library/Logs/tasnif|" \
+  scripts/mac/uz.krafta.tasnif-sync.plist > ~/Library/LaunchAgents/uz.krafta.tasnif-sync.plist
+mkdir -p ~/Library/Logs/tasnif
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/uz.krafta.tasnif-sync.plist
+launchctl kickstart gui/$(id -u)/uz.krafta.tasnif-sync   # optional: run once now
+```
 
-| `TASNIF_EGRESS_PROXY_URL` | `http://<user>:<password>@<server-in-uzbekistan>:3128`. The tax committee's firewall drops connections from the big clouds: tasnif.soliq.uz times out from Vercel's functions and the Supabase database (AWS) and from GitHub's runners (Azure), while Tashkent connects instantly. So the sync reaches the site through a small proxy inside Uzbekistan. Unset, requests go out directly, which is right for a laptop in Uzbekistan and fails on Vercel. |
+It uses the Mac's Supabase CLI login and the OpenAI key in `.env.local`, so it has no secrets of its own. Remove it with `launchctl bootout gui/$(id -u)/uz.krafta.tasnif-sync` and delete the plist.
+
+Two runs never work at once: each takes a lease first (one at a time across all days), and the catalog importer only clears staged rows of dead runs, since a row missing from staging would switch its code off.
+
+### If a server in Uzbekistan ever exists
+
+The same sync also runs on Vercel, and was built to: `api/nightly_sync.py` carries a day's run forward within a time budget per call. Its schedule is off (`vercel.json` has no `crons`) because every download fails from Vercel. To turn it on:
+
+1. On a VPS with a public IP in Uzbekistan, run squid as in `docs/atmos-egress-proxy.md` (Path C) with the destination swapped. It only ever sees an encrypted tunnel to tasnif.soliq.uz:443:
+
+   ```squid
+   http_port 3128
+   auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
+   auth_param basic realm tasnif-egress
+   acl authenticated proxy_auth REQUIRED
+   acl tasnif_host dstdomain tasnif.soliq.uz
+   acl ssl_port port 443
+   acl connect_only method CONNECT
+   http_access allow authenticated connect_only tasnif_host ssl_port
+   http_access deny all
+   ```
+
+2. Set these production variables on the tasnif Vercel project (the first two are already set):
+
+   | Variable | What |
+   |---|---|
+   | `TASNIF_DATABASE_URL` | `postgresql://tasnif_sync.hlmcoirjaydrfqcmnuun:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require`. The role can reach schema `tasnif` and nothing else (`supabase/migrations/20260923233000_tasnif_sync_role.sql`). |
+   | `CRON_SECRET` | Any long random string. Vercel sends it with every cron call; the function refuses calls without it. |
+   | `TASNIF_EGRESS_PROXY_URL` | `http://<user>:<password>@<server-in-uzbekistan>:3128` |
+
+3. Add the schedule back to `vercel.json`: `"crons": [{ "path": "/api/nightly_sync", "schedule": "*/15 21-23 * * *" }]` (02:00–04:45 Tashkent), and retire the Mac job.
 
 `OPENAI_API_KEY` is shared with the site. The captcha-gated units export stays a manual download (`catalog:packages`); new codes get their package codes from the per-code endpoint instead.
-
-The proxy only needs to tunnel HTTPS to one host. On a VPS with a public IP in Uzbekistan, squid set up as in `docs/atmos-egress-proxy.md` (Path C) with the destination swapped does it:
-
-```squid
-http_port 3128
-auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
-auth_param basic realm tasnif-egress
-acl authenticated proxy_auth REQUIRED
-acl tasnif_host dstdomain tasnif.soliq.uz
-acl ssl_port port 443
-acl connect_only method CONNECT
-http_access allow authenticated connect_only tasnif_host ssl_port
-http_access deny all
-```
-
-It only ever sees an encrypted tunnel to tasnif.soliq.uz:443, never the content. If Krafta Pay's Atmos proxy runs in Uzbekistan, adding `tasnif.soliq.uz` to its allowed destinations is enough.
-
-Two calls never work on the same night at once: each takes a lease on the night's row first, and the catalog importer only clears staged rows of dead runs, since a row missing from staging would switch its code off.
 
 ## Plan
 

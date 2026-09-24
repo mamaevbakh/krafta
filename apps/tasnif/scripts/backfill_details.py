@@ -75,13 +75,14 @@ SCOPES = {
 def official_opener(context: ssl.SSLContext) -> urllib.request.OpenerDirector:
     """urllib opener for tasnif.soliq.uz, through TASNIF_EGRESS_PROXY_URL when it is set.
 
-    The tax committee's firewall drops connections from the big clouds: on 2026-09-24 the
-    site timed out from Vercel's functions and from the Supabase database (both AWS) and
-    from GitHub's runners (Azure), while a connection from Tashkent went straight through.
-    So on Vercel the nightly sync reaches the site through a proxy inside Uzbekistan (a
-    squid that only tunnels to tasnif.soliq.uz, like Krafta Pay's Atmos egress, see
-    docs/atmos-egress-proxy.md); on a laptop in Uzbekistan the variable is unset and
-    requests go out directly. Requests are HTTPS end to end: the proxy sees only a tunnel.
+    The tax committee's firewall only lets in connections from Uzbekistan: on 2026-09-24/25
+    the site timed out from Vercel's functions, the Supabase database and Supabase's edge
+    functions (AWS, US and Frankfurt) and GitHub's runners (Azure), while Tashkent went
+    straight through. On a machine in Uzbekistan the variable is unset and requests go out
+    directly (the daily sync runs on a Mac in Tashkent). Anywhere else they need a proxy
+    inside Uzbekistan (a squid that only tunnels to tasnif.soliq.uz, like Krafta Pay's Atmos
+    egress, docs/atmos-egress-proxy.md). Requests are HTTPS end to end: a proxy sees only a
+    tunnel.
     """
     handlers: list[urllib.request.BaseHandler] = [urllib.request.HTTPSHandler(context=context)]
     proxy = os.environ.get("TASNIF_EGRESS_PROXY_URL", "").strip()

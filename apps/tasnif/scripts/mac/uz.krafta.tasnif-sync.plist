@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The daily tasnif catalog update (daily-sync.sh). Installed by copying this file to
+  ~/Library/LaunchAgents/ with SCRIPT_PATH and LOG_DIR filled in (apps/tasnif/README.md,
+  "Nightly sync"). Runs at 09:30 every day, or on wake if the Mac was asleep then.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>uz.krafta.tasnif-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>SCRIPT_PATH</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>LOG_DIR/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>LOG_DIR/launchd.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+</dict>
+</plist>

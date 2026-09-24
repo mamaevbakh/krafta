@@ -1,4 +1,9 @@
-"""The nightly catalog sync, as a Vercel Function the cron calls (see vercel.json).
+"""The nightly catalog sync, as a Vercel Function a cron can call.
+
+Its schedule is off: tasnif.soliq.uz only accepts connections from Uzbekistan, so
+every download fails from Vercel, and the sync runs on a Mac in Uzbekistan instead
+(scripts/mac/daily-sync.sh). It comes back on with a proxy in Uzbekistan
+(TASNIF_EGRESS_PROXY_URL) and a `crons` entry in vercel.json; see the README.
 
 Every call carries tonight's run forward for up to BUDGET_SECONDS of starting new steps
 (scripts/sync_catalog.py has the steps and why); the cron calls every 15 minutes between
