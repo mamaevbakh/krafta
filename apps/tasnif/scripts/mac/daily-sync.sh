@@ -30,6 +30,6 @@ fi
 
 caffeinate -i uv run --quiet --with openpyxl --with certifi --with truststore --with "psycopg[binary]" \
   scripts/sync_catalog.py
-status=$?
-echo "=== $(date '+%Y-%m-%d %H:%M:%S') finished with exit code $status"
-exit $status
+code=$?  # not "status": zsh reserves that name
+echo "=== $(date '+%Y-%m-%d %H:%M:%S') finished with exit code $code"
+exit $code

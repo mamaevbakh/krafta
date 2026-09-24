@@ -167,7 +167,10 @@ def tonight(api) -> dict:
         update tasnif.sync_runs set finished_at = now(),
           error = coalesce(error, 'did not finish: ' || coalesce(notes->>'last_error', 'ran out of calls'))
         where source = 'nightly' and finished_at is null
-          and (started_at at time zone 'Asia/Tashkent')::date < (now() at time zone 'Asia/Tashkent')::date""")
+          and (started_at at time zone 'Asia/Tashkent')::date < (now() at time zone 'Asia/Tashkent')::date
+          -- A row still being worked on is not abandoned: a run that crossed midnight holds a
+          -- lease (2026-09-25: a run finishing on the Mac was closed as "did not finish").
+          and (notes->>'lease_until' is null or (notes->>'lease_until')::timestamptz < now())""")
     rows = api.query("""
         select id, finished_at, notes from tasnif.sync_runs
         where source = 'nightly'
@@ -342,7 +345,8 @@ def run(api, budget: Budget, force: bool = False) -> dict:
 
         notes.pop("lease_until", None)
         if all(step in notes["done"] for step in STEPS):
-            api.query(f"update tasnif.sync_runs set finished_at = now(), notes = {sql_json(notes)} where id = {night['id']}")
+            api.query(f"""update tasnif.sync_runs set finished_at = now(), error = null, notes = {sql_json(notes)}
+                          where id = {night['id']}""")
             print(f"tonight's sync finished: {json.dumps(summary, ensure_ascii=False, default=str)}", flush=True)
         else:
             save(api, night)
