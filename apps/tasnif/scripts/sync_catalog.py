@@ -59,7 +59,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import import_catalog  # noqa: E402
 import import_inactive  # noqa: E402
 import import_names  # noqa: E402
-from backfill_details import fetch_details  # noqa: E402
+from backfill_details import fetch_details, official_opener  # noqa: E402
 from embed_documents import embed_pending  # noqa: E402
 from everyday_terms import write_pending  # noqa: E402
 from import_catalog import database, fingerprint, sql_json, sql_text  # noqa: E402
@@ -122,13 +122,15 @@ def download(name: str, url: str, target: Path, attempts: int = 3) -> Path:
 
     Uses certifi's CA bundle: the committee's server sends its full chain, which that bundle
     verifies on any machine (a macOS python.org build has no system store to fall back on).
+    Goes through TASNIF_EGRESS_PROXY_URL when set: the site refuses the big clouds, Vercel
+    included (see backfill_details.official_opener).
     """
     context = ssl.create_default_context(cafile=certifi.where())
     for attempt in range(1, attempts + 1):
         try:
             request = urllib.request.Request(url, headers={
                 "User-Agent": "tasnif.krafta.uz nightly sync (+https://tasnif.krafta.uz)"})
-            with urllib.request.urlopen(request, timeout=300, context=context) as response, target.open("wb") as out:
+            with official_opener(context).open(request, timeout=300) as response, target.open("wb") as out:
                 shutil.copyfileobj(response, out, length=1 << 20)
             if target.stat().st_size >= MIN_BYTES[name] and zipfile.is_zipfile(target):
                 print(f"  downloaded {name}: {target.stat().st_size:,} bytes", flush=True)
@@ -183,6 +185,38 @@ def tonight(api) -> dict:
 
 def save(api, night: dict) -> None:
     api.query(f"update tasnif.sync_runs set notes = {sql_json(night['notes'])} where id = {night['id']}")
+
+
+def claim(api, night: dict, minutes: int) -> bool:
+    """Take tonight's run for `minutes`, unless another call holds it.
+
+    Two calls must never import at once: Vercel's next tick while a slow one is still going,
+    or a laptop run while the cron fires. The lease lives in the run row and expires on its
+    own, so a call that is killed mid-step blocks nobody for long.
+    """
+    rows = api.query(f"""
+        update tasnif.sync_runs
+        set notes = jsonb_set(notes, '{{lease_until}}', to_jsonb((now() + interval '{int(minutes)} minutes')::text))
+        where id = {night['id']} and finished_at is null
+          and (notes->>'lease_until' is null or (notes->>'lease_until')::timestamptz < now())
+        returning notes->>'lease_until' as lease_until""")
+    if not rows:
+        return False
+    night["notes"]["lease_until"] = rows[0]["lease_until"]
+    return True
+
+
+def renew(api, night: dict, minutes: int) -> bool:
+    """Extend a lease this call holds (compare-and-set on its own expiry), for long laptop runs."""
+    rows = api.query(f"""
+        update tasnif.sync_runs
+        set notes = jsonb_set(notes, '{{lease_until}}', to_jsonb((now() + interval '{int(minutes)} minutes')::text))
+        where id = {night['id']} and notes->>'lease_until' = {sql_text(night['notes'].get('lease_until') or '')}
+        returning notes->>'lease_until' as lease_until""")
+    if not rows:
+        return False
+    night["notes"]["lease_until"] = rows[0]["lease_until"]
+    return True
 
 
 def changed_groups(api, since: str) -> list[str]:
@@ -241,12 +275,20 @@ def run(api, budget: Budget, force: bool = False) -> dict:
     notes = night["notes"]
     notes.setdefault("done", [])
     summary = notes.setdefault("summary", {})
+    # A Vercel call lives at most ~13 minutes, so its lease runs out before the next tick; a
+    # laptop run renews a long one before every step.
+    lease_minutes = 14 if budget.seconds else 90
+    if not claim(api, night, lease_minutes):
+        print("another call is working on tonight's run; leaving it alone", flush=True)
+        return notes
     openai_key = os.environ.get("OPENAI_API_KEY")
     downloads = Downloads()
     try:
         for step in STEPS:
             if step in notes["done"]:
                 continue
+            if not budget.seconds and not renew(api, night, lease_minutes):
+                raise RuntimeError("lost tonight's lease to another call")
             if not budget.allows(heavy=step in ("catalog", "names", "refresh")):
                 print(f"leaving '{step}' for the next call ({budget.elapsed():.0f}s into this one)", flush=True)
                 break
@@ -288,13 +330,17 @@ def run(api, budget: Budget, force: bool = False) -> dict:
             if not complete:
                 break
 
+        notes.pop("lease_until", None)
         if all(step in notes["done"] for step in STEPS):
             api.query(f"update tasnif.sync_runs set finished_at = now(), notes = {sql_json(notes)} where id = {night['id']}")
             print(f"tonight's sync finished: {json.dumps(summary, ensure_ascii=False, default=str)}", flush=True)
+        else:
+            save(api, night)
         return notes
     except Exception as error:
         # Left open: the next call retries the step; the next night closes it if none succeeds.
         notes["last_error"] = f"{type(error).__name__}: {error}"[:1500]
+        notes.pop("lease_until", None)
         save(api, night)
         raise
     finally:

@@ -66,7 +66,27 @@ It needs two production environment variables on the Vercel project, besides the
 | `TASNIF_DATABASE_URL` | `postgresql://tasnif_sync.hlmcoirjaydrfqcmnuun:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require`. The role can reach schema `tasnif` and nothing else (`supabase/migrations/20260923233000_tasnif_sync_role.sql`). It has no login until someone sets a password in the Supabase SQL editor: `alter role tasnif_sync with login password '<long random password>';` |
 | `CRON_SECRET` | Any long random string. Vercel sends it with every cron call, and the function refuses calls without it. |
 
+| `TASNIF_EGRESS_PROXY_URL` | `http://<user>:<password>@<server-in-uzbekistan>:3128`. The tax committee's firewall drops connections from the big clouds: tasnif.soliq.uz times out from Vercel's functions and the Supabase database (AWS) and from GitHub's runners (Azure), while Tashkent connects instantly. So the sync reaches the site through a small proxy inside Uzbekistan. Unset, requests go out directly, which is right for a laptop in Uzbekistan and fails on Vercel. |
+
 `OPENAI_API_KEY` is shared with the site. The captcha-gated units export stays a manual download (`catalog:packages`); new codes get their package codes from the per-code endpoint instead.
+
+The proxy only needs to tunnel HTTPS to one host. On a VPS with a public IP in Uzbekistan, squid set up as in `docs/atmos-egress-proxy.md` (Path C) with the destination swapped does it:
+
+```squid
+http_port 3128
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwd
+auth_param basic realm tasnif-egress
+acl authenticated proxy_auth REQUIRED
+acl tasnif_host dstdomain tasnif.soliq.uz
+acl ssl_port port 443
+acl connect_only method CONNECT
+http_access allow authenticated connect_only tasnif_host ssl_port
+http_access deny all
+```
+
+It only ever sees an encrypted tunnel to tasnif.soliq.uz:443, never the content. If Krafta Pay's Atmos proxy runs in Uzbekistan, adding `tasnif.soliq.uz` to its allowed destinations is enough.
+
+Two calls never work on the same night at once: each takes a lease on the night's row first, and the catalog importer only clears staged rows of dead runs, since a row missing from staging would switch its code off.
 
 ## Plan
 

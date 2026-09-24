@@ -371,8 +371,14 @@ def apply(api: ManagementApi | PostgresApi, path: Path, digest: str, codes: list
         nodes = {k: v for k, v in nodes.items() if k[:3] in only_groups}
 
     active_before = api.query("select count(*)::int as n from tasnif.codes where status = 'active'")[0]["n"]
-    # One import at a time: anything still staged belongs to a run that died.
-    api.query("delete from tasnif.import_rows")
+    # Clear what dead runs left staged, never a live run's rows: a code missing from the
+    # staging table counts as dropped from the catalog, so wiping a concurrent import's rows
+    # would switch its codes off. A run is live while it is unfinished and under 6 hours old.
+    api.query("""
+        delete from tasnif.import_rows r
+        where not exists (select 1 from tasnif.sync_runs s
+                          where s.id = r.run_id and s.finished_at is null
+                            and s.started_at > now() - interval '6 hours')""")
     notes = {"anomalies": issues["anomalies"], "only_groups": sorted(only_groups) if only_groups else None}
     run_id = api.query(
         "insert into tasnif.sync_runs (source, source_file, source_sha256, rows_seen, notes) values "
